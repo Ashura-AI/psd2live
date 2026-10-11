@@ -150,6 +150,12 @@ internal fun ExportActionSection(
 					enabled = !isBusy,
 				)
 				CompactCheckbox(
+					checked = state.exportCan3,
+					onCheckedChange = { viewModel.setExportCan3(it) },
+					label = tr("export.can3.short"),
+					enabled = !isBusy && state.exportCmo3,
+				)
+				CompactCheckbox(
 					checked = state.exportJson,
 					onCheckedChange = { viewModel.setExportJson(it) },
 					label = tr("export.json.short"),

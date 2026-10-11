@@ -627,7 +627,7 @@ class PSD2LivePipeline {
 		if (config.exportCmo3) {
 			val ir = RigIrCompiler.compile(analysis, atlas, rig, config, tileArt = true)
 			val cmo3 = io.github.psd2live.targets.cubism.Cmo3Target { BezierWarp.configureEditor(it, config.rigEdits) }
-			val cmo3Options = io.github.psd2live.format.compile.ExportOptions(baseName)
+			val cmo3Options = io.github.psd2live.format.compile.ExportOptions(baseName, settings = mapOf("clips" to config.exportCan3.toString()))
 			val converted = cmo3.convert(ir, cmo3Options)
 			val bytes = Cmo3.write(converted.model)
 			files += writeContained(outputRoot, "$baseName.cmo3", bytes)

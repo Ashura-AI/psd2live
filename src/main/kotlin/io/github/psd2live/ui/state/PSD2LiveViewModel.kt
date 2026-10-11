@@ -4206,6 +4206,11 @@ class PSD2LiveViewModel : AutoCloseable {
 	    editorChanged()
 	}
 
+	fun setExportCan3(enabled: Boolean) {
+		updateState { it.copy(exportCan3 = enabled) }
+	    editorChanged()
+	}
+
 	fun setExportJson(enabled: Boolean) {
 		updateState { it.copy(exportJson = enabled) }
 	    editorChanged()

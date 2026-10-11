@@ -233,6 +233,7 @@ data class PipelineConfig(
 	val exportCmo3: Boolean = true,
 	val exportMoc3: Boolean = true,
 	val exportJson: Boolean = true,
+	val exportCan3: Boolean = true,
 	/**
 	 * Cubism SDK / model-target version written into MOC3 and CMO3.
 	 * Defaults to Cubism 5.0 to match the generated-rig baseline.

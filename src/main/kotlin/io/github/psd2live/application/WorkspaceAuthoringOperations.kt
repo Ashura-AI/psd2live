@@ -184,7 +184,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         listOf("meshSuppressBoundaryDiagonals", "meshOnly", "generateDeformers", "featureDisplacementEnabled", "mouthOutlineEnabled",
             "generatePhysics", "physicsFrontHair", "physicsBackHair", "physicsEyeJelly",
             "exportMotions", "motionBasic", "motionIdle", "motionBlink", "motionNod", "motionShake", "motionSkeleton",
-            "exportCmo3", "exportMoc3", "exportJson", "exportHiddenParts", "exportHiddenDrawables",
+            "exportCmo3", "exportMoc3", "exportJson", "exportCan3", "exportHiddenParts", "exportHiddenDrawables",
             "exportGuideImageParts", "exportIncludePhysics", "exportIncludeUserData", "exportIncludeDisplayInfo").forEach { put(it, boolean()) }
         put("mouthShape", choices("flat", "smile", "w", "custom"))
         put("mouthColor", oneOf(listOf(integer(0, 0xFFFFFF), buildJsonObject { put("type", "null") })))

@@ -168,6 +168,7 @@ internal object WorkspaceSettingsCodec {
         put("exportCmo3", config.exportCmo3)
         put("exportMoc3", config.exportMoc3)
         put("exportJson", config.exportJson)
+        put("exportCan3", config.exportCan3)
         put("runtimeTarget", config.runtimeTarget.name)
         put("exportHiddenParts", config.exportHiddenParts)
         put("exportHiddenDrawables", config.exportHiddenDrawables)
@@ -234,6 +235,7 @@ internal object WorkspaceSettingsCodec {
         exportCmo3 = value["exportCmo3"]?.jsonPrimitive?.booleanOrNull ?: base.exportCmo3,
         exportMoc3 = value["exportMoc3"]?.jsonPrimitive?.booleanOrNull ?: base.exportMoc3,
         exportJson = value["exportJson"]?.jsonPrimitive?.booleanOrNull ?: base.exportJson,
+        exportCan3 = value["exportCan3"]?.jsonPrimitive?.booleanOrNull ?: base.exportCan3,
         runtimeTarget = value["runtimeTarget"]?.jsonPrimitive?.contentOrNull?.let { runCatching { org.umamo.runtime.model.RuntimeTarget.valueOf(it) }.getOrNull() } ?: base.runtimeTarget,
         exportHiddenParts = value["exportHiddenParts"]?.jsonPrimitive?.booleanOrNull ?: base.exportHiddenParts,
         exportHiddenDrawables = value["exportHiddenDrawables"]?.jsonPrimitive?.booleanOrNull ?: base.exportHiddenDrawables,
