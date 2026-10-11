@@ -1461,7 +1461,7 @@ internal fun BoxScope.CanvasEditorOverlay(
             val halo = colors.windowBackground
             for (bone in skeleton.bones.sortedBy { it.id in editor.selectedBoneIds }) {
                 drawCanvasBone(screen(bone.headX, bone.headY), screen(bone.tailX, bone.tailY), boneColor(bone.id), halo,
-                    lit = bone.id in editor.selectedBoneIds)
+                    lit = bone.id in editor.selectedBoneIds, kind = bone.visualKind(), pinned = bone.id in skeleton.ikTargets)
             }
             creationHead?.let { head -> creationTail?.let { tail ->
                 drawCanvasBone(head, tail, colors.accent, halo, lit = true)
@@ -2880,7 +2880,8 @@ private fun SkeletonPoseLayer(editor: CanvasEditor, viewport: CanvasViewport, pa
             val lit = active?.boneId == posed.bone.id ||
                 (passive && editor.skeletonSelected && editor.selectedBoneId == posed.bone.id)
             drawCanvasBone(screen(posed.headX, posed.headY), screen(posed.tailX, posed.tailY), colorOf(posed.bone.id),
-                colors.windowBackground, lit = lit, tipLit = lit && active?.tip == true, strength = strength)
+                colors.windowBackground, lit = lit, tipLit = lit && active?.tip == true, strength = strength,
+                kind = posed.bone.visualKind(), pinned = posed.bone.id in spec.ikTargets)
         }
     }
 }

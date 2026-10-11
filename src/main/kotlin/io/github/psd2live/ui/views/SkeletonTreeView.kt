@@ -55,6 +55,7 @@ import io.github.psd2live.core.SkeletonWeights
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.CanvasEditor
 import io.github.psd2live.ui.SkeletonPalette
+import io.github.psd2live.ui.visualKind
 import io.github.psd2live.ui.parameterKeyMarks
 import io.github.psd2live.ui.components.CompactButton
 import io.github.psd2live.ui.components.CompactTextField
@@ -364,7 +365,7 @@ private fun BoneRow(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		Spacer(Modifier.width(1.dp))
-		IconBone(tint = SkeletonPalette.color(spec, bone.id), modifier = Modifier.size(ICON_SIZE_DP.dp))
+		IconBone(tint = SkeletonPalette.color(spec, bone.id), modifier = Modifier.size(ICON_SIZE_DP.dp), kind = bone.visualKind())
 		Spacer(Modifier.width(2.dp))
 		Box(
 			Modifier.size(CHEVRON_WIDTH_DP.dp)
@@ -473,7 +474,7 @@ private fun BoneSettings(editor: CanvasEditor, spec: SkeletonSpec, bone: Skeleto
 			.border(BorderStroke(1.dp, colors.divider)).padding(horizontal = 8.dp),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
-		IconBone(tint = SkeletonPalette.color(spec, bone.id), modifier = Modifier.size(12.dp))
+		IconBone(tint = SkeletonPalette.color(spec, bone.id), modifier = Modifier.size(12.dp), kind = bone.visualKind())
 		Spacer(Modifier.width(6.dp))
 		Text(bone.name, modifier = Modifier.weight(1f), color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
 			style = typography.header.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold))

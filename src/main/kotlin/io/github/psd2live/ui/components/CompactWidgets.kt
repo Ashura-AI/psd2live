@@ -441,9 +441,10 @@ fun IconSkeleton(
 fun IconBone(
 	modifier: Modifier = Modifier.size(12.dp),
 	tint: Color = LocalToolColors.current.textPrimary,
+	kind: BoneKind = BoneKind.LIMB,
 ) {
 	Canvas(modifier = modifier) {
-		drawSingleBoneIcon(tint)
+		drawSingleBoneIcon(tint, kind)
 	}
 }
 
