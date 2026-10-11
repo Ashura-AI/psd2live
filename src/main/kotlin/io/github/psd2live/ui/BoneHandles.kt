@@ -1,6 +1,10 @@
 package io.github.psd2live.ui
 
 import androidx.compose.ui.geometry.Offset
+import io.github.psd2live.core.SkeletonBone
+import io.github.psd2live.core.SkeletonRig
+import io.github.psd2live.core.SkeletonSpec
+import io.github.psd2live.core.SkeletonWeights
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -41,6 +45,19 @@ internal object BoneHandles {
 		val turn = wrap(degrees(pointer - head) - degrees(tail - head))
 		val param = turn / direction
 		return if (max) param.coerceIn(0f, 180f) else param.coerceIn(-180f, 0f)
+	}
+
+	/** The bone whose axis the blend band at [bone]'s head extends along: its limb parent, or none for a torso half or a root. */
+	fun blendParent(spec: SkeletonSpec, bone: SkeletonBone): SkeletonBone? =
+		generateSequence(bone.parentId?.let(spec::bone)) { it.parentId?.let(spec::bone) }.firstOrNull { !it.role.anchor }?.takeUnless { it.role.body }
+
+	/** The blend half width shown and its largest, in canvas pixels; null where the bone has no band. */
+	fun blendRange(spec: SkeletonSpec, bone: SkeletonBone): Pair<Float, Float>? {
+		val parent = blendParent(spec, bone)
+		if (parent == null && !bone.role.body) return null
+		val shown = if (parent != null) bone.blendWidth ?: SkeletonWeights.blendHalfWidth(bone, parent.length).toFloat() else SkeletonRig.waistBand(bone)
+		val limit = ((if (parent != null) minOf(bone.length, parent.length) else bone.length) * 0.45f).coerceAtLeast(1f)
+		return shown.coerceIn(0f, limit) to limit
 	}
 
 	/** Unit vector along which the blend band extends, or null for a zero-length axis. */

@@ -1246,16 +1246,13 @@ internal fun BoxScope.CanvasEditorOverlay(
         // The selected bone's limits and blend band are handles on the canvas rather than fields in a panel.
         fun handleBone(): SkeletonBone? = currentSkeleton.bone(editor.selectedBoneId ?: "")
             ?.takeIf { editor.skeletonEditSubTool == SkeletonEditSubTool.EDIT && !it.role.anchor }
-        fun blendParent(bone: SkeletonBone): SkeletonBone? = lineage(currentSkeleton, bone).firstOrNull { !it.role.anchor }?.takeUnless { it.role.body }
         /** The blend band's axis on screen, its shown half width and its largest, all in canvas pixels; null when the bone has no band. */
         fun blendBand(bone: SkeletonBone): Triple<Offset, Float, Float>? {
-            val parent = blendParent(bone)
-            if (parent == null && !bone.role.body) return null
+            val (shown, limit) = BoneHandles.blendRange(currentSkeleton, bone) ?: return null
+            val parent = BoneHandles.blendParent(currentSkeleton, bone)
             val axis = (if (parent != null) BoneHandles.axis(screen(parent.headX, parent.headY), screen(parent.tailX, parent.tailY))
                 else BoneHandles.axis(screen(bone.headX, bone.headY), screen(bone.tailX, bone.tailY))) ?: return null
-            val shown = if (parent != null) bone.blendWidth ?: SkeletonWeights.blendHalfWidth(bone, parent.length).toFloat() else SkeletonRig.waistBand(bone)
-            val limit = ((if (parent != null) minOf(bone.length, parent.length) else bone.length) * 0.45f).coerceAtLeast(1f)
-            return Triple(axis, shown.coerceIn(0f, limit), limit)
+            return Triple(axis, shown, limit)
         }
         fun handlePoints(): List<Pair<BoneHandle, Offset>> {
             val bone = handleBone() ?: return emptyList()

@@ -347,7 +347,7 @@ private fun DeformPathInspector(
 }
 
 @Composable
-private fun InspectorSectionBox(
+internal fun InspectorSectionBox(
     title: String,
     content: @Composable () -> Unit,
 ) {
@@ -1071,7 +1071,7 @@ private fun RotationDeformerInspector(
  * Standard Form Row layout: right-aligned label on left, input controls on right
  */
 @Composable
-private fun InspectorFormRow(
+internal fun InspectorFormRow(
     label: String,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
