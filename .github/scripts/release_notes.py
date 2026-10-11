@@ -103,31 +103,24 @@ def downloads(tag, repo, assets):
 			lines += [" ".join(badges), ""]
 
 	notes = []
-	if any(kind(a[0]) == "zip" for a in win):
-		notes.append(("便携版 ZIP 解压即可运行，无需安装。", "Portable ZIP: extract and run, no installation needed."))
 	if ffmpeg:
-		notes.append(("带 ffmpeg 的包可直接导出 MP4、WebM、ProRes 4444、APNG 和 WebP 动图；其余包导出视频和动图需自行安装 ffmpeg。",
-		              "Packages with ffmpeg export MP4, WebM, ProRes 4444, APNG and animated WebP directly; the others need ffmpeg installed for video and animation export."))
+		notes.append(("带 ffmpeg 的包可直接导出视频和动图，其余包需自行安装 ffmpeg。",
+		              "Packages with ffmpeg export video and animations directly; the others need ffmpeg installed."))
 	# Releases without an MSI have the Inno Setup installer, which also replaces the MSI installs of 3.1.x and earlier.
 	if any(kind(a[0]) == "exe" for a in win) and not any(kind(a[0]) == "msi" for a in win):
-		notes.append(("EXE 在已安装时装回原来的目录并替换旧版本，3.1.x 及更早的 EXE / MSI 安装会被自动移除。",
-		              "The EXE installs into the existing folder and replaces the installed version; EXE / MSI installs of 3.1.x and earlier are removed."))
+		notes.append(("EXE 覆盖安装到原目录，并自动移除 3.1.x 及更早的安装。",
+		              "The EXE installs over the existing folder and removes installs of 3.1.x and earlier."))
 	elif any(kind(a[0]) in ("exe", "msi") for a in win) and version_tuple(tag) >= (3, 0, 1):
-		notes.append(("EXE / MSI 在已安装时装回原来的目录并替换旧版本。",
-		              "EXE / MSI install into the existing folder and replace the installed version."))
-	if any(is_arm64(a[0]) for a in win):
-		notes.append(("Windows ARM64 包不含 Cubism Native 预览（Live2D 未提供该平台的 Cubism Core），预览使用 PSD2Live 运行时；没有内置 ffmpeg 的版本。",
-		              "The Windows ARM64 packages have no Cubism Native preview (Live2D ships no Cubism Core for it); the preview uses the PSD2Live runtime. There is no build with ffmpeg."))
+		notes.append(("EXE / MSI 覆盖安装到原目录。", "EXE / MSI install over the existing folder."))
 	if any(is_arm64(a[0]) for a in win + debs + tarballs):
 		# Until the arm64 packages have been tried on real hardware.
-		notes.append(("**ARM64 包未经实机测试**，只在 CI 上构建和跑过单元测试。Linux arm64 的 Cubism 预览使用 Live2D 标为实验性的 Cubism Core；只支持 OpenGL 3.1 的 GPU（如树莓派）上画布可能无法绘制。遇到问题请提交 Issue。",
-		              "**The ARM64 packages are untested on real hardware**; they are only built and unit-tested in CI. The Cubism preview on Linux arm64 uses the Cubism Core Live2D marks experimental, and on GPUs with only OpenGL 3.1 (such as a Raspberry Pi) the canvas may fail to draw. Please report problems as issues."))
+		notes.append(("ARM64 包未经实机测试，Windows ARM64 无 Cubism 预览和 ffmpeg 版本；问题请提交 Issue。",
+		              "ARM64 packages are untested on real hardware; Windows ARM64 has no Cubism preview or ffmpeg build. Please report problems as issues."))
 	if tarballs:
-		notes.append(("Linux tar.gz 适用于没有 Deb 的发行版：解压后运行 `PSD2Live/bin/PSD2Live`，自带 Java 运行时，内容与 Deb 相同。",
-		              "Linux tar.gz is for distributions without Deb: extract and run `PSD2Live/bin/PSD2Live`. It bundles its own Java runtime and has the same contents as the Deb."))
-	if debs:
-		notes.append(("Linux Deb 需 X11/GLX，内含 Cubism Native 预览桥接；请遵守 Live2D SDK 许可，勿公开再分发专有组件。",
-		              "Linux Deb requires X11/GLX and includes the Cubism Native preview bridge; follow the Live2D SDK license and do not publicly redistribute the proprietary components."))
+		notes.append(("Linux tar.gz 解压后运行 `PSD2Live/bin/PSD2Live`；Deb 需 X11/GLX。",
+		              "Linux tar.gz: extract and run `PSD2Live/bin/PSD2Live`; the Deb needs X11/GLX."))
+	elif debs:
+		notes.append(("Linux Deb 需 X11/GLX。", "The Linux Deb needs X11/GLX."))
 	for zh, en in notes:
 		lines.append(f"- {zh}<br><sub>{en}</sub>")
 	return "\n".join(lines).rstrip() + "\n"
