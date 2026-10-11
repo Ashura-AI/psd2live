@@ -138,8 +138,7 @@ internal object SkeletonPoseSolver {
 		}
 		val limbIds = bones.mapTo(HashSet()) { it.bone.id }
 		// A limb's IK stops at the body bone it hangs from: pulling a hand should not tilt the torso.
-		val chain = generateSequence(grabbed.bone) { bone -> SkeletonRig.limbParent(spec, bone, limbIds)?.takeUnless { it.role.body } }
-			.take(grabbed.bone.ik.chainLength).mapNotNull { byId[it.id] }.toList().asReversed()
+		val chain = SkeletonRig.ikChain(spec, grabbed.bone, limbIds).mapNotNull { byId[it.id] }.asReversed()
 		val joints = DoubleArray((chain.size + 1) * 2)
 		chain.forEachIndexed { i, posed ->
 			joints[i * 2] = posed.headX.toDouble()

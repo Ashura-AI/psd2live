@@ -28,6 +28,7 @@ import io.github.psd2live.ui.BoneHandles
 import io.github.psd2live.ui.CanvasEditor
 import io.github.psd2live.ui.SkeletonPalette
 import io.github.psd2live.ui.components.CompactButton
+import io.github.psd2live.ui.components.CompactCheckbox
 import io.github.psd2live.ui.components.CompactDropdown
 import io.github.psd2live.ui.components.CompactNumberSpinner
 import io.github.psd2live.ui.components.CompactSlider
@@ -109,21 +110,21 @@ private fun BoneSection(editor: CanvasEditor, spec: SkeletonSpec, bone: Skeleton
 			onItemSelected = { editor.setSelectedBoneParent(it.first.takeIf(String::isNotEmpty)) }, itemLabel = { it.second },
 			modifier = Modifier.fillMaxWidth(), height = RowHeight)
 	}
-	InspectorFormRow("") {
-		Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-			CompactToggleChip(text = tr("skeleton.author.connected"), selected = spec.isConnected(bone.id), enabled = bone.parentId != null,
-				onToggle = { editor.setSelectedBoneParent(bone.parentId, !spec.isConnected(bone.id)) }, height = 22.dp)
-			if (bone.role.limb) {
-				CompactToggleChip(text = tr("skeleton.author.flex"), selected = bone.flex, onToggle = { editor.setBonesFlex(!bone.flex) }, height = 22.dp)
-			}
+	InspectorFormRow(tr("skeleton.row.connect")) {
+		CompactCheckbox(checked = spec.isConnected(bone.id), enabled = bone.parentId != null, label = tr("skeleton.check.connect"),
+			onCheckedChange = { editor.setSelectedBoneParent(bone.parentId, it) })
+	}
+	if (bone.role.limb) {
+		InspectorFormRow(tr("skeleton.row.flex")) {
+			CompactCheckbox(checked = bone.flex, label = tr("skeleton.check.flex"), onCheckedChange = { editor.setBonesFlex(it) })
 		}
 	}
 	if (bone.role.limb && bone.flex) {
 		val chain = generateSequence(bone) { b -> b.parentId?.let(spec::bone)?.takeIf { it.flex } }.last()
 		val straight = (spec.descendants(chain.id) + chain.id).any { spec.bone(it)?.drawnBend?.let { d -> d != 0f } == true }
-		InspectorFormRow("") {
-			CompactToggleChip(text = tr(if (straight) "skeleton.author.unstraighten" else "skeleton.author.straighten"), selected = straight,
-				onToggle = { editor.straightenSelectedChain(!straight) }, showCheckWhenSelected = false, height = 22.dp)
+		InspectorFormRow(tr("skeleton.row.chain")) {
+			CompactButton(tr(if (straight) "skeleton.author.unstraighten" else "skeleton.author.straighten"), { editor.straightenSelectedChain(!straight) },
+				modifier = Modifier.fillMaxWidth(), height = RowHeight)
 		}
 	}
 }
@@ -161,6 +162,7 @@ private fun IkSection(editor: CanvasEditor, spec: SkeletonSpec, bone: SkeletonBo
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val settings = bone.ik
+	Text(tr("skeleton.ik.guide"), color = colors.textMuted, style = typography.caption.copy(fontSize = 10.sp))
 	InspectorFormRow(tr("skeleton.ik.bend")) {
 		val bends = listOf(0 to tr("skeleton.ik.bend.auto"), 1 to tr("skeleton.ik.bend.clockwise"), -1 to tr("skeleton.ik.bend.counterclockwise"))
 		CompactDropdown(bends, bends.first { it.first == settings.bendDirection }, { editor.setSelectedBoneIk(settings.copy(bendDirection = it.first)) },

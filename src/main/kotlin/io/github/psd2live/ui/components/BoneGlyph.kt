@@ -80,6 +80,45 @@ private fun DrawScope.drawSegmentRungs(shape: BoneShape, shoulder: Float, color:
 }
 
 /**
+ * Shows what IK will do for the selected bone: the chain it may turn is laid over in [color], the root it pivots
+ * from is pinned with a square, and a bend direction other than automatic is an arrow arcing at the elbow, the
+ * joint that folds. [joints] run root head to effector tail.
+ */
+internal fun DrawScope.drawIkGuide(joints: List<Offset>, color: Color, bendDirection: Int) {
+	if (joints.size < 2) return
+	val path = Path().apply {
+		moveTo(joints[0].x, joints[0].y)
+		for (i in 1 until joints.size) lineTo(joints[i].x, joints[i].y)
+	}
+	drawPath(path, color.copy(alpha = 0.22f), style = Stroke(9f, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = StrokeJoin.Round))
+	drawPath(path, color.copy(alpha = 0.6f), style = Stroke(1.4f, join = StrokeJoin.Round,
+		pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f, 4f))))
+	val root = joints.first()
+	drawRect(color, androidx.compose.ui.geometry.Offset(root.x - 4f, root.y - 4f), androidx.compose.ui.geometry.Size(8f, 8f), style = Stroke(1.6f))
+	if (bendDirection == 0 || joints.size < 3) return
+	// The arrow sweeps round the elbow in the direction the joint folds: clockwise on screen is positive.
+	val elbow = joints[joints.size - 2]
+	val radius = 14f
+	val sign = if (bendDirection > 0) 1f else -1f
+	val start = -60f
+	val sweep = 240f * sign
+	drawArc(color, start, sweep, useCenter = false, topLeft = Offset(elbow.x - radius, elbow.y - radius),
+		size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2), style = Stroke(1.8f, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+	val end = Math.toRadians((start + sweep).toDouble())
+	val tip = Offset(elbow.x + radius * kotlin.math.cos(end).toFloat(), elbow.y + radius * kotlin.math.sin(end).toFloat())
+	// Tangent along the sweep, for the arrow head.
+	val tangent = Offset(-kotlin.math.sin(end).toFloat() * sign, kotlin.math.cos(end).toFloat() * sign)
+	val normal = Offset(-tangent.y, tangent.x)
+	val head = Path().apply {
+		moveTo(tip.x + tangent.x * 5f, tip.y + tangent.y * 5f)
+		lineTo(tip.x - tangent.x * 2f + normal.x * 4f, tip.y - tangent.y * 2f + normal.y * 4f)
+		lineTo(tip.x - tangent.x * 2f - normal.x * 4f, tip.y - tangent.y * 2f - normal.y * 4f)
+		close()
+	}
+	drawPath(head, color)
+}
+
+/**
  * A bone on the canvas, in screen space. Both the armature editor and the pose layer draw through
  * here, so the bones look the same in every mode: shaded facets, a solid head disc for the pivot and
  * a ring on the tail for the joint that moves. [lit] is the selected/hovered bone, [tipLit] its

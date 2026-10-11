@@ -113,6 +113,13 @@ internal object SkeletonRig {
 	fun limbBones(spec: SkeletonSpec): List<SkeletonBone> =
 		spec.topological().filter { !it.role.anchor && it.length >= 1f }
 
+	/**
+	 * The bones IK may turn to move [effector]'s tip, the effector first: its [SkeletonIkSettings.chainLength] nearest limb
+	 * ancestors, stopping at the body bone a limb hangs from, as pulling a hand should not tilt the torso.
+	 */
+	fun ikChain(spec: SkeletonSpec, effector: SkeletonBone, limbIds: Set<String>): List<SkeletonBone> =
+		generateSequence(effector) { bone -> limbParent(spec, bone, limbIds)?.takeUnless { it.role.body } }.take(effector.ik.chainLength).toList()
+
 	/** The bones that turn a rotation deformer and skin meshes: every moving bone but the body halves, which bend warps. */
 	fun jointBones(spec: SkeletonSpec): List<SkeletonBone> = limbBones(spec).filterNot { it.role.body }
 

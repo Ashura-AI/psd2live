@@ -1490,6 +1490,13 @@ internal fun BoxScope.CanvasEditorOverlay(
                 }
             }
             val halo = colors.windowBackground
+            if (subTool != SkeletonEditSubTool.WEIGHTS && subTool != SkeletonEditSubTool.BIND) {
+                currentSkeleton.bone(editor.selectedBoneId ?: "")?.takeIf { !it.role.anchor }?.let { effector ->
+                    val limbIds = SkeletonRig.limbBones(currentSkeleton).mapTo(HashSet()) { it.id }
+                    val chain = SkeletonRig.ikChain(currentSkeleton, effector, limbIds).asReversed()
+                    drawIkGuide(chain.map { screen(it.headX, it.headY) } + screen(effector.tailX, effector.tailY), colors.accent, effector.ik.bendDirection)
+                }
+            }
             for (bone in skeleton.bones.sortedBy { it.id in editor.selectedBoneIds }) {
                 drawCanvasBone(screen(bone.headX, bone.headY), screen(bone.tailX, bone.tailY), boneColor(bone.id), halo,
                     lit = bone.id in editor.selectedBoneIds, kind = bone.visualKind(), pinned = bone.id in skeleton.ikTargets)
@@ -2946,6 +2953,13 @@ private fun SkeletonPoseLayer(editor: CanvasEditor, viewport: CanvasViewport, pa
             drawCircle(color, 7f, p, style = Stroke(1.5f))
             drawLine(color, p - Offset(10f, 0f), p + Offset(10f, 0f), strokeWidth = 1.5f)
             drawLine(color, p - Offset(0f, 10f), p + Offset(0f, 10f), strokeWidth = 1.5f)
+        }
+        // The chain IK would turn for the bone in hand: the one grabbed or hovered, else the selected one.
+        if (!passive) (active?.boneId ?: editor.selectedBoneId)?.let { id -> bones.firstOrNull { it.bone.id == id } }?.let { effector ->
+            val byId = bones.associateBy { it.bone.id }
+            val chain = SkeletonRig.ikChain(spec, effector.bone, byId.keys).mapNotNull { byId[it.id] }.asReversed()
+            if (chain.isNotEmpty()) drawIkGuide(chain.map { screen(it.headX, it.headY) } + screen(effector.tailX, effector.tailY),
+                colors.accent, effector.bone.ik.bendDirection)
         }
         for (posed in bones) {
             val lit = active?.boneId == posed.bone.id ||
