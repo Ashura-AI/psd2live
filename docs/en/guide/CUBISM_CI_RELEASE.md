@@ -51,7 +51,7 @@ Prerequisites: the SDK zip is uploaded to the private repository, and the variab
    - `PSD2Live-<version>.exe`
    - each of the two above also with ffmpeg included: `PSD2Live-<version>-windows-x86_64-portable-ffmpeg.zip`, `PSD2Live-<version>-ffmpeg.exe`
    - `PSD2Live-<version>-windows-arm64-portable.zip`, `PSD2Live-<version>-arm64.exe`: Windows ARM64, without Cubism (Live2D ships no Cubism Core for it) and without an ffmpeg build
-   - `PSD2Live-<version>-linux-amd64.deb`, `PSD2Live-<version>-linux-arm64.deb` (arm64 uses the SDK's experimental Cubism Core)
+   - `PSD2Live-<version>-linux-amd64.deb`, `PSD2Live-<version>-linux-arm64.deb` (arm64 uses the SDK's experimental Cubism Core), and the same contents as `PSD2Live-<version>-linux-amd64.tar.gz`, `PSD2Live-<version>-linux-arm64.tar.gz` (the app image, for distributions without Deb)
 
 Pushing tag `v<version>` triggers the same workflow. Use one entry point to avoid running the full matrix twice.
 

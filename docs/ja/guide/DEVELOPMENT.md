@@ -83,7 +83,7 @@ Windows ではリポジトリ直下の `run-gui.bat` でも GUI を起動でき�
 - 公式 SDK のリソース（`src/main/resources/cubism/`）は、`-Ppsd2live.includeCubism=true` または `PSD2LIVE_INCLUDE_CUBISM=true` を指定したときだけ含まれます。SDK を含むパッケージは公開配布できません。[CI とリリース](../../en/guide/CUBISM_CI_RELEASE.md)（英語）を参照してください。
 - Linux では `./native/package_linux.sh` で、システムの JDK 21 を使うローカル起動パッケージを作成できます（`dist/linux-<タイムスタンプ>/` に出力）。詳しくは [native/README.md](../../../native/README.md) を参照してください。
 - 独立した lint タスクはありません。コードスタイルは `kotlin.code.style=official` です。
-- Rust ランタイムは `runtime/` で `cargo test`、`cargo build --release` によりビルドします。[ランタイム（中国語）](../../zh/spec/RUNTIME.md) を参照してください。
+- Rust ランタイムは `runtime/` で `cargo test`、`cargo build --release` によりビルドします。[ランタイム（中国語）](../../zh/spec/RUNTIME.md) を参照してください。使える cargo がない場合、Linux の `./gradlew run` とパッケージ作成は、同じソースから CI（`runtime-prebuilt.yml`）がビルドしたライブラリをダウンロードします。`runtime/src`、`Cargo.toml`、`Cargo.lock` のハッシュ（`./gradlew printRuntimeHash`）で照合し、sha256 を検証します。見つからない、またはオフラインの場合は内蔵の評価器を使います。`-Ppsd2live.prebuiltRuntime=false` でダウンロードを無効にできます。`runtime/` を繰り返し変更して実行するときは `-Ppsd2live.fastRuntime=true` で LTO を無効にしてビルドを大幅に短縮できます（ライブラリは遅くなるため、パッケージ作成には使わないでください）。
 - テストスイートには高速な単体テストと契約テストだけを残し、`./gradlew test` 全体は 1 分以内に終わるようにします。サンプル PSD（tml、ds）でパイプライン全体を実行するテスト、各ステップをコールドリプレイと比較するテスト、画面全体を描画するテストは追加せず、下記の開発ツールとして書いて必要なときに手動で実行します。
 
 ## 開発ツール

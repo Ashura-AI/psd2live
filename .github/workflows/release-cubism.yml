@@ -430,6 +430,10 @@ jobs:
       - name: Package Deb with Cubism
         run: ./gradlew packageDeb -Ppsd2live.includeCubism=true --no-daemon
 
+      # For distributions without a Deb (Fedora, Arch, ...): the app image with its own Java runtime, extract and run.
+      - name: Package tar.gz with Cubism
+        run: ./gradlew createDistributable -Ppsd2live.includeCubism=true --no-daemon
+
       - name: Collect Linux artifacts
         run: |
           set -euo pipefail
@@ -442,9 +446,13 @@ jobs:
             exit 1
           fi
           cp "$DEB" "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.arch }}.deb"
+          APP=build/compose/binaries/main/app
+          test -x "$APP/PSD2Live/bin/PSD2Live"
+          tar -C "$APP" -czf "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.arch }}.tar.gz" PSD2Live
           ls -la "$OUT"
           # Soft file-existence smoke (no GUI): confirm package is non-empty
           test -s "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.arch }}.deb"
+          test -s "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.arch }}.tar.gz"
           # Optional GUI smoke is intentionally skipped in v1 (brittle under xvfb).
           # Example if re-enabled later:
           # xvfb-run -a timeout 15s ./gradlew run -Ppsd2live.includeCubism=true || true
@@ -514,3 +522,5 @@ jobs:
             release-assets/PSD2Live-${{ env.VERSION }}-arm64.exe
             release-assets/PSD2Live-${{ env.VERSION }}-linux-amd64.deb
             release-assets/PSD2Live-${{ env.VERSION }}-linux-arm64.deb
+            release-assets/PSD2Live-${{ env.VERSION }}-linux-amd64.tar.gz
+            release-assets/PSD2Live-${{ env.VERSION }}-linux-arm64.tar.gz

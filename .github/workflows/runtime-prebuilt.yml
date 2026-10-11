@@ -1,0 +1,84 @@
+# Publishes the Rust runtime library (runtime/) for Linux as Release assets, so a source build without Rust
+# (./gradlew run, see fetchPrebuiltRuntime in build.gradle.kts) downloads it instead of compiling with cargo.
+# Assets live on the rolling "runtime-prebuilt" release, named after a hash of the runtime sources:
+#   p2l_runtime-<hash>-linux-<x86_64|aarch64>.so and a .sha256 beside it.
+# Built on Ubuntu 22.04 so the library loads on distributions with an older glibc.
+name: Runtime prebuilt
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "runtime/src/**"
+      - "runtime/Cargo.toml"
+      - "runtime/Cargo.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: runtime-prebuilt
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64
+          - runner: ubuntu-22.04-arm
+            arch: aarch64
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: runtime-prebuilt
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # The same hash the build computes, from the same script.
+      - name: Name the asset
+        id: asset
+        run: |
+          HASH=$(./gradlew -q printRuntimeHash --no-daemon)
+          echo "name=p2l_runtime-${HASH}-linux-${{ matrix.arch }}.so" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release if missing
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" \
+            --title "Prebuilt runtime" --prerelease --latest=false \
+            --notes "Rust runtime libraries built from runtime/, downloaded by source builds without cargo. Not a product release." \
+            || gh release view "$TAG" >/dev/null
+
+      - name: Check whether it is published
+        id: exists
+        run: |
+          if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qxF "${{ steps.asset.outputs.name }}.sha256"; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and upload
+        if: steps.exists.outputs.published != 'true'
+        working-directory: runtime
+        run: |
+          cargo test --release
+          cargo build --release --lib
+          NAME="${{ steps.asset.outputs.name }}"
+          cp target/release/libp2l_runtime.so "$NAME"
+          sha256sum "$NAME" > "$NAME.sha256"
+          # The library first: the checksum marks the pair as complete.
+          gh release upload "$TAG" "$NAME" --clobber
+          gh release upload "$TAG" "$NAME.sha256" --clobber

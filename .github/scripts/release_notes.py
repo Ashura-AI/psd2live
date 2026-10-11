@@ -21,7 +21,7 @@ WINDOWS_LOGO = "data:image/svg+xml;base64," + base64.b64encode(
 	b'<rect x="0" y="8.5" width="7.5" height="7.5"/><rect x="8.5" y="8.5" width="7.5" height="7.5"/></svg>'
 ).decode()
 
-COLORS = {"installer": "0078D4", "portable": "5B5FC7", "ffmpeg": "2E7D32", "deb": "A81D33"}
+COLORS = {"installer": "0078D4", "portable": "5B5FC7", "ffmpeg": "2E7D32", "deb": "A81D33", "tarball": "5C6370"}
 
 
 def esc(text):
@@ -43,6 +43,8 @@ def kind(name):
 	lower = name.lower()
 	if lower.endswith(".deb"):
 		return "deb"
+	if lower.endswith(".tar.gz"):
+		return "tarball"
 	if lower.endswith(".zip"):
 		return "zip"
 	if lower.endswith(".exe"):
@@ -67,6 +69,7 @@ def downloads(tag, repo, assets):
 	win = sorted((a for a in assets if kind(a[0]) in order), key=lambda a: order[kind(a[0])])
 	ffmpeg = [a for a in win if "-ffmpeg" in a[0]]
 	debs = [a for a in assets if kind(a[0]) == "deb"]
+	tarballs = [a for a in assets if kind(a[0]) == "tarball"]
 
 	def win_badges(items, with_ffmpeg):
 		out = []
@@ -92,9 +95,12 @@ def downloads(tag, repo, assets):
 			lines += [win_badges(ffmpeg_items, True), ""]
 	for arch, arm in (("amd64", False), ("arm64", True)):
 		items = [a for a in debs if is_arm64(a[0]) == arm]
-		if items:
+		packed = [a for a in tarballs if is_arm64(a[0]) == arm]
+		if items or packed:
 			lines += [f"**Linux** {arch}", ""]
-			lines += [" ".join(badge("Linux DEB", size_text(s), COLORS["deb"], "debian", base + quote(n), n) for n, s in items), ""]
+			badges = [badge("Linux DEB", size_text(s), COLORS["deb"], "debian", base + quote(n), n) for n, s in items]
+			badges += [badge("Linux tar.gz", size_text(s), COLORS["tarball"], "linux", base + quote(n), n) for n, s in packed]
+			lines += [" ".join(badges), ""]
 
 	notes = []
 	if any(kind(a[0]) == "zip" for a in win):
@@ -112,10 +118,13 @@ def downloads(tag, repo, assets):
 	if any(is_arm64(a[0]) for a in win):
 		notes.append(("Windows ARM64 包不含 Cubism Native 预览（Live2D 未提供该平台的 Cubism Core），预览使用 PSD2Live 运行时；没有内置 ffmpeg 的版本。",
 		              "The Windows ARM64 packages have no Cubism Native preview (Live2D ships no Cubism Core for it); the preview uses the PSD2Live runtime. There is no build with ffmpeg."))
-	if any(is_arm64(a[0]) for a in win + debs):
+	if any(is_arm64(a[0]) for a in win + debs + tarballs):
 		# Until the arm64 packages have been tried on real hardware.
 		notes.append(("**ARM64 包未经实机测试**，只在 CI 上构建和跑过单元测试。Linux arm64 的 Cubism 预览使用 Live2D 标为实验性的 Cubism Core；只支持 OpenGL 3.1 的 GPU（如树莓派）上画布可能无法绘制。遇到问题请提交 Issue。",
 		              "**The ARM64 packages are untested on real hardware**; they are only built and unit-tested in CI. The Cubism preview on Linux arm64 uses the Cubism Core Live2D marks experimental, and on GPUs with only OpenGL 3.1 (such as a Raspberry Pi) the canvas may fail to draw. Please report problems as issues."))
+	if tarballs:
+		notes.append(("Linux tar.gz 适用于没有 Deb 的发行版：解压后运行 `PSD2Live/bin/PSD2Live`，自带 Java 运行时，内容与 Deb 相同。",
+		              "Linux tar.gz is for distributions without Deb: extract and run `PSD2Live/bin/PSD2Live`. It bundles its own Java runtime and has the same contents as the Deb."))
 	if debs:
 		notes.append(("Linux Deb 需 X11/GLX，内含 Cubism Native 预览桥接；请遵守 Live2D SDK 许可，勿公开再分发专有组件。",
 		              "Linux Deb requires X11/GLX and includes the Cubism Native preview bridge; follow the Live2D SDK license and do not publicly redistribute the proprietary components."))

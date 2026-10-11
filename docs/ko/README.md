@@ -136,7 +136,7 @@ PSD2Live는 Cubism Editor나 SDK 없이 동작하면서 Cubism 형식과의 호�
 | --- | --- | --- |
 | Windows 10 / 11 x64 | 포터블 ZIP, EXE | Java 런타임 포함. 압축을 풀거나 설치한 뒤 바로 실행. 각각 ffmpeg가 포함된 `-ffmpeg` 버전도 있음 |
 | Windows 11 ARM64 | 포터블 ZIP, EXE | Java 런타임 포함. Cubism 네이티브 미리보기 없음(Live2D가 이 플랫폼용 Cubism Core를 제공하지 않음), 미리보기는 PSD2Live 런타임 사용 |
-| Linux x86_64 / arm64 | Deb | 런타임과 Cubism 네이티브 미리보기 포함(arm64는 Live2D의 실험 버전). X11 / GLX 필요(XWayland 사용 가능) |
+| Linux x86_64 / arm64 | Deb, tar.gz | 런타임과 Cubism 네이티브 미리보기 포함(arm64는 Live2D의 실험 버전). X11 / GLX 필요(XWayland 사용 가능). tar.gz는 Deb이 없는 배포판용으로, 압축을 풀고 `PSD2Live/bin/PSD2Live` 실행 |
 | macOS 및 기타 | 패키지 없음 | JDK 21 설치 후 [소스에서 실행](#소스에서-빌드) |
 
 <details>
@@ -225,7 +225,7 @@ PSD2Live는 Cubism Editor나 SDK 없이 동작하면서 Cubism 형식과의 호�
 
 ## 소스에서 빌드
 
-JDK 21이 필요하며 Gradle은 저장소에 포함된 Wrapper를 사용합니다. Rust(cargo, rustc 1.87 이상)가 설치되어 있으면 Rust 런타임도 함께 빌드합니다. cargo가 없거나 rustc가 오래되었으면 알림을 표시하고 건너뛰며 편집기는 내장 평가기를 사용합니다(`rustup update` 후 빌드할 수 있습니다).
+JDK 21이 필요하며 Gradle은 저장소에 포함된 Wrapper를 사용합니다. Rust(cargo, rustc 1.87 이상)가 설치되어 있으면 Rust 런타임도 함께 빌드합니다. cargo가 없거나 rustc가 오래되었으면 Linux에서는 먼저 같은 `runtime/` 소스로 CI가 빌드한 라이브러리를 내려받습니다(`-Ppsd2live.prebuiltRuntime=false`로 끌 수 있음). 받을 수 없으면 알림을 표시하고 건너뛰며 편집기는 내장 평가기를 사용합니다(`rustup update` 후 빌드할 수 있습니다).
 
 ```bash
 # GUI 실행(Windows: .\gradlew.bat run 또는 run-gui.bat)

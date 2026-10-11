@@ -136,7 +136,7 @@ PSD2Live 不依赖 Cubism Editor 或 SDK 运行，但与 Cubism 格式保持兼�
 | --- | --- | --- |
 | Windows 10 / 11 x64 | 便携版 ZIP、EXE | 自带 Java 运行时，解压或安装后直接运行；每种都另有内置 ffmpeg 的 `-ffmpeg` 版本 |
 | Windows 11 ARM64 | 便携版 ZIP、EXE | 自带 Java 运行时；不含 Cubism 原生预览（Live2D 未提供该平台的 Cubism Core），预览使用 PSD2Live 运行时 |
-| Linux x86_64 / arm64 | Deb | 自带运行时与 Cubism 原生预览（arm64 为 Live2D 的实验性版本），需要 X11 / GLX（XWayland 可用） |
+| Linux x86_64 / arm64 | Deb、tar.gz | 自带运行时与 Cubism 原生预览（arm64 为 Live2D 的实验性版本），需要 X11 / GLX（XWayland 可用）；tar.gz 供没有 Deb 的发行版，解压后运行 `PSD2Live/bin/PSD2Live` |
 | macOS 及其他 | 暂无安装包 | 安装 JDK 21 后[从源码运行](#从源码构建) |
 
 <details>
@@ -225,7 +225,7 @@ PSD2Live 不依赖 Cubism Editor 或 SDK 运行，但与 Cubism 格式保持兼�
 
 ## 从源码构建
 
-需要 JDK 21，Gradle 使用仓库自带的 Wrapper。安装了 Rust（cargo，rustc 1.87 及以上）时会同时构建 Rust 运行时；没有 cargo 或 rustc 版本过旧时自动跳过并给出提示，编辑器改用内置求值器（`rustup update` 后即可构建）。
+需要 JDK 21，Gradle 使用仓库自带的 Wrapper。安装了 Rust（cargo，rustc 1.87 及以上）时会同时构建 Rust 运行时；没有 cargo 或 rustc 版本过旧时，Linux 会先下载 CI 按同一份 `runtime/` 源码构建的预编译库（`-Ppsd2live.prebuiltRuntime=false` 可关闭），下载不到则跳过并给出提示，编辑器改用内置求值器（`rustup update` 后即可构建）。
 
 ```bash
 # 启动 GUI（Windows：.\gradlew.bat run 或 run-gui.bat）

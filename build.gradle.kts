@@ -1,6 +1,11 @@
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.time.Duration
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -233,15 +238,95 @@ val buildRuntime = tasks.register<Exec>("buildRuntime") {
 	}
 	workingDir = file("runtime")
 	commandLine("cargo", "build", "--release", "--lib")
+	// -Ppsd2live.fastRuntime=true trades the release profile's LTO and single codegen unit for a much quicker
+	// build, for iterating on runtime/; the library is slower, so packages should not use it.
+	val fastRuntime = findProperty("psd2live.fastRuntime")?.toString() == "true"
+	inputs.property("fastRuntime", fastRuntime)
+	if (fastRuntime) {
+		environment("CARGO_PROFILE_RELEASE_LTO", "off")
+		environment("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "16")
+	}
 	inputs.dir("runtime/src")
 	inputs.file("runtime/Cargo.toml")
+	inputs.file("runtime/Cargo.lock")
 	outputs.file(runtimeLibrary)
+}
+
+// Without a usable cargo (none, or a rustc older than the runtime needs) a Linux build downloads the library CI
+// built from the same runtime sources instead (.github/workflows/runtime-prebuilt.yml), so `run` and packages
+// still get the Rust runtime without a Rust toolchain. The asset is named after a hash of those sources; a build
+// whose sources have no published library, or no network, falls back to the editor's evaluator as before.
+// Opt out with -Ppsd2live.prebuiltRuntime=false. `printRuntimeHash` is what CI names the asset with.
+val runtimeBuildable: Boolean = cargoAvailable && run {
+	val have = rustcVersion
+	val need = runtimeRustVersion
+	have == null || need == null || versionAtLeast(have, need)
+}
+val runtimeStamp = file("runtime/target/release/p2l_runtime.source-hash")
+fun runtimeSourceHash(): String {
+	val root = file("runtime")
+	val files = (fileTree(root.resolve("src")).files + root.resolve("Cargo.toml") + root.resolve("Cargo.lock"))
+		.sortedBy { it.relativeTo(root).invariantSeparatorsPath }
+	val digest = MessageDigest.getInstance("SHA-256")
+	for (file in files) {
+		digest.update(file.relativeTo(root).invariantSeparatorsPath.toByteArray())
+		digest.update(0.toByte())
+		// Line endings differ between checkouts; the hash must not.
+		digest.update(file.readBytes().filter { it != '\r'.code.toByte() }.toByteArray())
+		digest.update(0.toByte())
+	}
+	return digest.digest().joinToString("") { "%02x".format(it) }.take(16)
+}
+tasks.register("printRuntimeHash") {
+	group = "help"
+	description = "Prints the hash of the runtime sources that names their prebuilt library."
+	doLast { println(runtimeSourceHash()) }
+}
+val fetchPrebuiltRuntime = tasks.register("fetchPrebuiltRuntime") {
+	group = "build"
+	description = "Downloads the prebuilt Rust runtime library when cargo cannot build it (Linux only)."
+	onlyIf { !runtimeBuildable && hostOs == "linux" && findProperty("psd2live.prebuiltRuntime")?.toString() != "false" }
+	doLast {
+		val hash = runtimeSourceHash()
+		// A library with no stamp was built here with cargo; one stamped with other sources is out of date.
+		if (runtimeLibrary.isFile && (!runtimeStamp.isFile || runtimeStamp.readText().trim() == hash)) return@doLast
+		val name = "p2l_runtime-$hash-linux-${if (hostArm) "aarch64" else "x86_64"}.${runtimeLibrary.extension}"
+		val base = "https://github.com/tsunehimatoi/psd2live/releases/download/runtime-prebuilt/"
+		val client = HttpClient.newBuilder()
+			.followRedirects(HttpClient.Redirect.NORMAL)
+			.connectTimeout(Duration.ofSeconds(15)).build()
+		fun download(asset: String): ByteArray? {
+			val request = HttpRequest.newBuilder(URI.create(base + asset))
+				.timeout(Duration.ofSeconds(120)).build()
+			val response: HttpResponse<ByteArray> = client.send(request, HttpResponse.BodyHandlers.ofByteArray())
+			return if (response.statusCode() == 200) response.body() else null
+		}
+		try {
+			val library = download(name)
+			val expected = download("$name.sha256")?.toString(Charsets.UTF_8)?.trim()?.substringBefore(' ')
+			if (library == null || expected == null) {
+				logger.lifecycle("No prebuilt Rust runtime for these sources ($name). Install Rust 1.87+ (rustup) to build it; " +
+					"until then the app falls back to the editor's evaluator.")
+				return@doLast
+			}
+			val actual = MessageDigest.getInstance("SHA-256").digest(library).joinToString("") { "%02x".format(it) }
+			check(actual.equals(expected, ignoreCase = true)) { "checksum mismatch for $name" }
+			runtimeLibrary.parentFile.mkdirs()
+			val part = File(runtimeLibrary.path + ".part")
+			part.writeBytes(library)
+			Files.move(part.toPath(), runtimeLibrary.toPath(), StandardCopyOption.REPLACE_EXISTING)
+			runtimeStamp.writeText(hash)
+			logger.lifecycle("Downloaded the prebuilt Rust runtime ($name); cargo was not available.")
+		} catch (e: Exception) {
+			logger.warn("Could not download the prebuilt Rust runtime ($name): ${e.message}. The app falls back to the editor's evaluator.")
+		}
+	}
 }
 
 // Compose registers `run` once the project is evaluated.
 afterEvaluate {
 	tasks.named<JavaExec>("run") {
-		dependsOn(buildRuntime)
+		dependsOn(buildRuntime, fetchPrebuiltRuntime)
 		systemProperty("psd2live.runtime.dir", runtimeLibrary.parentFile.absolutePath)
 	}
 	// createDistributable does not track what prepareAppResources put together, so a build adding ffmpeg
@@ -251,7 +336,7 @@ afterEvaluate {
 
 // License texts and the stdio MCP bridge ship inside every package, under the app's resources directory, beside the runtime.
 tasks.withType<Sync>().matching { it.name == "prepareAppResources" }.configureEach {
-	dependsOn(buildRuntime)
+	dependsOn(buildRuntime, fetchPrebuiltRuntime)
 	from("LICENSE", "THIRD_PARTY_NOTICES.md", "mcp_proxy.py")
 	from("licenses") { into("licenses") }
 	from(runtimeLibrary.parentFile) { include(runtimeLibrary.name) }
@@ -268,7 +353,7 @@ compose.desktop {
 		// (GPU, Skia) memory on 8 and 16 GB machines, where the system killed the app instead of it running out of heap.
 		jvmArgs += listOf("-XX:MaxRAMPercentage=50", "-Dfile.encoding=UTF-8", "-Dsun.java2d.uiScale.enabled=true")
 		nativeDistributions {
-			// ModelDownloader uses java.net.http.HttpClient. Compose's automatic
+			// ModelDownloader uses HttpClient. Compose's automatic
 			// runtime module scan can miss this API because it is only loaded when
 			// the optional texture-upscale workflow is opened.
 			// LWJGL (the canvas GPU renderer) reaches native memory through sun.misc.Unsafe.

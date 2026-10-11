@@ -136,7 +136,7 @@ Get the latest version from [Releases](https://github.com/tsunehimatoi/psd2live/
 | --- | --- | --- |
 | Windows 10 / 11 x64 | Portable ZIP, EXE | Bundles a Java runtime; unzip or install and run. Each also comes as a `-ffmpeg` build with ffmpeg included |
 | Windows 11 ARM64 | Portable ZIP, EXE | Bundles a Java runtime; no Cubism native preview (Live2D ships no Cubism Core for it), the preview uses the PSD2Live runtime |
-| Linux x86_64 / arm64 | Deb | Bundles the runtime and Cubism native preview (experimental from Live2D on arm64); needs X11 / GLX (XWayland works) |
+| Linux x86_64 / arm64 | Deb, tar.gz | Bundles the runtime and Cubism native preview (experimental from Live2D on arm64); needs X11 / GLX (XWayland works); the tar.gz is for distributions without Deb: extract and run `PSD2Live/bin/PSD2Live` |
 | macOS and others | No package yet | Install JDK 21 and [run from source](#building-from-source) |
 
 <details>
@@ -225,7 +225,7 @@ Format and evaluation rules: [runtime](../zh/spec/RUNTIME.md) and [`.p2lrt` 2.0 
 
 ## Building from source
 
-Requires JDK 21; Gradle runs through the bundled wrapper. With Rust (cargo, rustc 1.87 or later) installed, the Rust runtime is built as well; without cargo, or with an older rustc, the build skips it with a notice and the editor uses its built-in evaluator (`rustup update` lets it build).
+Requires JDK 21; Gradle runs through the bundled wrapper. With Rust (cargo, rustc 1.87 or later) installed, the Rust runtime is built as well; without cargo, or with an older rustc, Linux first downloads the library CI built from the same `runtime/` sources (`-Ppsd2live.prebuiltRuntime=false` turns this off); if none is available the build skips it with a notice and the editor uses its built-in evaluator (`rustup update` lets it build).
 
 ```bash
 # Start the GUI (Windows: .\gradlew.bat run or run-gui.bat)

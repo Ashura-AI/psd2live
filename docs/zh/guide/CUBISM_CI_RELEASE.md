@@ -51,7 +51,7 @@ macOS 打包暂缓，本工作流不构建。
    - `PSD2Live-<version>.exe`
    - 以上两项另各有内置 ffmpeg 的版本：`PSD2Live-<version>-windows-x86_64-portable-ffmpeg.zip`、`PSD2Live-<version>-ffmpeg.exe`
    - `PSD2Live-<version>-windows-arm64-portable.zip`、`PSD2Live-<version>-arm64.exe`：Windows ARM64，不含 Cubism（Live2D 未提供该平台的 Cubism Core），无 ffmpeg 版本
-   - `PSD2Live-<version>-linux-amd64.deb`、`PSD2Live-<version>-linux-arm64.deb`（arm64 用 SDK 中实验性的 Cubism Core）
+   - `PSD2Live-<version>-linux-amd64.deb`、`PSD2Live-<version>-linux-arm64.deb`（arm64 用 SDK 中实验性的 Cubism Core），以及同内容的 `PSD2Live-<version>-linux-amd64.tar.gz`、`PSD2Live-<version>-linux-arm64.tar.gz`（app image，供没有 Deb 的发行版）
 
 也可以直接推送标签 `v<version>` 触发同一工作流。两种入口选其一，避免重复运行完整的构建矩阵。
 
