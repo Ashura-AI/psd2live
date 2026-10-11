@@ -38,7 +38,7 @@ internal class BoneShape(val head: Offset, val tail: Offset, val left: Offset, v
 
 /**
  * What a bone is, as far as its look goes: each kind has its own silhouette so the kind reads without color.
- * [LIMB] is the plain octahedron; [FLEX] is segmented (it bends as a curve); [BODY] is a stout half of the
+ * [LIMB] is the plain octahedron; [FLEX] is a strip of even width (it bends as a curve); [BODY] is a stout half of the
  * torso; [ANCHOR] is the diamond the body hangs from and carries no tail joint.
  */
 enum class BoneKind(val shoulder: Float, val width: Float) {
@@ -57,6 +57,13 @@ internal fun DrawScope.drawSingleBoneIcon(tint: Color, kind: BoneKind = BoneKind
 
 /** A bone icon: shaded octahedron with a solid head, in [tint] at icon scale. */
 internal fun DrawScope.drawBoneIcon(head: Offset, tail: Offset, tint: Color, stroke: Float, headRadius: Float, kind: BoneKind = BoneKind.LIMB) {
+	if (kind == BoneKind.FLEX) {
+		val body = RectBody(head, tail, hypot(tail.x - head.x, tail.y - head.y) * 0.13f)
+		drawPath(body.leftFacet(), tint.copy(alpha = tint.alpha * 0.45f))
+		drawPath(body.outline(), tint, style = Stroke(stroke, join = StrokeJoin.Round))
+		drawCircle(tint, headRadius, head)
+		return
+	}
 	val shape = when (kind) {
 		BoneKind.LIMB, BoneKind.FLEX -> BoneShape.of(head, tail, shoulder = 0.24f, width = 0.16f)
 		BoneKind.BODY -> BoneShape.of(head, tail, shoulder = 0.34f, width = 0.24f)
@@ -64,31 +71,32 @@ internal fun DrawScope.drawBoneIcon(head: Offset, tail: Offset, tint: Color, str
 	} ?: return
 	drawPath(shape.leftFacet(), tint.copy(alpha = tint.alpha * 0.45f))
 	drawPath(shape.outline(), tint, style = Stroke(stroke, join = StrokeJoin.Round))
-	if (kind == BoneKind.FLEX) drawFlexSpine(head, tail, hypot(tail.x - head.x, tail.y - head.y) * 0.1f, tint, stroke)
 	drawCircle(tint, headRadius, head)
 }
 
 /**
- * The mark of a flexible bone: a wave down its middle, [amplitude] to each side, tapering to nothing at both
- * ends so it meets the joints cleanly. A plain bone is straight; this one is drawn as something that bends.
+ * A flexible bone's body: a plain rectangle, [half] to each side of its axis and split down the middle into
+ * two shaded faces. The octahedron of a rigid bone swells to shoulders and narrows to a tip; the rectangle is
+ * the same width end to end, as a strip that bends.
  */
-private fun DrawScope.drawFlexSpine(head: Offset, tail: Offset, amplitude: Float, color: Color, stroke: Float) {
-	val dx = tail.x - head.x
-	val dy = tail.y - head.y
-	val length = hypot(dx, dy)
-	if (length < 1e-3f) return
-	val nx = -dy / length
-	val ny = dx / length
-	val steps = 28
-	val path = Path()
-	for (i in 0..steps) {
-		val u = i.toFloat() / steps
-		val offset = amplitude * kotlin.math.sin(u * Math.PI * 3.0).toFloat() * kotlin.math.sin(u * Math.PI).toFloat()
-		val x = head.x + dx * u + nx * offset
-		val y = head.y + dy * u + ny * offset
-		if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+private class RectBody(val head: Offset, val tail: Offset, half: Float) {
+	private val n: Offset
+	init {
+		val dx = tail.x - head.x
+		val dy = tail.y - head.y
+		val length = hypot(dx, dy).coerceAtLeast(1e-3f)
+		n = Offset(-dy / length * half, dx / length * half)
 	}
-	drawPath(path, color, style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = StrokeJoin.Round))
+	fun outline() = Path().apply {
+		moveTo(head.x + n.x, head.y + n.y); lineTo(tail.x + n.x, tail.y + n.y)
+		lineTo(tail.x - n.x, tail.y - n.y); lineTo(head.x - n.x, head.y - n.y); close()
+	}
+	fun leftFacet() = Path().apply {
+		moveTo(head.x, head.y); lineTo(head.x + n.x, head.y + n.y); lineTo(tail.x + n.x, tail.y + n.y); lineTo(tail.x, tail.y); close()
+	}
+	fun rightFacet() = Path().apply {
+		moveTo(head.x, head.y); lineTo(head.x - n.x, head.y - n.y); lineTo(tail.x - n.x, tail.y - n.y); lineTo(tail.x, tail.y); close()
+	}
 }
 
 /** The color IK is drawn in everywhere, distinct from the selection's accent and the blend band's yellow. */
@@ -179,14 +187,22 @@ internal fun DrawScope.drawCanvasBone(
 	val tint = color.copy(alpha = color.alpha * strength)
 	val edge = if (lit) Color.White.copy(alpha = strength) else tint
 	if (length >= 6f) {
-		val shoulder = (length * kind.shoulder).coerceIn(5f, 28f * kind.shoulder / 0.18f) / length
-		val width = (length * kind.width).coerceIn(3f, 12f * kind.width / 0.09f) / length
-		val shape = BoneShape.of(head, tail, shoulder, width)!!
-		drawPath(shape.leftFacet(), tint.copy(alpha = (if (lit) 0.65f else 0.42f) * strength))
-		drawPath(shape.rightFacet(), tint.copy(alpha = (if (lit) 0.38f else 0.22f) * strength))
-		drawPath(shape.outline(), edge, style = Stroke(if (lit) 1.8f else 1.2f, join = StrokeJoin.Round))
-		// A flexible bone carries a wave down its spine, wide enough to read at any length.
-		if (kind == BoneKind.FLEX && length >= 18f) drawFlexSpine(head, tail, (length * 0.07f).coerceIn(2.5f, 7f) * (if (lit) 1.15f else 1f), edge, if (lit) 1.8f else 1.4f)
+		val litFacet = (if (lit) 0.65f else 0.42f) * strength
+		val dimFacet = (if (lit) 0.38f else 0.22f) * strength
+		val pen = Stroke(if (lit) 1.8f else 1.2f, join = StrokeJoin.Round)
+		if (kind == BoneKind.FLEX) {
+			val body = RectBody(head, tail, (length * 0.07f).coerceIn(3.5f, 8f) * (if (lit) 1.15f else 1f))
+			drawPath(body.leftFacet(), tint.copy(alpha = litFacet))
+			drawPath(body.rightFacet(), tint.copy(alpha = dimFacet))
+			drawPath(body.outline(), edge, style = pen)
+		} else {
+			val shoulder = (length * kind.shoulder).coerceIn(5f, 28f * kind.shoulder / 0.18f) / length
+			val width = (length * kind.width).coerceIn(3f, 12f * kind.width / 0.09f) / length
+			val shape = BoneShape.of(head, tail, shoulder, width)!!
+			drawPath(shape.leftFacet(), tint.copy(alpha = litFacet))
+			drawPath(shape.rightFacet(), tint.copy(alpha = dimFacet))
+			drawPath(shape.outline(), edge, style = pen)
+		}
 	} else {
 		drawLine(edge, head, tail, strokeWidth = if (lit) 2.6f else 1.8f)
 	}
