@@ -1,5 +1,7 @@
 修复版本：柔性骨骼弯曲与拉直不再出现波纹；切换历史版本时不再被迟到的预览重建覆盖。
 
+> **旧工程请先更新生成结果**：用旧版本保存的工程，打开后请先执行一次「工具 → 更新生成结果」，再继续编辑。
+
 ## 主要更新
 
 ### 修复
@@ -11,6 +13,8 @@
 <summary>English</summary>
 
 A fix release: flexible bones bend and straighten without waves, and a history checkout is no longer overwritten by a late preview rebuild.
+
+> **Update older projects first**: after opening a project saved by an earlier version, run Tools → Update Generated Rig once before editing further.
 
 ## Highlights
 
