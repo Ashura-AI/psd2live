@@ -63,7 +63,7 @@ class EditorAndAgentScenario {
 	/** Waits until the editor has applied everything queued and is idle. */
 	private suspend fun Editor.settle() {
 		repeat(3) { withContext(Dispatchers.Main) { yield() } }
-		withTimeout(20_000) { vm.state.first { !it.workspaceEditBusy && !it.isAnalyzing && !it.isGenerating } }
+		withTimeout(20_000) { vm.state.first { !it.workspaceEditBusy && !it.canvasEditBusy && !it.isAnalyzing && !it.isGenerating } }
 		withContext(Dispatchers.Main) { yield() }
 	}
 
