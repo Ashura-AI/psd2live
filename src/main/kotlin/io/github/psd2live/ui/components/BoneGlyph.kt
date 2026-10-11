@@ -7,6 +7,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeJoin
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 /**
  * The one bone look, shared by the canvas armature and every bone icon: a Blender-style octahedron
@@ -56,26 +57,43 @@ internal fun DrawScope.drawSingleBoneIcon(tint: Color, kind: BoneKind = BoneKind
 
 /** A bone icon: shaded octahedron with a solid head, in [tint] at icon scale. */
 internal fun DrawScope.drawBoneIcon(head: Offset, tail: Offset, tint: Color, stroke: Float, headRadius: Float, kind: BoneKind = BoneKind.LIMB) {
+	if (kind == BoneKind.FLEX) {
+		drawBeads(head, tail, 3, gap = 0.07f, width = 0.34f, tint, tint, tint.alpha * 0.45f, tint.alpha * 0.2f, stroke)
+		drawCircle(tint, headRadius, head)
+		return
+	}
 	val shape = when (kind) {
 		BoneKind.LIMB -> BoneShape.of(head, tail, shoulder = 0.24f, width = 0.16f)
-		BoneKind.FLEX -> BoneShape.of(head, tail, shoulder = 0.24f, width = 0.16f)
+		BoneKind.FLEX -> null
 		BoneKind.BODY -> BoneShape.of(head, tail, shoulder = 0.34f, width = 0.24f)
 		BoneKind.ANCHOR -> BoneShape.of(head, tail, shoulder = 0.5f, width = 0.34f)
 	} ?: return
 	drawPath(shape.leftFacet(), tint.copy(alpha = tint.alpha * 0.45f))
 	drawPath(shape.outline(), tint, style = Stroke(stroke, join = StrokeJoin.Round))
-	if (kind == BoneKind.FLEX) drawSegmentRungs(shape, 0.24f, tint, stroke)
 	drawCircle(tint, headRadius, head)
 }
 
-/** Two rungs across the body at a third and two thirds of its length: the joints a flexible bone bends between. */
-private fun DrawScope.drawSegmentRungs(shape: BoneShape, shoulder: Float, color: Color, stroke: Float) {
-	for (t in listOf(1f / 3f, 2f / 3f)) {
-		// The octahedron's half width grows to the shoulders and falls to the tail.
-		val k = if (t < shoulder) t / shoulder else (1f - t) / (1f - shoulder)
-		val mid = Offset(shape.head.x + (shape.tail.x - shape.head.x) * t, shape.head.y + (shape.tail.y - shape.head.y) * t)
-		val side = Offset(shape.left.x - (shape.head.x + (shape.tail.x - shape.head.x) * shoulder), shape.left.y - (shape.head.y + (shape.tail.y - shape.head.y) * shoulder))
-		drawLine(color, mid + Offset(side.x * k, side.y * k), mid - Offset(side.x * k, side.y * k), strokeWidth = stroke)
+/**
+ * A flexible bone drawn as a chain of [count] beads - small diamonds with a [gap] between them, each [width] wide
+ * as a fraction of its length - so it reads as a row of joints that bend, not as one rigid bone. Fractions are of
+ * the whole bone's length; [facet] and [back] are the alphas of the two shaded faces.
+ */
+private fun DrawScope.drawBeads(
+	head: Offset, tail: Offset, count: Int, gap: Float, width: Float,
+	fill: Color, edge: Color, facet: Float, back: Float, stroke: Float,
+) {
+	val dx = tail.x - head.x
+	val dy = tail.y - head.y
+	val slot = 1f / count
+	for (i in 0 until count) {
+		val from = i * slot + gap * slot / 2f
+		val to = (i + 1) * slot - gap * slot / 2f
+		val h = Offset(head.x + dx * from, head.y + dy * from)
+		val t = Offset(head.x + dx * to, head.y + dy * to)
+		val shape = BoneShape.of(h, t, 0.5f, width) ?: continue
+		drawPath(shape.leftFacet(), fill.copy(alpha = facet))
+		drawPath(shape.rightFacet(), fill.copy(alpha = back))
+		drawPath(shape.outline(), edge, style = Stroke(stroke, join = StrokeJoin.Round))
 	}
 }
 
@@ -139,13 +157,20 @@ internal fun DrawScope.drawCanvasBone(
 	val tint = color.copy(alpha = color.alpha * strength)
 	val edge = if (lit) Color.White.copy(alpha = strength) else tint
 	if (length >= 6f) {
-		val shoulder = (length * 0.18f).coerceIn(5f, 28f) / length
-		val width = (length * 0.09f).coerceIn(3f, 12f) / length
-		val shape = BoneShape.of(head, tail, shoulder, width)!!
-		drawPath(shape.leftFacet(), tint.copy(alpha = (if (lit) 0.65f else 0.42f) * strength))
-		drawPath(shape.rightFacet(), tint.copy(alpha = (if (lit) 0.38f else 0.22f) * strength))
-		drawPath(shape.outline(), edge, style = Stroke(if (lit) 1.8f else 1.2f, join = StrokeJoin.Round))
-		if (kind == BoneKind.FLEX) drawSegmentRungs(shape, shoulder, edge, if (lit) 1.8f else 1.2f)
+		if (kind == BoneKind.FLEX && length >= 24f) {
+			// A chain of beads about 16px long each, as wide as a plain bone of the same length is.
+			val count = (length / 16f).roundToInt().coerceIn(2, 10)
+			val beadWidth = (if (lit) 6.5f else 5.5f) / (length / count)
+			drawBeads(head, tail, count, gap = 4f / (length / count), width = beadWidth, tint, edge,
+				(if (lit) 0.65f else 0.42f) * strength, (if (lit) 0.38f else 0.22f) * strength, if (lit) 1.8f else 1.2f)
+		} else {
+			val shoulder = (length * kind.shoulder).coerceIn(5f, 28f * kind.shoulder / 0.18f) / length
+			val width = (length * kind.width).coerceIn(3f, 12f * kind.width / 0.09f) / length
+			val shape = BoneShape.of(head, tail, shoulder, width)!!
+			drawPath(shape.leftFacet(), tint.copy(alpha = (if (lit) 0.65f else 0.42f) * strength))
+			drawPath(shape.rightFacet(), tint.copy(alpha = (if (lit) 0.38f else 0.22f) * strength))
+			drawPath(shape.outline(), edge, style = Stroke(if (lit) 1.8f else 1.2f, join = StrokeJoin.Round))
+		}
 	} else {
 		drawLine(edge, head, tail, strokeWidth = if (lit) 2.6f else 1.8f)
 	}
