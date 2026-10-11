@@ -14,8 +14,10 @@ import org.umamo.runtime.model.PuppetModel
 import org.umamo.runtime.model.WarpForm
 import org.umamo.runtime.model.WarpLatticeForm
 import kotlin.math.abs
+import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.hypot
+import kotlin.math.sqrt
 
 /**
  * A flexible chain lowered to a chain of nested warps, one per joint, for the meshes it carries whole.
@@ -36,9 +38,10 @@ import kotlin.math.hypot
 internal object SkeletonFlexWarps {
 	/** Cell size of the lattices where the art leaves room, canvas pixels. */
 	private const val CELL = 16.0
+	private const val SAMPLES = 32
 
 	/** Smallest cell, and the most cells across. */
-	private const val MIN_CELL = 3.0
+	private const val MIN_CELL = 2.0
 	private const val MAX_CELLS = 64
 
 	/** Joints a mesh must bend with before its chain is lowered to warps rather than its own keyforms. */
@@ -70,40 +73,70 @@ internal object SkeletonFlexWarps {
 
 	/**
 	 * How much of joint [j]'s turn a point at arc length [s] on a path through the bones [path] takes: none short of
-	 * the middle of the bone before the joint, all past the middle of the bone after it (at a fork, from the joint on).
+	 * its corner, all past it (at a fork, from the joint on to the middle of the lobe).
 	 */
 	private fun share(chains: SkeletonFlex.Chains, lengths: DoubleArray, starts: DoubleArray, j: Int, s: Double, path: Set<Int>): Double {
 		if (j !in path) return 0.0
 		val from: Double; val to: Double
 		if (chains.forks(j)) { from = starts[j]; to = starts[j] + lengths[j] * 0.5 }
-		else { from = starts[j] - lengths[chains.flexParent[j]] * 0.5; to = starts[j] + lengths[j] * 0.5 }
+		else SkeletonFlex.cornerReach(lengths[chains.flexParent[j]], lengths[j]).let { from = starts[j] - it; to = starts[j] + it }
 		return SkeletonWeights.smoothstep((s - from) / (to - from).coerceAtLeast(1e-6))
 	}
 
 	/**
-	 * Where a mesh drawn at [drawn], bound by [binding], rests once the joints of [tree] turn back by their drawn bends:
-	 * the exact inverse of the warps' angle-weighted turns, so posing the drawn bends draws the art again. [restBones]
-	 * place the joints.
+	 * Where joint [j] turned by [degrees] carries the point ([x], [y]) at arc length [s] on a path through the bones
+	 * [path]; [inverse] undoes the turn instead.
+	 *
+	 * Past the corner the point turns with the bone after the joint about the joint. Within [SkeletonFlex.cornerReach]
+	 * either side of the joint the chain rounds the corner as [SkeletonFlex.Curve] does, on a rational quadratic with the
+	 * joint its control point ([SkeletonFlex.corner]), and the point is carried rigidly with the curve's frame at the same share of its arc: the
+	 * art there bends toward the turn and never swings out against it, as it would turning about the joint ahead of it,
+	 * and the warps posed as the bones are lay the art on the curve through them. At a fork, where the lobe has no bone
+	 * before the joint of its own, the lobe turns about the joint by [share].
 	 */
-	fun unroll(drawn: FloatArray, binding: SkeletonFlex.Binding, tree: List<SkeletonBone>, restBones: List<SkinBone>): FloatArray {
-		val chains = binding.chains
-		val starts = starts(chains, binding.lengths)
-		val joints = tree.indices.filter { chains.flexParent[it] >= 0 && tree[it].drawnBend != 0f }
-		val out = drawn.copyOf()
-		for (v in 0 until drawn.size / 2) {
-			if (!binding.bound(v)) continue
-			val path = binding.paths[binding.path[v]].toSet()
-			var x = drawn[v * 2].toDouble(); var y = drawn[v * 2 + 1].toDouble()
-			// The outermost warp turned last; it is undone first.
-			for (j in joints) {
-				val w = share(chains, binding.lengths, starts, j, binding.s[v], path)
-				if (w == 0.0) continue
-				val p = SkeletonIk.rotate(x, y, restBones[j].headX, restBones[j].headY, -tree[j].drawnBend * w)
-				x = p[0]; y = p[1]
-			}
-			out[v * 2] = x.toFloat(); out[v * 2 + 1] = y.toFloat()
+	private fun turn(
+		chains: SkeletonFlex.Chains, lengths: DoubleArray, starts: DoubleArray, restBones: List<SkinBone>,
+		j: Int, degrees: Double, x: Double, y: Double, s: Double, path: Set<Int>, inverse: Boolean = false,
+	): DoubleArray {
+		val sign = if (inverse) -1.0 else 1.0
+		val bone = restBones[j]
+		if (j !in path || degrees == 0.0) return doubleArrayOf(x, y)
+		if (chains.forks(j)) return SkeletonIk.rotate(x, y, bone.headX, bone.headY, sign * degrees * share(chains, lengths, starts, j, s, path))
+		val parentLength = lengths[chains.flexParent[j]]
+		val h = SkeletonFlex.cornerReach(parentLength, lengths[j])
+		val d = s - (starts[j] - h)
+		if (d <= 0.0) return doubleArrayOf(x, y)
+		if (d >= 2 * h) return SkeletonIk.rotate(x, y, bone.headX, bone.headY, sign * degrees)
+		val parent = restBones[chains.flexParent[j]]
+		val px = bone.headX; val py = bone.headY
+		val ax = px + (parent.headX - px) * h / parentLength; val ay = py + (parent.headY - py) * h / parentLength
+		val bx = px + (bone.tailX - px) * h / lengths[j]; val by = py + (bone.tailY - py) * h / lengths[j]
+		val turned = SkeletonIk.rotate(bx, by, px, py, degrees)
+		val share = d / (2 * h)
+		val rest = corner(ax, ay, px, py, bx, by, share)
+		val bent = corner(ax, ay, px, py, turned[0], turned[1], share)
+		val frame = Math.toDegrees(bent[2] - rest[2])
+		return if (!inverse) SkeletonIk.rotate(x - rest[0] + bent[0], y - rest[1] + bent[1], bent[0], bent[1], frame)
+			else SkeletonIk.rotate(x - bent[0] + rest[0], y - bent[1] + rest[1], rest[0], rest[1], -frame)
+	}
+
+	/** The point and heading (radians) [share] of the way along the arc of the corner A, P, B ([SkeletonFlex.corner]). */
+	private fun corner(ax: Double, ay: Double, px: Double, py: Double, bx: Double, by: Double, share: Double): DoubleArray {
+		val p = DoubleArray(2)
+		val arcs = DoubleArray(SAMPLES + 1)
+		var lx = ax; var ly = ay
+		for (i in 1..SAMPLES) {
+			SkeletonFlex.corner(ax, ay, px, py, bx, by, i.toDouble() / SAMPLES, p)
+			arcs[i] = arcs[i - 1] + hypot(p[0] - lx, p[1] - ly)
+			lx = p[0]; ly = p[1]
 		}
-		return out
+		val target = share.coerceIn(0.0, 1.0) * arcs[SAMPLES]
+		var i = 1
+		while (i < SAMPLES && arcs[i] < target) i++
+		val span = arcs[i] - arcs[i - 1]
+		val u = (i - 1 + if (span <= 1e-12) 0.0 else ((target - arcs[i - 1]) / span).coerceIn(0.0, 1.0)) / SAMPLES
+		SkeletonFlex.corner(ax, ay, px, py, bx, by, u, p)
+		return doubleArrayOf(p[0], p[1], SkeletonFlex.cornerAngle(ax, ay, px, py, bx, by, u))
 	}
 
 	/**
@@ -239,7 +272,8 @@ internal object SkeletonFlexWarps {
 				val out = FloatArray(lx.size * 2)
 				for (i in lx.indices) {
 					if (degrees == 0.0 || shares[i] == 0.0) { out[i * 2] = guesses[i * 2]; out[i * 2 + 1] = guesses[i * 2 + 1]; continue }
-					val p = SkeletonIk.rotate(lx[i], ly[i], pivotX, pivotY, degrees * shares[i])
+					val p = if (bare[i]) SkeletonIk.rotate(lx[i], ly[i], pivotX, pivotY, degrees * shares[i])
+						else turn(chains, lengths, starts, restBones, j, degrees, lx[i], ly[i], ls[i], lpath[i]!!)
 					val local = SkeletonRig.inverse(parentRest, p[0].toFloat(), p[1].toFloat(), floatArrayOf(guesses[i * 2], guesses[i * 2 + 1]))
 					out[i * 2] = local[0]; out[i * 2 + 1] = local[1]
 				}

@@ -115,18 +115,24 @@ class FlexTailScenario {
 		edit("apply the proposed skeleton", "skeleton_auto", req())
 		layCurledChain()
 		val tail = mesh("tail")
+		val root = skeleton().bones.filter { it.role == BoneRole.TAIL }.minBy { it.chainIndex }
+		// Straightening lays the chain along the middle of the art first (SkeletonFlex.fitted); the mesh is cut again
+		// about the joints where they move to, and that is the drawing the straightened tail comes back to.
+		val art = listOf(SkeletonAutoBuilder.canvasVertices(puppet).getValue(tail) to puppet.drawables.single { it.id.raw == tail }.mesh!!.indices)
+		edit("lay the tail along its art", "skeleton_put", req("spec" to SkeletonFlex.fitted(skeleton(), root.id, art).toJson()))
 		val drawn = positions(tail)
 		val uvs = puppet.drawables.single { it.id.raw == tail }.mesh!!.uvs
-		val root = skeleton().bones.filter { it.role == BoneRole.TAIL }.minBy { it.chainIndex }
 		val straight = SkeletonFlex.straighten(skeleton(), root.id, "tail drawn")
 		edit("straighten the tail", "skeleton_put", req("spec" to straight.toJson()))
 		val bones = skeleton().bones.filter { it.role == BoneRole.TAIL }
-		val heading = Math.toRadians(SkeletonRig.restHeading(root))
+		val heading = Math.toRadians(SkeletonRig.restHeading(skeleton().bone(root.id)!!))
 		expect("bones", bones.all { abs(SkeletonIk.wrap(SkeletonRig.restHeading(it) - Math.toDegrees(heading))) < 0.01 }) { "the chain's bones are not in line" }
 		val rest = positions(tail)
 		val after = puppet.drawables.single { it.id.raw == tail }.mesh!!.uvs
-		expect("topology", rest.size == drawn.size && after.size == uvs.size && uvs.indices.all { abs(uvs[it] - after[it]) < 1e-5f }) {
-			"straightening changed the tail's mesh topology or uvs"
+		// The mesh is cut about the joints where they were drawn, which a straightened chain gives back to within float
+		// rounding; a cut that lands on a vertex can shift by that much, a fraction of a texel.
+		expect("topology", rest.size == drawn.size && after.size == uvs.size && uvs.indices.all { abs(uvs[it] - after[it]) < 2e-3f }) {
+			"straightening changed the tail's mesh topology or uvs: ${drawn.size} -> ${rest.size}, worst uv change ${uvs.indices.filter { it < after.size }.maxOfOrNull { abs(uvs[it] - after[it]) }}"
 		}
 		// Unrolled, the tail is no wider about its line than the drawing is about the chain's curve.
 		val drawnChain = SkeletonFlex.bound(skeleton()).bones.filter { it.role == BoneRole.TAIL }.sortedBy { it.chainIndex }
@@ -176,7 +182,7 @@ class FlexTailScenario {
 		if (!wrapped) {
 			edit("lay the tail along the band", "skeleton_put", req("spec" to arc.toJson()))
 			drawn = positions(tail)
-			edit("straighten the tail", "skeleton_put", req("spec" to SkeletonFlex.straighten(skeleton(), "tail_1", "tail drawn").toJson()))
+			edit("straighten the tail", "skeleton_put", req("spec" to SkeletonFlex.straightenOnArt(skeleton(), "tail_1", "tail drawn", puppet).toJson()))
 			rest = positions(tail)
 		} else {
 			// Hung on the body by a record, the tail is skinned after the journal. The geometry gate would hold back a
@@ -207,6 +213,49 @@ class FlexTailScenario {
 		val width = across.max() - across.min()
 		expect("length", abs(length - drawnLength) < 0.05 * drawnLength) { "unrolled, the tail is $length px long; along its middle the art is $drawnLength px" }
 		expect("width", abs(width - 30.0) < 0.15 * 30.0) { "unrolled, the tail is $width px wide; drawn, 30 px" }
+	}
+
+	/**
+	 * A straight tail bent at its joints curves one way only, like a rope: no stretch of it swings out against the turn
+	 * on its way round (a joint turning the art behind it about itself would kick the art just before it outward, and a
+	 * bent tail would ripple like a kris).
+	 */
+	@Test fun aBentTailCurvesOneWay() = Studio.run(temp, Characters.tailed(Characters.TailShape.ARC)) {
+		edit("apply the proposed skeleton", "skeleton_auto", req())
+		val tail = mesh("tail")
+		val base = skeleton()
+		val hips = base.bones.single { it.role == BoneRole.LOWER_BODY }
+		val joints = (0..4).map { k -> Math.toRadians(90.0 - 22.5 * k).let { 240f + 100f * cos(it).toFloat() to 170f + 100f * sin(it).toFloat() } }
+		val arc = base.copy(bones = base.bones.filter { it.role != BoneRole.TAIL } + (1..4).map { i ->
+			SkeletonBone("tail_$i", "tail_$i", if (i == 1) hips.id else "tail_${i - 1}", BoneRole.TAIL, Side.NONE,
+				joints[i - 1].first, joints[i - 1].second, joints[i].first, joints[i].second,
+				if (i == 1) listOf(tail) else emptyList(), chainIndex = i, minAngle = -45f, maxAngle = 45f, flex = true, connected = i > 1)
+		})
+		edit("lay the tail along the band", "skeleton_put", req("spec" to arc.toJson()))
+		edit("straighten the tail", "skeleton_put", req("spec" to SkeletonFlex.straightenOnArt(skeleton(), "tail_1", "tail drawn", puppet).toJson()))
+		val root = skeleton().bone("tail_1")!!
+		val heading = Math.toRadians(SkeletonRig.restHeading(root))
+		val rest = positions(tail)
+		fun along(p: FloatArray, v: Int) = (p[v * 2] - root.headX) * cos(heading) + (p[v * 2 + 1] - root.headY) * sin(heading)
+		fun across(p: FloatArray, v: Int) = -(p[v * 2] - root.headX) * sin(heading) + (p[v * 2 + 1] - root.headY) * cos(heading)
+		val middle = (0 until rest.size / 2).filter { abs(across(rest, it)) < 4.0 }.sortedBy { along(rest, it) }
+		val tails = skeleton().bones.filter { it.role == BoneRole.TAIL }.sortedBy { it.chainIndex }
+		val poses = tails.drop(1).flatMap { b -> listOf(mapOf(b.parameterId to 30f), mapOf(b.parameterId to -30f)) } +
+			listOf(1f, -1f).map { sign -> tails.drop(1).associate { it.parameterId to 30f * sign } }
+		for (pose in poses) {
+			val bent = positions(tail, pose)
+			// Every vertex of the middle swings to the side the tail turns to, or stays.
+			val side = middle.map { across(bent, it) - across(rest, it) }
+			val turn = side.maxBy { abs(it) }
+			val against = side.maxOf { -it * kotlin.math.sign(turn) }
+			expect("one way", against < 0.5) { "bent $pose, the middle of the tail swings ${"%.1f".format(against)} px against the turn" }
+			// And its heading turns steadily: no bend in it doubles back.
+			val headings = middle.zipWithNext().filter { (a, b) -> along(rest, b) - along(rest, a) > 4.0 }.map { (a, b) ->
+				Math.toDegrees(kotlin.math.atan2(across(bent, b) - across(bent, a), along(bent, b) - along(bent, a)))
+			}
+			val back = headings.zipWithNext().maxOfOrNull { (a, b) -> -(b - a) * kotlin.math.sign(turn) } ?: 0.0
+			expect("steady", back < 3.0) { "bent $pose, the tail's heading turns back by ${"%.1f".format(back)}°" }
+		}
 	}
 
 	@Test fun aFishTailForks() = Studio.run(temp, Characters.tailed(curled = false)) {

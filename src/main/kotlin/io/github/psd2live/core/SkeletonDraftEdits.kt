@@ -28,8 +28,9 @@ sealed interface SkeletonDraftIntent {
      */
     data class Flex(val boneIds: Set<String>, val enabled: Boolean) : SkeletonDraftIntent
     /**
-     * Straightens the flexible chain through [boneId] so it rests in a line with its art unrolled along it, the drawing
-     * kept as the saved pose [poseName]; [enabled] false bends it back to the drawing.
+     * Straightens the flexible chain through [boneId] so it rests in a line with its art unrolled along it, its joints
+     * first laid along the middle of the art ([SkeletonFlex.fitted]), the drawing kept as the saved pose [poseName];
+     * [enabled] false bends it back to the drawing.
      */
     data class Straighten(val boneId: String, val enabled: Boolean = true, val poseName: String? = null) : SkeletonDraftIntent
     /** Joint limits in parameter degrees; each is kept on its own side of rest. */
@@ -147,7 +148,7 @@ object SkeletonDraftEdits {
             is SkeletonDraftIntent.Straighten -> {
                 require(bone(intent.boneId).flex) { "Only a flexible chain can be straightened" }
                 val name = intent.poseName ?: "${bone(intent.boneId).name} drawn"
-                SkeletonDraftResult(if (intent.enabled) SkeletonFlex.straighten(spec, intent.boneId, name)
+                SkeletonDraftResult(if (intent.enabled) SkeletonFlex.straightenOnArt(spec, intent.boneId, name, puppet)
                     else SkeletonFlex.unstraighten(spec, intent.boneId))
             }
             is SkeletonDraftIntent.Limits -> {

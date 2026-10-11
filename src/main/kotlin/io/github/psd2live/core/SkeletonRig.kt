@@ -213,7 +213,7 @@ internal object SkeletonRig {
 	)
 
 	/** Version of the bake and its key; raise it whenever the bake or what the key covers changes. */
-	const val BAKE_VERSION = "skeleton-5"
+	const val BAKE_VERSION = "skeleton-6"
 
 	private const val CACHE_CAPACITY = 4
 	private val bakes = object : LinkedHashMap<String, Bake>(16, 0.75f, true) {
@@ -537,10 +537,9 @@ internal object SkeletonRig {
 			val drawnTree = drawnTrees.getValue(root)
 			val (skins, flex) = SkeletonManualWeights.weightsAndFlex(drawn.getValue(drawableId), mesh.indices, drawnTree, drawnParentOf, spec.manualWeights[id])
 			if (!SkeletonFlexWarps.carries(tree, flex, skins)) continue
-			// Straightened, it rests where the warps' own turns, undone, put the art.
-			val rest = if (tree.none { it.flex && it.drawnBend != 0f }) drawn.getValue(drawableId)
-				else SkeletonFlexWarps.unroll(drawn.getValue(drawableId), flex!!, tree, skinBones(tree, parentOf))
-			riders.getOrPut(root) { ArrayList() } += SkeletonFlexWarps.Rider(drawableId, drawn.getValue(drawableId), rest,
+			// Straightened, it rests unrolled along the straight chain, which the warps posed at the drawn bends curve back
+			// to the drawing.
+			riders.getOrPut(root) { ArrayList() } += SkeletonFlexWarps.Rider(drawableId, drawn.getValue(drawableId), canvas.getValue(drawableId),
 				flex!!, skins, skinBones(drawnTree, drawnParentOf))
 		}
 		val lowered = riders.values.flatMapTo(HashSet()) { list -> list.map { it.id.raw } }
@@ -1723,7 +1722,7 @@ internal object SkeletonRig {
 					   val blendShapes: List<BlendShapeBinding<MeshForm>>)
 
 	/** Version of [skinKey]; raise it whenever [skinDrawable] or what the key covers changes. */
-	private const val SKIN_VERSION = "skin-3"
+	private const val SKIN_VERSION = "skin-4"
 	private const val SKIN_CAPACITY = 128
 	private val skins = object : LinkedHashMap<String, java.lang.ref.SoftReference<Skin>>(16, 0.75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, java.lang.ref.SoftReference<Skin>>?): Boolean = size > SKIN_CAPACITY

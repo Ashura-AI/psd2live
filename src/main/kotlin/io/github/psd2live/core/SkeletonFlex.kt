@@ -1,5 +1,6 @@
 package io.github.psd2live.core
 
+import org.umamo.runtime.model.PuppetModel
 import java.util.PriorityQueue
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -79,6 +80,174 @@ internal object SkeletonFlex {
 			val t = tails.getValue(b.id)
 			b.copy(headX = h[0].toFloat(), headY = h[1].toFloat(), tailX = t[0].toFloat(), tailY = t[1].toFloat())
 		})
+	}
+
+	/**
+	 * The chain through [id] laid along the middle of its art, [art] each mesh's canvas vertices and triangles as drawn.
+	 *
+	 * The chain carries its art by where each vertex lies off the curve through its joints ([curve]), and a straightened
+	 * chain keeps those offsets about its line: a curve that strays off the middle of the art, as bones drawn with their
+	 * joints on the art always do round a turn (the curve cuts inside them), would leave the art straightened in waves.
+	 * So the stalk's joints (from the root's head, which stays, to the fork or the tip) move to fit the curve through
+	 * them, by least squares, to the art's middle - halfway across its outline at each arc length - with a light pull
+	 * back to where they were drawn, which holds a joint the art does not reach. Lobes past a fork move with it.
+	 * A chain already straightened is left as it is: its art no longer lies as drawn.
+	 */
+	fun fitted(spec: SkeletonSpec, id: String, art: List<Pair<FloatArray, IntArray>>): SkeletonSpec {
+		val start = spec.bone(id)?.takeIf { it.flex } ?: return spec
+		val root = generateSequence(start) { b -> b.parentId?.let(spec::bone)?.takeIf { it.flex && b.flex } }.last()
+		val chain = listOf(root.id) + spec.descendants(root.id).filter { d -> spec.bone(d)!!.flex && inChain(spec, d, root.id) }
+		if (chain.size < 2 || art.isEmpty() || chain.any { spec.bone(it)!!.drawnBend != 0f }) return spec
+		// The stalk: from the root on through single flexible children, to the fork or the tip.
+		val stalk = mutableListOf(root.id)
+		while (true) {
+			val next = spec.children(stalk.last()).filter { it.flex && it.id in chain }
+			if (next.size != 1) break
+			stalk += next.single().id
+		}
+		if (stalk.size < 2) return spec
+		val index = chain.withIndex().associate { it.value to it.index }
+		val bones = chain.map { spec.bone(it)!! }
+		val skin = bones.map { b -> SkinBone(b.parentId?.let { index[it] } ?: -1, b.headX.toDouble(), b.headY.toDouble(), b.tailX.toDouble(), b.tailY.toDouble(), 0.0) }
+		val lengths = DoubleArray(stalk.size) { skin[index.getValue(stalk[it])].length.coerceAtLeast(1e-3) }
+		val total = lengths.sum()
+		val forked = spec.children(stalk.last()).count { it.flex && it.id in chain } > 1
+		// Short of a fork by a quarter of the last bone, where the lobes spread and the art is no band.
+		val reach = if (forked) total - lengths.last() * 0.25 else total
+
+		// The art's middle at each arc length along the stalk.
+		val bin = 6.0
+		val bins = ceil(reach / bin).toInt().coerceAtLeast(1)
+		val low = DoubleArray(bins) { Double.MAX_VALUE }; val high = DoubleArray(bins) { -Double.MAX_VALUE }
+		val stalkPath = IntArray(stalk.size) { index.getValue(stalk[it]) }
+		for ((canvas, triangles) in art) {
+			val (_, binding) = bind(canvas, triangles, skin, BooleanArray(skin.size) { true }, SkeletonWeights.skin(canvas, skin, triangles)) ?: continue
+			for (v in 0 until canvas.size / 2) {
+				if (!binding.bound(v) || abs(binding.a[v]) > 1.0) continue
+				// Arc lengths short of the stalk's end are on the stalk, whichever lobe the vertex follows on.
+				val s = binding.s[v]
+				if (s < 0.0 || s >= reach) continue
+				val k = (s / bin).toInt().coerceIn(0, bins - 1)
+				low[k] = minOf(low[k], binding.b[v]); high[k] = maxOf(high[k], binding.b[v])
+			}
+		}
+		val drawnCurve = curve(skin, Chains(BooleanArray(skin.size) { true }, IntArray(skin.size) { skin[it].parent }), stalkPath, lengths)
+		val targets = ArrayList<DoubleArray>()
+		val widths = DoubleArray(bins) { (high[it] - low[it]).coerceAtLeast(0.0) }
+		for (k in 0 until bins) {
+			if (widths[k] < 1.0) continue
+			// Where the art ends, cut across or aslant, a slice holds only part of its width and its middle lies off the
+			// art's; a tail that narrows does so over many slices.
+			if (widths[k] < 0.6 * (maxOf(0, k - 3)..minOf(bins - 1, k + 3)).maxOf { widths[it] }) continue
+			val p = DoubleArray(2)
+			drawnCurve.place((k + 0.5) * bin, 0.0, (low[k] + high[k]) * 0.5, p)
+			targets += p
+		}
+		if (targets.size < stalk.size + 1) return spec
+
+		// The joints, P0 (fixed) to Pm.
+		val m = stalk.size
+		val px = DoubleArray(m + 1); val py = DoubleArray(m + 1)
+		px[0] = skin[stalkPath[0]].headX; py[0] = skin[stalkPath[0]].headY
+		for (k in 0 until m) { px[k + 1] = skin[stalkPath[k]].tailX; py[k + 1] = skin[stalkPath[k]].tailY }
+		val drawnX = px.copyOf(); val drawnY = py.copyOf()
+		// The curve as [Curve] lays it, its pieces in the joints' coefficients, for the joints as they stand: a corner's
+		// ends lie a fixed share of the way along its bones and its weight is held, so each piece is linear in them.
+		fun pieces(): List<(Double) -> DoubleArray> {
+			val out = ArrayList<(Double) -> DoubleArray>()
+			fun node(k: Int, toward: Int, share: Double) = DoubleArray(m + 1).also { it[k] += 1 - share; it[toward] += share }
+			var at = DoubleArray(m + 1).also { it[0] = 1.0 }
+			fun line(to: DoubleArray) { val from = at; out += { u -> DoubleArray(m + 1) { from[it] * (1 - u) + to[it] * u } }; at = to }
+			for (k in 1 until m) {
+				val before = hypot(px[k] - px[k - 1], py[k] - py[k - 1]).coerceAtLeast(1e-9)
+				val after = hypot(px[k + 1] - px[k], py[k + 1] - py[k]).coerceAtLeast(1e-9)
+				val h = cornerReach(before, after)
+				val a = node(k, k - 1, h / before); val b = node(k, k + 1, h / after)
+				line(a)
+				val w = cornerWeight(px[k] + (px[k - 1] - px[k]) * h / before, py[k] + (py[k - 1] - py[k]) * h / before, px[k], py[k],
+					px[k] + (px[k + 1] - px[k]) * h / after, py[k] + (py[k + 1] - py[k]) * h / after)
+				out += { u ->
+					val ca = (1 - u) * (1 - u); val cp = 2 * u * (1 - u) * w; val cb = u * u
+					val d = ca + cp + cb
+					DoubleArray(m + 1) { (ca * a[it] + cb * b[it]) / d + if (it == k) cp / d else 0.0 }
+				}
+				at = b
+			}
+			line(DoubleArray(m + 1).also { it[m] = 1.0 })
+			return out
+		}
+		val pull = 0.05 * targets.size / m
+		repeat(6) {
+			val ata = Array(m) { DoubleArray(m) }
+			val bx = DoubleArray(m); val by = DoubleArray(m)
+			val curvePieces = pieces()
+			for (t in targets) {
+				// The nearest point of the curve through the joints as they stand.
+				var best = Double.MAX_VALUE; var bestW = DoubleArray(0)
+				for (piece in curvePieces) for (step in 0..48) {
+					val w = piece(step / 48.0)
+					var x = 0.0; var y = 0.0
+					for (j in 0..m) { x += w[j] * px[j]; y += w[j] * py[j] }
+					val d = (x - t[0]) * (x - t[0]) + (y - t[1]) * (y - t[1])
+					if (d < best) { best = d; bestW = w }
+				}
+				for (i in 1..m) {
+					for (j in 1..m) ata[i - 1][j - 1] += bestW[i] * bestW[j]
+					bx[i - 1] += bestW[i] * (t[0] - bestW[0] * px[0]); by[i - 1] += bestW[i] * (t[1] - bestW[0] * py[0])
+				}
+			}
+			for (i in 1..m) { ata[i - 1][i - 1] += pull; bx[i - 1] += pull * drawnX[i]; by[i - 1] += pull * drawnY[i] }
+			val sx = solve(ata.map { it.copyOf() }.toTypedArray(), bx) ?: return spec
+			val sy = solve(ata, by) ?: return spec
+			for (i in 1..m) { px[i] = sx[i - 1]; py[i] = sy[i - 1] }
+		}
+
+		var next = spec
+		val fork = stalk.last()
+		val dx = (px[m] - drawnX[m]).toFloat(); val dy = (py[m] - drawnY[m]).toFloat()
+		val lobes = spec.children(fork).filter { it.flex && it.id in chain }.mapTo(HashSet()) { it.id }
+		if (lobes.isNotEmpty()) next = next.withBonesTransformed(lobes, dx, dy, includeDescendants = true)
+		for (k in 0 until m) next = next.withJointMoved(stalk[k], BoneEnd.TAIL, px[k + 1].toFloat(), py[k + 1].toFloat())
+		return next
+	}
+
+	/**
+	 * Straightens the chain through [id] as [straighten] does, its joints first laid along the middle of the art
+	 * [puppet] draws for the chain's meshes at rest ([fitted]).
+	 */
+	fun straightenOnArt(spec: SkeletonSpec, id: String, poseName: String?, puppet: PuppetModel): SkeletonSpec {
+		val start = spec.bone(id)?.takeIf { it.flex } ?: return spec
+		val root = generateSequence(start) { b -> b.parentId?.let(spec::bone)?.takeIf { it.flex && b.flex } }.last()
+		val chain = listOf(root.id) + spec.descendants(root.id).filter { d -> spec.bone(d)!!.flex && inChain(spec, d, root.id) }
+		val meshes = chain.flatMap { spec.bone(it)!!.drawableIds }.toSet()
+		val canvas = SkeletonAutoBuilder.canvasVertices(puppet)
+		val art = puppet.drawables.filter { it.id.raw in meshes }.mapNotNull { d ->
+			val mesh = d.mesh ?: return@mapNotNull null
+			canvas[d.id.raw]?.let { it to mesh.indices }
+		}
+		return straighten(fitted(spec, id, art), id, poseName)
+	}
+
+	/** [a] x = [b] by Gaussian elimination with partial pivoting; null when singular. [a] is overwritten. */
+	private fun solve(a: Array<DoubleArray>, b: DoubleArray): DoubleArray? {
+		val n = b.size
+		val x = b.copyOf()
+		for (c in 0 until n) {
+			val p = (c until n).maxBy { abs(a[it][c]) }
+			if (abs(a[p][c]) < 1e-12) return null
+			if (p != c) { val r = a[p]; a[p] = a[c]; a[c] = r; val t = x[p]; x[p] = x[c]; x[c] = t }
+			for (r in c + 1 until n) {
+				val f = a[r][c] / a[c][c]
+				for (k in c until n) a[r][k] -= f * a[c][k]
+				x[r] -= f * x[c]
+			}
+		}
+		for (r in n - 1 downTo 0) {
+			var sum = x[r]
+			for (k in r + 1 until n) sum -= a[r][k] * x[k]
+			x[r] = sum / a[r][r]
+		}
+		return x
 	}
 
 	/**
@@ -202,11 +371,12 @@ internal object SkeletonFlex {
 	fun rampHalf(child: SkeletonBone, parent: SkeletonBone): Double = minOf(child.length, parent.length) * 0.5
 
 	/**
-	 * One path's centerline at one pose, with its bones as the control polygon, as a path deformer has its handles: a
-	 * quadratic B-spline that leaves the root's head along the root, runs through the middle of every bone along that
-	 * bone, turns between two middles about the joint that joins them, and ends on the last bone's tail. It never bends
-	 * back on itself, its turn spreads over the half of each bone beside a joint, and it reaches the tip wherever the
-	 * bones put it. At a fork the stalk runs straight on to the joint and each lobe turns away from there.
+	 * One path's centerline at one pose, with its bones as the control polygon, as a path deformer has its handles: it
+	 * leaves the root's head along the root, runs along each bone, rounds each joint on a corner ([corner]) from as far
+	 * before the joint as after it - half the shorter of the two bones ([cornerReach]) - and ends on the last bone's tail.
+	 * Each corner is a circular arc (a conic where the bones meet unevenly), so the curve turns evenly through a joint
+	 * however the chain was cut into bones, never bends back on itself, and reaches the tip wherever the bones put it.
+	 * At a fork the stalk runs straight on to the joint and each lobe turns away from there.
 	 *
 	 * Arc lengths are counted along the bones, in their rest [lengths]: a vertex keeps its share of the stretch of bones
 	 * the piece of curve it lies on stands for, so the art never falls short of the bones however far they bend.
@@ -215,8 +385,11 @@ internal object SkeletonFlex {
 		private val segments = lengths.size
 		val total = lengths.sum()
 
-		/** A cubic Bezier piece standing for the bones' arc lengths [from]..[to], sampled for its own arc length. */
-		private inner class Piece(val from: Double, val to: Double, val x: DoubleArray, val y: DoubleArray) {
+		/**
+		 * A piece standing for the bones' arc lengths [from]..[to], sampled for its own arc length: a cubic Bezier through
+		 * [x], [y], or with [conic] the rational quadratic through its three points ([corner]).
+		 */
+		private inner class Piece(val from: Double, val to: Double, val x: DoubleArray, val y: DoubleArray, val conic: Boolean = false) {
 			val arcs = DoubleArray(SAMPLES + 1).also { arc ->
 				val p = DoubleArray(2)
 				var lx = x[0]; var ly = y[0]
@@ -228,6 +401,7 @@ internal object SkeletonFlex {
 			}
 
 			fun at(t: Double, out: DoubleArray) {
+				if (conic) { corner(x[0], y[0], x[1], y[1], x[2], y[2], t, out); return }
 				val u = 1 - t
 				val b0 = u * u * u; val b1 = 3 * u * u * t; val b2 = 3 * u * t * t; val b3 = t * t * t
 				out[0] = b0 * x[0] + b1 * x[1] + b2 * x[2] + b3 * x[3]
@@ -235,6 +409,7 @@ internal object SkeletonFlex {
 			}
 
 			fun angle(t: Double): Double {
+				if (conic) return cornerAngle(x[0], y[0], x[1], y[1], x[2], y[2], t)
 				val u = 1 - t
 				val dx = 3 * u * u * (x[1] - x[0]) + 6 * u * t * (x[2] - x[1]) + 3 * t * t * (x[3] - x[2])
 				val dy = 3 * u * u * (y[1] - y[0]) + 6 * u * t * (y[2] - y[1]) + 3 * t * t * (y[3] - y[2])
@@ -269,27 +444,34 @@ internal object SkeletonFlex {
 			val starts = DoubleArray(segments).also { for (k in 1 until segments) it[k] = it[k - 1] + lengths[k - 1] }
 			fun midX(k: Int) = (px[k] + px[k + 1]) / 2
 			fun midY(k: Int) = (py[k] + py[k + 1]) / 2
-			fun line(from: Double, to: Double, ax: Double, ay: Double, bx: Double, by: Double) = Piece(from, to,
-				doubleArrayOf(ax, ax + (bx - ax) / 3, ax + (bx - ax) * 2 / 3, bx), doubleArrayOf(ay, ay + (by - ay) / 3, ay + (by - ay) * 2 / 3, by))
-			pieces += line(0.0, lengths[0] / 2, px[0], py[0], midX(0), midY(0))
+			fun line(from: Double, to: Double, ax: Double, ay: Double, bx: Double, by: Double) {
+				if (to - from <= 1e-9) return
+				pieces += Piece(from, to, doubleArrayOf(ax, ax + (bx - ax) / 3, ax + (bx - ax) * 2 / 3, bx), doubleArrayOf(ay, ay + (by - ay) / 3, ay + (by - ay) * 2 / 3, by))
+			}
+			// Where the curve has reached, along the bones and on the canvas.
+			var atS = 0.0; var atX = px[0]; var atY = py[0]
 			for (k in 1 until segments) {
 				val joint = starts[k]
 				if (forks[k]) {
 					// The stalk straight on to the fork, then the lobe turning away from it.
-					pieces += line(joint - lengths[k - 1] / 2, joint, midX(k - 1), midY(k - 1), px[k], py[k])
+					line(atS, joint, atX, atY, px[k], py[k])
 					val reach = hypot(midX(k) - px[k], midY(k) - py[k]) / 3
 					pieces += Piece(joint, joint + lengths[k] / 2,
 						doubleArrayOf(px[k], px[k] + dirX[k - 1] * reach, midX(k) - dirX[k] * reach, midX(k)),
 						doubleArrayOf(py[k], py[k] + dirY[k - 1] * reach, midY(k) - dirY[k] * reach, midY(k)))
+					atS = joint + lengths[k] / 2; atX = midX(k); atY = midY(k)
 				} else {
-					// The quadratic from one middle to the next about the joint, as a cubic.
-					val ax = midX(k - 1); val ay = midY(k - 1); val bx = midX(k); val by = midY(k)
-					pieces += Piece(joint - lengths[k - 1] / 2, joint + lengths[k] / 2,
-						doubleArrayOf(ax, ax + (px[k] - ax) * 2 / 3, bx + (px[k] - bx) * 2 / 3, bx),
-						doubleArrayOf(ay, ay + (py[k] - ay) * 2 / 3, by + (py[k] - by) * 2 / 3, by))
+					val h = cornerReach(lengths[k - 1], lengths[k]).coerceAtMost(joint - atS)
+					val before = h / lengths[k - 1].coerceAtLeast(1e-9); val after = h / lengths[k].coerceAtLeast(1e-9)
+					val ax = px[k] + (px[k - 1] - px[k]) * before; val ay = py[k] + (py[k - 1] - py[k]) * before
+					val bx = px[k] + (px[k + 1] - px[k]) * after; val by = py[k] + (py[k + 1] - py[k]) * after
+					line(atS, joint - h, atX, atY, ax, ay)
+					if (h > 1e-9) pieces += Piece(joint - h, joint + h, doubleArrayOf(ax, px[k], bx), doubleArrayOf(ay, py[k], by), conic = true)
+					atS = joint + h; atX = bx; atY = by
 				}
 			}
-			pieces += line(starts[segments - 1] + lengths[segments - 1] / 2, total, midX(segments - 1), midY(segments - 1), endX, endY)
+			line(atS, total, atX, atY, endX, endY)
+			if (pieces.isEmpty()) pieces += Piece(0.0, total, doubleArrayOf(px[0], px[0], endX, endX), doubleArrayOf(py[0], py[0], endY, endY))
 		}
 
 		private fun piece(s: Double): Piece = pieces.lastOrNull { s >= it.from } ?: pieces.first()
@@ -334,6 +516,44 @@ internal object SkeletonFlex {
 
 	/** Samples of each piece of a curve when its arc length is measured. */
 	private const val SAMPLES = 32
+
+	/** How far either side of a joint between bones [before] and [after] long its corner reaches: half the shorter. */
+	fun cornerReach(before: Double, after: Double): Double = minOf(before, after) * 0.5
+
+	/**
+	 * How much the rational quadratic A, P, B weighs its control point: cos of half its turn, so it runs on a circular
+	 * arc where P is as far from A as from B, and on the nearest conic otherwise. A curve that bends as evenly as the art
+	 * it carries does unrolls that art straight; a plain quadratic would bend it hardest at the joint.
+	 */
+	internal fun cornerWeight(ax: Double, ay: Double, px: Double, py: Double, bx: Double, by: Double): Double {
+		val ux = px - ax; val uy = py - ay; val vx = bx - px; val vy = by - py
+		val lu = hypot(ux, uy); val lv = hypot(vx, vy)
+		if (lu < 1e-9 || lv < 1e-9) return 1.0
+		val c = ((ux * vx + uy * vy) / (lu * lv)).coerceIn(-1.0, 1.0)
+		// cos(θ/2) = sqrt((1 + cos θ) / 2)
+		return kotlin.math.sqrt((1 + c) / 2).coerceAtLeast(0.05)
+	}
+
+	/** The point [t] of the way (by parameter) along the rational quadratic A, P, B ([cornerWeight]). */
+	internal fun corner(ax: Double, ay: Double, px: Double, py: Double, bx: Double, by: Double, t: Double, out: DoubleArray) {
+		val w = cornerWeight(ax, ay, px, py, bx, by)
+		val a = (1 - t) * (1 - t); val p = 2 * t * (1 - t) * w; val b = t * t
+		val d = a + p + b
+		out[0] = (a * ax + p * px + b * bx) / d
+		out[1] = (a * ay + p * py + b * by) / d
+	}
+
+	/** The heading in radians at [t] along the rational quadratic A, P, B. */
+	internal fun cornerAngle(ax: Double, ay: Double, px: Double, py: Double, bx: Double, by: Double, t: Double): Double {
+		val w = cornerWeight(ax, ay, px, py, bx, by)
+		val a = (1 - t) * (1 - t); val p = 2 * t * (1 - t) * w; val b = t * t
+		val da = -2 * (1 - t); val dp = 2 * (1 - 2 * t) * w; val db = 2 * t
+		val d = a + p + b; val dd = da + dp + db
+		val nx = a * ax + p * px + b * bx; val ny = a * ay + p * py + b * by
+		val dx = (da * ax + dp * px + db * bx) * d - nx * dd
+		val dy = (da * ay + dp * py + db * by) * d - ny * dd
+		return if (hypot(dx, dy) < 1e-12) atan2(by - ay, bx - ax) else atan2(dy, dx)
+	}
 
 	/**
 	 * [path]'s curve through the joints of [bones]: the root's head and each bone's tail. [bones] may be the drawn

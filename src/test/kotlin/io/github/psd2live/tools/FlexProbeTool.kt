@@ -64,8 +64,8 @@ class FlexProbeTool {
 						w.println("mesh $id"); for (k in 0 until p.size / 2) w.println("${p[k * 2]} ${-p[k * 2 + 1]}")
 						w.println("tri " + tri.joinToString(" ")) } }
 				}
-				val straight = SkeletonFlex.straighten(spec, root.id, "probe drawn")
-				for (b in straight.bones.filter { it.id in chain }) println("  straightened ${b.id}: bend=${b.drawnBend} heading=${SkeletonRig.restHeading(b)}")
+				val straight = SkeletonFlex.straightenOnArt(spec, root.id, "probe drawn", puppet)
+				for (b in straight.bones.filter { it.id in chain }) println("  straightened ${b.id}: bend=${b.drawnBend} heading=${SkeletonRig.restHeading(b)} drawn ${SkeletonFlex.bound(straight).bone(b.id)!!.let { d -> "(${d.headX},${d.headY})-(${d.tailX},${d.tailY})" }}")
 				edit("straighten", "skeleton_put", io.github.psd2live.scenario.req("spec" to straight.toJson()))
 				val rootAfter = straight.bone(root.id)!!
 				println("  after straighten: skeleton bends ${now.document.rigEdits.skeleton!!.bones.map { it.drawnBend }}, flex warps ${puppet.deformers.filter { it.id.raw.endsWith("Flex") }.map { it.id.raw }}")
