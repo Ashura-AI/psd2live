@@ -103,8 +103,12 @@ fun restMeshesToCanvasSpace(model: PuppetModel, initialPoseOverrides: Map<Parame
 						},
 					)
 				}
+			// A blend form is its delta plus the grid-at-default reference, and only that reference moves
+			// with the base: an unkeyed drawable's reference is zero before and after, so its forms are
+			// already pure deltas against the parent-space base the export inverts the canvas base back
+			// to.  Rebasing them would leave (old base - canvas base) - canvas pixels - in every row.
 			val rebasedBlendShapes =
-				drawable.blendShapes.map { binding ->
+				if (drawable.geometryGrid == null) drawable.blendShapes else drawable.blendShapes.map { binding ->
 					binding.copy(
 						forms =
 							binding.forms.map { form ->

@@ -37,6 +37,7 @@ class ExportTargetsScenario {
 			"settings_update" to req("changes" to mapOf("exportMoc3" to true, "exportMotions" to true)))
 
 		exportMatchesEditor(this)
+		unkeyedBlendShapeMatchesEditor(this, mesh("skirt"))
 		cubismCoreAccepts(this, export("moc3", name = "export moc3 for the Cubism Core").single { it.toString().endsWith(".moc3") })
 		val first = export("moc3", name = "export moc3 again").associate { it.fileName.toString() to Files.readAllBytes(it) }
 		val second = export("moc3", name = "export moc3 a third time").associate { it.fileName.toString() to Files.readAllBytes(it) }

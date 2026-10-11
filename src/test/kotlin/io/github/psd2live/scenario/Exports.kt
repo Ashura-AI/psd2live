@@ -17,6 +17,40 @@ internal fun exportMatchesEditor(studio: Studio, exported: PuppetModel = studio.
 	for (pose in poses) difference(editor, exported, pose)?.let { problem -> expect("export $what", false) { "at $pose $problem" } }
 }
 
+/**
+ * A blend shape on a mesh that has no keyforms of its own under a warp - what a cloth bake leaves on a mesh the generator
+ * never keyed - exports as the editor shows it: [mesh] is made unkeyed at its default-pose lattice position and given a
+ * blend shape, then goes through the moc3 target's own canvas-space pass and back.
+ */
+internal fun unkeyedBlendShapeMatchesEditor(studio: Studio, mesh: String) = with(studio) {
+	val id = org.umamo.runtime.model.DrawableId(mesh)
+	val source = puppet.drawables.single { it.id == id }
+	expect("unkeyed blend shape", puppet.deformers.singleOrNull { it.id == source.parentDeformerId } is org.umamo.runtime.model.Deformer.Warp) {
+		"mesh $mesh is not under a warp"
+	}
+	val defaults = puppet.parameters.associate { it.id to it.default }
+	val reference = org.umamo.runtime.eval.meshGridDefaultDeltas(source) { defaults[it] ?: 0f }
+	val base = source.mesh!!.positions.let { p -> FloatArray(p.size) { p[it] + (reference?.get(it) ?: 0f) } }
+	val billow = org.umamo.runtime.model.ParameterId("ParamBillow")
+	val form = org.umamo.runtime.model.MeshForm(FloatArray(base.size) { if (it % 2 == 0) 0.05f else 0.02f },
+		source.drawOrder, source.opacity, source.multiplyColor, source.screenColor)
+	val editor = puppet.copy(
+		parameters = puppet.parameters + org.umamo.runtime.model.Parameter(billow, "Billow", 0f, 1f, 0f, org.umamo.runtime.model.ParameterKind.BLEND_SHAPE),
+		drawables = puppet.drawables.map {
+			if (it.id != id) it else it.copy(mesh = it.mesh!!.let { m -> org.umamo.runtime.model.DrawableMesh(base, m.uvs, m.indices) }, geometryGrid = null,
+				blendShapes = listOf(org.umamo.runtime.model.BlendShapeBinding(billow, floatArrayOf(0f, 1f), 0, listOf(null, form))))
+		})
+	expect("unkeyed blend shape", Oracles.motion(editor, mesh, mapOf(billow.raw to 1f)) > 1.0) { "the blend shape does not move $mesh" }
+	val exported = step("export the unkeyed blend shape") {
+		val canvas = org.umamo.render.restMeshesToCanvasSpace(editor)
+		val lowered = org.umamo.interop.moc3.export.Moc3Export.toMocDocument(canvas, canvasToParentSpace = org.umamo.render.canvasToParentSpaceFor(canvas))
+		org.umamo.interop.moc3.import.Moc3Import.fromMocDocument(org.umamo.format.moc3.Moc3.read(org.umamo.format.moc3.Moc3.write(lowered.document)), null)
+	}
+	for (pose in listOf(emptyMap(), mapOf(billow.raw to 1f))) {
+		difference(editor, exported, pose)?.let { problem -> expect("unkeyed blend shape", false) { "at $pose $problem" } }
+	}
+}
+
 private fun difference(a: PuppetModel, b: PuppetModel, pose: Map<String, Float>, tolerance: Float = 0.5f): String? {
 	val evaluator = org.umamo.render.eval.CpuDeformationEvaluator()
 	val values = pose.mapKeys { org.umamo.runtime.model.ParameterId(it.key) }
