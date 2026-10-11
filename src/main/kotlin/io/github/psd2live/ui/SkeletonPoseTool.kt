@@ -27,9 +27,6 @@ internal typealias BoneHit = io.github.psd2live.core.BoneHit
  * the rig the export writes is exactly the rig being posed.
  */
 internal object SkeletonPoseTool {
-	/** Screen pixels within which the pointer grabs a bone's tip. */
-	private const val TIP_RADIUS = 10f
-
 	/** Every limb bone of [spec] where [model] holds it at [values]; see [SkeletonPoseSolver.posed]. */
 	fun posed(model: PuppetModel, spec: SkeletonSpec?, values: Map<ParameterId, Float>): List<PosedBone> =
 		SkeletonPoseSolver.posed(model, spec, values)
@@ -37,26 +34,9 @@ internal object SkeletonPoseTool {
 	/** The bone under [pos] (screen), tips first, then the nearest body within a bone-proportional reach. */
 	fun hit(bones: List<PosedBone>, pos: Offset, viewport: CanvasViewport): BoneHit? {
 		fun screen(x: Float, y: Float) = Offset(viewport.x(x).toFloat(), (viewport.offsetY + y * viewport.scale).toFloat())
-		bones.asReversed().firstOrNull { (screen(it.tailX, it.tailY) - pos).getDistance() <= TIP_RADIUS }
-			?.let { return BoneHit(it.bone.id, tip = true) }
-		var best: PosedBone? = null
-		var bestDistance = Float.MAX_VALUE
-		for (posed in bones) {
-			val h = screen(posed.headX, posed.headY)
-			val t = screen(posed.tailX, posed.tailY)
-			val dx = t.x - h.x
-			val dy = t.y - h.y
-			val lengthSquared = dx * dx + dy * dy
-			if (lengthSquared < 1f) continue
-			val u = (((pos.x - h.x) * dx + (pos.y - h.y) * dy) / lengthSquared).coerceIn(0f, 1f)
-			val distance = hypot(pos.x - (h.x + u * dx), pos.y - (h.y + u * dy))
-			val reach = (kotlin.math.sqrt(lengthSquared) * 0.14f).coerceIn(6f, 18f)
-			if (distance <= reach && distance < bestDistance) {
-				best = posed
-				bestDistance = distance
-			}
-		}
-		return best?.let { BoneHit(it.bone.id, tip = false) }
+		val screenBones = bones.map { ScreenBone(it.bone.id, screen(it.headX, it.headY), screen(it.tailX, it.tailY)) }
+		BoneHitTest.joint(screenBones, pos, BoneHitTest.TIP_RADIUS, heads = false)?.let { return BoneHit(it.first, tip = true) }
+		return BoneHitTest.body(screenBones.filter { (it.tail - it.head).getDistanceSquared() >= 1f }, pos)?.let { BoneHit(it, tip = false) }
 	}
 
 	/** The parameter values that turn [hit]'s bone toward canvas point ([x], [y]); see [SkeletonPoseSolver.drag]. */

@@ -1236,25 +1236,10 @@ internal fun BoxScope.CanvasEditorOverlay(
         }
         fun boneColor(id: String): Color = SkeletonPalette.color(skeleton, id)
         fun screen(x: Float, y: Float): Offset = Offset(viewport.x(x).toFloat(), (viewport.offsetY + y * viewport.scale).toFloat())
-        fun hitJoint(pos: Offset): Pair<String, BoneEnd>? = currentSkeleton.bones.asReversed().firstNotNullOfOrNull { bone ->
-            listOf(BoneEnd.HEAD to screen(bone.headX, bone.headY), BoneEnd.TAIL to screen(bone.tailX, bone.tailY))
-                .firstOrNull { (_, point) -> hypot(pos.x - point.x, pos.y - point.y) <= 14f }
-                ?.let { bone.id to it.first }
-        }
-        fun hitBoneBody(pos: Offset): String? = currentSkeleton.bones.asReversed().firstOrNull { bone ->
-            val h = screen(bone.headX, bone.headY)
-            val t = screen(bone.tailX, bone.tailY)
-            val dx = t.x - h.x
-            val dy = t.y - h.y
-            val lenSq = dx * dx + dy * dy
-            if (lenSq < 1e-4f) return@firstOrNull hypot(pos.x - h.x, pos.y - h.y) <= 12f
-            val u = (((pos.x - h.x) * dx + (pos.y - h.y) * dy) / lenSq).coerceIn(0f, 1f)
-            val projX = h.x + u * dx
-            val projY = h.y + u * dy
-            val dist = hypot(pos.x - projX, pos.y - projY)
-            val maxDist = (kotlin.math.sqrt(lenSq) * 0.12f).coerceIn(6f, 18f)
-            dist <= maxDist
-        }?.id
+        fun screenBones() = currentSkeleton.bones.map { ScreenBone(it.id, screen(it.headX, it.headY), screen(it.tailX, it.tailY)) }
+        fun hitJoint(pos: Offset): Pair<String, BoneEnd>? =
+            BoneHitTest.joint(screenBones(), pos, BoneHitTest.JOINT_RADIUS)?.let { (id, end) -> id to if (end == BoneJoint.HEAD) BoneEnd.HEAD else BoneEnd.TAIL }
+        fun hitBoneBody(pos: Offset): String? = BoneHitTest.body(screenBones(), pos, reachRatio = 0.12f)
         val subTool = editor.skeletonEditSubTool
         var draggedJoint by remember(viewport, subTool) { mutableStateOf<Pair<String, BoneEnd>?>(null) }
         var creationHead by remember(viewport, subTool) { mutableStateOf<Offset?>(null) }
