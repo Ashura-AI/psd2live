@@ -79,6 +79,9 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import io.github.psd2live.core.*
 import io.github.psd2live.i18n.tr
+import io.github.psd2live.core.SkeletonBone
+import io.github.psd2live.core.SkeletonRig
+import io.github.psd2live.core.SkeletonWeights
 import io.github.psd2live.ui.*
 import io.github.psd2live.ui.components.*
 import io.github.psd2live.ui.state.Keymap
@@ -1240,6 +1243,45 @@ internal fun BoxScope.CanvasEditorOverlay(
         fun hitJoint(pos: Offset): Pair<String, BoneEnd>? =
             BoneHitTest.joint(screenBones(), pos, BoneHitTest.JOINT_RADIUS)?.let { (id, end) -> id to if (end == BoneJoint.HEAD) BoneEnd.HEAD else BoneEnd.TAIL }
         fun hitBoneBody(pos: Offset): String? = BoneHitTest.body(screenBones(), pos, reachRatio = 0.12f)
+        // The selected bone's limits and blend band are handles on the canvas rather than fields in a panel.
+        fun handleBone(): SkeletonBone? = currentSkeleton.bone(editor.selectedBoneId ?: "")
+            ?.takeIf { editor.skeletonEditSubTool == SkeletonEditSubTool.EDIT && !it.role.anchor }
+        fun blendParent(bone: SkeletonBone): SkeletonBone? = lineage(currentSkeleton, bone).firstOrNull { !it.role.anchor }?.takeUnless { it.role.body }
+        /** The blend band's axis on screen, its shown half width and its largest, all in canvas pixels; null when the bone has no band. */
+        fun blendBand(bone: SkeletonBone): Triple<Offset, Float, Float>? {
+            val parent = blendParent(bone)
+            if (parent == null && !bone.role.body) return null
+            val axis = (if (parent != null) BoneHandles.axis(screen(parent.headX, parent.headY), screen(parent.tailX, parent.tailY))
+                else BoneHandles.axis(screen(bone.headX, bone.headY), screen(bone.tailX, bone.tailY))) ?: return null
+            val shown = if (parent != null) bone.blendWidth ?: SkeletonWeights.blendHalfWidth(bone, parent.length).toFloat() else SkeletonRig.waistBand(bone)
+            val limit = ((if (parent != null) minOf(bone.length, parent.length) else bone.length) * 0.45f).coerceAtLeast(1f)
+            return Triple(axis, shown.coerceIn(0f, limit), limit)
+        }
+        fun handlePoints(): List<Pair<BoneHandle, Offset>> {
+            val bone = handleBone() ?: return emptyList()
+            val head = screen(bone.headX, bone.headY)
+            val tail = screen(bone.tailX, bone.tailY)
+            val radius = BoneHandles.fanRadius((tail - head).getDistance())
+            return buildList {
+                add(BoneHandle.MIN_ANGLE to BoneHandles.limitPoint(head, tail, bone.direction, bone.minAngle, radius))
+                add(BoneHandle.MAX_ANGLE to BoneHandles.limitPoint(head, tail, bone.direction, bone.maxAngle, radius))
+                blendBand(bone)?.let { (axis, shown, _) -> add(BoneHandle.BLEND to head + axis * (shown * viewport.scale.toFloat())) }
+            }
+        }
+        fun axisScreenX(): Float = viewport.x(currentSkeleton.symmetryAxisX ?: (editor.model.canvasWidth / 2f)).toFloat()
+        fun hitHandle(pos: Offset): BoneHandle? =
+            handlePoints().lastOrNull { (_, p) -> (p - pos).getDistance() <= BoneHandles.GRAB_RADIUS }?.first
+        fun dragHandle(handle: BoneHandle, pos: Offset) {
+            if (handle == BoneHandle.AXIS) { editor.setBoneSymmetryAxis(viewport.canvasX(pos.x)); return }
+            val bone = handleBone() ?: return
+            val head = screen(bone.headX, bone.headY)
+            val tail = screen(bone.tailX, bone.tailY)
+            when (handle) {
+                BoneHandle.MIN_ANGLE -> editor.setBoneLimits(BoneHandles.limitFrom(head, tail, bone.direction, pos, max = false), bone.maxAngle)
+                BoneHandle.MAX_ANGLE -> editor.setBoneLimits(bone.minAngle, BoneHandles.limitFrom(head, tail, bone.direction, pos, max = true))
+                else -> blendBand(bone)?.let { (axis, _, limit) -> editor.setBoneBlendWidth(BoneHandles.blendFrom(head, axis, pos, viewport.scale.toFloat(), limit)) }
+            }
+        }
         val subTool = editor.skeletonEditSubTool
         var draggedJoint by remember(viewport, subTool) { mutableStateOf<Pair<String, BoneEnd>?>(null) }
         var creationHead by remember(viewport, subTool) { mutableStateOf<Offset?>(null) }
@@ -1248,6 +1290,7 @@ internal fun BoxScope.CanvasEditorOverlay(
         var pressPosition by remember { mutableStateOf(Offset.Zero) }
         var additiveSelection by remember { mutableStateOf(false) }
         var movingBones by remember(viewport, subTool) { mutableStateOf(false) }
+        var draggedHandle by remember(viewport, subTool) { mutableStateOf<BoneHandle?>(null) }
         var boxStart by remember(viewport, subTool) { mutableStateOf<Offset?>(null) }
         var boxEnd by remember(viewport, subTool) { mutableStateOf<Offset?>(null) }
         var moveBefore by remember { mutableStateOf<io.github.psd2live.core.SkeletonSpec?>(null) }
@@ -1285,10 +1328,13 @@ internal fun BoxScope.CanvasEditorOverlay(
                             }
                             SkeletonEditSubTool.BIND -> { boxStart = pressPosition; boxEnd = pos }
                             SkeletonEditSubTool.EDIT -> {
-                                draggedJoint = hitJoint(pressPosition)
-                                if (draggedJoint == null) {
+                                draggedHandle = hitHandle(pressPosition)
+                                if (draggedHandle == null) draggedJoint = hitJoint(pressPosition)
+                                if (draggedHandle == null && draggedJoint == null) {
                                     val id = hitBoneBody(pressPosition)
-                                    if (id != null) {
+                                    if (id == null && kotlin.math.abs(pressPosition.x - axisScreenX()) <= 6f) {
+                                        draggedHandle = BoneHandle.AXIS
+                                    } else if (id != null) {
                                         if (id !in editor.selectedBoneIds) editor.selectBone(id, additiveSelection)
                                         moveBefore = editor.skeletonDraft
                                         movingBones = true
@@ -1323,11 +1369,11 @@ internal fun BoxScope.CanvasEditorOverlay(
                             } else editor.selectBones(currentSkeleton.bonesInBox(viewport.canvasX(start.x), viewport.canvasY(start.y),
                                 viewport.canvasX(end.x), viewport.canvasY(end.y)), additiveSelection)
                         } }
-                        draggedJoint = null; movingBones = false; weightStrokeActive = false; moveBefore = null; boxStart = null; boxEnd = null; finishCreation()
+                        draggedJoint = null; draggedHandle = null; movingBones = false; weightStrokeActive = false; moveBefore = null; boxStart = null; boxEnd = null; finishCreation()
                     },
                     onDragCancel = {
                         moveBefore?.let(editor::restoreSkeletonDraft)
-                        draggedJoint = null; movingBones = false; weightStrokeActive = false; moveBefore = null; boxStart = null; boxEnd = null; clearCreation()
+                        draggedJoint = null; draggedHandle = null; movingBones = false; weightStrokeActive = false; moveBefore = null; boxStart = null; boxEnd = null; clearCreation()
                     },
                 ) { change, amount ->
                     if (subTool == SkeletonEditSubTool.WEIGHTS) {
@@ -1337,6 +1383,9 @@ internal fun BoxScope.CanvasEditorOverlay(
                             val steps = kotlin.math.ceil(amount.getDistance() / spacing).toInt().coerceIn(1, 64)
                             for (step in 1..steps) editor.paintSkeletonWeights(change.position - amount * (1f - step.toFloat() / steps), viewport)
                         }
+                        change.consume()
+                    } else if (draggedHandle != null) {
+                        dragHandle(draggedHandle!!, change.position)
                         change.consume()
                     } else if (creationHead != null) {
                         creationTail = change.position
@@ -1447,6 +1496,46 @@ internal fun BoxScope.CanvasEditorOverlay(
             for (bone in skeleton.bones.sortedBy { it.id in editor.selectedBoneIds }) {
                 drawCanvasBone(screen(bone.headX, bone.headY), screen(bone.tailX, bone.tailY), boneColor(bone.id), halo,
                     lit = bone.id in editor.selectedBoneIds, kind = bone.visualKind(), pinned = bone.id in skeleton.ikTargets)
+            }
+            if (subTool == SkeletonEditSubTool.EDIT) {
+                val axisX = axisScreenX()
+                drawLine(colors.textMuted.copy(alpha = if (draggedHandle == BoneHandle.AXIS) 0.9f else 0.35f), Offset(axisX, 0f), Offset(axisX, size.height),
+                    strokeWidth = 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 5f)))
+            }
+            handleBone()?.let { bone ->
+                val head = screen(bone.headX, bone.headY)
+                val tail = screen(bone.tailX, bone.tailY)
+                val radius = BoneHandles.fanRadius((tail - head).getDistance())
+                val points = handlePoints().toMap()
+                val low = points[BoneHandle.MIN_ANGLE]
+                val high = points[BoneHandle.MAX_ANGLE]
+                if (low != null && high != null) {
+                    // The fan the limb may sweep through its rest pose, between the two limit handles.
+                    val rest = Math.toDegrees(kotlin.math.atan2((tail.y - head.y).toDouble(), (tail.x - head.x).toDouble())).toFloat()
+                    val turns = listOf(bone.minAngle * bone.direction, bone.maxAngle * bone.direction)
+                    val start = rest + turns.min()
+                    val sweep = turns.max() - turns.min()
+                    if (sweep > 0.01f) {
+                        drawArc(colors.accent.copy(alpha = 0.14f), start, sweep, useCenter = true, topLeft = head - Offset(radius, radius), size = Size(radius * 2, radius * 2))
+                        drawArc(colors.accent.copy(alpha = 0.7f), start, sweep, useCenter = false, topLeft = head - Offset(radius, radius), size = Size(radius * 2, radius * 2), style = Stroke(1.2f))
+                    }
+                    drawLine(colors.accent.copy(alpha = 0.5f), head, low, strokeWidth = 1f)
+                    drawLine(colors.accent.copy(alpha = 0.5f), head, high, strokeWidth = 1f)
+                }
+                blendBand(bone)?.let { (axis, shown, _) ->
+                    val half = shown * viewport.scale.toFloat()
+                    val across = Offset(-axis.y, axis.x) * 7f
+                    for (sign in listOf(-1f, 1f)) {
+                        val p = head + axis * (half * sign)
+                        drawLine(colors.warning.copy(alpha = 0.8f), p - across, p + across, strokeWidth = 1.5f)
+                    }
+                    drawLine(colors.warning.copy(alpha = 0.35f), head - axis * half, head + axis * half, strokeWidth = 1f)
+                }
+                for ((handle, p) in points) {
+                    val tint = if (handle == BoneHandle.BLEND) colors.warning else colors.accent
+                    drawCircle(halo, 6.5f, p)
+                    drawCircle(if (draggedHandle == handle) Color.White else tint, 5f, p)
+                }
             }
             creationHead?.let { head -> creationTail?.let { tail ->
                 drawCanvasBone(head, tail, colors.accent, halo, lit = true)

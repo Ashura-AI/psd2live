@@ -14,14 +14,40 @@ import io.github.psd2live.ui.components.CompactNumberSpinner
 import io.github.psd2live.ui.components.CompactToggleChip
 import io.github.psd2live.ui.theme.LocalToolColors
 
+/**
+ * What a user reaches for with IK: pin the bone's tip so it can be dragged in Pose, release it, say which
+ * way the joint bends. The target itself is dragged on the canvas, so it has no coordinates here.
+ */
 @Composable
 internal fun SkeletonIkControls(editor: CanvasEditor) {
-    val spec = editor.skeletonDraft ?: editor.committedSkeleton ?: return
+    val spec = editor.currentSkeleton ?: return
     val bone = spec.bone(editor.selectedBoneId ?: "") ?: return
     val colors = LocalToolColors.current
     val settings = bone.ik
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(tr("skeleton.ik.settings", bone.name), color = colors.textPrimary, fontSize = 11.sp)
+        Text(tr("skeleton.ik.title"), color = colors.textPrimary, fontSize = 11.sp)
+        val bends = listOf(0 to tr("skeleton.ik.bend.auto"), 1 to tr("skeleton.ik.bend.clockwise"), -1 to tr("skeleton.ik.bend.counterclockwise"))
+        CompactDropdown(bends, bends.first { it.first == settings.bendDirection }, { editor.setSelectedBoneIk(settings.copy(bendDirection = it.first)) },
+            itemLabel = { it.second }, modifier = Modifier.fillMaxWidth())
+        if (editor.skeletonDraft == null) {
+            val target = spec.ikTargets[bone.id]
+            if (target == null) CompactButton(tr("skeleton.ik.pin"), { editor.pinSelectedBone() }, enabled = !bone.role.anchor, modifier = Modifier.fillMaxWidth())
+            else Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                CompactToggleChip(tr("skeleton.ik.enabled"), target.enabled, { editor.updateIkTarget(bone.id, target.copy(enabled = !target.enabled)) }, modifier = Modifier.weight(1f))
+                CompactButton(tr("skeleton.ik.release"), { editor.updateIkTarget(bone.id, null) }, modifier = Modifier.weight(1f))
+            }
+        }
+        Text(tr("skeleton.ik.hint"), color = colors.textMuted, fontSize = 10.sp)
+    }
+}
+
+/** The solver's exact numbers, rarely worth touching. */
+@Composable
+internal fun SkeletonIkAdvanced(editor: CanvasEditor) {
+    val spec = editor.currentSkeleton ?: return
+    val bone = spec.bone(editor.selectedBoneId ?: "") ?: return
+    val settings = bone.ik
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             CompactNumberSpinner(settings.chainLength.toDouble(), { editor.setSelectedBoneIk(settings.copy(chainLength = it.toInt())) },
                 min = 1.0, max = 32.0, unit = tr("skeleton.ik.chain"), modifier = Modifier.weight(1f))
@@ -30,26 +56,5 @@ internal fun SkeletonIkControls(editor: CanvasEditor) {
         }
         CompactNumberSpinner(settings.tolerancePx.toDouble(), { editor.setSelectedBoneIk(settings.copy(tolerancePx = it.toFloat())) },
             min = 0.001, max = 10.0, step = 0.01, decimals = 3, unit = tr("skeleton.ik.tolerance"), modifier = Modifier.fillMaxWidth())
-        val bends = listOf(0 to tr("skeleton.ik.bend.auto"), 1 to tr("skeleton.ik.bend.clockwise"), -1 to tr("skeleton.ik.bend.counterclockwise"))
-        CompactDropdown(bends, bends.first { it.first == settings.bendDirection }, { editor.setSelectedBoneIk(settings.copy(bendDirection = it.first)) },
-            itemLabel = { it.second }, modifier = Modifier.fillMaxWidth())
-        if (editor.skeletonDraft == null) {
-            val target = spec.ikTargets[bone.id]
-            if (target == null) CompactButton(tr("skeleton.ik.pin"), { editor.pinSelectedBone() }, enabled = !bone.role.anchor, modifier = Modifier.fillMaxWidth())
-            else {
-                CompactToggleChip(tr("skeleton.ik.enabled"), target.enabled, { editor.updateIkTarget(bone.id, target.copy(enabled = !target.enabled)) })
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    CompactNumberSpinner(target.x.toDouble(), { editor.updateIkTarget(bone.id, target.copy(x = it.toFloat())) },
-                        min = -100000.0, decimals = 1, unit = "X px", modifier = Modifier.weight(1f))
-                    CompactNumberSpinner(target.y.toDouble(), { editor.updateIkTarget(bone.id, target.copy(y = it.toFloat())) },
-                        min = -100000.0, decimals = 1, unit = "Y px", modifier = Modifier.weight(1f))
-                }
-                val posed = editor.posedBones().firstOrNull { it.bone.id == bone.id }
-                val error = posed?.let { kotlin.math.hypot(it.tailX - target.x, it.tailY - target.y) } ?: 0f
-                Text(tr("skeleton.ik.error", "%.2f".format(error)), color = if (error > settings.tolerancePx) colors.warning else colors.textMuted, fontSize = 10.sp)
-                CompactButton(tr("skeleton.ik.release"), { editor.updateIkTarget(bone.id, null) }, modifier = Modifier.fillMaxWidth())
-            }
-        }
-        Text(tr("skeleton.ik.hint"), color = colors.textMuted, fontSize = 10.sp)
     }
 }

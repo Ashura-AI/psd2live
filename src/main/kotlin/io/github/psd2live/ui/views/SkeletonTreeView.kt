@@ -100,11 +100,7 @@ private const val CHEVRON_WIDTH_DP = 10
 internal fun SkeletonTreeView(state: PSD2LiveState, viewModel: PSD2LiveViewModel) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	// The skeleton is drawn and edited on an edit canvas; a focused preview canvas hands over to one.
-	val editCanvas = state.activeCanvas.takeIf { it.mode == CanvasMode.EDIT }
-		?: state.activeWorkspace.canvases.firstOrNull { it.mode == CanvasMode.EDIT }
-		?: state.activeCanvas
-	val editor = viewModel.canvasEditorFor(editCanvas.id)
+	val editor = skeletonEditor(state, viewModel)
 	val draft = editor.skeletonDraft
 	// The authored skeleton, switched on or not: turning it off keeps the bones, so they stay listed.
 	val committed = state.rigEdits.skeleton?.takeIf { it.bones.isNotEmpty() }
@@ -254,7 +250,6 @@ internal fun SkeletonTreeView(state: PSD2LiveState, viewModel: PSD2LiveViewModel
 			}
 		}
 
-		BoneInspector(editor, Modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(rememberScrollState()))
 		if (draft != null) {
 			Row(
 				Modifier.fillMaxWidth().height(30.dp).background(colors.panelElevated)
@@ -270,7 +265,6 @@ internal fun SkeletonTreeView(state: PSD2LiveState, viewModel: PSD2LiveViewModel
 				CompactButton(text = tr("skeleton.panel.done"), onClick = { editor.finishSkeletonEdit() }, isPrimary = true, height = 22.dp)
 			}
 		} else {
-			SamplingSettings(shown, pointCounts, editor.selectedBoneId, viewModel)
 			val meshes = shown.bones.filterNot { it.role.anchor }.flatMap { it.drawableIds }.distinct().size
 			Text(
 				tr("skeleton.tree.summary", shown.bones.count { !it.role.anchor }, meshes),
@@ -458,74 +452,3 @@ private fun MeshRow(
 }
 
 private fun guideColor(muted: Color) = muted.copy(alpha = 0.4f)
-
-/** Project-wide skeleton key sampling, with counts read from the rebuilt rig. */
-@Composable
-private fun SamplingSettings(
-	spec: SkeletonSpec,
-	pointCounts: Map<String, Int>?,
-	selectedBoneId: String?,
-	viewModel: PSD2LiveViewModel,
-) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	val sampling = spec.sampling
-	fun change(next: SkeletonSampling) {
-		val current = viewModel.state.value.rigEdits.skeleton ?: spec
-		if (current.sampling != next) viewModel.setSkeleton(current.copy(sampling = next))
-	}
-	Row(
-		Modifier.fillMaxWidth().height(24.dp).background(colors.panelElevated)
-			.border(BorderStroke(1.dp, colors.divider)).padding(horizontal = 8.dp),
-		verticalAlignment = Alignment.CenterVertically,
-	) {
-		Text(tr("skeleton.sampling.title"), modifier = Modifier.weight(1f), color = colors.textPrimary,
-			style = typography.header.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold))
-		CompactButton(text = tr("skeleton.sampling.reset"), onClick = { change(SkeletonSampling()) },
-			enabled = sampling != SkeletonSampling(), height = 18.dp)
-	}
-	Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-		SettingRow(tr("skeleton.sampling.jointMesh"), sampling.jointMeshSegments.toString()) {
-			CompactSlider(value = sampling.jointMeshSegments.toFloat(), onValueChange = {
-				change(sampling.copy(jointMeshSegments = ((it / 2f).roundToInt() * 2).coerceIn(4, 32)))
-			}, onValueChangeStarted = { viewModel.beginEditorField("skeleton.sampling.jointMesh") },
-				onValueChangeFinished = { viewModel.endEditorField("skeleton.sampling.jointMesh") },
-				valueRange = 4f..32f, modifier = Modifier.weight(1f))
-		}
-		SettingRow(tr("skeleton.sampling.tolerance"), "%.2fpx".format(sampling.tolerancePx)) {
-			CompactSlider(value = sampling.tolerancePx, onValueChange = {
-				change(sampling.copy(tolerancePx = ((it * 20f).roundToInt() / 20f).coerceIn(SkeletonSampling.TOLERANCE_RANGE)))
-			}, onValueChangeStarted = { viewModel.beginEditorField("skeleton.sampling.tolerance") },
-				onValueChangeFinished = { viewModel.endEditorField("skeleton.sampling.tolerance") },
-				valueRange = SkeletonSampling.TOLERANCE_RANGE, modifier = Modifier.weight(1f))
-		}
-		SettingRow(tr("skeleton.sampling.step"), "%.1f°".format(sampling.minimumStepDegrees)) {
-			CompactSlider(value = sampling.minimumStepDegrees, onValueChange = {
-				change(sampling.copy(minimumStepDegrees = ((it * 2f).roundToInt() / 2f).coerceIn(SkeletonSampling.STEP_RANGE)))
-			}, onValueChangeStarted = { viewModel.beginEditorField("skeleton.sampling.step") },
-				onValueChangeFinished = { viewModel.endEditorField("skeleton.sampling.step") },
-				valueRange = SkeletonSampling.STEP_RANGE, modifier = Modifier.weight(1f))
-		}
-		SettingRow(tr("skeleton.sampling.max"), sampling.maxMeshKeyforms.toString()) {
-			CompactSlider(value = sampling.maxMeshKeyforms.toFloat(), onValueChange = {
-				change(sampling.copy(maxMeshKeyforms = ((it / 10f).roundToInt() * 10).coerceIn(SkeletonSampling.MESH_LIMIT_RANGE)))
-			}, onValueChangeStarted = { viewModel.beginEditorField("skeleton.sampling.max") },
-				onValueChangeFinished = { viewModel.endEditorField("skeleton.sampling.max") },
-				valueRange = SkeletonSampling.MESH_LIMIT_RANGE.first.toFloat()..SkeletonSampling.MESH_LIMIT_RANGE.last.toFloat(),
-				modifier = Modifier.weight(1f))
-		}
-		val countText = when {
-			!spec.enabled -> tr("skeleton.sampling.disabled")
-			pointCounts == null -> tr("skeleton.sampling.calculating")
-			else -> {
-				val total = pointCounts.values.sum()
-				val selected = selectedBoneId?.let(spec::bone)?.let { pointCounts[it.parameterId] }
-				if (selected == null) tr("skeleton.sampling.points", total)
-				else tr("skeleton.sampling.pointsSelected", total, selected)
-			}
-		}
-		Text(countText, color = colors.textMuted, style = typography.caption.copy(fontSize = 10.sp),
-			modifier = Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 2.dp))
-	}
-}
-

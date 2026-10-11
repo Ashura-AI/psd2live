@@ -110,10 +110,13 @@ internal fun InspectorPanelView(
     val overrideIssues = state.previewModel?.rig?.overrideIssues.orEmpty()
     var showAllOverrideIssues by remember { mutableStateOf(false) }
 
+    // The skeleton is a target of its own; the editor that holds its selection is the one the tree drives.
+    val boneEditor = skeletonEditor(state, viewModel)
     Column(modifier = modifier.fillMaxSize().background(colors.panelBackground)) {
         // What is being inspected, and on which canvas when there are several.
         PanelToolbar {
-            val selectedName = selectedDeformer?.name ?: selectedDrawable?.name
+            val selectedName = if (boneEditor.skeletonSelected) boneEditor.currentSkeleton?.bone(boneEditor.selectedBoneId ?: "")?.name
+                else selectedDeformer?.name ?: selectedDrawable?.name
             if (selectedName != null) {
                 PanelToolbarTitle(selectedName, modifier = Modifier.padding(start = 4.dp).weight(1f))
             } else {
@@ -147,6 +150,7 @@ internal fun InspectorPanelView(
                 Spacer(modifier = Modifier.height(6.dp))
             }
             when {
+                boneEditor.skeletonSelected && boneEditor.currentSkeleton != null -> BoneInspector(boneEditor, viewModel, state)
                 selectedDeformer is Deformer.Warp -> {
                     WarpDeformerInspector(
                         warp = selectedDeformer,
