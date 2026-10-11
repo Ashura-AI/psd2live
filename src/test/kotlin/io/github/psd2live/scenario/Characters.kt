@@ -39,6 +39,15 @@ internal object Characters {
 	}
 
 	/**
+	 * [figure] with a layer for a tail and one for wings that hold a few pixels each, the way a template with empty slots
+	 * does: tagged parts with nothing to put a bone on.
+	 */
+	fun withPlaceholders(): WorkspaceDocument = document(420, 420, figureParts(1f) + listOf(
+		Part("tail", 9, SemanticTag.TAIL, Side.NONE, box(400, 400, 406, 406)),
+		Part("wings", 10, SemanticTag.WINGS, Side.NONE, box(400, 400, 406, 406)),
+	), PipelineConfig(atlasSize = 512, generatePhysics = false, exportMoc3 = false))
+
+	/**
 	 * [figure] with a tail out of the hips. [curled]: a band to the right that turns up and runs back above itself,
 	 * the two strands 4 px apart on the canvas and far apart along the art. Otherwise a fish tail: a stalk to the right
 	 * that forks into an upper and a lower lobe with a notch between them.

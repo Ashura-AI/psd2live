@@ -26,10 +26,63 @@ import kotlin.test.assertTrue
 class FlexTailScenario {
 	@TempDir lateinit var temp: Path
 
-	@Test fun aCurledTailBendsOneStrandAlone() = Studio.run(temp, Characters.tailed(curled = true)) {
+	/**
+	 * The curled tail's chain laid along its band: out of the hips and along the lower strand, up the turn at the right
+	 * end in a short bone, and back along the upper strand. The skin is what these scenarios look at, so the chain is
+	 * given rather than proposed; [theProposedChainRunsAlongTheCurl] looks at the proposal.
+	 */
+	private fun Studio.layCurledChain() {
+		val base = skeleton()
+		val hips = base.bones.single { it.role == BoneRole.LOWER_BODY }
+		val tail = mesh("tail")
+		fun bone(index: Int, x0: Float, y0: Float, x1: Float, y1: Float) = SkeletonBone("tail_$index", "tail_$index",
+			if (index == 1) hips.id else "tail_${index - 1}", BoneRole.TAIL, Side.NONE, x0, y0, x1, y1,
+			if (index == 1) listOf(tail) else emptyList(), chainIndex = index, flex = true)
+		val curled = base.copy(bones = base.bones.filter { it.role != BoneRole.TAIL } + listOf(
+			bone(1, 210f, 248f, 263.88617f, 273.98047f), bone(2, 263.88617f, 273.98047f, 352.26425f, 270.26917f),
+			bone(3, 352.26425f, 270.26917f, 352.31488f, 250.47675f), bone(4, 352.31488f, 250.47675f, 278.79437f, 241.68338f)))
+		edit("lay the chain along the band", "skeleton_put", req("spec" to curled.toJson()))
+	}
+
+	@Test fun theProposedChainRunsAlongTheCurl() = Studio.run(temp, Characters.tailed(curled = true)) {
+		edit("apply the proposed skeleton", "skeleton_auto", req())
+		val tails = skeleton().bones.filter { it.role == BoneRole.TAIL }.sortedBy { it.chainIndex }
+		expect("chain", tails.size >= 3 && tails.all { it.flex }) { "the generated tail is not one flexible chain: $tails" }
+		expect("one chain", tails.zipWithNext().all { (a, b) -> b.parentId == a.id }) { "the generated tail forks or breaks: $tails" }
+		// Joints in the turns: the bones follow the band out along the lower strand, round the turn and back above it.
+		val drawn = positions(mesh("tail"))
+		val joints = tails.drop(1).map { it.headX to it.headY }
+		for ((x, y) in joints) {
+			val gap = (0 until drawn.size / 2).minOf { hypot(drawn[it * 2] - x, drawn[it * 2 + 1] - y) }
+			expect("on the art", gap < 8.0) { "a joint at ($x, $y) is $gap px from the drawing" }
+		}
+		expect("round the turn", tails.last().tailX < tails.first().tailX + 120f && tails.last().tailY < tails.first().tailY - 15f) {
+			"the chain does not come back above itself: $tails"
+		}
+	}
+
+	@Test fun theProposedChainForksWhereTheTailForks() = Studio.run(temp, Characters.tailed(Characters.TailShape.FORKED)) {
 		edit("apply the proposed skeleton", "skeleton_auto", req())
 		val tails = skeleton().bones.filter { it.role == BoneRole.TAIL }
-		expect("chain", tails.size >= 3 && tails.all { it.flex }) { "the generated tail is not one flexible chain: $tails" }
+		expect("flexible", tails.all { it.flex }) { "the generated tail is not flexible: $tails" }
+		val forks = tails.groupBy { it.parentId }.filterValues { it.size > 1 }
+		expect("one fork", forks.size == 1) { "the stalk should fork once into its two lobes: $tails" }
+		val (stalkEnd, lobes) = forks.entries.single()
+		expect("parameters", tails.map { it.parameterId }.toSet().size == tails.size) { "two bones drive one parameter: ${tails.map { it.parameterId }}" }
+		// The lobes reach out to the upper (390, 223) and lower (390, 319) tips, from the end of the stalk.
+		val tips = tails.filter { b -> tails.none { it.parentId == b.id } }.map { it.tailX to it.tailY }
+		expect("upper lobe", tips.any { (x, y) -> hypot(x - 390f, y - 223f) < 20f }) { "no bone reaches the upper lobe: $tips" }
+		expect("lower lobe", tips.any { (x, y) -> hypot(x - 390f, y - 319f) < 20f }) { "no bone reaches the lower lobe: $tips" }
+		val stalk = tails.single { it.id == stalkEnd }
+		expect("fork", hypot(stalk.tailX - 328f, stalk.tailY - 271f) < 24f) { "the fork joint (${stalk.tailX}, ${stalk.tailY}) is not at the end of the stalk" }
+		expect("lobes", lobes.all { it.headX == stalk.tailX && it.headY == stalk.tailY }) { "the lobes do not start at the fork: $lobes" }
+	}
+
+	@Test fun aCurledTailBendsOneStrandAlone() = Studio.run(temp, Characters.tailed(curled = true)) {
+		edit("apply the proposed skeleton", "skeleton_auto", req())
+		layCurledChain()
+		val tails = skeleton().bones.filter { it.role == BoneRole.TAIL }
+		expect("chain", tails.size >= 3 && tails.all { it.flex }) { "the tail is not one flexible chain: $tails" }
 		val tail = mesh("tail")
 		val drawn = positions(tail)
 		val last = tails.maxBy { it.chainIndex }
@@ -60,6 +113,7 @@ class FlexTailScenario {
 
 	@Test fun aStraightenedTailRestsStraightAndReturnsToItsDrawing() = Studio.run(temp, Characters.tailed(curled = true)) {
 		edit("apply the proposed skeleton", "skeleton_auto", req())
+		layCurledChain()
 		val tail = mesh("tail")
 		val drawn = positions(tail)
 		val uvs = puppet.drawables.single { it.id.raw == tail }.mesh!!.uvs
