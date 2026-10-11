@@ -28,6 +28,7 @@ import io.github.psd2live.ui.BoneHandles
 import io.github.psd2live.ui.CanvasEditor
 import io.github.psd2live.ui.SkeletonPalette
 import io.github.psd2live.ui.components.CompactButton
+import io.github.psd2live.ui.components.IkGuideColor
 import io.github.psd2live.ui.components.CompactCheckbox
 import io.github.psd2live.ui.components.CompactDropdown
 import io.github.psd2live.ui.components.CompactNumberSpinner
@@ -162,7 +163,16 @@ private fun IkSection(editor: CanvasEditor, spec: SkeletonSpec, bone: SkeletonBo
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val settings = bone.ik
-	Text(tr("skeleton.ik.guide"), color = colors.textMuted, style = typography.caption.copy(fontSize = 10.sp))
+	// What the pink drawing on the canvas means, in its own color.
+	Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+		for ((mark, key) in listOf("■" to "skeleton.ik.legend.pivot", "◎" to "skeleton.ik.legend.tip", "››" to "skeleton.ik.legend.chain")) {
+			Row(verticalAlignment = Alignment.CenterVertically) {
+				Text(mark, color = IkGuideColor, style = typography.caption.copy(fontSize = 12.sp))
+				Spacer(Modifier.width(3.dp))
+				Text(tr(key), color = colors.textMuted, style = typography.caption.copy(fontSize = 10.sp))
+			}
+		}
+	}
 	InspectorFormRow(tr("skeleton.ik.bend")) {
 		val bends = listOf(0 to tr("skeleton.ik.bend.auto"), 1 to tr("skeleton.ik.bend.clockwise"), -1 to tr("skeleton.ik.bend.counterclockwise"))
 		CompactDropdown(bends, bends.first { it.first == settings.bendDirection }, { editor.setSelectedBoneIk(settings.copy(bendDirection = it.first)) },

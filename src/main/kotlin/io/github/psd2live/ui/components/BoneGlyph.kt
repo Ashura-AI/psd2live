@@ -57,45 +57,42 @@ internal fun DrawScope.drawSingleBoneIcon(tint: Color, kind: BoneKind = BoneKind
 
 /** A bone icon: shaded octahedron with a solid head, in [tint] at icon scale. */
 internal fun DrawScope.drawBoneIcon(head: Offset, tail: Offset, tint: Color, stroke: Float, headRadius: Float, kind: BoneKind = BoneKind.LIMB) {
-	if (kind == BoneKind.FLEX) {
-		drawBeads(head, tail, 3, gap = 0.07f, width = 0.34f, tint, tint, tint.alpha * 0.45f, tint.alpha * 0.2f, stroke)
-		drawCircle(tint, headRadius, head)
-		return
-	}
 	val shape = when (kind) {
-		BoneKind.LIMB -> BoneShape.of(head, tail, shoulder = 0.24f, width = 0.16f)
-		BoneKind.FLEX -> null
+		BoneKind.LIMB, BoneKind.FLEX -> BoneShape.of(head, tail, shoulder = 0.24f, width = 0.16f)
 		BoneKind.BODY -> BoneShape.of(head, tail, shoulder = 0.34f, width = 0.24f)
 		BoneKind.ANCHOR -> BoneShape.of(head, tail, shoulder = 0.5f, width = 0.34f)
 	} ?: return
 	drawPath(shape.leftFacet(), tint.copy(alpha = tint.alpha * 0.45f))
 	drawPath(shape.outline(), tint, style = Stroke(stroke, join = StrokeJoin.Round))
+	if (kind == BoneKind.FLEX) drawFlexSpine(head, tail, hypot(tail.x - head.x, tail.y - head.y) * 0.1f, tint, stroke)
 	drawCircle(tint, headRadius, head)
 }
 
 /**
- * A flexible bone drawn as a chain of [count] beads - small diamonds with a [gap] between them, each [width] wide
- * as a fraction of its length - so it reads as a row of joints that bend, not as one rigid bone. Fractions are of
- * the whole bone's length; [facet] and [back] are the alphas of the two shaded faces.
+ * The mark of a flexible bone: a wave down its middle, [amplitude] to each side, tapering to nothing at both
+ * ends so it meets the joints cleanly. A plain bone is straight; this one is drawn as something that bends.
  */
-private fun DrawScope.drawBeads(
-	head: Offset, tail: Offset, count: Int, gap: Float, width: Float,
-	fill: Color, edge: Color, facet: Float, back: Float, stroke: Float,
-) {
+private fun DrawScope.drawFlexSpine(head: Offset, tail: Offset, amplitude: Float, color: Color, stroke: Float) {
 	val dx = tail.x - head.x
 	val dy = tail.y - head.y
-	val slot = 1f / count
-	for (i in 0 until count) {
-		val from = i * slot + gap * slot / 2f
-		val to = (i + 1) * slot - gap * slot / 2f
-		val h = Offset(head.x + dx * from, head.y + dy * from)
-		val t = Offset(head.x + dx * to, head.y + dy * to)
-		val shape = BoneShape.of(h, t, 0.5f, width) ?: continue
-		drawPath(shape.leftFacet(), fill.copy(alpha = facet))
-		drawPath(shape.rightFacet(), fill.copy(alpha = back))
-		drawPath(shape.outline(), edge, style = Stroke(stroke, join = StrokeJoin.Round))
+	val length = hypot(dx, dy)
+	if (length < 1e-3f) return
+	val nx = -dy / length
+	val ny = dx / length
+	val steps = 28
+	val path = Path()
+	for (i in 0..steps) {
+		val u = i.toFloat() / steps
+		val offset = amplitude * kotlin.math.sin(u * Math.PI * 3.0).toFloat() * kotlin.math.sin(u * Math.PI).toFloat()
+		val x = head.x + dx * u + nx * offset
+		val y = head.y + dy * u + ny * offset
+		if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
 	}
+	drawPath(path, color, style = Stroke(stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = StrokeJoin.Round))
 }
+
+/** The color IK is drawn in everywhere, distinct from the selection's accent and the blend band's yellow. */
+internal val IkGuideColor = Color(0xFFFF5C8A)
 
 /**
  * Shows what IK will do for the selected bone: the chain it may turn is laid over in [color], the root it pivots
@@ -108,11 +105,36 @@ internal fun DrawScope.drawIkGuide(joints: List<Offset>, color: Color, bendDirec
 		moveTo(joints[0].x, joints[0].y)
 		for (i in 1 until joints.size) lineTo(joints[i].x, joints[i].y)
 	}
-	drawPath(path, color.copy(alpha = 0.22f), style = Stroke(9f, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = StrokeJoin.Round))
-	drawPath(path, color.copy(alpha = 0.6f), style = Stroke(1.4f, join = StrokeJoin.Round,
-		pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f, 4f))))
+	// A broad glow under the chain, then its spine, so it stands out over the bones and the art alike.
+	drawPath(path, color.copy(alpha = 0.30f), style = Stroke(16f, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = StrokeJoin.Round))
+	drawPath(path, color.copy(alpha = 0.95f), style = Stroke(2.4f, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = StrokeJoin.Round))
+	// Chevrons along every bone point from the pivot to the tip: the way the pull travels down the chain.
+	for (i in 0 until joints.size - 1) {
+		val a = joints[i]; val b = joints[i + 1]
+		val length = hypot(b.x - a.x, b.y - a.y)
+		if (length < 14f) continue
+		val ux = (b.x - a.x) / length; val uy = (b.y - a.y) / length
+		val mid = Offset((a.x + b.x) / 2f, (a.y + b.y) / 2f)
+		val chevron = Path().apply {
+			moveTo(mid.x - ux * 4f - uy * 5f, mid.y - uy * 4f + ux * 5f)
+			lineTo(mid.x + ux * 4f, mid.y + uy * 4f)
+			lineTo(mid.x - ux * 4f + uy * 5f, mid.y - uy * 4f - ux * 5f)
+		}
+		drawPath(chevron, Color.White, style = Stroke(2f, cap = androidx.compose.ui.graphics.StrokeCap.Round, join = StrokeJoin.Round))
+	}
+	// Each joint the solver may turn is a ring.
+	for (i in 1 until joints.size - 1) drawCircle(color, 5f, joints[i], style = Stroke(2f))
+	// The pivot is pinned with a filled square: nothing above it moves.
 	val root = joints.first()
-	drawRect(color, androidx.compose.ui.geometry.Offset(root.x - 4f, root.y - 4f), androidx.compose.ui.geometry.Size(8f, 8f), style = Stroke(1.6f))
+	drawRect(color, Offset(root.x - 6f, root.y - 6f), androidx.compose.ui.geometry.Size(12f, 12f))
+	drawRect(Color.White, Offset(root.x - 6f, root.y - 6f), androidx.compose.ui.geometry.Size(12f, 12f), style = Stroke(1.2f))
+	// The tip is the handle IK drags: a reticle.
+	val tip = joints.last()
+	drawCircle(color, 10f, tip, style = Stroke(2.4f))
+	drawCircle(color, 3f, tip)
+	for ((cx, cy) in listOf(1f to 0f, -1f to 0f, 0f to 1f, 0f to -1f)) {
+		drawLine(color, Offset(tip.x + cx * 8f, tip.y + cy * 8f), Offset(tip.x + cx * 15f, tip.y + cy * 15f), strokeWidth = 2.4f)
+	}
 	if (bendDirection == 0 || joints.size < 3) return
 	// The arrow sweeps round the elbow in the direction the joint folds: clockwise on screen is positive.
 	val elbow = joints[joints.size - 2]
@@ -123,14 +145,14 @@ internal fun DrawScope.drawIkGuide(joints: List<Offset>, color: Color, bendDirec
 	drawArc(color, start, sweep, useCenter = false, topLeft = Offset(elbow.x - radius, elbow.y - radius),
 		size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2), style = Stroke(1.8f, cap = androidx.compose.ui.graphics.StrokeCap.Round))
 	val end = Math.toRadians((start + sweep).toDouble())
-	val tip = Offset(elbow.x + radius * kotlin.math.cos(end).toFloat(), elbow.y + radius * kotlin.math.sin(end).toFloat())
+	val arrowTip = Offset(elbow.x + radius * kotlin.math.cos(end).toFloat(), elbow.y + radius * kotlin.math.sin(end).toFloat())
 	// Tangent along the sweep, for the arrow head.
 	val tangent = Offset(-kotlin.math.sin(end).toFloat() * sign, kotlin.math.cos(end).toFloat() * sign)
 	val normal = Offset(-tangent.y, tangent.x)
 	val head = Path().apply {
-		moveTo(tip.x + tangent.x * 5f, tip.y + tangent.y * 5f)
-		lineTo(tip.x - tangent.x * 2f + normal.x * 4f, tip.y - tangent.y * 2f + normal.y * 4f)
-		lineTo(tip.x - tangent.x * 2f - normal.x * 4f, tip.y - tangent.y * 2f - normal.y * 4f)
+		moveTo(arrowTip.x + tangent.x * 5f, arrowTip.y + tangent.y * 5f)
+		lineTo(arrowTip.x - tangent.x * 2f + normal.x * 4f, arrowTip.y - tangent.y * 2f + normal.y * 4f)
+		lineTo(arrowTip.x - tangent.x * 2f - normal.x * 4f, arrowTip.y - tangent.y * 2f - normal.y * 4f)
 		close()
 	}
 	drawPath(head, color)
@@ -157,20 +179,14 @@ internal fun DrawScope.drawCanvasBone(
 	val tint = color.copy(alpha = color.alpha * strength)
 	val edge = if (lit) Color.White.copy(alpha = strength) else tint
 	if (length >= 6f) {
-		if (kind == BoneKind.FLEX && length >= 24f) {
-			// A chain of beads about 16px long each, as wide as a plain bone of the same length is.
-			val count = (length / 16f).roundToInt().coerceIn(2, 10)
-			val beadWidth = (if (lit) 6.5f else 5.5f) / (length / count)
-			drawBeads(head, tail, count, gap = 4f / (length / count), width = beadWidth, tint, edge,
-				(if (lit) 0.65f else 0.42f) * strength, (if (lit) 0.38f else 0.22f) * strength, if (lit) 1.8f else 1.2f)
-		} else {
-			val shoulder = (length * kind.shoulder).coerceIn(5f, 28f * kind.shoulder / 0.18f) / length
-			val width = (length * kind.width).coerceIn(3f, 12f * kind.width / 0.09f) / length
-			val shape = BoneShape.of(head, tail, shoulder, width)!!
-			drawPath(shape.leftFacet(), tint.copy(alpha = (if (lit) 0.65f else 0.42f) * strength))
-			drawPath(shape.rightFacet(), tint.copy(alpha = (if (lit) 0.38f else 0.22f) * strength))
-			drawPath(shape.outline(), edge, style = Stroke(if (lit) 1.8f else 1.2f, join = StrokeJoin.Round))
-		}
+		val shoulder = (length * kind.shoulder).coerceIn(5f, 28f * kind.shoulder / 0.18f) / length
+		val width = (length * kind.width).coerceIn(3f, 12f * kind.width / 0.09f) / length
+		val shape = BoneShape.of(head, tail, shoulder, width)!!
+		drawPath(shape.leftFacet(), tint.copy(alpha = (if (lit) 0.65f else 0.42f) * strength))
+		drawPath(shape.rightFacet(), tint.copy(alpha = (if (lit) 0.38f else 0.22f) * strength))
+		drawPath(shape.outline(), edge, style = Stroke(if (lit) 1.8f else 1.2f, join = StrokeJoin.Round))
+		// A flexible bone carries a wave down its spine, wide enough to read at any length.
+		if (kind == BoneKind.FLEX && length >= 18f) drawFlexSpine(head, tail, (length * 0.07f).coerceIn(2.5f, 7f) * (if (lit) 1.15f else 1f), edge, if (lit) 1.8f else 1.4f)
 	} else {
 		drawLine(edge, head, tail, strokeWidth = if (lit) 2.6f else 1.8f)
 	}

@@ -1494,7 +1494,7 @@ internal fun BoxScope.CanvasEditorOverlay(
                 currentSkeleton.bone(editor.selectedBoneId ?: "")?.takeIf { !it.role.anchor }?.let { effector ->
                     val limbIds = SkeletonRig.limbBones(currentSkeleton).mapTo(HashSet()) { it.id }
                     val chain = SkeletonRig.ikChain(currentSkeleton, effector, limbIds).asReversed()
-                    drawIkGuide(chain.map { screen(it.headX, it.headY) } + screen(effector.tailX, effector.tailY), colors.accent, effector.ik.bendDirection)
+                    drawIkGuide(chain.map { screen(it.headX, it.headY) } + screen(effector.tailX, effector.tailY), IkGuideColor, effector.ik.bendDirection)
                 }
             }
             for (bone in skeleton.bones.sortedBy { it.id in editor.selectedBoneIds }) {
@@ -2959,7 +2959,7 @@ private fun SkeletonPoseLayer(editor: CanvasEditor, viewport: CanvasViewport, pa
             val byId = bones.associateBy { it.bone.id }
             val chain = SkeletonRig.ikChain(spec, effector.bone, byId.keys).mapNotNull { byId[it.id] }.asReversed()
             if (chain.isNotEmpty()) drawIkGuide(chain.map { screen(it.headX, it.headY) } + screen(effector.tailX, effector.tailY),
-                colors.accent, effector.bone.ik.bendDirection)
+                IkGuideColor, effector.bone.ik.bendDirection)
         }
         for (posed in bones) {
             val lit = active?.boneId == posed.bone.id ||
