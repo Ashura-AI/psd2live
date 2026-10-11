@@ -74,7 +74,7 @@ def downloads(tag, repo, assets):
 	def tag(name):
 		k = kind(name)
 		system = "Linux" if k in ("deb", "tarball") else "Windows"
-		arch = ("ARM64" if system == "Windows" else "arm64") if is_arm64(name) else ("x64" if system == "Windows" else "amd64")
+		arch = "arm64" if is_arm64(name) else "x64"
 		text = f"{arch} {BADGE_LABEL[k]}" + (" + ffmpeg" if "-ffmpeg" in name else "")
 		if "-ffmpeg" in name:
 			logo = "ffmpeg"
@@ -85,8 +85,8 @@ def downloads(tag, repo, assets):
 	groups = [
 		("Windows x64", [a for a in win if not is_arm64(a[0]) and "-ffmpeg" not in a[0]]),
 		("Windows x64 + ffmpeg", [a for a in win if not is_arm64(a[0]) and "-ffmpeg" in a[0]]),
-		("Windows ARM64", [a for a in win if is_arm64(a[0])]),
-		("Linux amd64", [a for a in debs + tarballs if not is_arm64(a[0])]),
+		("Windows arm64", [a for a in win if is_arm64(a[0])]),
+		("Linux x64", [a for a in debs + tarballs if not is_arm64(a[0])]),
 		("Linux arm64", [a for a in debs + tarballs if is_arm64(a[0])]),
 	]
 	lines = ["## 下载 · Downloads", "", "| 平台 · Platform | 安装 · Setup | 免安装 · Portable |", "| :-- | :-- | :-- |"]

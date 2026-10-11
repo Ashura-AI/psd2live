@@ -47,11 +47,13 @@ macOS 打包暂缓，本工作流不构建。
 3. 按需勾选 `create_github_release`（默认开启；关闭时只生成构建产物）。
 4. 通过环境保护审批，等待 Windows 与 Linux 构建完成。
 5. 开启发布时，工作流会创建或更新标签 `v<version>` 的**正式**（非预发布）GitHub Release，附件为：
-   - `PSD2Live-<version>-windows-x86_64-portable.zip`
-   - `PSD2Live-<version>.exe`
-   - 以上两项另各有内置 ffmpeg 的版本：`PSD2Live-<version>-windows-x86_64-portable-ffmpeg.zip`、`PSD2Live-<version>-ffmpeg.exe`
-   - `PSD2Live-<version>-windows-arm64-portable.zip`、`PSD2Live-<version>-arm64.exe`：Windows ARM64，不含 Cubism（Live2D 未提供该平台的 Cubism Core），无 ffmpeg 版本
-   - `PSD2Live-<version>-linux-amd64.deb`、`PSD2Live-<version>-linux-arm64.deb`（arm64 用 SDK 中实验性的 Cubism Core），以及同内容的 `PSD2Live-<version>-linux-amd64.tar.gz`、`PSD2Live-<version>-linux-arm64.tar.gz`（app image，供没有 Deb 的发行版）
+   命名统一为 `PSD2Live-<version>-<系统>-<架构>[-<类型>][-ffmpeg].<扩展名>`：系统为 `windows` / `linux`，架构为 `x64` / `arm64`，Windows 的类型为 `setup`（安装包）/ `portable`（免安装）。
+   - `PSD2Live-<version>-windows-x64-setup.exe`、`PSD2Live-<version>-windows-x64-portable.zip`
+   - 以上两项另各有内置 ffmpeg 的版本：`PSD2Live-<version>-windows-x64-setup-ffmpeg.exe`、`PSD2Live-<version>-windows-x64-portable-ffmpeg.zip`
+   - `PSD2Live-<version>-windows-arm64-setup.exe`、`PSD2Live-<version>-windows-arm64-portable.zip`：Windows ARM64，不含 Cubism（Live2D 未提供该平台的 Cubism Core），无 ffmpeg 版本
+   - `PSD2Live-<version>-linux-x64.deb`、`PSD2Live-<version>-linux-arm64.deb`（arm64 用 SDK 中实验性的 Cubism Core），以及同内容的 `PSD2Live-<version>-linux-x64.tar.gz`、`PSD2Live-<version>-linux-arm64.tar.gz`（app image，供没有 Deb 的发行版）
+
+   3.4.0 及更早的版本沿用旧命名（如 `PSD2Live-<version>.exe`、`-windows-x86_64-portable.zip`、`-linux-amd64.deb`）。
 
 也可以直接推送标签 `v<version>` 触发同一工作流。两种入口选其一，避免重复运行完整的构建矩阵。
 

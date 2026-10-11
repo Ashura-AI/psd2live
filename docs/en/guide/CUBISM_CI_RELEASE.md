@@ -47,11 +47,13 @@ Prerequisites: the SDK zip is uploaded to the private repository, and the variab
 3. Keep `create_github_release` enabled unless you only want build artifacts.
 4. Approve the environment gate and wait for the Windows and Linux jobs.
 5. With publishing enabled, the workflow creates or updates tag `v<version>` as a **formal** (non-prerelease) GitHub Release with:
-   - `PSD2Live-<version>-windows-x86_64-portable.zip`
-   - `PSD2Live-<version>.exe`
-   - each of the two above also with ffmpeg included: `PSD2Live-<version>-windows-x86_64-portable-ffmpeg.zip`, `PSD2Live-<version>-ffmpeg.exe`
-   - `PSD2Live-<version>-windows-arm64-portable.zip`, `PSD2Live-<version>-arm64.exe`: Windows ARM64, without Cubism (Live2D ships no Cubism Core for it) and without an ffmpeg build
-   - `PSD2Live-<version>-linux-amd64.deb`, `PSD2Live-<version>-linux-arm64.deb` (arm64 uses the SDK's experimental Cubism Core), and the same contents as `PSD2Live-<version>-linux-amd64.tar.gz`, `PSD2Live-<version>-linux-arm64.tar.gz` (the app image, for distributions without Deb)
+   All named `PSD2Live-<version>-<os>-<arch>[-<kind>][-ffmpeg].<ext>`: os `windows` / `linux`, arch `x64` / `arm64`, and for Windows the kind `setup` (installer) / `portable`.
+   - `PSD2Live-<version>-windows-x64-setup.exe`, `PSD2Live-<version>-windows-x64-portable.zip`
+   - each of the two above also with ffmpeg included: `PSD2Live-<version>-windows-x64-setup-ffmpeg.exe`, `PSD2Live-<version>-windows-x64-portable-ffmpeg.zip`
+   - `PSD2Live-<version>-windows-arm64-setup.exe`, `PSD2Live-<version>-windows-arm64-portable.zip`: Windows ARM64, without Cubism (Live2D ships no Cubism Core for it) and without an ffmpeg build
+   - `PSD2Live-<version>-linux-x64.deb`, `PSD2Live-<version>-linux-arm64.deb` (arm64 uses the SDK's experimental Cubism Core), and the same contents as `PSD2Live-<version>-linux-x64.tar.gz`, `PSD2Live-<version>-linux-arm64.tar.gz` (the app image, for distributions without Deb)
+
+   3.4.0 and earlier keep the old names (such as `PSD2Live-<version>.exe`, `-windows-x86_64-portable.zip`, `-linux-amd64.deb`).
 
 Pushing tag `v<version>` triggers the same workflow. Use one entry point to avoid running the full matrix twice.
 

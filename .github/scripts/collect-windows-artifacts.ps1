@@ -1,10 +1,10 @@
-# Copies the Windows packages of the last Gradle packaging run into dist-artifacts/, named for the release:
-# PSD2Live-<version><suffix>.exe and PSD2Live-<version>-windows-x86_64-portable<suffix>.zip; an arm64 build is
-# PSD2Live-<version>-arm64<suffix>.exe and PSD2Live-<version>-windows-arm64-portable<suffix>.zip.
+# Copies the Windows packages of the last Gradle packaging run into dist-artifacts/, named for the release as every
+# asset is, PSD2Live-<version>-<os>-<arch>[-<kind>][<suffix>].<ext>:
+# PSD2Live-<version>-windows-<arch>-setup<suffix>.exe and PSD2Live-<version>-windows-<arch>-portable<suffix>.zip.
 param(
 	[Parameter(Mandatory = $true)][string]$Version,
 	[string]$Suffix = "",
-	[ValidateSet("x86_64", "arm64")][string]$Arch = "x86_64"
+	[ValidateSet("x64", "arm64")][string]$Arch = "x64"
 )
 $ErrorActionPreference = "Stop"
 $out = "dist-artifacts"
@@ -31,6 +31,6 @@ foreach ($type in "exe") {
 	}
 	$length = (Get-Item $installer).Length
 	if ($length -lt 5MB) { throw "$installer is only $length bytes" }
-	Copy-Item $installer (Join-Path $out "$installerName$Suffix.$type")
+	Copy-Item $installer (Join-Path $out "PSD2Live-$Version-windows-$Arch-setup$Suffix.$type")
 }
 Get-ChildItem $out | Format-Table Name, Length

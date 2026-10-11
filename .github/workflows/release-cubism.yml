@@ -301,11 +301,13 @@ jobs:
         include:
           - runner: ubuntu-22.04
             arch: amd64
+            asset_arch: x64
             platform: linux-x86_64
             core: Core/lib/linux/x86_64/libLive2DCubismCore.a
           # The SDK ships the Linux arm64 Core as experimental.
           - runner: ubuntu-22.04-arm
             arch: arm64
+            asset_arch: arm64
             platform: linux-arm64
             core: Core/lib/experimental/linux/arm64/libLive2DCubismCore.a
     env:
@@ -445,14 +447,14 @@ jobs:
             find build/compose/binaries -type f 2>/dev/null | head -50 || true
             exit 1
           fi
-          cp "$DEB" "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.arch }}.deb"
+          cp "$DEB" "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.asset_arch }}.deb"
           APP=build/compose/binaries/main/app
           test -x "$APP/PSD2Live/bin/PSD2Live"
-          tar -C "$APP" -czf "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.arch }}.tar.gz" PSD2Live
+          tar -C "$APP" -czf "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.asset_arch }}.tar.gz" PSD2Live
           ls -la "$OUT"
           # Soft file-existence smoke (no GUI): confirm package is non-empty
-          test -s "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.arch }}.deb"
-          test -s "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.arch }}.tar.gz"
+          test -s "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.asset_arch }}.deb"
+          test -s "$OUT/PSD2Live-${VERSION}-linux-${{ matrix.asset_arch }}.tar.gz"
           # Optional GUI smoke is intentionally skipped in v1 (brittle under xvfb).
           # Example if re-enabled later:
           # xvfb-run -a timeout 15s ./gradlew run -Ppsd2live.includeCubism=true || true
@@ -514,13 +516,13 @@ jobs:
           make_latest: true
           body_path: release-body.md
           files: |
-            release-assets/PSD2Live-${{ env.VERSION }}-windows-x86_64-portable.zip
-            release-assets/PSD2Live-${{ env.VERSION }}.exe
-            release-assets/PSD2Live-${{ env.VERSION }}-windows-x86_64-portable-ffmpeg.zip
-            release-assets/PSD2Live-${{ env.VERSION }}-ffmpeg.exe
+            release-assets/PSD2Live-${{ env.VERSION }}-windows-x64-setup.exe
+            release-assets/PSD2Live-${{ env.VERSION }}-windows-x64-portable.zip
+            release-assets/PSD2Live-${{ env.VERSION }}-windows-x64-setup-ffmpeg.exe
+            release-assets/PSD2Live-${{ env.VERSION }}-windows-x64-portable-ffmpeg.zip
+            release-assets/PSD2Live-${{ env.VERSION }}-windows-arm64-setup.exe
             release-assets/PSD2Live-${{ env.VERSION }}-windows-arm64-portable.zip
-            release-assets/PSD2Live-${{ env.VERSION }}-arm64.exe
-            release-assets/PSD2Live-${{ env.VERSION }}-linux-amd64.deb
+            release-assets/PSD2Live-${{ env.VERSION }}-linux-x64.deb
+            release-assets/PSD2Live-${{ env.VERSION }}-linux-x64.tar.gz
             release-assets/PSD2Live-${{ env.VERSION }}-linux-arm64.deb
-            release-assets/PSD2Live-${{ env.VERSION }}-linux-amd64.tar.gz
             release-assets/PSD2Live-${{ env.VERSION }}-linux-arm64.tar.gz
