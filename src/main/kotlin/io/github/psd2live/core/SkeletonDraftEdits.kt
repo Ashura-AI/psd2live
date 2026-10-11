@@ -117,7 +117,7 @@ object SkeletonDraftEdits {
             }
             is SkeletonDraftIntent.RemoveBone -> {
                 val removed = bone(intent.boneId)
-                require(!removed.role.anchor && !removed.role.body) { "Body and anchor bones cannot be removed" }
+                require(removed.role.limb) { "Body and anchor bones cannot be removed" }
                 SkeletonDraftResult(spec.withoutBone(removed.id), setOfNotNull(removed.parentId))
             }
             is SkeletonDraftIntent.Rename -> {
@@ -138,7 +138,7 @@ object SkeletonDraftEdits {
                 var next = spec
                 for (id in intent.boneIds) {
                     val current = next.bone(id)!!
-                    require(!current.role.body && !current.role.anchor) { "Body and anchor bones cannot be flexible" }
+                    require(current.role.limb) { "Body and anchor bones cannot be flexible" }
                     if (!intent.enabled && current.drawnBend != 0f) next = SkeletonFlex.unstraighten(next, id)
                     next = next.withBone(next.bone(id)!!.copy(flex = intent.enabled))
                 }

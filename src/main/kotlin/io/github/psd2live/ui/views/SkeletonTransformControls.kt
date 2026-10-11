@@ -55,8 +55,6 @@ private fun SkeletonStructureControls(editor: CanvasEditor) {
         CompactToggleChip(tr("skeleton.structure.transfer"), selected = editor.transferCopiedBoneBindings,
             onToggle = { editor.transferCopiedBoneBindings = !editor.transferCopiedBoneBindings })
         CompactButton(tr("skeleton.structure.copy"), onClick = { editor.duplicateSelectedBones() }, enabled = editor.selectedBoneIds.isNotEmpty(), modifier = Modifier.fillMaxWidth())
-        CompactNumberSpinner((spec.symmetryAxisX ?: editor.model.canvasWidth / 2f).toDouble(),
-            { editor.setBoneSymmetryAxis(it.toFloat()) }, min = -100000.0, decimals = 1, unit = tr("skeleton.structure.axis"), modifier = Modifier.fillMaxWidth())
         val mirrors = editor.boneMirrorDrawables()
         val selected = editor.selectedBoneIds + if (editor.transformBoneDescendants) editor.selectedBoneIds.flatMap(spec::descendants) else emptyList()
         val matched = spec.bones.filter { it.id in selected }.flatMap { it.drawableIds }.count { it in mirrors }
@@ -67,7 +65,7 @@ private fun SkeletonStructureControls(editor: CanvasEditor) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             CompactNumberSpinner(segments, { segments = it }, min = 2.0, max = 16.0, modifier = Modifier.weight(1f))
             CompactButton(tr("skeleton.structure.subdivide"), onClick = { editor.subdivideSelectedBone(segments.toInt()) }, modifier = Modifier.weight(1f),
-                enabled = bone != null && !bone.role.anchor && !bone.role.body && bone.length / segments >= 1f)
+                enabled = bone != null && bone.role.limb && bone.length / segments >= 1f)
         }
         CompactButton(tr("skeleton.structure.dissolve"), onClick = { editor.dissolveSelectedBone() }, modifier = Modifier.fillMaxWidth(),
             enabled = bone != null && io.github.psd2live.core.SkeletonAuthoring.canDissolve(spec, bone.id))

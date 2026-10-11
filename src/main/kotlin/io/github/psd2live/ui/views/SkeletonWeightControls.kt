@@ -52,8 +52,6 @@ internal fun SkeletonWeightControls(editor: CanvasEditor) {
         CompactDropdown(SkeletonWeightTransferMode.entries, editor.skeletonWeightTransferMode, { editor.skeletonWeightTransferMode = it },
             itemLabel = { tr("skeleton.weights.transfer.${it.name.lowercase()}") }, modifier = Modifier.fillMaxWidth())
         CompactToggleChip(tr("skeleton.weights.mirror"), editor.mirrorSkeletonWeights, { editor.mirrorSkeletonWeights = !editor.mirrorSkeletonWeights })
-        if (editor.mirrorSkeletonWeights) CompactNumberSpinner((spec.symmetryAxisX ?: editor.model.canvasWidth / 2f).toDouble(),
-            { editor.setBoneSymmetryAxis(it.toFloat()) }, min = -100000.0, decimals = 1, unit = tr("skeleton.structure.axis"), modifier = Modifier.fillMaxWidth())
         if (editor.skeletonWeightTransferMode == SkeletonWeightTransferMode.NEAREST)
             CompactNumberSpinner(editor.skeletonWeightTransferTolerance.toDouble(), { editor.skeletonWeightTransferTolerance = it.toFloat() },
                 min = 0.0, max = 10000.0, decimals = 1, unit = tr("skeleton.weights.distance"), modifier = Modifier.fillMaxWidth())

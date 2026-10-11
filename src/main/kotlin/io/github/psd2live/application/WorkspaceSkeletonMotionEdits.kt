@@ -50,7 +50,7 @@ internal object WorkspaceSkeletonMotionEdits {
                 val before = requireNotNull(current) { "Create a skeleton before removing bones" }
                 val id = request.requiredText("bone_id")
                 val bone = requireNotNull(before.bone(id)) { "Bone not found: $id" }
-                require(!bone.role.anchor && !bone.role.body) { "Body and anchor bones cannot be removed" }
+                require(bone.role.limb) { "Body and anchor bones cannot be removed" }
                 before.withoutBone(id)
             }
             else -> error("Unknown skeleton mode: $mode")

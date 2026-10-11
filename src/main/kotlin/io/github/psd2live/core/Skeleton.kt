@@ -49,6 +49,9 @@ enum class BoneRole(val anchor: Boolean, val minAngle: Float, val maxAngle: Floa
 
 	/** A torso half: limbs hang from it but skin apart from it, and a skeleton always keeps it. */
 	val body: Boolean get() = this == UPPER_BODY || this == LOWER_BODY
+
+	/** An ordinary limb-class bone: neither the anchor nor a torso half, so it may be removed, subdivided or made flexible. */
+	val limb: Boolean get() = !anchor && !body
 }
 
 /**

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -149,7 +150,7 @@ internal fun SkeletonTreeView(state: PSD2LiveState, viewModel: PSD2LiveViewModel
 				}
 				PanelIconButton(
 					onClick = { editor.removeSelectedBone() },
-					enabled = draft.bone(editor.selectedBoneId ?: "")?.role?.let { !it.anchor && !it.body } == true,
+					enabled = draft.bone(editor.selectedBoneId ?: "")?.role?.limb == true,
 					tooltip = tr("skeleton.panel.delete"),
 				) { IconTrash(Modifier.size(11.dp)) }
 				PanelToolbarSeparator()
@@ -253,9 +254,8 @@ internal fun SkeletonTreeView(state: PSD2LiveState, viewModel: PSD2LiveViewModel
 			}
 		}
 
+		BoneInspector(editor, Modifier.fillMaxWidth().heightIn(max = 300.dp).verticalScroll(rememberScrollState()))
 		if (draft != null) {
-			val selected = draft.bone(editor.selectedBoneId ?: "")
-			if (selected != null) BoneSettings(editor, draft, selected)
 			Row(
 				Modifier.fillMaxWidth().height(30.dp).background(colors.panelElevated)
 					.border(BorderStroke(1.dp, colors.divider)).padding(horizontal = 6.dp),
@@ -285,7 +285,7 @@ internal fun SkeletonTreeView(state: PSD2LiveState, viewModel: PSD2LiveViewModel
 }
 
 /** Every ancestor of [bone], nearest first. */
-private fun lineage(spec: SkeletonSpec, bone: SkeletonBone): List<SkeletonBone> =
+internal fun lineage(spec: SkeletonSpec, bone: SkeletonBone): List<SkeletonBone> =
 	generateSequence(bone.parentId?.let(spec::bone)) { it.parentId?.let(spec::bone) }.toList()
 
 private fun hasNextSibling(spec: SkeletonSpec, bone: SkeletonBone): Boolean =
@@ -459,76 +459,6 @@ private fun MeshRow(
 
 private fun guideColor(muted: Color) = muted.copy(alpha = 0.4f)
 
-/**
- * The selected bone's joint: how wide the blend band around its head is, and how far it may turn each
- * way. The band is automatic until moved; the limits are the range of the bone's parameter.
- */
-@Composable
-private fun BoneSettings(editor: CanvasEditor, spec: SkeletonSpec, bone: SkeletonBone) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	// A limb skins apart from the body bone it hangs from, so only a joint inside the limb has a blend band.
-	val parent = lineage(spec, bone).firstOrNull { !it.role.anchor }?.takeUnless { it.role.body }
-	Row(
-		Modifier.fillMaxWidth().height(24.dp).background(colors.panelElevated)
-			.border(BorderStroke(1.dp, colors.divider)).padding(horizontal = 8.dp),
-		verticalAlignment = Alignment.CenterVertically,
-	) {
-		IconBone(tint = SkeletonPalette.color(spec, bone.id), modifier = Modifier.size(12.dp), kind = bone.visualKind())
-		Spacer(Modifier.width(6.dp))
-		Text(bone.name, modifier = Modifier.weight(1f), color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
-			style = typography.header.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold))
-		Text(bone.parameterId, color = colors.textMuted, style = typography.monoSmall.copy(fontSize = 9.sp), maxLines = 1)
-	}
-	Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-		var name by remember(bone.id, bone.name) { mutableStateOf(bone.name) }
-		CompactTextField(value = name, onValueChange = { name = it }, placeholder = tr("skeleton.author.name"),
-			modifier = Modifier.fillMaxWidth(), onCommit = { editor.renameBone(bone.id, name) },
-			onFocusLost = { editor.renameBone(bone.id, name) })
-		val excluded = spec.descendants(bone.id) + bone.id
-		val parents = listOf("" to tr("skeleton.author.noParent")) + spec.bones.filterNot { it.id in excluded }.map { it.id to it.name }
-		CompactDropdown(items = parents, selectedItem = parents.first { it.first == (bone.parentId ?: "") },
-			onItemSelected = { editor.setSelectedBoneParent(it.first.takeIf(String::isNotEmpty)) }, itemLabel = { it.second },
-			modifier = Modifier.fillMaxWidth(), height = 24.dp)
-		CompactToggleChip(text = tr("skeleton.author.connected"), selected = spec.isConnected(bone.id), enabled = bone.parentId != null,
-			onToggle = { editor.setSelectedBoneParent(bone.parentId, !spec.isConnected(bone.id)) }, height = 22.dp)
-		if (!bone.role.body && !bone.role.anchor) {
-			Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-				CompactToggleChip(text = tr("skeleton.author.flex"), selected = bone.flex,
-					onToggle = { editor.setBonesFlex(!bone.flex) }, height = 22.dp)
-				if (bone.flex) {
-					val chain = generateSequence(bone) { b -> b.parentId?.let(spec::bone)?.takeIf { it.flex } }.last()
-					val straight = (spec.descendants(chain.id) + chain.id).any { spec.bone(it)?.drawnBend?.let { d -> d != 0f } == true }
-					CompactToggleChip(text = tr(if (straight) "skeleton.author.unstraighten" else "skeleton.author.straighten"), selected = straight,
-						onToggle = { editor.straightenSelectedChain(!straight) }, showCheckWhenSelected = false, height = 22.dp)
-				}
-			}
-		}
-		// A body half bends about the waist across a band of its own.
-		if (parent != null || bone.role.body) {
-			val limit = ((if (parent != null) minOf(bone.length, parent.length) else bone.length) * 0.45f).coerceAtLeast(1f)
-			val automatic = bone.blendWidth == null
-			val shown = if (parent != null) bone.blendWidth ?: SkeletonWeights.blendHalfWidth(bone, parent.length).toFloat()
-				else SkeletonRig.waistBand(bone)
-			SettingRow(tr("skeleton.panel.blend"), "${shown.roundToInt()}px") {
-				CompactSlider(value = shown.coerceIn(0f, limit), onValueChange = { editor.setBoneBlendWidth(it) },
-					valueRange = 0f..limit, modifier = Modifier.weight(1f))
-				Spacer(Modifier.width(4.dp))
-				CompactToggleChip(text = tr("skeleton.panel.auto"), selected = automatic, onToggle = { editor.setBoneBlendWidth(null) },
-					showCheckWhenSelected = false, height = 18.dp)
-			}
-		}
-		SettingRow(tr("skeleton.panel.min"), "${bone.minAngle.roundToInt()}°") {
-			CompactSlider(value = bone.minAngle, onValueChange = { editor.setBoneLimits(it, bone.maxAngle) },
-				valueRange = -180f..0f, modifier = Modifier.weight(1f))
-		}
-		SettingRow(tr("skeleton.panel.max"), "${bone.maxAngle.roundToInt()}°") {
-			CompactSlider(value = bone.maxAngle, onValueChange = { editor.setBoneLimits(bone.minAngle, it) },
-				valueRange = 0f..180f, modifier = Modifier.weight(1f))
-		}
-	}
-}
-
 /** Project-wide skeleton key sampling, with counts read from the rebuilt rig. */
 @Composable
 private fun SamplingSettings(
@@ -599,16 +529,3 @@ private fun SamplingSettings(
 	}
 }
 
-/** A property row: muted label, the control, and the value right-aligned in a fixed column. */
-@Composable
-private fun SettingRow(label: String, value: String, control: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
-		Text(label, color = colors.textMuted, style = typography.caption.copy(fontSize = 9.5.sp), maxLines = 1,
-			overflow = TextOverflow.Ellipsis, modifier = Modifier.width(56.dp))
-		control()
-		Text(value, color = colors.textPrimary, style = typography.monoSmall.copy(fontSize = 10.sp), textAlign = TextAlign.End,
-			maxLines = 1, modifier = Modifier.width(42.dp))
-	}
-}

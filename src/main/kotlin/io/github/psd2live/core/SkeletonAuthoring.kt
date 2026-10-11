@@ -68,7 +68,7 @@ object SkeletonAuthoring {
     fun subdivide(spec: SkeletonSpec, id: String, segments: Int): Result {
         require(segments in 2..16)
         val source = spec.bone(id) ?: return Result(spec, emptySet())
-        require(!source.role.anchor && !source.role.body && source.length / segments >= 1f) { "Bone cannot be subdivided" }
+        require(source.role.limb && source.length / segments >= 1f) { "Bone cannot be subdivided" }
         val used = spec.bones.mapTo(mutableSetOf()) { it.id }
         val ids = listOf(id) + List(segments - 1) { fresh(used) }
         fun x(t: Float) = source.headX + (source.tailX - source.headX) * t
@@ -98,7 +98,7 @@ object SkeletonAuthoring {
     fun canDissolve(spec: SkeletonSpec, id: String): Boolean {
         val child = spec.bone(id) ?: return false
         val parent = spec.bone(child.parentId ?: "") ?: return false
-        return !child.role.anchor && !child.role.body && !parent.role.anchor && !parent.role.body &&
+        return child.role.limb && parent.role.limb &&
             spec.isConnected(id) && spec.children(parent.id).size == 1 && child.drawnBend == 0f &&
             kotlin.math.hypot(child.tailX - parent.headX, child.tailY - parent.headY) >= 1f
     }

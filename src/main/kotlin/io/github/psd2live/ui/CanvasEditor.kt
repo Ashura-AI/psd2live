@@ -138,7 +138,10 @@ internal enum class SkeletonEditSubTool(val labelKey: String, val hintKey: Strin
     NEW_BONE("skeleton.tool.new", "skeleton.tool.new.hint"),
     EXTRUDE("skeleton.tool.extrude", "skeleton.tool.extrude.hint"),
     BIND("skeleton.tool.bind", "skeleton.tool.bind.hint"),
-    WEIGHTS("skeleton.tool.weights", "skeleton.tool.weights.hint"),
+    WEIGHTS("skeleton.tool.weights", "skeleton.tool.weights.hint");
+
+    /** Whether the tool works on the bones' own geometry, so the inspector offers their numeric transforms. */
+    val editsBones: Boolean get() = this != BIND && this != WEIGHTS
 }
 
 internal enum class SkeletonPoseSubTool(val labelKey: String) {
@@ -448,6 +451,9 @@ internal class CanvasEditor(
 	var mirrorSkeletonWeights by mutableStateOf(false)
 	var skeletonWeightBoneMapping by mutableStateOf<Map<String, String>>(emptyMap())
 		private set
+
+	/** The armature the panels show: the edit in progress, else the authored one. */
+	val currentSkeleton: io.github.psd2live.core.SkeletonSpec? get() = skeletonDraft ?: committedSkeleton
 
 	/** The authored armature, enabled or not, once it has bones. */
 	val committedSkeleton: io.github.psd2live.core.SkeletonSpec?
@@ -808,7 +814,7 @@ internal class CanvasEditor(
 	/** Makes the selected bones flexible chain segments, or rigid again. */
 	fun setBonesFlex(enabled: Boolean) {
 		val draft = skeletonDraft ?: return
-		val ids = selectedBoneIds.filter { draft.bone(it)?.let { b -> !b.role.body && !b.role.anchor } == true }.toSet()
+		val ids = selectedBoneIds.filter { draft.bone(it)?.let { b -> b.role.limb } == true }.toSet()
 		if (ids.isEmpty()) return
 		editSkeletonDraft(SkeletonDraftIntent.Flex(ids, enabled))
 	}

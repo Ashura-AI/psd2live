@@ -540,7 +540,6 @@ internal fun ToolDetailsView(
                             color = colors.textMuted,
                         )
                         SkeletonSavedPoseControls(editor)
-                        SkeletonIkControls(editor)
                     }
                 }
                 CanvasTool.SKELETON_EDIT -> {
@@ -552,8 +551,7 @@ internal fun ToolDetailsView(
                         )
                         if (editor.skeletonEditSubTool == SkeletonEditSubTool.BIND) SkeletonBindingControls(editor)
                         else if (editor.skeletonEditSubTool == SkeletonEditSubTool.WEIGHTS) SkeletonWeightControls(editor)
-                        else SkeletonTransformControls(editor)
-                        SkeletonIkControls(editor)
+                        else Text(tr("skeleton.inspector.hint"), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textMuted)
                     }
                 }
                 CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER,
