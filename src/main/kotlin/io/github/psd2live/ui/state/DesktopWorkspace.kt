@@ -532,6 +532,9 @@ class DesktopWorkspace(
     private val sourceImporter = WorkspaceSourceImporter(runtime, { document -> previewBuilder.build(document) })
     private val cmo3Importer = WorkspaceCmo3Importer(runtime, { document, current -> previewBuilder.build(document, current) })
     private fun runtimeModel(): io.github.psd2live.core.RigPreviewModel? = runtime.state.value.capture?.model
+
+    /** The committed HEAD, read without the runtime lock. */
+    internal fun currentHistoryHead(): String? = runtime.state.value.capture?.historyHead
     internal fun attachCurrentWorkspace() {
         if (viewModel.state.value.analysis != null) runBlocking { importedPsd() }
     }

@@ -5537,7 +5537,13 @@ class PSD2LiveViewModel : AutoCloseable {
 	}
 
 	fun updateHistorySnapshot(snapshot: WorkspaceHistorySnapshot) {
-		updateState { it.copy(historySnapshot = snapshot, projectDirty = it.projectDirty || (it.historySnapshot != null && it.historySnapshot.headNodeId != snapshot.headNodeId), projectEditVersion = it.projectEditVersion + if (it.historySnapshot?.headNodeId != snapshot.headNodeId) 1 else 0) }
+		// Commits publish from several threads: a snapshot read before a later commit must not land after it.
+		val backend = workspaceBackend as? DesktopWorkspace
+		updateState {
+			val head = backend?.currentHistoryHead()
+			if (head != null && head != snapshot.headNodeId) return@updateState it
+			it.copy(historySnapshot = snapshot, projectDirty = it.projectDirty || (it.historySnapshot != null && it.historySnapshot.headNodeId != snapshot.headNodeId), projectEditVersion = it.projectEditVersion + if (it.historySnapshot?.headNodeId != snapshot.headNodeId) 1 else 0)
+		}
 	}
 
 	fun selectHistoryNode(nodeId: String?) {
