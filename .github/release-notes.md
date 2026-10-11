@@ -1,22 +1,22 @@
-自动骨架更准确：沿网格识别肢体，尾巴和翅膀可在分叉处分支，肩、髋、肘、膝按人体结构校正；下载文件统一命名。
+修复版本：柔性骨骼弯曲与拉直不再出现波纹；切换历史版本时不再被迟到的预览重建覆盖。
 
 ## 主要更新
 
-### 改进
+### 修复
 
-- **自动骨架更准确**：尾巴和翅膀在持续分叉处分支（如鱼尾、双尾），主干沿较粗的分支走；身体框架取自实际网格，忽略空的模板图层；肩膀落在手臂末端，隐藏的髋部按脊柱对称补出；肩、髋、肘、膝的位置与比例按人体结构校正。
-- **下载文件统一命名**：`PSD2Live-<版本>-<系统>-<架构>[-<类型>][-ffmpeg]`，安装包带 `setup`，架构统一为 `x64` / `arm64`。
+- **柔性骨骼弯曲与拉直不再出现波纹**：拉直前先把骨链关节拟合到图形中线，拉直后不再残留偏移；关节处改为平滑圆角弯曲，关节前的图形不再朝弯曲反方向甩出。
+- **撤销、重做与预览重建冲突**：预览重建尚未完成时切换历史版本，以切换为准，不再被迟到的重建结果覆盖。
 
 <details>
 <summary>English</summary>
 
-The auto skeleton is more accurate: it reads limbs through the mesh, forks tails and wings at a branch, and holds shoulders, hips, elbows and knees to human placement. Download files share one naming scheme.
+A fix release: flexible bones bend and straighten without waves, and a history checkout is no longer overwritten by a late preview rebuild.
 
 ## Highlights
 
-### Improvements
+### Fixes
 
-- **More accurate auto skeleton**: tails and wings fork at a persistent branch (flukes, second tails), the trunk following the heavier branch; the body frame comes from the meshes and empty template layers are ignored; shoulders sit at the arm's end, hidden hips are mirrored about the spine; shoulders, hips, elbows and knees are held to human placement and proportion.
-- **One naming scheme for downloads**: `PSD2Live-<version>-<os>-<arch>[-<kind>][-ffmpeg]`, installers marked `setup`, architectures `x64` / `arm64`.
+- **Flexible bones bend and straighten without waves**: straightening first fits the chain's joints to the middle of the art, so no offset is left behind; joints bend as smooth rounded corners, and the art before a joint no longer swings out against the turn.
+- **Undo, redo and preview rebuilds**: switching history versions while a preview rebuild is still running now wins, instead of being overwritten by the late rebuild.
 
 </details>
