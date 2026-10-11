@@ -16,12 +16,13 @@ import sys
 from urllib.parse import quote
 
 WINDOWS_LOGO = "data:image/svg+xml;base64," + base64.b64encode(
-	b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="white">'
-	b'<rect x="0" y="0" width="7.5" height="7.5"/><rect x="8.5" y="0" width="7.5" height="7.5"/>'
-	b'<rect x="0" y="8.5" width="7.5" height="7.5"/><rect x="8.5" y="8.5" width="7.5" height="7.5"/></svg>'
+	b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white">'
+	b'<rect x="2" y="2" width="9.5" height="9.5" rx="1"/><rect x="12.5" y="2" width="9.5" height="9.5" rx="1"/>'
+	b'<rect x="2" y="12.5" width="9.5" height="9.5" rx="1"/><rect x="12.5" y="12.5" width="9.5" height="9.5" rx="1"/></svg>'
 ).decode()
 
-COLORS = {"installer": "0078D4", "portable": "5B5FC7", "ffmpeg": "2E7D32", "deb": "A81D33", "tarball": "5C6370"}
+COLORS = {"exe": "0078D4", "msi": "0078D4", "zip": "6F42C1", "ffmpeg": "2E7D32", "deb": "D70A53", "tarball": "E95420"}
+BADGE_LABEL = {"exe": "EXE", "msi": "MSI", "zip": "ZIP", "deb": "DEB", "tarball": "TAR.GZ"}
 
 
 def esc(text):
@@ -65,43 +66,40 @@ def version_tuple(tag):
 def downloads(tag, repo, assets):
 	base = f"https://github.com/{repo}/releases/download/{tag}/"
 	order = {"exe": 0, "msi": 1, "zip": 2}
-	label = {"exe": "Windows EXE", "msi": "Windows MSI", "zip": "Portable ZIP"}
 	win = sorted((a for a in assets if kind(a[0]) in order), key=lambda a: order[kind(a[0])])
 	ffmpeg = [a for a in win if "-ffmpeg" in a[0]]
 	debs = [a for a in assets if kind(a[0]) == "deb"]
 	tarballs = [a for a in assets if kind(a[0]) == "tarball"]
 
-	def win_badges(items, with_ffmpeg):
-		out = []
-		for name, size in items:
-			k = kind(name)
-			text = label[k] + (" + ffmpeg" if with_ffmpeg else "")
-			color = COLORS["ffmpeg"] if with_ffmpeg else COLORS["portable" if k == "zip" else "installer"]
-			logo = "ffmpeg" if with_ffmpeg else WINDOWS_LOGO
-			out.append(badge(text, size_text(size), color, logo, base + quote(name), name))
-		return " ".join(out)
+	def tag(name):
+		k = kind(name)
+		system = "Linux" if k in ("deb", "tarball") else "Windows"
+		arch = ("ARM64" if system == "Windows" else "arm64") if is_arm64(name) else ("x64" if system == "Windows" else "amd64")
+		text = f"{arch} {BADGE_LABEL[k]}" + (" + ffmpeg" if "-ffmpeg" in name else "")
+		if "-ffmpeg" in name:
+			logo = "ffmpeg"
+		else:
+			logo = {"deb": "debian", "tarball": "linux"}.get(k, WINDOWS_LOGO)
+		return text, ("ffmpeg" if "-ffmpeg" in name else k), logo
 
-	lines = ["## 下载 · Downloads", ""]
-	for arch, arm in (("x86_64", False), ("ARM64", True)):
-		items = [a for a in win if is_arm64(a[0]) == arm]
-		if not items:
+	groups = [
+		("Windows x64", [a for a in win if not is_arm64(a[0]) and "-ffmpeg" not in a[0]]),
+		("Windows x64 + ffmpeg", [a for a in win if not is_arm64(a[0]) and "-ffmpeg" in a[0]]),
+		("Windows ARM64", [a for a in win if is_arm64(a[0])]),
+		("Linux amd64", [a for a in debs + tarballs if not is_arm64(a[0])]),
+		("Linux arm64", [a for a in debs + tarballs if is_arm64(a[0])]),
+	]
+	lines = ["## 下载 · Downloads", "", "| 平台 · Platform | 安装 · Setup | 免安装 · Portable |", "| :-- | :-- | :-- |"]
+	for title, group in groups:
+		if not group:
 			continue
-		lines += [f"**Windows** {arch}", ""]
-		plain_items = [a for a in items if "-ffmpeg" not in a[0]]
-		ffmpeg_items = [a for a in items if "-ffmpeg" in a[0]]
-		if plain_items:
-			lines += [win_badges(plain_items, False), ""]
-		if ffmpeg_items:
-			lines += [win_badges(ffmpeg_items, True), ""]
-	for arch, arm in (("amd64", False), ("arm64", True)):
-		items = [a for a in debs if is_arm64(a[0]) == arm]
-		packed = [a for a in tarballs if is_arm64(a[0]) == arm]
-		if items or packed:
-			lines += [f"**Linux** {arch}", ""]
-			badges = [badge("Linux DEB", size_text(s), COLORS["deb"], "debian", base + quote(n), n) for n, s in items]
-			badges += [badge("Linux tar.gz", size_text(s), COLORS["tarball"], "linux", base + quote(n), n) for n, s in packed]
-			lines += [" ".join(badges), ""]
-
+		cells = {"setup": [], "portable": []}
+		for name, size in group:
+			text, color, logo = tag(name)
+			col = "portable" if kind(name) in ("zip", "tarball") else "setup"
+			cells[col].append(badge(text, size_text(size), COLORS[color], logo, base + quote(name), name))
+		lines.append(f"| **{title}** | {' '.join(cells['setup'])} | {' '.join(cells['portable'])} |")
+	lines.append("")
 	notes = []
 	if ffmpeg:
 		notes.append(("带 ffmpeg 的包可直接导出视频和动图，其余包需自行安装 ffmpeg。",
