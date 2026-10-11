@@ -813,6 +813,21 @@ internal class CanvasEditor(
 		editSkeletonDraft(SkeletonDraftIntent.BlendWidth(bone.id, width))
 	}
 
+	/** Makes the selected bones flexible chain segments, or rigid again. */
+	fun setBonesFlex(enabled: Boolean) {
+		val draft = skeletonDraft ?: return
+		val ids = selectedBoneIds.filter { draft.bone(it)?.let { b -> !b.role.body && !b.role.anchor } == true }.toSet()
+		if (ids.isEmpty()) return
+		editSkeletonDraft(SkeletonDraftIntent.Flex(ids, enabled))
+	}
+
+	/** Straightens the selected bone's flexible chain, or bends it back to the drawing. */
+	fun straightenSelectedChain(enabled: Boolean) {
+		val draft = skeletonDraft ?: return
+		val bone = draft.bone(selectedBoneId ?: return)?.takeIf { it.flex } ?: return
+		editSkeletonDraft(SkeletonDraftIntent.Straighten(bone.id, enabled))
+	}
+
 	/** The selected bone's joint limits in parameter degrees; each is kept on its own side of rest. */
 	fun setBoneLimits(min: Float, max: Float) {
 		val draft = skeletonDraft ?: return

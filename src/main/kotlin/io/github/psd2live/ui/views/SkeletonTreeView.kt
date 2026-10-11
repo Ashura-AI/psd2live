@@ -491,6 +491,18 @@ private fun BoneSettings(editor: CanvasEditor, spec: SkeletonSpec, bone: Skeleto
 			modifier = Modifier.fillMaxWidth(), height = 24.dp)
 		CompactToggleChip(text = tr("skeleton.author.connected"), selected = spec.isConnected(bone.id), enabled = bone.parentId != null,
 			onToggle = { editor.setSelectedBoneParent(bone.parentId, !spec.isConnected(bone.id)) }, height = 22.dp)
+		if (!bone.role.body && !bone.role.anchor) {
+			Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+				CompactToggleChip(text = tr("skeleton.author.flex"), selected = bone.flex,
+					onToggle = { editor.setBonesFlex(!bone.flex) }, height = 22.dp)
+				if (bone.flex) {
+					val chain = generateSequence(bone) { b -> b.parentId?.let(spec::bone)?.takeIf { it.flex } }.last()
+					val straight = (spec.descendants(chain.id) + chain.id).any { spec.bone(it)?.drawnBend?.let { d -> d != 0f } == true }
+					CompactToggleChip(text = tr(if (straight) "skeleton.author.unstraighten" else "skeleton.author.straighten"), selected = straight,
+						onToggle = { editor.straightenSelectedChain(!straight) }, showCheckWhenSelected = false, height = 22.dp)
+				}
+			}
+		}
 		// A body half bends about the waist across a band of its own.
 		if (parent != null || bone.role.body) {
 			val limit = ((if (parent != null) minOf(bone.length, parent.length) else bone.length) * 0.45f).coerceAtLeast(1f)

@@ -28,6 +28,8 @@ internal object WorkspaceSkeletonDraftSchemas {
         intent("rename", mapOf("bone_id" to s.handle(), "name" to s.handle())),
         intent("parent", mapOf("bone_id" to s.handle(), "parent_id" to s.handle(), "connect" to s.boolean()), setOf("bone_id")),
         intent("blend_width", mapOf("bone_id" to s.handle(), "width" to s.number(0)), setOf("bone_id")),
+        intent("flex", mapOf("bone_ids" to bones, "enabled" to s.boolean())),
+        intent("straighten", mapOf("bone_id" to s.handle(), "enabled" to s.boolean(), "pose_name" to s.string()), setOf("bone_id")),
         intent("limits", mapOf("bone_id" to s.handle(), "min" to s.number(-180, 0), "max" to s.number(0, 180))),
         intent("ik", mapOf("bone_id" to s.handle(), "settings" to s.obj(mapOf("chainLength" to s.integer(1, 32),
             "iterations" to s.integer(1, 256), "tolerancePx" to s.number(0.001, 10), "bendDirection" to s.integer(-1, 1)), emptySet()))),
@@ -82,6 +84,9 @@ internal object WorkspaceSkeletonDraftSchemas {
             "rename" -> SkeletonDraftIntent.Rename(input.text("bone_id"), input.text("name"))
             "parent" -> SkeletonDraftIntent.Parent(input.text("bone_id"), input["parent_id"]?.jsonPrimitive?.content, bool("connect"))
             "blend_width" -> SkeletonDraftIntent.BlendWidth(input.text("bone_id"), input["width"]?.jsonPrimitive?.float)
+            "flex" -> SkeletonDraftIntent.Flex(ids("bone_ids"), bool("enabled"))
+            "straighten" -> SkeletonDraftIntent.Straighten(input.text("bone_id"), input["enabled"]?.jsonPrimitive?.boolean ?: true,
+                input["pose_name"]?.jsonPrimitive?.content)
             "limits" -> SkeletonDraftIntent.Limits(input.text("bone_id"), number("min"), number("max"))
             "ik" -> SkeletonDraftIntent.Ik(input.text("bone_id"), SkeletonIkSettings.fromJson(input.getValue("settings").jsonObject))
             "bind" -> SkeletonDraftIntent.Bind(ids("drawable_ids"), input["bone_id"]?.jsonPrimitive?.content)
@@ -126,7 +131,7 @@ internal fun registerSkeletonDraftOperations(registry: WorkspaceOperationRegistr
         session(port.skeletonDraft(request.text("session_id")))
     }
     registry.register(WorkspaceOperationDefinition("skeleton_draft_edit",
-        "Apply 1..128 edits to a private skeleton draft in order, all or none: batch transform, joint moves, copy or mirror (symmetric partners and opposite-side meshes), subdivide, dissolve, optional tail/wing chains, bone creation and removal, renaming, parenting, blend width, limits, IK, bindings, symmetry axis, enabled, manual weight painting (one stroke per edit, canvas pixels), cleanup, clearing and weight transfer, or revert to an earlier revision. Pass the draft's lineage state and latest session_state. Nothing reaches the workspace until skeleton_draft_commit.",
+        "Apply 1..128 edits to a private skeleton draft in order, all or none: batch transform, joint moves, copy or mirror (symmetric partners and opposite-side meshes), subdivide, dissolve, optional tail/wing chains, flexible chains (flex: bones bend as one smooth curve that carries its meshes by their connectivity; a fork is a flexible bone with several flexible children) and straightening (straighten: the chain rests straight with its art unrolled, the drawing saved as a pose), bone creation and removal, renaming, parenting, blend width, limits, IK, bindings, symmetry axis, enabled, manual weight painting (one stroke per edit, canvas pixels), cleanup, clearing and weight transfer, or revert to an earlier revision. Pass the draft's lineage state and latest session_state. Nothing reaches the workspace until skeleton_draft_commit.",
         s.obj(mapOf("state" to s.handle(), "session_id" to s.handle(), "session_state" to s.handle(),
             "edits" to s.array(schemas.intents, 1, 128))), WorkspaceOperationKind.SESSION, resultSchema = schemas.session)) { request, _ ->
         val id = request.text("session_id")

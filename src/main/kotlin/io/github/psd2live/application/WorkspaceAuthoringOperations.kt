@@ -713,6 +713,8 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         put("direction", number()); put("minAngle", number()); put("maxAngle", number())
         put("blendWidth", number())
         put("connected", boolean()); put("parameterOverride", string()); put("mirror", string())
+        // A flexible chain segment, and the bend its drawing has at its head beyond its rest geometry.
+        put("flex", boolean()); put("drawnBend", number())
         put("ik", ikSettings)
     }
     val skeletonBranches = listOf(
@@ -721,7 +723,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         variant("mode", "auto", buildJsonObject { put("state", string()) }, listOf("state")),
         variant("mode", "put", buildJsonObject {
             put("state", string()); put("spec", objectSchema(buildJsonObject {
-                put("version", integer(1, 10)); put("enabled", boolean())
+                put("version", integer(1, io.github.psd2live.core.SkeletonSpec.VERSION)); put("enabled", boolean())
                 put("symmetryAxisX", number())
                 put("savedPoses", skeletonMap(skeletonMap(number())))
                 put("ikTargets", skeletonMap(objectSchema(buildJsonObject {

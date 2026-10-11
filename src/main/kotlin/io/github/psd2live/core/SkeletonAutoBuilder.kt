@@ -262,19 +262,21 @@ object SkeletonAutoBuilder {
 			}
 		}
 
-		// Tail: rooted at the hips, split into equal lengths along its medial line.
+		// Tail: rooted at the hips, split into equal lengths along its medial line, one flexible chain that bends as a curve.
 		val tails = tagged(SemanticTag.TAIL)
 		if (tails.isNotEmpty()) {
 			val fit = tails.filter { it.placesJoints }.ifEmpty { tails }.map { it.points to it.indices }
-			medial(fit, centerX, hipY)?.let { line ->
+			medial(fit, centerX, hipY, centeredTip = true)?.let { line ->
 				val count = if (line.length > torsoHeight * 1.2f) 4 else 3
+				// Joints in the turns of the line, so the chain follows a tail curled back on itself.
+				val ends = listOf(0.0) + line.joints(count) + 1.0
 				var parent = LOWER_BODY
 				for (i in 1..count) {
-					val head = line.at((i - 1).toDouble() / count)
-					val tail = line.at(i.toDouble() / count)
+					val head = line.at(ends[i - 1])
+					val tail = line.at(ends[i])
 					val meshes = if (i == 1) tails.map { it.drawableId } else emptyList()
 					bones += SkeletonBone("tail_$i", SkeletonNames.bone(BoneRole.TAIL, Side.NONE, i), parent, BoneRole.TAIL, Side.NONE,
-						head.first, head.second, tail.first, tail.second, meshes, chainIndex = i, direction = 1f)
+						head.first, head.second, tail.first, tail.second, meshes, chainIndex = i, direction = 1f, flex = true)
 					parent = "tail_$i"
 				}
 			}
@@ -350,6 +352,63 @@ object SkeletonAutoBuilder {
 				(points[i - 1].second + (points[i].second - points[i - 1].second) * t).toFloat()
 		}
 
+		/**
+		 * Where [count] bones along the line put their joints, as fractions: the line's own points that keep every
+		 * bone's chord within the fewest pixels of the line it spans, so a tail that turns back on itself gets a joint
+		 * in each turn instead of a chord cutting across it. Among choices that stay within [tolerance] of the line
+		 * (or are equally far off it), the one with the most even lengths, none shorter than [shortest] of the line.
+		 */
+		fun joints(count: Int, tolerance: Double = 2.0, shortest: Double = 0.08): List<Double> {
+			val total = cumulative.last()
+			val even = (1 until count).map { it.toDouble() / count }
+			if (count < 2 || total <= 0.0 || points.size < 3) return even
+			val candidates = (1 until points.size - 1).filter { cumulative[it] / total in shortest..(1 - shortest) }
+			fun deviation(from: Int, to: Int): Double {
+				val ax = points[from].first.toDouble(); val ay = points[from].second.toDouble()
+				val dx = points[to].first - ax; val dy = points[to].second - ay
+				val length2 = dx * dx + dy * dy
+				var worst = 0.0
+				for (i in from + 1 until to) {
+					val px = points[i].first - ax; val py = points[i].second - ay
+					val t = if (length2 < 1e-9) 0.0 else ((px * dx + py * dy) / length2).coerceIn(0.0, 1.0)
+					worst = maxOf(worst, hypot(px - dx * t, py - dy * t))
+				}
+				return worst
+			}
+			var best: List<Int>? = null
+			var bestCost = Double.MAX_VALUE to Double.MAX_VALUE
+			fun visit(chosen: List<Int>) {
+				if (chosen.size == count - 1) {
+					val ends = listOf(0) + chosen + (points.size - 1)
+					val lengths = ends.zipWithNext { a, b -> (cumulative[b] - cumulative[a]) / total }
+					if (lengths.any { it < shortest }) return
+					val off = (ends.zipWithNext { a, b -> deviation(a, b) }.max() - tolerance).coerceAtLeast(0.0)
+					val cost = Math.round(off * 2) / 2.0 to lengths.sumOf { (it - 1.0 / count) * (it - 1.0 / count) }
+					if (cost.first < bestCost.first || (cost.first == bestCost.first && cost.second < bestCost.second)) { bestCost = cost; best = chosen }
+					return
+				}
+				for (c in candidates) if (chosen.isEmpty() || c > chosen.last()) visit(chosen + c)
+			}
+			visit(emptyList())
+			val joints = best ?: return even
+			// A line that stays straight enough is cut evenly, as it always was.
+			if ((listOf(0.0) + even + 1.0).zipWithNext { a, b -> chordDeviation(a, b) }.max() <= tolerance) return even
+			return joints.map { cumulative[it] / total }
+		}
+
+		/** How far the line between fractions [a] and [b] strays from the chord between them, pixels. */
+		private fun chordDeviation(a: Double, b: Double): Double {
+			val p = at(a); val q = at(b)
+			val dx = (q.first - p.first).toDouble(); val dy = (q.second - p.second).toDouble()
+			val length2 = dx * dx + dy * dy
+			return (0..32).maxOf { k ->
+				val r = at(a + (b - a) * k / 32.0)
+				val px = (r.first - p.first).toDouble(); val py = (r.second - p.second).toDouble()
+				val t = if (length2 < 1e-9) 0.0 else ((px * dx + py * dy) / length2).coerceIn(0.0, 1.0)
+				hypot(px - dx * t, py - dy * t)
+			}
+		}
+
 		/** The fraction along the line closest to ([x], [y]). */
 		fun nearest(x: Float, y: Float): Double = (0..200).map { it / 200.0 }.minBy { f ->
 			val p = at(f)
@@ -397,7 +456,7 @@ object SkeletonAutoBuilder {
 	 * measured along mesh edges, with the meshes of one limb joined at their closest vertices; points
 	 * with no triangles are joined to their nearest neighbours instead.
 	 */
-	internal fun medial(parts: List<Pair<FloatArray, IntArray>>, attachX: Float, attachY: Float, bins: Int = 16): Medial? {
+	internal fun medial(parts: List<Pair<FloatArray, IntArray>>, attachX: Float, attachY: Float, bins: Int = 16, centeredTip: Boolean = false): Medial? {
 		val points = concat(parts.map { it.first })
 		val count = points.size / 2
 		if (count < 3) return null
@@ -460,7 +519,17 @@ object SkeletonAutoBuilder {
 		val line = mutableListOf(attachX to attachY)
 		for (bin in sums) if (bin[2] > 0.0) line += (bin[0] / bin[2]).toFloat() to (bin[1] / bin[2]).toFloat()
 		val tipCount = (reached.size * 0.03).toInt().coerceAtLeast(1)
-		line += mean(points, reached.sortedByDescending { start[it] }.take(tipCount))
+		val farthest = reached.sortedByDescending { start[it] }.take(tipCount)
+		if (centeredTip && line.size >= 3) {
+			// The farthest vertices sit in whichever corner of the end the walk reached last; the line instead runs on
+			// down the middle of the end as far as the art goes.
+			val (ax, ay) = line[line.size - 2]
+			val (bx, by) = line.last()
+			val length = hypot(bx - ax, by - ay).coerceAtLeast(1e-3f)
+			val dx = (bx - ax) / length; val dy = (by - ay) / length
+			val reach = farthest.maxOf { (points[it * 2] - bx) * dx + (points[it * 2 + 1] - by) * dy }
+			if (reach > 0.5f) line += (bx + dx * reach) to (by + dy * reach)
+		} else line += mean(points, farthest)
 		val clean = mutableListOf(line.first())
 		for (p in line.drop(1)) if (hypot(p.first - clean.last().first, p.second - clean.last().second) > 0.5f) clean += p
 		return Medial(clean)

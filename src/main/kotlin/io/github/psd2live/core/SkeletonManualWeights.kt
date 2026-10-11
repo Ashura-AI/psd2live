@@ -89,8 +89,22 @@ object SkeletonManualWeights {
     }
 
     internal fun weights(canvas: FloatArray, triangles: IntArray, tree: List<SkeletonBone>, parentOf: Map<String, SkeletonBone?>,
-        manual: SkeletonWeightMap?): List<VertexSkin> {
+        manual: SkeletonWeightMap?): List<VertexSkin> = weightsAndFlex(canvas, triangles, tree, parentOf, manual).first
+
+    /**
+     * [weights], and how the vertices ride the tree's flexible chains ([SkeletonFlex.bind]), null without one. [canvas]
+     * and [tree] are the drawn geometry ([SkeletonFlex.bound]); a vertex the chain carries is rigid to its bone.
+     */
+    internal fun weightsAndFlex(canvas: FloatArray, triangles: IntArray, tree: List<SkeletonBone>, parentOf: Map<String, SkeletonBone?>,
+        manual: SkeletonWeightMap?): Pair<List<VertexSkin>, SkeletonFlex.Binding?> {
         val skinBones = SkeletonRig.skinBones(tree, parentOf)
+        val painted = paintedWeights(canvas, triangles, tree, skinBones, manual)
+        val flex = SkeletonFlex.bind(canvas, triangles, skinBones, BooleanArray(tree.size) { tree[it].flex }, painted) ?: return painted to null
+        return flex
+    }
+
+    private fun paintedWeights(canvas: FloatArray, triangles: IntArray, tree: List<SkeletonBone>, skinBones: List<SkinBone>,
+        manual: SkeletonWeightMap?): List<VertexSkin> {
         val automatic = SkeletonWeights.skin(canvas, skinBones, triangles)
         if (manual == null) return automatic
         val indices = tree.withIndex().associate { it.value.id to it.index }

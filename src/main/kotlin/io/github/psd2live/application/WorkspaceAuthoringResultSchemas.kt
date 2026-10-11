@@ -98,11 +98,12 @@ internal object WorkspaceAnimationResultSchemas {
         "head" to s.vector(2), "tail" to s.vector(2), "drawables" to s.array(s.string()), "chainIndex" to s.integer(),
         "direction" to s.number(), "minAngle" to s.number(), "maxAngle" to s.number(), "blendWidth" to s.number(),
         "connected" to s.boolean(), "parameterOverride" to s.string(), "mirror" to s.string(),
+        "flex" to s.boolean(), "drawnBend" to s.number(),
         "ik" to s.obj(mapOf("chainLength" to s.integer(1, 32), "iterations" to s.integer(1, 256), "tolerancePx" to s.number(0.001, 10), "bendDirection" to s.integer(-1, 1))),
     )
-    private val bone = s.obj(boneFields, boneFields.keys - setOf("parent", "blendWidth", "connected", "parameterOverride", "mirror"))
+    private val bone = s.obj(boneFields, boneFields.keys - setOf("parent", "blendWidth", "connected", "parameterOverride", "mirror", "flex", "drawnBend"))
     private val skeletonFields = linkedMapOf(
-        "version" to buildJsonObject { put("type", "integer"); put("const", 10) }, "enabled" to s.boolean(), "symmetryAxisX" to s.number(),
+        "version" to buildJsonObject { put("type", "integer"); put("const", SkeletonSpec.VERSION) }, "enabled" to s.boolean(), "symmetryAxisX" to s.number(),
         "manualWeights" to s.dictionary(s.obj(mapOf("positions" to s.array(s.number()), "triangles" to s.array(s.integer(0)), "weights" to s.array(values)))),
         "ikTargets" to s.dictionary(s.obj(mapOf("x" to s.number(), "y" to s.number(), "enabled" to s.boolean()))),
         "savedPoses" to s.dictionary(values), "sampling" to s.obj(mapOf("tolerancePx" to s.number(0.25, 4), "minimumStepDegrees" to s.number(2.5, 20), "maxMeshKeyforms" to s.integer(100, 1200), "jointMeshSegments" to s.integer(4, 32))),

@@ -22,6 +22,16 @@ sealed interface SkeletonDraftIntent {
     data class Parent(val boneId: String, val parentId: String?, val connect: Boolean = false) : SkeletonDraftIntent
     /** Half width of the joint blend band in canvas pixels; null returns it to automatic. */
     data class BlendWidth(val boneId: String, val width: Float?) : SkeletonDraftIntent
+    /**
+     * Makes [boneIds] segments of flexible chains, or rigid bones again: a flexible chain bends as one smooth curve and
+     * carries its meshes by their connectivity (see [SkeletonFlex]). Turning a bone rigid puts its drawn bend back.
+     */
+    data class Flex(val boneIds: Set<String>, val enabled: Boolean) : SkeletonDraftIntent
+    /**
+     * Straightens the flexible chain through [boneId] so it rests in a line with its art unrolled along it, the drawing
+     * kept as the saved pose [poseName]; [enabled] false bends it back to the drawing.
+     */
+    data class Straighten(val boneId: String, val enabled: Boolean = true, val poseName: String? = null) : SkeletonDraftIntent
     /** Joint limits in parameter degrees; each is kept on its own side of rest. */
     data class Limits(val boneId: String, val min: Float, val max: Float) : SkeletonDraftIntent
     data class Ik(val boneId: String, val settings: SkeletonIkSettings) : SkeletonDraftIntent
@@ -121,6 +131,24 @@ object SkeletonDraftEdits {
             is SkeletonDraftIntent.BlendWidth -> {
                 require(intent.width == null || intent.width.isFinite()) { "Blend width must be finite" }
                 SkeletonDraftResult(spec.withBone(bone(intent.boneId).copy(blendWidth = intent.width?.coerceAtLeast(0f))))
+            }
+            is SkeletonDraftIntent.Flex -> {
+                intent.boneIds.forEach(::bone)
+                require(intent.boneIds.isNotEmpty()) { "Choose bones to make flexible" }
+                var next = spec
+                for (id in intent.boneIds) {
+                    val current = next.bone(id)!!
+                    require(!current.role.body && !current.role.anchor) { "Body and anchor bones cannot be flexible" }
+                    if (!intent.enabled && current.drawnBend != 0f) next = SkeletonFlex.unstraighten(next, id)
+                    next = next.withBone(next.bone(id)!!.copy(flex = intent.enabled))
+                }
+                SkeletonDraftResult(next)
+            }
+            is SkeletonDraftIntent.Straighten -> {
+                require(bone(intent.boneId).flex) { "Only a flexible chain can be straightened" }
+                val name = intent.poseName ?: "${bone(intent.boneId).name} drawn"
+                SkeletonDraftResult(if (intent.enabled) SkeletonFlex.straighten(spec, intent.boneId, name)
+                    else SkeletonFlex.unstraighten(spec, intent.boneId))
             }
             is SkeletonDraftIntent.Limits -> {
                 require(intent.min.isFinite() && intent.max.isFinite()) { "Bone limits must be finite" }

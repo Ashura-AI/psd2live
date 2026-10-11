@@ -31,6 +31,7 @@ object SkeletonAuthoring {
                 headY = if (mirrorAxis != null) b.headY else b.headY + dy,
                 tailY = if (mirrorAxis != null) b.tailY else b.tailY + dy,
                 parameterOverride = "ParamSkel_$id", mirrorId = if (mirrorAxis != null) b.id else null,
+                drawnBend = if (mirrorAxis != null) -b.drawnBend else b.drawnBend,
                 connected = if (b.parentId in mapping) b.connected else false,
                 drawableIds = when {
                     mirrorAxis != null -> b.drawableIds.mapNotNull(drawableMirrors::get).distinct()
@@ -80,6 +81,8 @@ object SkeletonAuthoring {
             tailX = x((i + 1f) / segments), tailY = y((i + 1f) / segments),
             drawableIds = if (i == 0) source.drawableIds else emptyList(),
             connected = if (i == 0) source.connected else true,
+            // A drawn bend sits at the source's head, which only the first segment keeps.
+            drawnBend = if (i == 0) source.drawnBend else 0f,
             parameterOverride = if (i == 0) source.parameterOverride else "ParamSkel_$next", mirrorId = null) }
         val others = spec.bones.filterNot { it.id == id }.map { b ->
             var next = if (b.parentId == id) b.copy(parentId = ids.last()) else b
@@ -96,7 +99,7 @@ object SkeletonAuthoring {
         val child = spec.bone(id) ?: return false
         val parent = spec.bone(child.parentId ?: "") ?: return false
         return !child.role.anchor && !child.role.body && !parent.role.anchor && !parent.role.body &&
-            spec.isConnected(id) && spec.children(parent.id).size == 1 &&
+            spec.isConnected(id) && spec.children(parent.id).size == 1 && child.drawnBend == 0f &&
             kotlin.math.hypot(child.tailX - parent.headX, child.tailY - parent.headY) >= 1f
     }
 

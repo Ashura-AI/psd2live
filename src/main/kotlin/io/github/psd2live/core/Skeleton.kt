@@ -86,11 +86,23 @@ data class SkeletonBone(
 	val parameterOverride: String? = null,
 	val mirrorId: String? = null,
 	val ik: SkeletonIkSettings = SkeletonIkSettings(),
+	/**
+	 * A segment of a flexible chain (see [SkeletonFlex]): where its parent is flexible too, the joint between them
+	 * bends as a smooth curve rather than a corner, and the meshes on the chain follow that curve by the mesh's
+	 * connectivity, each vertex turning with the curve's frame wherever along it it lies.
+	 */
+	val flex: Boolean = false,
+	/**
+	 * Degrees, in the rig's heading convention, by which the drawn art bends at this bone's head beyond the
+	 * bone's rest geometry: what [SkeletonFlex.straighten] took out of the chain. The art is bound in the bent
+	 * pose and rests straight; turning the bone by this angle brings the drawing back.
+	 */
+	val drawnBend: Float = 0f,
 ) {
 	init {
 		require(id.isNotBlank() && id.none(Char::isISOControl)) { "Bone ID must not be blank" }
 		require(parentId != id) { "A bone cannot be its own parent" }
-		require(listOf(headX, headY, tailX, tailY, direction, minAngle, maxAngle).all(Float::isFinite)) { "Bone coordinates must be finite" }
+		require(listOf(headX, headY, tailX, tailY, direction, minAngle, maxAngle, drawnBend).all(Float::isFinite)) { "Bone coordinates must be finite" }
 		require(minAngle <= 0f && maxAngle >= 0f) { "Bone limits must contain the rest pose" }
 		require(blendWidth == null || (blendWidth.isFinite() && blendWidth >= 0f)) { "Blend width must be positive" }
 	}
@@ -150,6 +162,8 @@ data class SkeletonBone(
 		parameterOverride?.let { put("parameterOverride", it) }
 		mirrorId?.let { put("mirror", it) }
 		put("ik", ik.toJson())
+		if (flex) put("flex", true)
+		if (drawnBend != 0f) put("drawnBend", drawnBend)
 	}
 
 	companion object {
@@ -187,6 +201,8 @@ data class SkeletonBone(
 				parameterOverride = o["parameterOverride"]?.jsonPrimitive?.contentOrNull,
 				mirrorId = o["mirror"]?.jsonPrimitive?.contentOrNull,
 				ik = o["ik"]?.jsonObject?.let(SkeletonIkSettings::fromJson) ?: SkeletonIkSettings(),
+				flex = o["flex"]?.jsonPrimitive?.booleanOrNull ?: false,
+				drawnBend = o["drawnBend"]?.jsonPrimitive?.floatOrNull ?: 0f,
 			)
 		}
 	}
@@ -444,7 +460,7 @@ data class SkeletonSpec(
 	}
 
 	fun toJson(): JsonObject = buildJsonObject {
-		put("version", 10)
+		put("version", VERSION)
 		putJsonObject("manualWeights") { manualWeights.forEach { (id, map) -> put(id, map.toJson()) } }
 		putJsonObject("ikTargets") { ikTargets.forEach { (id, target) -> put(id, target.toJson()) } }
 		symmetryAxisX?.let { put("symmetryAxisX", it) }
@@ -470,8 +486,18 @@ data class SkeletonSpec(
 				ikTargets = o["ikTargets"]?.jsonObject?.mapValues { SkeletonIkTarget.fromJson(it.value.jsonObject) }.orEmpty(),
 				manualWeights = o["manualWeights"]?.jsonObject?.mapValues { SkeletonWeightMap.fromJson(it.value.jsonObject) }.orEmpty(),
 			)
-			return migrateAnchors(spec, raw.associate { it.getValue("id").jsonPrimitive.content to it.getValue("role").jsonPrimitive.content })
+			val anchored = migrateAnchors(spec, raw.associate { it.getValue("id").jsonPrimitive.content to it.getValue("role").jsonPrimitive.content })
+			val version = o["version"]?.jsonPrimitive?.intOrNull ?: 0
+			return if (version < FLEX_VERSION) migrateFlexTails(anchored) else anchored
 		}
+
+		/** Before version 11 a tail was a chain of rigid bones; it now bends as one flexible chain. */
+		private fun migrateFlexTails(read: SkeletonSpec): SkeletonSpec =
+			if (read.bones.none { it.role == BoneRole.TAIL && !it.flex }) read
+			else read.copy(bones = read.bones.map { if (it.role == BoneRole.TAIL) it.copy(flex = true) else it })
+
+		const val VERSION = 11
+		private const val FLEX_VERSION = 11
 
 		/**
 		 * Version 2 anchored the limbs on a root, a hip, a chest and a neck. The root and the neck only
