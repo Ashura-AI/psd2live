@@ -5549,6 +5549,8 @@ class PSD2LiveViewModel : AutoCloseable {
 		// Busy from the press until the checkout lands: an undo pressed meanwhile would read the old head and be lost.
 		val marked = !_state.value.canvasEditBusy
 		if (marked) updateState { it.copy(canvasEditBusy = true) }
+		// A local preview rebuild in flight would publish the document the checkout is leaving over the one it installs.
+		synchronized(stateLock) { previewRebuildToken++; previewRebuildJob?.cancel() }
 		scope.launch {
 			try {
 				val ws = workspaceBackend ?: throw IllegalStateException("Agent workspace is not attached")
