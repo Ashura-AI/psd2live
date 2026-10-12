@@ -34,7 +34,7 @@
 
 ### E3 抠图
 - 对每张结果跑 `ingest`（它会先抠图），查看 `candidate.png`（叠在深色背景上看）。
-- 通过：`bbox_fraction` < 0.6、`touches_border` 为 false；肉眼看无白边、无背景残留、细节（袜口、手指、袖口等）不丢；被线条包住的内部白色保留。
+- 通过：`touches_border` 为 false、`border_residual_px` 为 0、`foreground_fraction` < 0.6（`bbox_fraction` 只作参考）；肉眼看无白边、无背景残留、细节（袜口、手指、袖口等）不丢；被线条包住的内部白色保留。
 - 记录：生成工具是否真的给出纯白背景；背景有渐变/噪点时抠图表现。
 
 ### E4 对齐

@@ -121,6 +121,10 @@ def matte(rgb: np.ndarray, bg=None, tol: float = 14.0, band: int = 2, min_area: 
         "foreground_px": int((alpha > 0.5).sum()),
         "bbox": [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1] if len(xs) else None,
         "bbox_fraction": float((xs.max() - xs.min() + 1) * (ys.max() - ys.min() + 1) / (H * W)) if len(xs) else 0.0,
+        "foreground_fraction": float((alpha > 0.5).sum() / (H * W)),
+        "occupancy": float((alpha > 0.5).sum() / max((xs.max() - xs.min() + 1) * (ys.max() - ys.min() + 1), 1)) if len(xs) else 0.0,
+        "border_margin_fraction": float(min(xs.min(), ys.min(), W - 1 - xs.max(), H - 1 - ys.max()) / max(H, W)) if len(xs) else 0.0,
+        "border_residual_px": int((alpha[:2] > 0.02).sum() + (alpha[-2:] > 0.02).sum() + (alpha[2:-2, :2] > 0.02).sum() + (alpha[2:-2, -2:] > 0.02).sum()),
         "removed_small_components": removed,
         "touches_border": bool(len(xs) and (xs.min() == 0 or ys.min() == 0 or xs.max() == W - 1 or ys.max() == H - 1)),
     }

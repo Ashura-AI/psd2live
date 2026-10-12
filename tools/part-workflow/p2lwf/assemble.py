@@ -2,6 +2,8 @@
 
 spec（JSON）：{"canvas": [W, H], "layers": [{"name": "arm-l", "file": "arm_l.png"}, ...]}，从下到上；
 文件为画布大小的 RGBA（ingest 产出的 placed.png），相对路径以 spec 所在目录为基准。
+层可带 "role": "reference"（如整张母版垫底）：参与 composite，但不参与 coverage / exposure / psd，
+因为参考层本身是满的，会把任何缺口掩盖掉。
 """
 from __future__ import annotations
 
@@ -21,12 +23,15 @@ def load_spec(path):
     base = os.path.dirname(os.path.abspath(path))
     W, H = spec["canvas"]
     layers = []
+    refs = set()
     for it in spec["layers"]:
+        if it.get("role") == "reference":
+            refs.add(it["name"])
         arr = load_rgba(os.path.join(base, it["file"]) if not os.path.isabs(it["file"]) else it["file"])
         if arr.shape[:2] != (H, W):
             raise ValueError(f"{it['name']}: 尺寸 {arr.shape[1]}x{arr.shape[0]} 与画布 {W}x{H} 不一致")
         layers.append((it["name"], arr))
-    return (W, H), layers
+    return (W, H), layers, refs
 
 
 def composite(layers, size_wh, hide=(), bg=(255, 255, 255)):
@@ -41,7 +46,7 @@ def composite(layers, size_wh, hide=(), bg=(255, 255, 255)):
     return np.clip(acc + 0.5, 0, 255).astype(np.uint8)
 
 
-def write_psd(layers, size_wh, path):
+def write_psd(layers, size_wh, path, preview_bg=(255, 255, 255), skip=()):
     try:
         from psd_tools import PSDImage
         from psd_tools.api.layers import PixelLayer
@@ -49,8 +54,11 @@ def write_psd(layers, size_wh, path):
     except ImportError as e:
         raise SystemExit("写 PSD 需要 psd-tools：pip install psd-tools") from e
     W, H = size_wh
-    psd = PSDImage.new("RGB", (W, H))
+    # color：保存时用该颜色作为不透明背景合成合并预览；否则默认预览是黑底
+    psd = PSDImage.new("RGB", (W, H), color=preview_bg)
     for name, L in layers:  # 从下到上：先加入的在下面
+        if name in skip:
+            continue
         bb = bbox_of(alpha01(L), 0.0)
         if bb is None:
             continue
@@ -60,14 +68,16 @@ def write_psd(layers, size_wh, path):
     psd.save(path)
 
 
-def coverage(layers, ref_rgba, size_wh, out_dir, bg=(255, 255, 255)):
+def coverage(layers, ref_rgba, size_wh, out_dir, bg=(255, 255, 255), skip=()):
     """所有层 alpha 并集未覆盖的参考前景（缺口）。"""
     os.makedirs(out_dir, exist_ok=True)
     W, H = size_wh
     ref_rgb = over(ref_rgba)
     fg = Mt.matte(ref_rgb, bg=bg)[0][..., 3] > 127
     U = np.zeros((H, W), bool)
-    for _, L in layers:
+    for n_, L in layers:
+        if n_ in skip:
+            continue
         U |= L[..., 3] > 127
     gap = fg & ~U
     gap = cv2.morphologyEx(gap.astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)).astype(bool)
@@ -82,17 +92,17 @@ def coverage(layers, ref_rgba, size_wh, out_dir, bg=(255, 255, 255)):
             "largest_gaps": blobs[:10], "image": os.path.join(out_dir, "coverage_gap.png")}
 
 
-def seam_exposure(layers, size_wh, out_dir, only=None):
+def seam_exposure(layers, size_wh, out_dir, only=None, skip=()):
     """逐层隐藏：该层可见区域里，其余各层并集没有覆盖的部分就是隐藏它后会露底的位置。"""
     os.makedirs(out_dir, exist_ok=True)
     W, H = size_wh
     res = {}
     for name, L in layers:
-        if only and name not in only:
+        if name in skip or (only and name not in only):
             continue
         others = np.zeros((H, W), bool)
         for n2, L2 in layers:
-            if n2 != name:
+            if n2 != name and n2 not in skip:
                 others |= L2[..., 3] > 127
         mine = L[..., 3] > 127
         exp = mine & ~others
@@ -102,7 +112,7 @@ def seam_exposure(layers, size_wh, out_dir, only=None):
         if ob:
             filled = cv2.morphologyEx(others.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8)).astype(bool)
             hole = mine & ~others & filled
-        hide_img = composite(layers, size_wh, hide=(name,))
+        hide_img = composite(layers, size_wh, hide=(name,) + tuple(skip))
         hide_img[hole] = (255, 0, 0)
         p = os.path.join(out_dir, f"exposure_{name}.png")
         save_rgb(hide_img, p)

@@ -56,8 +56,9 @@ python -m p2lwf task --ref ref.png --out work/task_arm_l --part arm-l --side lef
 python -m p2lwf ingest --task work/task_arm_l --result work/task_arm_l/result.png [--mirror] [--lower …]
 ```
 产出到 `task_dir/out/`：`candidate.png`（抠好的候选）、`placed.png`（摆到画布坐标的图层）、`sheet.png`（参考 | 候选 | 单色叠加 | 误差热力）、`report.json`。
-- 对齐只用相似变换，默认旋转锁为 0（`--rot-limit` 才放开）。`ambiguous: true`（可区分度低）时不要直接采用：看 `sheet.png`，用 `--init scale,cx,cy` 手工给初值或缩小 `--scale-min/--scale-max`。
-- 抠图警告（前景接触边框、外包框占满整图）说明背景色不匹配或生成图有渐变背景，重新生成或指定 `--bg`。
+- 对齐只用相似变换，默认旋转锁为 0（`--rot-limit` 才放开）。看 `align.fit`：`quality: poor` 或 `ambiguous`/`confidence: low` 时不要直接采用；手工 `--init scale,cx,cy` 后 `confidence` 为 `unknown`（没有第二个候选），不代表可靠，必须看 `sheet.png` 与 `contour_p95`。
+- 生成图的比例（肩到手、膝到踝）与母版不同时，相似变换无法同时对上两端：`POOR_FIT` 会提示。此时重新生成（见 `references/prompts.md` 的"完成式"任务），不要硬采用。
+- 抠图警告（前景接触边框、边框残留、前景实际面积占 60% 以上、边距不足 2%）说明背景色不匹配、背景不均匀或没留够边距，重新生成或指定 `--bg`。外包框占比 `bbox_fraction` 只作参考：斜长部件（手臂）天然很大，不能用它判失败。
 
 ### 5. 读指标并决定
 | 结果 | 含义 | 处理 |
@@ -68,6 +69,7 @@ python -m p2lwf ingest --task work/task_arm_l --result work/task_arm_l/result.pn
 | `visible_spill` > 0（warning） | 新增面积落在没被上层覆盖的地方，合成观感会变 | 确认是修复还是漂移；漂移则重做或手工裁掉 |
 | `style_drift` 高（warning） | 新增区域与原画风格统计差异大 | 看新增区域是否换了线宽、阴影层数、色调 |
 | `seam_score` 高（warning） | 新旧区域交界处颜色突变 | 局部修复或重生成 |
+| `POOR_FIT`（warning） | 原画轮廓（排除贴上层部分）到新图层轮廓的 P95 距离大 | 比例漂移，重生成或地标对齐；不要仅凭 `ambiguous: false` 采用 |
 指标含义和标定办法见 `references/metrics.md`。
 
 ### 6. 局部修复（仅小范围缺陷）
@@ -79,14 +81,14 @@ python -m p2lwf repair-paste --task work/rep1 --result work/rep1/result.png --ou
 `repair-paste` 先在遮罩外标定配准，只取遮罩内新像素，遮罩外严格不变，并报告被改动的像素数和残留保留色。不要用它补整个部件。
 
 ### 7. 装配与检查
-准备 `spec.json`（`canvas` + 从下到上的 `layers: [{name, file}]`，文件为画布大小的 `placed.png`）：
+准备 `spec.json`（`canvas` + 从下到上的 `layers: [{name, file}]`，文件为画布大小的 `placed.png`；垫底的整张母版标 `"role": "reference"`，它参与 composite 但不参与 coverage / exposure / psd，否则会掩盖所有缺口）：
 ```
 python -m p2lwf composite --spec spec.json --output comp.png [--hide sleeve-l]
 python -m p2lwf coverage  --spec spec.json --ref ref.png --out work/cov      # 参考前景里没被任何层覆盖的缺口
 python -m p2lwf exposure  --spec spec.json --out work/exp                    # 逐层隐藏后露底的洞
 python -m p2lwf psd       --spec spec.json --output model_layers.psd         # 需要 psd-tools
 ```
-重点看：隐藏上层（裙子、袖子）后被遮挡部件是否完整（无截断、渐隐、竖棱、碎片）；脖子、袖口、袜口、两腿之间是否露底。
+`exposure` 的 `hole_px` 只反映邻近的小洞，不能证明部件完整；必须看隐藏上层后的图。重点看：隐藏上层（裙子、袖子）后被遮挡部件是否完整（无截断、渐隐、竖棱、碎片）；脖子、袖口、袜口、两腿之间是否露底。
 
 ### 8. 交给 PSD2Live
 导入 PSD（`project_import_psd`）后检查：没有 Unknown、左右正确、层序正确（眼睛可放在前发之上）；`workspace_inspect` 查网格名后再写 swing 目标（不带 `mesh:` 前缀）；渲染检查转头、摆动、张嘴、闭眼。关闭 `mouthOutlineEnabled` 避免闭嘴双线。

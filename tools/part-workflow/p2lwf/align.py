@@ -185,7 +185,21 @@ def align(ref_rgb, cand, T, uppers=None, ref_fg=None, scale_range=(0.35, 3.0), n
     M_small = affine3(sim_matrix(s, deg, cx, cy, pivot))
     M_native = (M_small @ scale3(k) @ trans3(-bb[0], -bb[1]))[:2]  # 镜像后的候选像素 → 画布
     margin = None if second is None else float((second - best_sc) / max(second, 1e-6))
+    poor = []
+    if parts.get("coverage", 0) < 0.85:
+        poor.append(f"原画可见区域只被覆盖 {parts.get('coverage', 0):.0%}")
+    if parts.get("spill", 0) > 0.10:
+        poor.append(f"候选图伸进不允许区域 {parts.get('spill', 0):.0%}")
+    if parts.get("color", 0) > 0.35:
+        poor.append("可见区域颜色差异大")
+    fit = {
+        "quality": "poor" if poor else "ok",
+        "reasons": poor,
+        # margin 为空表示没有第二个独立候选（例如手工初值），此时可区分度未知，不等于可靠
+        "confidence": "unknown" if margin is None else ("low" if margin < 0.1 else "ok"),
+    }
     return {
+        "fit": fit,
         "matrix": M_native.tolist(),
         "scale": float(s * k), "rotation_deg": float(deg), "center": [float(cx), float(cy)],
         "score": float(sc2), "score_parts": parts,

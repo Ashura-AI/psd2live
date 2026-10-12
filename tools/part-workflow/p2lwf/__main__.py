@@ -50,7 +50,7 @@ def cmd_cutout(a):
 def cmd_task(a):
     meta = Tk.make_task(a.ref, a.out, a.part, a.desc, parse_box(a.region), side=a.side, original=a.original,
                         uppers=a.upper, bg=a.bg, hidden_hint=a.hidden_hint, hidden_extent=a.hidden_extent,
-                        cast_examples=a.cast_examples, min_size=a.min_size, margin=a.margin, extra_rules=a.rule)
+                        cast_examples=a.cast_examples, min_size=a.min_size, margin=a.margin, extra_rules=a.rule, mode=a.mode)
     print(dump({"task_dir": a.out, "prompt": os.path.join(a.out, "prompt.txt"), "bg": meta["bg"]}))
 
 
@@ -61,11 +61,12 @@ def cmd_ingest(a):
                     init=tuple(float(v) for v in a.init.split(",")) if a.init else None, n_scales=a.n_scales)
     rep = dict(rep)
     out = a.out or os.path.join(a.task, "out")
-    summary = {"out_dir": out, "align": {k: rep["align"][k] for k in ("scale", "rotation_deg", "center", "score", "margin", "ambiguous")}}
+    summary = {"out_dir": out, "align": {k: rep["align"][k] for k in ("scale", "rotation_deg", "center", "score", "margin", "ambiguous", "fit")}}
     if rep.get("metrics"):
         m = rep["metrics"]
         summary["metrics"] = {k: m.get(k) for k in ("overlap_fidelity", "completion_ratio", "hidden_boundary_fraction",
-                                                    "hidden_gain", "visible_spill", "style_drift", "seam_score", "composite_fidelity")}
+                                                    "hidden_gain", "visible_spill", "style_drift", "seam_score", "composite_fidelity",
+                                                    "contour_p50", "contour_p95")}
         summary["flags"] = m["flags"]
         summary["blocked"] = m["blocked"]
     summary["warnings"] = rep.get("warnings", [])
@@ -95,7 +96,7 @@ def cmd_metrics(a):
     ref = load_rgba(a.ref) if a.ref else None
     lowers = [load_rgba(p) for p in (a.lower or [])] or None
     th = {}
-    for k in ("min_fidelity", "completion_eps", "hidden_boundary_min", "spill_max", "style_max", "seam_max"):
+    for k in ("min_fidelity", "completion_eps", "hidden_boundary_min", "spill_max", "style_max", "seam_max", "contour_p95_max"):
         v = getattr(a, k)
         if v is not None:
             th[k] = v
@@ -123,27 +124,28 @@ def cmd_repair_paste(a):
 
 
 def cmd_composite(a):
-    size, layers = As.load_spec(a.spec)
+    size, layers, refs = As.load_spec(a.spec)
     _ensure_dir(a.output)
-    save_rgb(As.composite(layers, size, hide=set(a.hide or [])), a.output)
+    hide = set(a.hide or []) | (refs if a.hide_reference else set())
+    save_rgb(As.composite(layers, size, hide=hide), a.output)
     print(dump({"output": a.output, "layers": [n for n, _ in layers]}))
 
 
 def cmd_psd(a):
-    size, layers = As.load_spec(a.spec)
+    size, layers, refs = As.load_spec(a.spec)
     _ensure_dir(a.output)
-    As.write_psd(layers, size, a.output)
+    As.write_psd(layers, size, a.output, skip=refs)
     print(dump({"output": a.output, "layers": [n for n, _ in layers]}))
 
 
 def cmd_coverage(a):
-    size, layers = As.load_spec(a.spec)
-    print(dump(As.coverage(layers, load_rgba(a.ref), size, a.out)))
+    size, layers, refs = As.load_spec(a.spec)
+    print(dump(As.coverage(layers, load_rgba(a.ref), size, a.out, skip=refs)))
 
 
 def cmd_exposure(a):
-    size, layers = As.load_spec(a.spec)
-    print(dump(As.seam_exposure(layers, size, a.out, only=set(a.only) if a.only else None)))
+    size, layers, refs = As.load_spec(a.spec)
+    print(dump(As.seam_exposure(layers, size, a.out, only=set(a.only) if a.only else None, skip=refs)))
 
 
 def cmd_selftest(a):
@@ -194,6 +196,8 @@ def main(argv=None):
     s.add_argument("--cast-examples", default="shadows, garter straps, skirt shadow")
     s.add_argument("--min-size", type=int, default=1536)
     s.add_argument("--rule", action="append", help="追加到提示词的规则，可重复")
+    s.add_argument("--mode", choices=["whole", "complete"], default="whole",
+                   help="whole：参考为带上下文的母版裁切；complete：参考为只含该部件的原画抠图（被遮挡处残缺），要求保持可见部分比例并补全，更能控制比例漂移")
     s.set_defaults(fn=cmd_task)
 
     s = sp.add_parser("ingest", help="导回生成结果：抠图 → 对齐 → 补全指标 → 对比图")
@@ -220,7 +224,7 @@ def main(argv=None):
     s.add_argument("--original", required=True); s.add_argument("--new", required=True)
     s.add_argument("--upper", action="append"); s.add_argument("--lower", action="append")
     s.add_argument("--ref"); s.add_argument("--fully-visible", action="store_true")
-    for k in ("min_fidelity", "completion_eps", "hidden_boundary_min", "spill_max", "style_max", "seam_max"):
+    for k in ("min_fidelity", "completion_eps", "hidden_boundary_min", "spill_max", "style_max", "seam_max", "contour_p95_max"):
         s.add_argument("--" + k.replace("_", "-"), type=float, dest=k)
     s.set_defaults(fn=cmd_metrics)
 
@@ -242,7 +246,7 @@ def main(argv=None):
     s.set_defaults(fn=cmd_repair_paste)
 
     s = sp.add_parser("composite", help="按 spec 合成；--hide 隐藏指定层")
-    s.add_argument("--spec", required=True); s.add_argument("--output", required=True); s.add_argument("--hide", action="append")
+    s.add_argument("--spec", required=True); s.add_argument("--output", required=True); s.add_argument("--hide", action="append"); s.add_argument("--hide-reference", action="store_true", help="隐藏 role=reference 的层")
     s.set_defaults(fn=cmd_composite)
 
     s = sp.add_parser("psd", help="按 spec 写分层 PSD（需要 psd-tools）")

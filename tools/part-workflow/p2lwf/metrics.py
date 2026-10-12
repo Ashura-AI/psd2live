@@ -20,6 +20,7 @@ DEFAULTS = {
     "spill_max": 0.03,
     "style_max": 0.50,
     "seam_max": 0.50,
+    "contour_p95_max": 8.0,      # 轮廓距离 P95（画布像素），与画布尺寸有关，需标定
     "delta_e0": 12.0,
     "shift_tolerance": 2,
 }
@@ -38,6 +39,25 @@ def _crop_bbox(mask, pad):
         return None
     H, W = mask.shape
     return max(0, xs.min() - pad), max(0, ys.min() - pad), min(W, xs.max() + 1 + pad), min(H, ys.max() + 1 + pad)
+
+
+def contour_distance(O, N, uppers=None):
+    """原画轮廓（排除贴着上层的部分）到新图层轮廓的距离分布，单位为画布像素。
+    它比 overlap_fidelity 更直接地反映“轮廓是否对上”，肩端、手尖偏位会在 P95 上体现。"""
+    o = alpha01(O) > 0.5
+    n = alpha01(N) > 0.5
+    k3 = np.ones((3, 3), np.uint8)
+    edge_o = o & ~cv2.erode(o.astype(np.uint8), k3).astype(bool)
+    edge_n = n & ~cv2.erode(n.astype(np.uint8), k3).astype(bool)
+    if uppers:
+        U = _union([alpha01(u) for u in uppers], o.shape) > 0.5
+        edge_o &= ~cv2.dilate(U.astype(np.uint8), np.ones((9, 9), np.uint8)).astype(bool)
+    if edge_o.sum() < 20 or edge_n.sum() < 20:
+        return None
+    dist = cv2.distanceTransform((~edge_n).astype(np.uint8), cv2.DIST_L2, 3)
+    d = dist[edge_o]
+    return {"contour_p50": float(np.percentile(d, 50)), "contour_p95": float(np.percentile(d, 95)),
+            "contour_max": float(d.max()), "contour_points": int(edge_o.sum())}
 
 
 def _lab_blur(rgba):
@@ -154,6 +174,8 @@ def compute(O, N, uppers=None, fully_visible=False, ref=None, lowers=None, thres
     if st:
         res["style_detail"] = {k: v for k, v in st.items() if k != "style_drift"}
     res["seam_score"] = _seam(O, N)
+    cd = contour_distance(O, N, uppers)
+    res.update(cd or {"contour_p50": None, "contour_p95": None})
 
     if ref is not None:
         comp = np.zeros(O.shape, np.uint8)
@@ -187,6 +209,9 @@ def compute(O, N, uppers=None, fully_visible=False, ref=None, lowers=None, thres
         flags.append({"rule": "STYLE_DRIFT", "level": "warning", "detail": f"style_drift={res['style_drift']:.3f}"})
     if res["seam_score"] is not None and res["seam_score"] > cfg["seam_max"]:
         flags.append({"rule": "SEAM", "level": "warning", "detail": f"seam_score={res['seam_score']:.3f}，新旧区域交界处颜色突变"})
+    if res.get("contour_p95") is not None and res["contour_p95"] > cfg["contour_p95_max"]:
+        flags.append({"rule": "POOR_FIT", "level": "warning",
+                      "detail": f"轮廓距离 P95={res['contour_p95']:.1f}px（中位 {res['contour_p50']:.1f}px）：新图层轮廓与原画未对上，可能需要局部修形或地标对齐"})
     if "overlap_fidelity" in res and res["overlap_fidelity"] < cfg["min_fidelity"]:
         flags.append({"rule": "LOW_FIDELITY", "level": "info",
                       "detail": f"overlap_fidelity={res['overlap_fidelity']:.3f}；原画有缺陷时较低可能是合理的修复，请目视确认"})

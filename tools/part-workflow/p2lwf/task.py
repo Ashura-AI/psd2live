@@ -29,14 +29,24 @@ def _read_template(name):
 
 def make_task(ref_path, out_dir, part, desc, region, side="none", original=None, uppers=None, bg="auto",
               hidden_hint="e.g. under sleeves, skirts or hair", hidden_extent="smoothly to its natural root/attachment point",
-              cast_examples="shadows, garter straps, skirt shadow", min_size=1536, margin=0.35, extra_rules=None):
+              cast_examples="shadows, garter straps, skirt shadow", min_size=1536, margin=0.35, extra_rules=None, mode="whole"):
     os.makedirs(out_dir, exist_ok=True)
     ref = load_rgba(ref_path)
     H, W = ref.shape[:2]
     x0, y0, x1, y1 = region
     mw, mh = int((x1 - x0) * margin), int((y1 - y0) * margin)
     cx0, cy0, cx1, cy1 = max(0, x0 - mw), max(0, y0 - mh), min(W, x1 + mw), min(H, y1 + mh)
-    save_rgb(over(ref)[cy0:cy1, cx0:cx1], os.path.join(out_dir, "reference.png"))
+    if mode not in ("whole", "complete"):
+        raise ValueError("mode 应为 whole 或 complete")
+    if mode == "complete" and not original:
+        raise ValueError("complete 模式需要 --original（原画抠图）")
+    if mode == "complete":
+        # 完成式：给生成工具“只含该部件、被遮挡处残缺”的原画抠图作主参考，整图裁切只作上下文
+        o_rgba = load_rgba(original)
+        save_rgb(over(o_rgba)[cy0:cy1, cx0:cx1], os.path.join(out_dir, "reference.png"))
+        save_rgb(over(ref)[cy0:cy1, cx0:cx1], os.path.join(out_dir, "context.png"))
+    else:
+        save_rgb(over(ref)[cy0:cy1, cx0:cx1], os.path.join(out_dir, "reference.png"))
 
     orig_abs = None
     bgsel = None
@@ -52,8 +62,8 @@ def make_task(ref_path, out_dir, part, desc, region, side="none", original=None,
         c = Mt.parse_bg(bg)
         bgsel = {"name": bg if bg in Mt.BG_CANDIDATES else "custom", "hex": rgb_to_hex(c), "reason": "手工指定"}
 
-    prompt = _read_template("whole_part.txt").format(
-        ref="reference.png", part_desc=desc, hidden_hint=hidden_hint, hidden_extent=hidden_extent,
+    prompt = _read_template("complete_part.txt" if mode == "complete" else "whole_part.txt").format(
+        ref="reference.png", context="context.png", part_desc=desc, hidden_hint=hidden_hint, hidden_extent=hidden_extent,
         cast_examples=cast_examples, side_rule=SIDE_RULES[side], bg_name=bgsel["name"].upper() if bgsel["name"] != "custom" else "solid color",
         bg_hex=bgsel["hex"], min_size=min_size, out="result.png")
     if extra_rules:
@@ -61,7 +71,7 @@ def make_task(ref_path, out_dir, part, desc, region, side="none", original=None,
     with open(os.path.join(out_dir, "prompt.txt"), "w", encoding="utf-8") as f:
         f.write(prompt)
     meta = {
-        "kind": "whole_part", "part": part, "side": side, "desc": desc,
+        "kind": "whole_part" if mode == "whole" else "complete_part", "mode": mode, "part": part, "side": side, "desc": desc,
         "ref": os.path.abspath(ref_path), "canvas": [W, H], "region": [x0, y0, x1, y1], "crop": [cx0, cy0, cx1, cy1],
         "original": orig_abs, "uppers": [os.path.abspath(u) for u in (uppers or [])],
         "bg": bgsel,
@@ -88,10 +98,16 @@ def ingest(task_dir, result_path, out_dir=None, mirror=False, rot_limit=0.0, sca
     cand, minfo = Mt.matte_rgba_input(res_img, bg=bg, **(matte_kw or {}))
     save_rgba(cand, os.path.join(out_dir, "candidate.png"))
     report["matte"] = minfo
+    warns = report.setdefault("warnings", [])
     if minfo.get("touches_border"):
-        report["warnings"] = report.get("warnings", []) + ["候选图前景接触图像边框：可能被裁切，或白色前景与白背景相连；考虑换背景色重新生成"]
-    if minfo["bbox_fraction"] > 0.9:
-        report["warnings"] = report.get("warnings", []) + ["前景外包框占整图 90% 以上，疑似抠图失败（背景色不匹配或有噪点）"]
+        warns.append("候选图前景接触图像边框：可能被裁切，或白色前景与背景相连；考虑换背景色重新生成")
+    if minfo.get("border_residual_px", 0) > 0:
+        warns.append(f"图像边框 2px 内残留 {minfo['border_residual_px']} 个非零 alpha 像素：背景可能不均匀")
+    if minfo["foreground_fraction"] > 0.6:
+        warns.append("前景实际面积占整图 60% 以上，疑似抠图失败（背景色不匹配或有大块背景残留）")
+    if minfo.get("border_margin_fraction", 1) < 0.02:
+        warns.append("部件离图像边缘不足 2%：生成时没有留够边距，部件可能被裁切")
+    # 注意：外包框占比 bbox_fraction 只作参考，斜长部件天然很大，不用它判失败
 
     O = load_rgba(meta["original"]) if meta.get("original") else None
     ref_fg = Mt.matte(ref_rgb, bg=(255, 255, 255))[0][..., 3] > 127

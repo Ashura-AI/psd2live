@@ -27,7 +27,8 @@
 | `composite_fidelity` | 把新图层换进合成（`--lower` + 新 + `--upper`）后与母版的相似度，需要 `--ref`。上层缺失时会偏低 |
 | `style_drift` | 新增区域 vs 原画区域的风格统计距离：Lab 直方图、梯度直方图、平均梯度的平均。新图层可以更好但风格不能迁移 |
 | `seam_score` | 新旧区域交界处两侧平均 Lab 色差 / 30，上限 1 |
-| `flags[]` | `{rule, level, detail}`；规则：`NOT_COMPLETED`(error)、`NO_UPPER_INFO`、`SHRUNK`、`VISIBLE_SPILL`、`STYLE_DRIFT`、`SEAM`、`LOW_FIDELITY` |
+| `contour_p50` / `contour_p95` | 原画轮廓（排除贴着上层的部分）到新图层轮廓的距离（画布像素）。比 `overlap_fidelity` 更直接反映轮廓是否对上；超过 `contour_p95_max`（初值 8 px，与画布尺寸有关）给 `POOR_FIT` |
+| `flags[]` | `{rule, level, detail}`；规则：`NOT_COMPLETED`(error)、`NO_UPPER_INFO`、`SHRUNK`、`VISIBLE_SPILL`、`STYLE_DRIFT`、`SEAM`、`POOR_FIT`、`LOW_FIDELITY` |
 | `blocked` | 有 error 级 flag |
 
 ## 已知局限
