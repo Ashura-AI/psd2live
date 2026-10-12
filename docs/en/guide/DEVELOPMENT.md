@@ -74,7 +74,7 @@ The `export` command exports a `.psd2live` project (its current history state) o
 
 ```bash
 ./gradlew test                                   # all tests (CI runs them on Ubuntu and Windows)
-./gradlew test --tests "io.github.psd2live.core.SwingDeformerTest"   # one test class
+./gradlew test --tests "io.github.psd2live.scenario.CatalogContractsTest"   # one test class
 ./gradlew createDistributable                    # application directory with runtime
 ./gradlew packageDistributionForCurrentOS        # installer for this platform
 ```

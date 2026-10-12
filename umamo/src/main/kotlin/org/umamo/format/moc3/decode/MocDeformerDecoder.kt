@@ -66,7 +66,7 @@ internal class DeformerDecoder(
 	/** Control points per warp: an (rows + 1) x (columns + 1) lattice of them. */
 	private val warpControlPointCounts =
 		IntArray(warpRows.size) { warpLocalIndex ->
-			(warpRows[warpLocalIndex] + 1) * (warpColumns[warpLocalIndex] + 1)
+			(warpRows.mocAt(warpLocalIndex) + 1) * (warpColumns.mocAt(warpLocalIndex) + 1)
 		}
 
 	/**
@@ -82,7 +82,7 @@ internal class DeformerDecoder(
 		val rotationToDeformer = ArrayList<Int>()
 		val deformers = ArrayList<Deformer>(deformerCount)
 		for (deformerIndex in 0 until deformerCount) {
-			if (deformerType[deformerIndex] == 0) {
+			if (deformerType.mocAt(deformerIndex) == 0) {
 				warpToDeformer.add(deformerIndex)
 				deformers.add(warpDeformer(deformerIndex, nextWarpLocal++))
 			} else {
@@ -101,15 +101,15 @@ internal class DeformerDecoder(
 	 * @return WarpDeformer The decoded deformer.
 	 */
 	private fun warpDeformer(deformerIndex: Int, warpLocalIndex: Int): WarpDeformer {
-		val keyformBinding = warpKeyformBinding[warpLocalIndex]
-		val keyformBase = warpKeyformBase[warpLocalIndex]
+		val keyformBinding = warpKeyformBinding.mocAt(warpLocalIndex)
+		val keyformBase = warpKeyformBase.mocAt(warpLocalIndex)
 		val controlPointCount = warpControlPointCounts[warpLocalIndex]
 		val keyforms =
 			(0 until bindings.binding(keyformBinding).gridSize).map { gridIndex ->
-				val positionOffset = keyformValues.warpPositionIndex[keyformBase + gridIndex]
+				val positionOffset = keyformValues.warpPositionIndex.mocAt(keyformBase + gridIndex)
 				WarpKeyform(
-					keyformValues.positionValues.copyOfRange(positionOffset, positionOffset + controlPointCount * 2),
-					keyformValues.warpOpacity[keyformBase + gridIndex],
+					keyformValues.positionValues.mocSlice(positionOffset, controlPointCount * 2),
+					keyformValues.warpOpacity.mocAt(keyformBase + gridIndex),
 					colorTables.multiplyForKeyform(warpColorBase?.get(warpLocalIndex), gridIndex),
 					colorTables.screenForKeyform(warpColorBase?.get(warpLocalIndex), gridIndex),
 				)
@@ -120,9 +120,9 @@ internal class DeformerDecoder(
 			isVisible = deformerIsVisible.getOrElse(deformerIndex) { 1 } != 0,
 			isEnabled = deformerIsEnabled.getOrElse(deformerIndex) { 1 } != 0,
 			parentPartIndex = deformerParentPart.getOrElse(deformerIndex) { -1 },
-			parentDeformerIndex = deformerParent[deformerIndex],
-			rows = warpRows[warpLocalIndex],
-			columns = warpColumns[warpLocalIndex],
+			parentDeformerIndex = deformerParent.mocAt(deformerIndex),
+			rows = warpRows.mocAt(warpLocalIndex),
+			columns = warpColumns.mocAt(warpLocalIndex),
 			mode = warpMode?.get(warpLocalIndex) ?: 0,
 			keyforms = keyforms,
 		)
@@ -136,18 +136,18 @@ internal class DeformerDecoder(
 	 * @return RotationDeformer The decoded deformer.
 	 */
 	private fun rotationDeformer(deformerIndex: Int, rotationLocalIndex: Int): RotationDeformer {
-		val keyformBinding = rotationKeyformBinding[rotationLocalIndex]
-		val keyformBase = rotationKeyformBase[rotationLocalIndex]
+		val keyformBinding = rotationKeyformBinding.mocAt(rotationLocalIndex)
+		val keyformBase = rotationKeyformBase.mocAt(rotationLocalIndex)
 		val keyforms =
 			(0 until bindings.binding(keyformBinding).gridSize).map { gridIndex ->
 				RotationKeyform(
-					keyformValues.rotationOriginX[keyformBase + gridIndex],
-					keyformValues.rotationOriginY[keyformBase + gridIndex],
-					keyformValues.rotationAngle[keyformBase + gridIndex],
-					keyformValues.rotationScale[keyformBase + gridIndex],
-					keyformValues.rotationReflectX[keyformBase + gridIndex] != 0,
-					keyformValues.rotationReflectY[keyformBase + gridIndex] != 0,
-					keyformValues.rotationOpacity[keyformBase + gridIndex],
+					keyformValues.rotationOriginX.mocAt(keyformBase + gridIndex),
+					keyformValues.rotationOriginY.mocAt(keyformBase + gridIndex),
+					keyformValues.rotationAngle.mocAt(keyformBase + gridIndex),
+					keyformValues.rotationScale.mocAt(keyformBase + gridIndex),
+					keyformValues.rotationReflectX.mocAt(keyformBase + gridIndex) != 0,
+					keyformValues.rotationReflectY.mocAt(keyformBase + gridIndex) != 0,
+					keyformValues.rotationOpacity.mocAt(keyformBase + gridIndex),
 					colorTables.multiplyForKeyform(rotationColorBase?.get(rotationLocalIndex), gridIndex),
 					colorTables.screenForKeyform(rotationColorBase?.get(rotationLocalIndex), gridIndex),
 				)
@@ -158,8 +158,8 @@ internal class DeformerDecoder(
 			isVisible = deformerIsVisible.getOrElse(deformerIndex) { 1 } != 0,
 			isEnabled = deformerIsEnabled.getOrElse(deformerIndex) { 1 } != 0,
 			parentPartIndex = deformerParentPart.getOrElse(deformerIndex) { -1 },
-			parentDeformerIndex = deformerParent[deformerIndex],
-			baseAngle = rotationBaseAngle[rotationLocalIndex],
+			parentDeformerIndex = deformerParent.mocAt(deformerIndex),
+			baseAngle = rotationBaseAngle.mocAt(rotationLocalIndex),
 			keyforms = keyforms,
 		)
 	}

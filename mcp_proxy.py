@@ -12,6 +12,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 try:
@@ -79,10 +80,19 @@ def get_token() -> str | None:
     return os.environ.get(TOKEN_ENV) or _read_saved("agent_mcp_bearer_token")
 
 
+def require_local_endpoint(endpoint: str) -> str:
+    """The proxy sends the bearer token. It only talks to this machine."""
+    parsed = urllib.parse.urlparse(endpoint)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "http" or host not in {"127.0.0.1", "localhost", "::1"}:
+        raise SystemExit("PSD2LIVE_MCP_ENDPOINT must be an http URL on 127.0.0.1, localhost, or ::1")
+    return endpoint
+
+
 def get_endpoint() -> str:
     endpoint = os.environ.get("PSD2LIVE_MCP_ENDPOINT")
     if endpoint:
-        return endpoint
+        return require_local_endpoint(endpoint)
     port = _read_saved("agent_mcp_port")
     return f"http://127.0.0.1:{port if port and port.isdigit() else DEFAULT_PORT}/mcp"
 

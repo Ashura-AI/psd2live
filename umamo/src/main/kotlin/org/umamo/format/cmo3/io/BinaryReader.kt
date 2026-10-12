@@ -24,7 +24,14 @@ public class BinaryReader(private val data: ByteArray) {
 	 * @param Int offset Absolute position to seek to.
 	 */
 	public fun seek(offset: Int) {
+		require(offset in 0..data.size) { "CMO3 seek $offset is outside 0..${data.size}" }
 		position = offset
+	}
+
+	private fun ensure(count: Int) {
+		require(count >= 0 && position >= 0 && position.toLong() + count <= data.size.toLong()) {
+			"CMO3 read past end at $position length $count (size ${data.size})"
+		}
 	}
 
 	/**
@@ -35,6 +42,7 @@ public class BinaryReader(private val data: ByteArray) {
 	 * @param Int count Number of bytes to skip.
 	 */
 	public fun skip(count: Int) {
+		ensure(count)
 		position += count
 	}
 
@@ -45,6 +53,7 @@ public class BinaryReader(private val data: ByteArray) {
 	 * @return Int The byte value in 0..255.
 	 */
 	public fun readU8(key: Int): Int {
+		ensure(1)
 		val raw = data[position].toInt() and 0xFF
 		position += 1
 		return raw xor (key and 0xFF)
@@ -57,6 +66,7 @@ public class BinaryReader(private val data: ByteArray) {
 	 * @return Short The decoded value.
 	 */
 	public fun readInt16(key: Int): Short {
+		ensure(2)
 		val high = data[position].toInt() and 0xFF
 		val low = data[position + 1].toInt() and 0xFF
 		position += 2
@@ -71,6 +81,7 @@ public class BinaryReader(private val data: ByteArray) {
 	 * @return Int The decoded value.
 	 */
 	public fun readInt32(key: Int): Int {
+		ensure(4)
 		val byte0 = data[position].toInt() and 0xFF
 		val byte1 = data[position + 1].toInt() and 0xFF
 		val byte2 = data[position + 2].toInt() and 0xFF
@@ -87,6 +98,7 @@ public class BinaryReader(private val data: ByteArray) {
 	 * @return Long The decoded value.
 	 */
 	public fun readInt64(key: Int): Long {
+		ensure(8)
 		var combined = 0L
 		for (byteIndex in 0 until 8) {
 			combined = (combined shl 8) or (data[position + byteIndex].toLong() and 0xFFL)
@@ -152,6 +164,7 @@ public class BinaryReader(private val data: ByteArray) {
 	 * @return ByteArray A freshly allocated array of the (decoded) bytes.
 	 */
 	public fun readBytes(count: Int, key: Int): ByteArray {
+		ensure(count)
 		val out = ByteArray(count)
 		val byteKey = (key and 0xFF).toByte()
 		for (index in 0 until count) {

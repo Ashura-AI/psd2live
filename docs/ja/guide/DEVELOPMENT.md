@@ -74,7 +74,7 @@ Windows ではリポジトリ直下の `run-gui.bat` でも GUI を起動でき�
 
 ```bash
 ./gradlew test                                   # 全テスト（CI は Ubuntu と Windows で実行）
-./gradlew test --tests "io.github.psd2live.core.SwingDeformerTest"   # 単一のテストクラス
+./gradlew test --tests "io.github.psd2live.scenario.CatalogContractsTest"   # 単一のテストクラス
 ./gradlew createDistributable                    # ランタイム付きのアプリディレクトリ
 ./gradlew packageDistributionForCurrentOS        # 現在のプラットフォーム向けインストーラー
 ```

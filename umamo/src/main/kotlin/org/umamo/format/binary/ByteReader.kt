@@ -23,7 +23,17 @@ internal class ByteReader(
 	 * @param Int at Absolute offset.
 	 * @return Int The value in 0..255.
 	 */
-	fun u8(at: Int): Int = bytes[at].toInt() and 0xFF
+	fun u8(at: Int): Int {
+		ensure(at, 1)
+		return bytes[at].toInt() and 0xFF
+	}
+
+	/** Rejects a read that would run past the buffer, instead of throwing an index exception. */
+	private fun ensure(at: Int, count: Int) {
+		if (at < 0 || count < 0 || at.toLong() + count > bytes.size) {
+			throw IllegalArgumentException("read past end of buffer at $at length $count (size ${bytes.size})")
+		}
+	}
 
 	/**
 	 * Reads an unsigned 16-bit value at [at] in the current byte order, without moving [position].
@@ -101,7 +111,10 @@ internal class ByteReader(
 	 * @param Int count Number of bytes to copy.
 	 * @return ByteArray The bytes read.
 	 */
-	fun readBytes(count: Int): ByteArray = bytes.copyOfRange(position, position + count).also { position += count }
+	fun readBytes(count: Int): ByteArray {
+		ensure(position, count)
+		return bytes.copyOfRange(position, position + count).also { position += count }
+	}
 
 	/**
 	 * Reads [count] bytes at [at] and decodes them as US-ASCII, without moving [position].
@@ -116,7 +129,10 @@ internal class ByteReader(
 	 * @param Int count Number of bytes to decode.
 	 * @return String The decoded text.
 	 */
-	fun asciiAt(at: Int, count: Int): String = decodeAscii(bytes, at, count)
+	fun asciiAt(at: Int, count: Int): String {
+		ensure(at, count)
+		return decodeAscii(bytes, at, count)
+	}
 
 	/**
 	 * Reads [count] bytes at [position] and decodes them as US-ASCII, then advances by that many.

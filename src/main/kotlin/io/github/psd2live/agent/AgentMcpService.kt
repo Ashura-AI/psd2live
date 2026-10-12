@@ -36,6 +36,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import java.util.concurrent.atomic.AtomicBoolean
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
 
@@ -139,6 +140,13 @@ object AgentMcpCredentials {
 	}
 }
 
+/** Compares bearer tokens without leaking the match through a short-circuiting string compare. */
+internal fun bearerMatches(provided: String, expected: String): Boolean {
+	val providedDigest = MessageDigest.getInstance("SHA-256").digest(provided.toByteArray(Charsets.UTF_8))
+	val expectedDigest = MessageDigest.getInstance("SHA-256").digest(expected.toByteArray(Charsets.UTF_8))
+	return MessageDigest.isEqual(providedDigest, expectedDigest)
+}
+
 internal fun Application.configureAgentMcp(workspace: WorkspaceBackend, authToken: String, maxRequestBodyBytes: Long, catalog: AgentToolCatalog) {
 	require(AgentMcpCredentials.isValidToken(authToken)) { "Agent MCP bearer token is invalid" }
 	install(ContentNegotiation) { json(McpJson) }
@@ -147,7 +155,7 @@ internal fun Application.configureAgentMcp(workspace: WorkspaceBackend, authToke
 	install(Authentication) {
 		bearer("agent-mcp-bearer") {
 			authenticate { credential ->
-				if (credential.token == authToken) UserIdPrincipal("agent-mcp-client") else null
+				if (bearerMatches(credential.token, authToken)) UserIdPrincipal("agent-mcp-client") else null
 			}
 		}
 	}

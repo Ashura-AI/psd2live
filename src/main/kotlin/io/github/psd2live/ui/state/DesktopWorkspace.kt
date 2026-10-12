@@ -541,6 +541,7 @@ class DesktopWorkspace(
     private fun discardEditorQueues() {
         paintSessions.clear()
         draftQueue.discard()
+        viewModel.discardUncommittedTextureEdits()
     }
 
     private suspend fun captureForMutation(): WorkspaceCapture<io.github.psd2live.core.RigPreviewModel> {
@@ -1524,7 +1525,8 @@ class DesktopWorkspace(
         val before = captureForMutation()
         val current = viewModel.state.value
         val selected = runtime.checkout(before.projectId, before.state, nodeId) { _, document, model ->
-            applyPreviewOrThrow(model, documentFrom(current), document, "Checked out history node $nodeId", current)
+            applyPreviewOrThrow(model, documentFrom(current), document, "Checked out history node $nodeId", current,
+                restoreCheckedOutPose = true)
         }
         discardEditorQueues()
         scheduleHistoryPersistence(before.projectId)
@@ -1636,8 +1638,9 @@ class DesktopWorkspace(
 		next: WorkspaceDocument,
 		status: String,
         expectedUi: PSD2LiveState = viewModel.state.value,
+        restoreCheckedOutPose: Boolean = false,
 	) {
-		if (!applyPreview(preview, expected, next, status, expectedUi)) {
+		if (!applyPreview(preview, expected, next, status, expectedUi, restoreCheckedOutPose)) {
 			throw IllegalStateException("Workspace changed while the operation was being built; retry from current state")
 		}
 	}
@@ -1648,6 +1651,7 @@ class DesktopWorkspace(
 		next: WorkspaceDocument,
 		status: String,
         expectedUi: PSD2LiveState = viewModel.state.value,
+        restoreCheckedOutPose: Boolean = false,
 	): Boolean = viewModel.applyAgentWorkspacePreview(
             expectedProjectId = expectedUi.projectId,
             expectedProjectOpenGeneration = expectedUi.projectOpenGeneration,
@@ -1674,6 +1678,7 @@ class DesktopWorkspace(
 			status = status,
             settings = next.settings,
 			meshOverrides = next.meshOverrides,
+            restoreCheckedOutPose = restoreCheckedOutPose,
 		)
 
 

@@ -1593,7 +1593,11 @@ impl<'a> Reader<'a> {
         let n = self.count(16)?;
         let mut segments = Vec::with_capacity(n);
         for _ in 0..n {
-            segments.push(PhysicsSegment { length: self.f32()?, mobility: self.f32()?, delay: self.f32()?, acceleration: self.f32()? });
+            let length = self.f32()?;
+            if !(length.is_finite() && length > 0.0) {
+                return err(format!("Physics group {id} has a segment with non-positive length"));
+            }
+            segments.push(PhysicsSegment { length, mobility: self.f32()?, delay: self.f32()?, acceleration: self.f32()? });
         }
         let normalization = Normalization {
             position_min: self.f32()?,

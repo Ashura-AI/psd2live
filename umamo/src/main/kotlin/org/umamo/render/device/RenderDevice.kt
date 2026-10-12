@@ -142,6 +142,9 @@ public interface RenderDevice {
 	/** Frees [target]. */
 	fun destroyRenderTarget(target: RenderTarget)
 
+	/** Frees the buffer and texture view allocated by [createDeformedPositionStore]. */
+	fun destroyDeformedPositionStore(store: DeformedPositionStore)
+
 	// --- Frame recording ---
 
 	/**

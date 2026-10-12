@@ -41,6 +41,7 @@ internal class WorkspaceReadSession(
     private companion object {
         /** Read sessions are captured per call (every editor tick), while the committed document changes rarely. */
         @Volatile var deletedCache: Triple<WorkspaceDocument, PipelineAnalysis, List<WorkspaceLayerSnapshot>>? = null
+        val deletedCacheLock = Any()
     }
     override fun snapshot(): WorkspaceProjectSnapshot = projectSnapshot
 
@@ -100,8 +101,10 @@ internal class WorkspaceReadSession(
     /** Classifying soft-deleted artwork is expensive; one immutable document and analysis always yield the same entries. */
     private fun deletedLayers(document: WorkspaceDocument, analysis: PipelineAnalysis,
                               active: List<WorkspaceLayerSnapshot>): List<WorkspaceLayerSnapshot> {
-        deletedCache?.let { (cachedDocument, cachedAnalysis, layers) ->
-            if (cachedDocument === document && cachedAnalysis === analysis) return layers
+        synchronized(deletedCacheLock) {
+            deletedCache?.let { (cachedDocument, cachedAnalysis, layers) ->
+                if (cachedDocument === document && cachedAnalysis === analysis) return layers
+            }
         }
         val included = active.mapTo(HashSet()) { it.id }
         val config = document.config()
@@ -123,7 +126,9 @@ internal class WorkspaceReadSession(
                 semantic.tag.name.lowercase(), semantic.side.name.lowercase(), semantic.type.name.lowercase(), semantic.parameter, semantic.switchId,
                 semantic.confidence, bounds, classified.bounds, false, true, metadata?.derived == true, metadata?.sourceAssetId, metadata?.sourceSpatialReferenceId)
         }
-        deletedCache = Triple(document, analysis, layers)
+        synchronized(deletedCacheLock) {
+            deletedCache = Triple(document, analysis, layers)
+        }
         return layers
     }
 

@@ -127,8 +127,8 @@ internal fun writeChunk(out: Buffer, type: String, data: ByteArray) {
  * PNG IDAT is a standard zlib datastream (header + Adler-32).  The stream does not state its own
  * decompressed size, but IHDR fully determines it (see PngCodec.expectedRawSize), so the caller
  * passes it here as a hard bound: a corrupt or hostile IDAT that would otherwise inflate without
- * limit stops at the size the header promised.  A truncated stream still degrades to a short result
- * rather than throwing (best-effort, mirroring the PSD/CLIP readers).
+ * limit stops at the size the header promised.  A stream that ends cleanly may be short; a corrupt
+ * stream throws.
  *
  * @param ByteArray bytes The buffer holding the zlib stream.
  * @param Int offset      Offset of the first byte.

@@ -63,9 +63,9 @@ internal class MocArtMeshDecoder(
 		var maskBase = offscreenMaskTotal
 		return drawables.mapIndexed { drawableIndex, drawable ->
 			val vertexCount = drawable.vertexCount
-			val uvs = uvData.copyOfRange(vertexBase * 2, vertexBase * 2 + vertexCount * 2)
-			val triangleIndices = indexData.copyOfRange(indexBase, indexBase + drawable.indexCount)
-			val maskIndices = maskData.copyOfRange(maskBase, maskBase + drawable.maskCount)
+			val uvs = uvData.mocSlice(vertexBase * 2, vertexCount * 2)
+			val triangleIndices = indexData.mocSlice(indexBase, drawable.indexCount)
+			val maskIndices = maskData.mocSlice(maskBase, drawable.maskCount)
 			vertexBase += vertexCount
 			indexBase += drawable.indexCount
 			maskBase += drawable.maskCount
@@ -90,18 +90,15 @@ internal class MocArtMeshDecoder(
 		triangleIndices: ShortArray,
 		maskIndices: IntArray,
 	): ArtMesh {
-		val keyformBinding = keyformBindingIndex[drawableIndex]
-		val base = keyformBase[drawableIndex]
+		val keyformBinding = keyformBindingIndex.mocAt(drawableIndex)
+		val base = keyformBase.mocAt(drawableIndex)
 		val keyforms =
 			(0 until bindings.binding(keyformBinding).gridSize).map { gridIndex ->
-				val positionOffset = keyformValues.positionIndex[base + gridIndex]
+				val positionOffset = keyformValues.positionIndex.mocAt(base + gridIndex)
 				ArtMeshKeyform(
-					keyformValues.positionValues.copyOfRange(
-						positionOffset,
-						positionOffset + drawable.vertexCount * 2,
-					),
-					keyformValues.artMeshOpacity[base + gridIndex],
-					keyformValues.artMeshDrawOrder[base + gridIndex],
+					keyformValues.positionValues.mocSlice(positionOffset, drawable.vertexCount * 2),
+					keyformValues.artMeshOpacity.mocAt(base + gridIndex),
+					keyformValues.artMeshDrawOrder.mocAt(base + gridIndex),
 					colorTables.multiplyForKeyform(colorBase?.get(drawableIndex), gridIndex),
 					colorTables.screenForKeyform(colorBase?.get(drawableIndex), gridIndex),
 				)
@@ -115,7 +112,7 @@ internal class MocArtMeshDecoder(
 			isVisible.getOrElse(drawableIndex) { 1 } != 0,
 			isEnabled.getOrElse(drawableIndex) { 1 } != 0,
 			drawable.parentPartIndex,
-			parentDeformer[drawableIndex],
+			parentDeformer.mocAt(drawableIndex),
 			uvs,
 			triangleIndices,
 			maskIndices,

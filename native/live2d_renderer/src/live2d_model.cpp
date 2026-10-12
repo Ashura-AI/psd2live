@@ -6,6 +6,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cstring>
+#include <vector>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_NO_STDIO
@@ -25,6 +26,50 @@ namespace
     // The priorities of the official samples: an idle yields to everything, a forced motion to nothing.
     constexpr int PriorityIdle = 1;
     constexpr int PriorityForce = 3;
+
+    // Slash-normalized key with `.` and `..` collapsed. Empty when the path escapes the asset map.
+    std::string NormalizeAssetKey(std::string key)
+    {
+        std::replace(key.begin(), key.end(), '\\', '/');
+        std::vector<std::string> parts;
+        std::string part;
+        auto push = [&]() {
+            if (part == "..")
+            {
+                if (parts.empty())
+                {
+                    part = "..";
+                    return false;
+                }
+                parts.pop_back();
+            }
+            else if (!part.empty() && part != ".")
+            {
+                parts.push_back(part);
+            }
+            part.clear();
+            return true;
+        };
+        for (char character : key)
+        {
+            if (character == '/')
+            {
+                if (!push()) return {};
+            }
+            else
+            {
+                part.push_back(character);
+            }
+        }
+        if (!push()) return {};
+        std::string out;
+        for (size_t index = 0; index < parts.size(); ++index)
+        {
+            if (index != 0) out.push_back('/');
+            out += parts[index];
+        }
+        return out;
+    }
 }
 
 Live2DModel::Live2DModel()
@@ -70,12 +115,8 @@ Csm::csmByte* Live2DModel::CreateBuffer(const Csm::csmChar* path, Csm::csmSizeIn
 {
     if (path && size && !_memoryFiles.empty())
     {
-        std::string key = path;
-        std::replace(key.begin(), key.end(), '\\', '/');
-        while (key.rfind("./", 0) == 0)
-        {
-            key.erase(0, 2);
-        }
+        const std::string key = NormalizeAssetKey(path);
+        if (key.empty()) return nullptr;
 
         const auto found = _memoryFiles.find(key);
         if (found != _memoryFiles.end())
@@ -149,12 +190,11 @@ bool Live2DModel::LoadAssetsFromMemory(
     _memoryFiles.clear();
     for (auto& asset : assets)
     {
-        std::replace(asset.path.begin(), asset.path.end(), '\\', '/');
-        while (asset.path.rfind("./", 0) == 0)
+        std::string key = NormalizeAssetKey(asset.path);
+        if (!key.empty())
         {
-            asset.path.erase(0, 2);
+            _memoryFiles.emplace(std::move(key), std::move(asset.data));
         }
-        _memoryFiles.emplace(std::move(asset.path), std::move(asset.data));
     }
     if (!LoadAssets(modelFilePath)) return false;
     DropTextureFilesFromMemory();
@@ -465,10 +505,8 @@ void Live2DModel::DropTextureFilesFromMemory()
     {
         const char* texFileName = _modelSetting->GetTextureFileName(i);
         if (!texFileName) continue;
-        std::string key = _modelHomeDir + texFileName;
-        std::replace(key.begin(), key.end(), '\\', '/');
-        while (key.rfind("./", 0) == 0) key.erase(0, 2);
-        _memoryFiles.erase(key);
+        const std::string key = NormalizeAssetKey(_modelHomeDir + texFileName);
+        if (!key.empty()) _memoryFiles.erase(key);
     }
 }
 

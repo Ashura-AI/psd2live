@@ -53,13 +53,14 @@ public object MocDecoder {
 		val partVisible = sections.intArray(Section.PART_VISIBLE_ARTMESHES)
 		val partList =
 			model.parts().mapIndexed { partIndex, part ->
-				val keyformBinding = partKeyformBinding[partIndex] // for parts, 0 means static (no binding)
+				val keyformBinding = partKeyformBinding.mocAt(partIndex) // for parts, 0 means static (no binding)
 				val gridSize = bindings.staticAwareGridSize(keyformBinding)
+				val keyformBase = partKeyformBase.mocAt(partIndex)
 				Part(
 					part.id,
 					part.parentPartIndex,
 					keyformBinding,
-					FloatArray(gridSize) { keyIndex -> keyformValues.partDrawOrder[partKeyformBase[partIndex] + keyIndex] },
+					FloatArray(gridSize) { keyIndex -> keyformValues.partDrawOrder.mocAt(keyformBase + keyIndex) },
 					isVisible = partVisible.getOrElse(partIndex) { 1 } != 0,
 				)
 			}

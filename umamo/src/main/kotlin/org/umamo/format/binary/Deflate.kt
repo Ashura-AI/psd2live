@@ -24,8 +24,8 @@ private const val DEFAULT_COMPRESSION_LEVEL = -1
 /**
  * Inflates the zlib stream at [sourceOffset] into its decompressed bytes.
  *
- * Best-effort by design: a truncated or corrupt stream yields the bytes recovered so far rather than
- * throwing, matching the other readers and letting a partly damaged image still decode.
+ * A stream that ends cleanly may be shorter than [maximumSize]. A corrupt stream throws rather than
+ * returning a prefix that later decoders would treat as a finished image.
  *
  * @param ByteArray source  The buffer holding the zlib stream.
  * @param Int sourceOffset  Offset of the stream's first byte.
@@ -96,8 +96,8 @@ private fun inflate(source: ByteArray, sourceOffset: Int, sourceLength: Int, max
 				break
 			}
 		}
-	} catch (_: IOException) {
-		// Best-effort: return what inflated so far rather than failing the whole decode.
+	} catch (failure: IOException) {
+		throw IllegalArgumentException("compressed stream is truncated or corrupt", failure)
 	} finally {
 		// Releases the inflater.  On a truncated stream close() can itself raise, which must not mask
 		// the bytes already recovered.

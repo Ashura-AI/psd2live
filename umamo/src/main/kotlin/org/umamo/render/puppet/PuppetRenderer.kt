@@ -381,8 +381,11 @@ class PuppetRenderer(
 
 		// Glue addressing is planned in commonMain; the device holds the store and the interleaved attrs.
 		val glueLayout = planGlueLayout(model)
-		if (glueLayout.globalVertexCount > 0) {
-			store = device.createDeformedPositionStore(glueLayout.globalVertexCount)
+		store?.let { device.destroyDeformedPositionStore(it) }
+		store = if (glueLayout.globalVertexCount > 0) {
+			device.createDeformedPositionStore(glueLayout.globalVertexCount)
+		} else {
+			null
 		}
 
 		val uploaded = ArrayList<GpuDrawable>()

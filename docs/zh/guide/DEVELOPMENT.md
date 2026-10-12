@@ -74,7 +74,7 @@ Windows 也可以直接运行根目录的 `run-gui.bat`。不带参数启动 GUI
 
 ```bash
 ./gradlew test                                   # 全部测试（CI 在 Ubuntu 与 Windows 上运行）
-./gradlew test --tests "io.github.psd2live.core.SwingDeformerTest"   # 单个测试类
+./gradlew test --tests "io.github.psd2live.scenario.CatalogContractsTest"   # 单个测试类
 ./gradlew createDistributable                    # 带运行时的应用目录
 ./gradlew packageDistributionForCurrentOS        # 当前平台的安装包
 ```

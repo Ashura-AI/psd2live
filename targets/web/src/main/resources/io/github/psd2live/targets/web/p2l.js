@@ -413,7 +413,15 @@ export class P2LPlayer {
     // 32-bit indices where available; otherwise meshes past 65535 vertices cannot draw.
     const wide = gl.getExtension("OES_element_index_uint") != null;
     this.indexType = wide ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
-    if (!wide) for (const mesh of this.meshes) mesh.indices = new Uint16Array(mesh.indices);
+    if (!wide) {
+      for (const mesh of this.meshes) {
+        const indices = mesh.indices;
+        for (let i = 0; i < indices.length; i++) {
+          if (indices[i] > 65535) throw new Error("This model needs 32-bit mesh indices, which this browser's WebGL does not provide");
+        }
+        mesh.indices = new Uint16Array(indices);
+      }
+    }
     this.gl = gl;
     const shader = (type, source) => {
       const s = gl.createShader(type);
