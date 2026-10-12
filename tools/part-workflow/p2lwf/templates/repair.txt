@@ -1,0 +1,4 @@
+Files here: input.png ({w}x{h} px) and mask.png (white = region to repair). input.png is a crop of an anime illustration. The MAGENTA ({fill_hex}) pixels are the area to repair: {repair_desc}.
+
+Using your built-in image generation/editing tool, repaint ONLY the magenta area so that it continues seamlessly from the surrounding artwork (same colors, line weight, shading and lighting). Do not change any non-magenta pixel, do not move, crop, rescale or reframe; keep exactly the same canvas size {w}x{h}. No magenta may remain. No text, no blur, no smeared or color-filled patches: the repaired pixels must come from your image generation output.
+Save the result as output.png in this directory (resize back to exactly {w}x{h} if needed). Then stop.

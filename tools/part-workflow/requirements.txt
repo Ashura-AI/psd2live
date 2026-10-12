@@ -1,0 +1,5 @@
+numpy
+opencv-python
+pillow
+# 仅写 PSD 时需要
+psd-tools
