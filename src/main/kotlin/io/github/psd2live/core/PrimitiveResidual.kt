@@ -82,13 +82,13 @@ internal object PrimitiveResidual {
 		}
 	}
 
-	/** A per-vertex scalar array (vertex group weights) on the vertices [sources] derive from them. */
+	/** Vertex group weights on [sources], clamped after interpolation near tolerated triangle boundaries. */
 	fun transferScalars(values: FloatArray, sources: List<VertexSource>): FloatArray = FloatArray(sources.size) { index ->
 		when (val source = sources[index]) {
 			is VertexSource.FromOld -> values[source.oldIndex]
 			is VertexSource.BarycentricOf -> values[source.oldA] * source.wa + values[source.oldB] * source.wb + values[source.oldC] * source.wc
 			else -> error("Unsupported art primitive vertex source")
-		}
+		}.coerceIn(0f, 1f)
 	}
 
 	private fun isZero(values: FloatArray) = values.all { abs(it) <= EPS }
