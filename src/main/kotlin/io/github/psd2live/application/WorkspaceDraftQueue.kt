@@ -28,6 +28,7 @@ internal class WorkspaceDraftQueue<M>(
                beforeCommit: (WorkspaceCapture<M>, WorkspaceDocument, M, WorkspaceDocument?) -> Unit,
                committed: (WorkspaceCommit<M>) -> Unit = {},
                prepare: suspend (WorkspaceDraft, M, WorkspaceDocument) -> WorkspaceDraft = { before, _, draft -> before.copy(document = draft) },
+               rebase: (WorkspaceDocument, WorkspaceDocument, WorkspaceDocument) -> WorkspaceDocument = { _, draft, _ -> draft },
                auxiliary: (WorkspaceCapture<M>, WorkspaceDraft, M) -> Unit = { _, _, _ -> }): Deferred<WorkspaceCommit<M>> = synchronized(lock) {
         // A draft submitted on a state the previous draft has already moved follows it whether or not that draft has
         // finished; only a rejected one ends the chain.
@@ -41,7 +42,10 @@ internal class WorkspaceDraftQueue<M>(
             val expected = if (follows) preceding.capture.state else state
             // A draft may also move auxiliary data, such as the poses a settings switch released during the session.
             val result = runtime.executeDraft(projectId, expected, summary, author,
-                listOf(WorkspaceDraftEdit { before, model -> prepare(before, model, document) })) { before, next, model ->
+                listOf(WorkspaceDraftEdit { before, model ->
+                    val candidate = if (follows) rebase(previous.document, document, before.document) else document
+                    prepare(before, model, candidate)
+                })) { before, next, model ->
                 val following = synchronized(lock) {
                     val newest = tail
                     var cursor = newest?.previous

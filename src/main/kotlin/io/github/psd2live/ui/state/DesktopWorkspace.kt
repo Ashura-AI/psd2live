@@ -681,6 +681,7 @@ class DesktopWorkspace(
                     }
                 }
             }, prepare = { before, model, draft -> generationCommands.prepareEditorDraft(before, model, draft, settingsIntents) },
+            rebase = WorkspaceGenerationCommands::carryPreparedRig,
             auxiliary = { captured, next, model ->
                 WorkspaceDocumentCommands.changedPoses(captured, next, model).takeIf { it.isNotEmpty() }
                     ?.let { viewModel.projectWorkspacePoses(expectedUi, it) }

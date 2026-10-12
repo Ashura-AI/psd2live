@@ -76,7 +76,7 @@ internal class WorkspaceGenerationCommands(private val runtime: WorkspaceRuntime
         // atlasSize is only raised to a minimum, which the remaining settings re-check anyway.
         val named = settingsIntents.flatMapTo(HashSet()) { it.keys }
         val linked = next.document.settings.filter { (key, value) -> key !in named && key != "atlasSize" && before.document.settings[key] != value }
-        val rest = draft.copy(settings = JsonObject(draft.settings + linked))
+        val rest = carryPreparedRig(before.document, draft, next.document).copy(settings = JsonObject(draft.settings + linked))
         return next.copy(document = prepareDraft(next.document, model, rest))
     }
 
@@ -115,7 +115,17 @@ internal class WorkspaceGenerationCommands(private val runtime: WorkspaceRuntime
         return WorkspaceGenerationCommit(result, mutation)
     }
 
-    companion object { val supported = setOf("settings_update", "layer_mesh_update", "layer_classify") }
+    companion object {
+        val supported = setOf("settings_update", "layer_mesh_update", "layer_classify")
+
+        /** Carry preparation's checkpoints and mesh baselines when the visible draft did not edit them. */
+        fun carryPreparedRig(before: WorkspaceDocument, draft: WorkspaceDocument, prepared: WorkspaceDocument): WorkspaceDocument =
+            draft.copy(
+                rigEdits = if (draft.rigEdits == before.rigEdits) prepared.rigEdits else draft.rigEdits,
+                generationSource = if (draft.generationSource == before.generationSource) prepared.generationSource else draft.generationSource,
+                meshSource = if (draft.meshSource == before.meshSource) prepared.meshSource else draft.meshSource,
+            )
+    }
 }
 
 internal fun WorkspaceMutationResult.generationResult(operation: WorkspaceDocumentOperation): JsonObject =

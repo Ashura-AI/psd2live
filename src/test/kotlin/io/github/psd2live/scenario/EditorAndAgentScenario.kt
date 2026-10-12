@@ -63,7 +63,7 @@ class EditorAndAgentScenario {
 	/** Waits until the editor has applied everything queued and is idle. */
 	private suspend fun Editor.settle() {
 		repeat(3) { withContext(Dispatchers.Main) { yield() } }
-		withTimeout(20_000) { vm.state.first { !it.workspaceEditBusy && !it.canvasEditBusy && !it.isAnalyzing && !it.isGenerating } }
+		withTimeout(20_000) { vm.state.first { !it.workspaceEditBusy && !it.editorDraftBusy && !it.canvasEditBusy && !it.isAnalyzing && !it.isGenerating } }
 		withContext(Dispatchers.Main) { yield() }
 	}
 
@@ -83,6 +83,51 @@ class EditorAndAgentScenario {
 	}
 
 	private fun Editor.state(): String = workspace.snapshot().state!!
+
+	@Test fun queuedPresetFieldsKeepGeneratedCheckpointsAndSave() = editor {
+		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
+		consistent("imported")
+		call("parameter_update", req("state" to state(), "parameter_id" to "ParamAngleX", "name" to "Authored turn")).data()
+		consistent("authored parameter")
+		val original = vm.state.value.rigEdits.authoringJournal.toList()
+		val root = workspace.snapshot().historyHeadNodeId!!
+		vm.setHeadStrength(1.5f)
+		vm.setBodyStrength(1.7f)
+		vm.setHeadStrength(2f)
+		consistent("queued preset fields")
+		assertEquals(2f, vm.state.value.previewModel!!.config.headTurnStrength)
+		assertEquals(1.7f, vm.state.value.previewModel!!.config.bodyStrength)
+		assertEquals(original, vm.state.value.rigEdits.authoringJournal.take(original.size))
+		assertEquals("Authored turn", vm.state.value.previewModel!!.rig.puppet.parameters.single { it.id.raw == "ParamAngleX" }.name)
+		val shown = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
+		val head = workspace.snapshot().historyHeadNodeId!!
+		workspace.checkoutHistory(root, MutationAuthor.USER)
+		consistent("before preset fields")
+		workspace.checkoutHistory(head, MutationAuthor.USER)
+		consistent("replayed preset fields")
+		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
+		val archive = temp.resolve("preset-fields.psd2live")
+		vm.saveProjectNow(archive)
+		ProjectController(vm).open(workspace, archive)
+		consistent("reopened preset fields")
+		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
+		Studio.run(temp, io.github.psd2live.ui.state.WorkspaceStateCodec.document(vm.state.value), checks = emptySet()) {
+			exportMatchesEditor(this)
+		}
+	}
+
+	@Test fun presetSwitchAndFieldInOneGestureKeepTheNormalizedJournal() = editor {
+		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
+		consistent("imported")
+		vm.beginEditorGesture()
+		vm.setMeshOnly(true)
+		vm.setMeshOnly(false)
+		vm.setHeadStrength(2f)
+		vm.endEditorGesture()
+		consistent("preset gesture")
+		assertEquals(2f, vm.state.value.previewModel!!.config.headTurnStrength)
+		vm.saveProjectNow(temp.resolve("preset-gesture.psd2live"))
+	}
 
 	@Test fun anAgentRigsTheCharacterAndTheEditorFollows() = editor {
 		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
