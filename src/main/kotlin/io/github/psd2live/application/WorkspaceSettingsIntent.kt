@@ -60,23 +60,29 @@ internal class WorkspaceSettingsIntent private constructor(
         private val blink = setOf(StandardParameters.EYE_L_OPEN, StandardParameters.EYE_R_OPEN)
 
         fun parse(document: WorkspaceDocument, model: RigPreviewModel, changes: JsonObject): WorkspaceSettingsIntent {
-            require(changes.isNotEmpty()) { "Provide at least one setting" }
             val before = document.rawConfig()
-            // Validate what the caller wrote before deriving anything from it.
-            val requested = WorkspaceSettingsCodec.decode(mergeProjectSettings(document.settings, changes))
-            val derived = buildJsonObject {
-                if ("generateDeformers" !in changes && requested.meshOnly != before.meshOnly && document.rigEdits.importedCmo3 == null)
-                    put("generateDeformers", !requested.meshOnly)
-                if ("exportMotions" !in changes && motionOptions.any { it in changes } &&
-                    WorkspaceSettingsPolicy.motionOptionOn(requested) != WorkspaceSettingsPolicy.motionOptionOn(before))
-                    put("exportMotions", WorkspaceSettingsPolicy.motionOptionOn(requested))
-            }
-            var settings = mergeProjectSettings(document.settings, JsonObject(changes + derived))
+            var settings = patchSettings(document.settings, changes, document.rigEdits.importedCmo3 != null)
             val after = WorkspaceSettingsCodec.decode(settings)
             val minimum = minimumAtlasSize(RigLayerDeletion.generationAnalysis(model.analysis, model.config),
                 after.textureUpscale.scale, after.texturePadding)
             if (after.atlasSize < minimum) settings = JsonObject(settings + ("atlasSize" to JsonPrimitive(minimum)))
             return WorkspaceSettingsIntent(settings, released(document, model, before, after))
+        }
+
+        /** Pure display projection of the same linked settings the commit applies. */
+        fun patchSettings(settings: JsonObject, changes: JsonObject, imported: Boolean): JsonObject {
+            require(changes.isNotEmpty()) { "Provide at least one setting" }
+            val before = WorkspaceSettingsCodec.decode(settings)
+            // Validate what the caller wrote before deriving anything from it.
+            val requested = WorkspaceSettingsCodec.decode(mergeProjectSettings(settings, changes))
+            val derived = buildJsonObject {
+                if ("generateDeformers" !in changes && requested.meshOnly != before.meshOnly && !imported)
+                    put("generateDeformers", !requested.meshOnly)
+                if ("exportMotions" !in changes && motionOptions.any { it in changes } &&
+                    WorkspaceSettingsPolicy.motionOptionOn(requested) != WorkspaceSettingsPolicy.motionOptionOn(before))
+                    put("exportMotions", WorkspaceSettingsPolicy.motionOptionOn(requested))
+            }
+            return mergeProjectSettings(settings, JsonObject(changes + derived))
         }
 
         /**

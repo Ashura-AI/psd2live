@@ -654,10 +654,39 @@ class DesktopWorkspace(
         if (migrated != null) viewModel.refreshWorkspaceRenderer(preview)
     }
 
+    /** Transient previews prepare against the committed rig without publishing document or history changes. */
+    override suspend fun previewEditorSettingsDraft(projectId: String, state: String, changes: List<JsonObject>): io.github.psd2live.core.RigPreviewModel {
+        val captured = runtime.capture()
+        if (captured.state != state || captured.projectId != projectId) throw WorkspaceConflict(state, captured.state)
+        val prepared = generationCommands.prepareSettingsDraft(WorkspaceDraft(captured.document, captured.auxiliary), captured.model, changes)
+        return previewBuilder.build(prepared.document, captured.model)
+    }
+
+    override suspend fun previewEditorDraft(projectId: String, state: String, document: WorkspaceDocument,
+                                            settingsIntents: List<JsonObject>): io.github.psd2live.core.RigPreviewModel {
+        val captured = runtime.capture()
+        if (captured.state != state || captured.projectId != projectId) throw WorkspaceConflict(state, captured.state)
+        val prepared = generationCommands.prepareEditorDraft(WorkspaceDraft(captured.document, captured.auxiliary),
+            captured.model, document, settingsIntents)
+        return previewBuilder.build(prepared.document, captured.model)
+    }
+
     /** Completed GUI drafts use the same candidate/rebuild/CAS boundary as application commands. */
     override fun submitEditorDraft(projectId: String, state: String, document: WorkspaceDocument,
                                    settingsIntents: List<kotlinx.serialization.json.JsonObject>,
-                                   summary: String, author: MutationAuthor): kotlinx.coroutines.Deferred<WorkspaceMutationResult> {
+                                   summary: String, author: MutationAuthor): kotlinx.coroutines.Deferred<WorkspaceMutationResult> =
+        submitDraft(projectId, state, document, summary, author) { before, model, draft ->
+            generationCommands.prepareEditorDraft(before, model, draft, settingsIntents)
+        }
+
+    override fun submitEditorSettingsDraft(projectId: String, state: String, changes: List<JsonObject>,
+                                            summary: String, author: MutationAuthor): kotlinx.coroutines.Deferred<WorkspaceMutationResult> =
+        submitDraft(projectId, state, documentFrom(viewModel.state.value), summary, author) { before, model, _ ->
+            generationCommands.prepareSettingsDraft(before, model, changes)
+        }
+
+    private fun submitDraft(projectId: String, state: String, document: WorkspaceDocument, summary: String, author: MutationAuthor,
+                            prepare: suspend (WorkspaceDraft, io.github.psd2live.core.RigPreviewModel, WorkspaceDocument) -> WorkspaceDraft): kotlinx.coroutines.Deferred<WorkspaceMutationResult> {
         val expectedUi = viewModel.state.value
         val submitted = draftQueue.submit(projectId, state, document, summary, author,
             beforeCommit = { _, next, model, following ->
@@ -680,7 +709,7 @@ class DesktopWorkspace(
                         viewModel.refreshWorkspaceRenderer(result.capture.model)
                     }
                 }
-            }, prepare = { before, model, draft -> generationCommands.prepareEditorDraft(before, model, draft, settingsIntents) },
+            }, prepare = prepare,
             rebase = WorkspaceGenerationCommands::carryPreparedRig,
             auxiliary = { captured, next, model ->
                 WorkspaceDocumentCommands.changedPoses(captured, next, model).takeIf { it.isNotEmpty() }

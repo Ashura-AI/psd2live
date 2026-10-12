@@ -65,19 +65,27 @@ internal class WorkspaceGenerationCommands(private val runtime: WorkspaceRuntime
     suspend fun prepareEditorDraft(before: WorkspaceDraft, current: RigPreviewModel, draft: WorkspaceDocument,
                                    settingsIntents: List<JsonObject>): WorkspaceDraft {
         if (settingsIntents.isEmpty()) return before.copy(document = prepareDraft(before.document, current, draft))
-        var next = before; var model = current
-        for (changes in settingsIntents) {
-            val applied = WorkspaceSettingsIntent.parse(next.document, model, changes).apply(next, model)
-            val document = previews.normalizeMeshEdits(applied.document, model)
-            // A later switch reads the rig its predecessors produced, as members of one public batch do.
-            if (WorkspaceRevisions.of(document) != WorkspaceRevisions.of(next.document)) model = previews.build(document)
-            next = applied.copy(document = document)
-        }
+        val next = prepareSettingsDraft(before, current, settingsIntents)
+        val model = if (next.document == before.document) current else previews.build(next.document, current)
         // atlasSize is only raised to a minimum, which the remaining settings re-check anyway.
         val named = settingsIntents.flatMapTo(HashSet()) { it.keys }
         val linked = next.document.settings.filter { (key, value) -> key !in named && key != "atlasSize" && before.document.settings[key] != value }
         val rest = carryPreparedRig(before.document, draft, next.document).copy(settings = JsonObject(draft.settings + linked))
         return next.copy(document = prepareDraft(next.document, model, rest))
+    }
+
+    /** Settings-only candidates always start from the committed document; UI previews cannot replace its rig edits. */
+    suspend fun prepareSettingsDraft(before: WorkspaceDraft, current: RigPreviewModel, settingsIntents: List<JsonObject>): WorkspaceDraft {
+        var next = before; var model = current
+        val patches = WorkspaceSettingsDraft.coalesce(settingsIntents)
+        for ((index, changes) in patches.withIndex()) {
+            val applied = WorkspaceSettingsIntent.parse(next.document, model, changes).apply(next, model)
+            val document = previews.normalizeMeshEdits(applied.document, model)
+            // A later switch reads the rig its predecessors produced, as members of one public batch do.
+            if (index < patches.lastIndex && WorkspaceRevisions.of(document) != WorkspaceRevisions.of(next.document)) model = previews.build(document, model)
+            next = applied.copy(document = document)
+        }
+        return next
     }
 
     suspend fun execute(projectId: String, state: String, operation: WorkspaceDocumentOperation, summary: String,

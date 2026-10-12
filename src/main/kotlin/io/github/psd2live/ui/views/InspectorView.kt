@@ -92,7 +92,7 @@ internal fun ModelPresetsSection(
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	val isBusy = state.isAnalyzing || state.isGenerating
+	val isBusy = state.isAnalyzing || state.isGenerating || state.workspaceEditBusy || state.editorDraftBusy
 
 	fun expandAll(expanded: Boolean) {
 		viewModel.setStrengthSubExpanded(expanded)
@@ -299,6 +299,8 @@ internal fun ModelPresetsSection(
 							modifier = Modifier.weight(1f),
 						)
 						ColorPickerSwatch(
+							onEditStart = { viewModel.beginEditorField("mouthColor") },
+							onEditEnd = { viewModel.endEditorField("mouthColor") },
 							color = rgb,
 							enabled = !isBusy && !state.meshOnly,
 							onColorChanged = { chosenRgb ->

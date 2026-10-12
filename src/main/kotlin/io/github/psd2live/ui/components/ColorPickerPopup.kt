@@ -25,9 +25,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -88,6 +90,8 @@ fun ColorPickerSwatch(
     onColorChanged: (Int) -> Unit,
     sampledColor: Int? = null,
     modifier: Modifier = Modifier,
+    onEditStart: () -> Unit = {},
+    onEditEnd: () -> Unit = {},
 ) {
     var expanded by remember { mutableStateOf(false) }
     val density = LocalDensity.current
@@ -118,6 +122,11 @@ fun ColorPickerSwatch(
         }
 
         if (expanded) {
+            var editing by remember { mutableStateOf(false) }
+            val start by rememberUpdatedState(onEditStart)
+            val end by rememberUpdatedState(onEditEnd)
+            val changed by rememberUpdatedState(onColorChanged)
+            DisposableEffect(Unit) { onDispose { if (editing) end() } }
             Popup(
                 alignment = Alignment.TopEnd,
                 offset = IntOffset(0, with(density) { 26.dp.roundToPx() }),
@@ -127,7 +136,10 @@ fun ColorPickerSwatch(
                 ColorPickerPopupContent(
                     initialColor = color,
                     sampledColor = sampledColor,
-                    onColorChanged = onColorChanged,
+                    onColorChanged = { value ->
+                        if (!editing) { editing = true; start() }
+                        changed(value)
+                    },
                     onDismiss = { expanded = false },
                 )
             }

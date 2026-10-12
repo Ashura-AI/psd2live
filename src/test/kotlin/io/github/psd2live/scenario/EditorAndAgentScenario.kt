@@ -84,6 +84,124 @@ class EditorAndAgentScenario {
 
 	private fun Editor.state(): String = workspace.snapshot().state!!
 
+	@Test fun presetPatchesKeepTheCommittedJournalEvenWithStalePreviewMetadata() = editor {
+		workspace.importPsd(Characters.mouthPsd(temp).toString(), true)
+		consistent("imported mouth")
+		call("parameter_update", req("state" to state(), "parameter_id" to "ParamAngleX", "name" to "Authored turn")).data()
+		consistent("authored parameter")
+		val original = vm.state.value.rigEdits.authoringJournal.toList()
+		vm.setStateForTest(vm.state.value.copy(rigEdits = io.github.psd2live.core.RigEditOverlay.Empty))
+		vm.setMouthThickness(4f)
+		consistent("settings patch with stale preview metadata")
+		assertEquals(original, vm.state.value.rigEdits.authoringJournal.take(original.size))
+		assertEquals("Authored turn", vm.state.value.previewModel!!.rig.puppet.parameters.single { it.id.raw == "ParamAngleX" }.name)
+	}
+
+	@Test fun aColorGestureAndTopologyChangesKeepUserGroupsAndCommitOnce() = editor {
+		workspace.importPsd(Characters.mouthPsd(temp).toString(), true)
+		consistent("imported mouth")
+		val lip = vm.state.value.previewModel!!.rig.layerIdByDrawableId.entries.first { it.value.contains("mouth-lip") }.key
+		call("vertex_group_update", req("state" to state(), "target" to "mesh:$lip", "name" to "Pinned lip", "kind" to "pin", "rule" to "fill", "value" to 1f)).data()
+		consistent("authored lip weights")
+		val original = vm.state.value.rigEdits.authoringJournal.toList()
+		val nodes = workspace.history().nodes.size
+		vm.beginEditorField("mouthColor")
+		repeat(100) { vm.setMouthColor(0x440000 + it * 16) }
+		vm.setMouthColor(0xAABBCC)
+		vm.setMouthThickness(5f)
+		vm.setMouthShapeCurve("w", io.github.psd2live.core.MouthCurve.preset("w"))
+		withTimeout(20_000) { vm.state.first { it.previewModel?.config?.mouthColor == 0xAABBCC && it.previewModel.config.mouthThickness == 5f } }
+		assertEquals(nodes, workspace.history().nodes.size, "color samples must remain transient")
+		vm.endEditorField("mouthColor")
+		consistent("committed color gesture")
+		assertEquals(nodes + 1, workspace.history().nodes.size, "one color gesture must create one history node")
+		assertEquals(0xAABBCC, vm.state.value.previewModel!!.config.mouthColor)
+		assertEquals(original, vm.state.value.rigEdits.authoringJournal.take(original.size))
+		val group = vm.state.value.previewModel!!.rig.puppet.vertexGroups.single { it.name == "Pinned lip" }
+		assertTrue(group.weights.all { it in 0f..1f })
+		val shown = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
+		val archive = temp.resolve("mouth-color.psd2live")
+		vm.saveProjectNow(archive)
+		ProjectController(vm).open(workspace, archive)
+		consistent("reopened color gesture")
+		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
+	}
+
+	@Test fun mouthPresetAndThicknessChangePreviewAndSurviveReopening() = editor {
+		workspace.importPsd(Characters.mouthPsd(temp).toString(), true)
+		consistent("imported mouth")
+		vm.setMouthOutlineEnabled(true)
+		consistent("mouth outline")
+		val initial = vm.state.value.previewModel!!
+		assertTrue(initial.analysis.layers.any { it.source is io.github.psd2live.core.MouthLipLayer })
+		fun mouthPositions() = org.umamo.render.eval.CpuDeformationEvaluator().evaluate(vm.state.value.previewModel!!.rig.puppet,
+			mapOf(ParameterId("ParamMouthOpenY") to 0.7f, ParameterId("ParamMouthForm") to 0f)).worldPositions
+		val before = mouthPositions()
+		vm.setMouthShapeCurve("flat", io.github.psd2live.core.MouthCurve.preset("flat"))
+		consistent("mouth shape")
+		val shaped = mouthPositions()
+		assertTrue(before.any { (id, vertices) -> shaped[id]?.let { next -> vertices.size != next.size || vertices.indices.any { kotlin.math.abs(vertices[it] - next[it]) > 0.1f } } == true },
+			"the mouth preset must change the actual posed geometry")
+		val original = vm.state.value.rigEdits.authoringJournal.toList()
+		val initialHash = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
+		vm.beginEditorField("setMouthThickness")
+		vm.setMouthThickness(6f)
+		withTimeout(20_000) { vm.state.first { it.previewModel?.config?.mouthThickness == 6f } }
+		assertNotEquals(initialHash, Oracles.hash(vm.state.value.previewModel!!.rig.puppet), "thickness must change the field preview")
+		assertEquals(original, vm.state.value.rigEdits.authoringJournal)
+		vm.endEditorField("setMouthThickness")
+		consistent("mouth thickness")
+		val head = workspace.snapshot().historyHeadNodeId
+		repeat(3) {
+			vm.beginEditorField("setMouthThickness"); vm.endEditorField("setMouthThickness")
+			consistent("unchanged mouth field")
+		}
+		assertEquals(head, workspace.snapshot().historyHeadNodeId)
+		val shown = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
+		val archive = temp.resolve("mouth-edit.psd2live")
+		vm.saveProjectNow(archive)
+		ProjectController(vm).open(workspace, archive)
+		consistent("reopened mouth")
+		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
+		Studio.run(temp, io.github.psd2live.ui.state.WorkspaceStateCodec.document(vm.state.value), checks = emptySet()) {
+			exportMatchesEditor(this)
+		}
+	}
+
+	@Test fun settledPresetFieldChangesThePosedGeometryOnlyOnce() = editor {
+		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
+		consistent("imported")
+		call("parameter_update", req("state" to state(), "parameter_id" to "ParamAngleX", "name" to "Authored turn")).data()
+		consistent("authored parameter")
+		val before = vm.state.value.previewModel!!
+		val face = before.rig.layerIdByDrawableId.entries.single { it.value == workspace.snapshot().layers.single { it.sourceName == "face" }.id }.key
+		val motion = Oracles.motion(before.rig.puppet, face, mapOf("ParamAngleX" to 30f))
+		assertTrue(motion > 0.1, "fixture must turn its head")
+		vm.beginEditorField("setHeadStrength")
+		vm.setHeadStrength(0f)
+		withTimeout(20_000) { vm.state.first { it.previewModel?.config?.headTurnStrength == 0f } }
+		assertTrue(Oracles.motion(vm.state.value.previewModel!!.rig.puppet, face, mapOf("ParamAngleX" to 30f)) < motion * 0.1,
+			"the open field preview must show the new geometry before settling")
+		assertEquals(before.config.rigEdits, vm.state.value.rigEdits, "preview checkpoints must stay transient")
+		vm.setHeadStrength(2f)
+		withTimeout(20_000) { vm.state.first { it.previewModel?.config?.headTurnStrength == 2f } }
+		assertTrue(Oracles.motion(vm.state.value.previewModel!!.rig.puppet, face, mapOf("ParamAngleX" to 30f)) > motion * 1.5,
+			"a later field sample must still use the committed generation baseline")
+		vm.setHeadStrength(0f)
+		withTimeout(20_000) { vm.state.first { it.previewModel?.config?.headTurnStrength == 0f } }
+		vm.endEditorField("setHeadStrength")
+		consistent("settled preset field")
+		assertTrue(Oracles.motion(vm.state.value.previewModel!!.rig.puppet, face, mapOf("ParamAngleX" to 30f)) < motion * 0.1,
+			"turning head strength off must change the actual geometry")
+		val head = workspace.snapshot().historyHeadNodeId
+		repeat(3) {
+			vm.beginEditorField("setHeadStrength")
+			vm.endEditorField("setHeadStrength")
+			consistent("unchanged field focus")
+		}
+		assertEquals(head, workspace.snapshot().historyHeadNodeId, "unchanged focus must not create edits")
+	}
+
 	@Test fun queuedPresetFieldsKeepGeneratedCheckpointsAndSave() = editor {
 		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
 		consistent("imported")
@@ -119,6 +237,8 @@ class EditorAndAgentScenario {
 	@Test fun presetSwitchAndFieldInOneGestureKeepTheNormalizedJournal() = editor {
 		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
 		consistent("imported")
+		vm.setParameterValue(ParameterId("ParamAngleX"), 10f)
+		consistent("authored pose")
 		vm.beginEditorGesture()
 		vm.setMeshOnly(true)
 		vm.setMeshOnly(false)
@@ -126,6 +246,7 @@ class EditorAndAgentScenario {
 		vm.endEditorGesture()
 		consistent("preset gesture")
 		assertEquals(2f, vm.state.value.previewModel!!.config.headTurnStrength)
+		assertEquals(0f, vm.state.value.parameterValues[ParameterId("ParamAngleX")], "off then on must still release the authored pose")
 		vm.saveProjectNow(temp.resolve("preset-gesture.psd2live"))
 	}
 

@@ -18,6 +18,12 @@ interface WorkspaceStatePort {
 }
 
 interface WorkspaceEditorDraftPort {
+    suspend fun previewEditorSettingsDraft(projectId: String, state: String, changes: List<JsonObject>): RigPreviewModel
+    fun submitEditorSettingsDraft(projectId: String, state: String, changes: List<JsonObject>,
+                                  summary: String, author: MutationAuthor): Deferred<WorkspaceMutationResult>
+    /** Build a transient field preview from the captured committed rig, using the same preparation as submission. */
+    suspend fun previewEditorDraft(projectId: String, state: String, document: WorkspaceDocument,
+                                   settingsIntents: List<JsonObject>): RigPreviewModel
     /**
      * [settingsIntents] are the settings switches made during the field session, in order. They replay through the
      * same intent as settings_update, so their links and authored-pose releases land with the draft in one commit.

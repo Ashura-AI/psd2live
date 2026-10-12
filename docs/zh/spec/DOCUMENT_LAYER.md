@@ -21,6 +21,12 @@
 
 `format-compile` 中的四个框架部分为 MIT，不依赖任何 GPL 模块。
 
+## 预设设置草稿
+
+预设控件只投影设置补丁，不把当前预览的 `RigEditOverlay` 或网格基线作为设置编辑提交。`WorkspaceSettingsIntent.patchSettings` 提供即时显示的联动规则；`WorkspaceGenerationCommands.prepareSettingsDraft` 在捕获的已提交文档上应用同一意图、释放作者姿态、重建并合并生成结果。预览与提交使用同一个纯候选，预览产生的检查点只存在于临时模型中。
+
+滑块、数字输入与颜色弹窗按编辑会话划分操作；`WorkspaceSettingsDraft` 将连续数值采样合并为最终补丁，同时保留会释放姿态的开关切换顺序。完成会话后经 `WorkspaceDraftQueue` 和运行时 CAS 发布一个历史节点；无变化不追加。模拟与物理编辑继续使用各自的应用层命令。保存会先结束控件会话并等待草稿提交；旧编辑记录与历史快照保持原样。
+
 ## 生成器依赖图
 
 `DocumentGenerators.graph` 为每个工程构造如下节点（对象 ID：`document:<部分>` 为文档状态，`rig:<阶段>` 为整体 Rig 阶段，`parameter:<ID>` 为生成的参数，`keyform:<warp|mesh>:<目标>@<参数>` 为生成器沿该参数在目标上增加的关键形）：

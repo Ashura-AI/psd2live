@@ -91,6 +91,15 @@ internal object Characters {
 		return directory.resolve("figure.psd").also { Files.write(it, PsdWriter.write(source.widthPx, source.heightPx, source.layers, source.groups)) }
 	}
 
+	/** A face and mouth, with enough contour for the generated lip ribbons. */
+	fun mouthPsd(directory: Path): Path {
+		val source = document(128, 128, listOf(
+			Part("face", 0, SemanticTag.FACE, Side.NONE, ellipse(64, 64, 48, 56)),
+			Part("mouth", 1, SemanticTag.MOUTH, Side.NONE, ellipse(64, 92, 22, 6)),
+		), PipelineConfig(atlasSize = 256, generatePhysics = false, exportMoc3 = false)).source
+		return directory.resolve("mouth.psd").also { Files.write(it, PsdWriter.write(source.widthPx, source.heightPx, source.layers, source.groups)) }
+	}
+
 	/** A [size]² PNG of an opaque disc, coloured by position so that resampling and misplacement show. */
 	fun disc(directory: Path, name: String = "disc.png", size: Int = 24): Path {
 		val rgba = ByteArray(size * size * 4)

@@ -103,6 +103,7 @@ import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.putJsonObject
 import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.math.abs
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
@@ -2254,11 +2255,15 @@ class PSD2LiveViewModel : AutoCloseable {
     private var editorDraftCount = 0
     /** Settings switches made while a field session is open; the draft replays them through the settings intent. */
     private val editorSettingsIntents = mutableListOf<kotlinx.serialization.json.JsonObject>()
+    private var editorDraftHasDocumentEdits = false
+    private val editorSettingsEffects = mutableListOf<suspend () -> Unit>()
 
     private fun beginEditorSession(token: String) {
         if (!editorSessions.anyOpen) {
             editorDraftExpected = workspaceBackend?.snapshot()
-            synchronized(stateLock) { editorSettingsIntents.clear() }
+            synchronized(stateLock) {
+                editorSettingsIntents.clear(); editorSettingsEffects.clear(); editorDraftHasDocumentEdits = false
+            }
         }
         editorSessions.begin(token)
     }
@@ -2550,6 +2555,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	}
 
     private fun editorChanged(summary: String? = null) {
+        editorDraftHasDocumentEdits = true
         if (editorSessions.anyOpen) { markWorkspaceChanged(); return }
         commitEditorChange(summary)
     }
@@ -2558,6 +2564,9 @@ class PSD2LiveViewModel : AutoCloseable {
         val expected = editorDraftExpected ?: workspaceBackend?.snapshot()
         editorDraftExpected = null
         val intents = synchronized(stateLock) { editorSettingsIntents.toList().also { editorSettingsIntents.clear() } }
+        val settingsOnly = !editorDraftHasDocumentEdits && intents.isNotEmpty()
+        editorDraftHasDocumentEdits = false
+        val effects = synchronized(stateLock) { editorSettingsEffects.toList().also { editorSettingsEffects.clear() } }
         val workspace: io.github.psd2live.application.WorkspaceEditorDraftPort = workspaceBackend ?: return null
         if (expected?.loaded != true || expected.projectId == null) return null
         val (current, document) = synchronized(stateLock) {
@@ -2574,14 +2583,17 @@ class PSD2LiveViewModel : AutoCloseable {
             captured to draft
         }
         markWorkspaceChanged()
-        val result = workspace.submitEditorDraft(expected.projectId, expected.state, document, intents,
+        val result = if (settingsOnly) workspace.submitEditorSettingsDraft(expected.projectId, expected.state, intents,
+            summary ?: "Updated model presets", MutationAuthor.USER)
+        else workspace.submitEditorDraft(expected.projectId, expected.state, document, intents,
             summary ?: "Workspace changed in the editor", MutationAuthor.USER)
         synchronized(stateLock) {
             editorDraftCount++
             updateState { it.copy(editorDraftBusy = true) }
         }
         scope.launch {
-            try { result.await() }
+            var committed = false
+            try { result.await(); committed = true }
             catch (failure: Exception) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
                 updateState { state ->
@@ -2592,6 +2604,15 @@ class PSD2LiveViewModel : AutoCloseable {
                 synchronized(stateLock) {
                     editorDraftCount--
                     updateState { it.copy(editorDraftBusy = editorDraftCount > 0) }
+                }
+            }
+            if (committed && _state.value.projectId == current.projectId && _state.value.projectOpenGeneration == current.projectOpenGeneration) {
+                effects.forEach { effect ->
+                    try { effect() }
+                    catch (failure: Exception) {
+                        if (failure is kotlinx.coroutines.CancellationException) throw failure
+                        addLog(tr("log.previewUpdateFailed", failure.message ?: failure.javaClass.simpleName), level = LogLevel.WARNING, tag = "Preset")
+                    }
                 }
             }
         }
@@ -3256,31 +3277,17 @@ class PSD2LiveViewModel : AutoCloseable {
 		}
 	}
 
-	fun setHeadStrength(strength: Float) {
-		updateState { it.copy(headStrength = strength.coerceIn(0f, 4f)) }
-		schedulePreviewRebuild()
-	    editorChanged()
-	}
+    fun setHeadStrength(strength: Float) = editPresetSettings(buildJsonObject { put("headStrength", strength.coerceIn(0f, 4f)) })
 
-	fun setBodyStrength(strength: Float) {
-		updateState { it.copy(bodyStrength = strength.coerceIn(0f, 4f)) }
-		schedulePreviewRebuild()
-	    editorChanged()
-	}
+    fun setBodyStrength(strength: Float) = editPresetSettings(buildJsonObject { put("bodyStrength", strength.coerceIn(0f, 4f)) })
 
-	/** One of the rig values ([io.github.psd2live.core.RigTuning.fields]), clamped to its range. */
-	fun setRigTuning(id: String, value: Float) {
-		updateState { it.copy(rigTuning = it.rigTuning.with(id, value)) }
-		schedulePreviewRebuild()
-	    editorChanged()
-	}
+    fun setRigTuning(id: String, value: Float) = editPresetSettings(buildJsonObject {
+        put("rigTuning", io.github.psd2live.project.WorkspaceSettingsCodec.encodeRigTuning(_state.value.rigTuning.with(id, value)))
+    })
 
-	/** Every rig value back to its default. */
-	fun resetRigTuning() {
-		updateState { it.copy(rigTuning = io.github.psd2live.core.RigTuning()) }
-		schedulePreviewRebuild()
-	    editorChanged()
-	}
+    fun resetRigTuning() = editPresetSettings(buildJsonObject {
+        put("rigTuning", io.github.psd2live.project.WorkspaceSettingsCodec.encodeRigTuning(io.github.psd2live.core.RigTuning()))
+    })
 
 	fun setTexturePadding(padding: Int) {
 		updateState { it.copy(texturePadding = padding.coerceIn(0, 32)) }
@@ -3294,51 +3301,45 @@ class PSD2LiveViewModel : AutoCloseable {
 	    editorChanged()
 	}
 
-    fun setMouthOutlineEnabled(enabled: Boolean) {
-        updateState { it.copy(mouthOutlineEnabled = enabled) }
-        schedulePreviewRebuild()
-        editorChanged()
-    }
+    fun setMouthOutlineEnabled(enabled: Boolean) = editPresetSettings(buildJsonObject { put("mouthOutlineEnabled", enabled) })
 
     fun setMouthShapeCurve(shape: String, curve: io.github.psd2live.core.MouthCurve) {
         require(shape in io.github.psd2live.core.MouthCurve.presets + "custom")
-        updateState { it.copy(mouthShape = shape, mouthCurve = curve) }
-        schedulePreviewRebuild()
-        editorChanged()
+        editPresetSettings(buildJsonObject {
+            put("mouthShape", shape)
+            putJsonArray("mouthCurve") { curve.points.forEach { point ->
+                add(buildJsonObject { put("x", point.x); put("y", point.y) })
+            } }
+        })
     }
 
-    fun setMouthThickness(thickness: Float) {
-        val clamped = thickness.coerceIn(0.5f, 8f)
-        updateState { it.copy(mouthThickness = clamped) }
-        schedulePreviewRebuild()
-        editorChanged()
-    }
+    fun setMouthThickness(thickness: Float) = editPresetSettings(buildJsonObject { put("mouthThickness", thickness.coerceIn(0.5f, 8f)) })
 
     fun setMouthColor(color: Int?) {
         require(color == null || color in 0..0xFFFFFF)
-        updateState { it.copy(mouthColor = color) }
-        schedulePreviewRebuild()
-        editorChanged()
+        editPresetSettings(buildJsonObject { put("mouthColor", color?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull) })
     }
 
-	/**
-	 * Settings switches that link other settings or release authored poses go through the application's settings
-	 * intent, so the settings, the released poses of every workspace and the rebuilt model publish in one commit.
-	 * An open field session keeps the local draft for display and records the switch, which the draft replays
-	 * through the same intent when the session closes.
-	 */
-	private fun submitSettingsIntent(changes: kotlinx.serialization.json.JsonObject, after: suspend () -> Unit = {}): Boolean {
-		if (workspaceBackend != null && editorSessions.anyOpen) {
-			synchronized(stateLock) { editorSettingsIntents.add(changes) }
-			return false
-		}
-		val workspace = workspaceBackend ?: return false
-		val port: io.github.psd2live.application.WorkspaceSettingsPort = workspace
-		runWorkspaceCommand(after) { state -> port.updateProjectSettings(state, changes) }
-		return true
-	}
+    /** All preset controls project settings patches; only the application prepares the rig and releases poses. */
+    private fun editPresetSettings(changes: kotlinx.serialization.json.JsonObject, after: suspend () -> Unit = {}) {
+        val current = _state.value
+        val settings = io.github.psd2live.application.WorkspaceSettingsIntent.patchSettings(
+            WorkspaceStateCodec.settings(current), changes, current.rigEdits.importedCmo3 != null)
+        if (settings == WorkspaceStateCodec.settings(current)) return
+        if (editorDraftExpected == null) editorDraftExpected = workspaceBackend?.snapshot()
+        synchronized(stateLock) {
+            editorSettingsIntents.add(changes)
+            editorSettingsEffects.add(after)
+        }
+        updateState { WorkspaceStateCodec.decode(settings, it) }
+        if (editorSessions.anyOpen) {
+            markWorkspaceChanged()
+            schedulePreviewRebuild()
+        } else commitEditorChange("Updated model presets")
+    }
 
-	/** Awaited form of [submitSettingsIntent] for a sequence that must see the commit; false when not applicable. */
+
+	/** Awaited form of [editPresetSettings] for a sequence that must see the commit; false when not applicable. */
 	private suspend fun applySettingsIntentNow(changes: kotlinx.serialization.json.JsonObject): Boolean {
 		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen || _state.value.workspaceEditBusy } ?: return false
 		val port: io.github.psd2live.application.WorkspaceSettingsPort = workspace
@@ -3351,173 +3352,44 @@ class PSD2LiveViewModel : AutoCloseable {
 		return true
 	}
 
-	fun setMeshOnly(enabled: Boolean) {
-		if (submitSettingsIntent(buildJsonObject { put("meshOnly", enabled) }) {
-				if (enabled) { resetPreviewPhysics(); stopProcessMotion() }
-			}) return
-		updateState { current ->
-			val updated = current.copy(meshOnly = enabled, generateDeformers = !enabled)
-			if (enabled) {
-				val defaults = current.previewModel?.rig?.puppet?.parameters?.associate { it.id to it.default } ?: emptyMap()
-				val resetMap = defaults.filterKeys { it !in current.lockedParameters }
-				updated.copy(parameterValues = current.parameterValues + resetMap)
-			} else updated
-		}
-		if (enabled) {
-			resetPreviewPhysics()
-			stopProcessMotion()
-		}
-		schedulePreviewRebuild()
-	    editorChanged()
-	}
+    fun setMeshOnly(enabled: Boolean) = editPresetSettings(buildJsonObject { put("meshOnly", enabled) }) {
+        if (enabled) { resetPreviewPhysics(); stopProcessMotion() }
+    }
 
-	fun setFeatureDisplacementEnabled(enabled: Boolean) {
-		updateState { it.copy(featureDisplacementEnabled = enabled) }
-		schedulePreviewRebuild()
-		editorChanged()
-	}
+    fun setFeatureDisplacementEnabled(enabled: Boolean) = editPresetSettings(buildJsonObject { put("featureDisplacementEnabled", enabled) })
 
-	/**
-	 * The model presets' basic motions switch: off, idle, blink, nod and shake leave the animation panel, the
-	 * editor, the preview and the export together, each keeping its own switch and settings for when it is back.
-	 */
-	fun setMotionBasic(enabled: Boolean) {
-		if (submitSettingsIntent(buildJsonObject { put("motionBasic", enabled) }) {
-				if (!enabled) closePresetGroupMotion(skeleton = false)
-				scheduleRuntimeBundleUpdate()
-			}) return
-		updateState { current ->
-			if (enabled) return@updateState current.copy(motionBasic = true)
-			val rest = mapOf(
-				StandardParameters.ANGLE_X to 0f,
-				StandardParameters.ANGLE_Y to 0f,
-				StandardParameters.ANGLE_Z to 0f,
-				StandardParameters.BODY_X to 0f,
-				StandardParameters.BODY_Y to 0f,
-				StandardParameters.BODY_Z to 0f,
-				StandardParameters.BREATH to 0f,
-				StandardParameters.MOUTH_OPEN to 0f,
-				StandardParameters.MOUTH_FORM to 0f,
-				StandardParameters.EYE_L_OPEN to 1f,
-				StandardParameters.EYE_R_OPEN to 1f,
-			).filterKeys { key -> key !in current.lockedParameters }
-			current.copy(motionBasic = false, parameterValues = current.parameterValues + rest)
-		}
-		if (!enabled) {
-			closePresetGroupMotion(skeleton = false)
-		}
-		scheduleRuntimeBundleUpdate()
-		editorChanged()
-	}
+    fun setMotionBasic(enabled: Boolean) = editPresetSettings(buildJsonObject { put("motionBasic", enabled) }) {
+        if (!enabled) closePresetGroupMotion(skeleton = false)
+    }
 
-	/** Closes the editor on, and stops, a generated motion of the group just switched off. */
-	private fun closePresetGroupMotion(skeleton: Boolean) {
-		val names = MotionClips.BUILTIN_NAMES.filter { MotionClips.isSkeletonPreset(it) == skeleton }
-		if (names.any { motionEditor.clipId == MotionEditorState.presetClipId(it) }) closeMotionEditorClip()
-		if (names.any { it.equals(processActiveMotion, ignoreCase = true) }) stopProcessMotion()
-	}
+    /** Closes the editor on, and stops, a generated motion of the group just switched off. */
+    private fun closePresetGroupMotion(skeleton: Boolean) {
+        val names = MotionClips.BUILTIN_NAMES.filter { MotionClips.isSkeletonPreset(it) == skeleton }
+        if (names.any { motionEditor.clipId == MotionEditorState.presetClipId(it) }) closeMotionEditorClip()
+        if (names.any { it.equals(processActiveMotion, ignoreCase = true) }) stopProcessMotion()
+    }
 
-	fun setMotionIdle(enabled: Boolean) {
-		if (submitSettingsIntent(buildJsonObject { put("motionIdle", enabled) }) { scheduleRuntimeBundleUpdate() }) return
-		updateState { current ->
-			val next = current.copy(motionIdle = enabled)
-			val updated = next.copy(exportMotions = next.motionIdle || next.motionBlink || next.motionNod || next.motionShake || next.motionSkeleton)
-			if (!enabled) {
-				val idleReset = mapOf(
-					StandardParameters.ANGLE_X to 0f,
-					StandardParameters.ANGLE_Y to 0f,
-					StandardParameters.ANGLE_Z to 0f,
-					StandardParameters.BODY_X to 0f,
-					StandardParameters.BODY_Y to 0f,
-					StandardParameters.BODY_Z to 0f,
-					StandardParameters.BREATH to 0f,
-					StandardParameters.MOUTH_OPEN to 0f,
-					StandardParameters.MOUTH_FORM to 0f,
-				).filterKeys { key -> key !in updated.lockedParameters }
-				updated.copy(parameterValues = updated.parameterValues + idleReset)
-			} else updated
-		}
-		if (!enabled) {
-		}
-		scheduleRuntimeBundleUpdate()
-	    editorChanged()
-	}
+    fun setMotionIdle(enabled: Boolean) = editPresetSettings(buildJsonObject { put("motionIdle", enabled) })
 
-	fun setMotionBlink(enabled: Boolean) {
-		if (submitSettingsIntent(buildJsonObject { put("motionBlink", enabled) }) { scheduleRuntimeBundleUpdate() }) return
-		updateState { current ->
-			val next = current.copy(motionBlink = enabled)
-			val updated = next.copy(exportMotions = next.motionIdle || next.motionBlink || next.motionNod || next.motionShake || next.motionSkeleton)
-			if (!enabled) {
-				val blinkReset = mapOf(
-					StandardParameters.EYE_L_OPEN to 1.0f,
-					StandardParameters.EYE_R_OPEN to 1.0f,
-				).filterKeys { key -> key !in updated.lockedParameters }
-				updated.copy(parameterValues = updated.parameterValues + blinkReset)
-			} else updated
-		}
-		scheduleRuntimeBundleUpdate()
-	    editorChanged()
-	}
+    fun setMotionBlink(enabled: Boolean) = editPresetSettings(buildJsonObject { put("motionBlink", enabled) })
 
-	fun setMotionNod(enabled: Boolean) {
-		// Nod and Shake only play transient frames over the authored pose; stopping them leaves that pose alone.
-		if (!enabled) stopProcessMotion("nod")
-		if (submitSettingsIntent(buildJsonObject { put("motionNod", enabled) }) {
-				scheduleRuntimeBundleUpdate()
-				if (enabled) triggerMotion("Nod")
-			}) return
-		updateState { current ->
-			val next = current.copy(motionNod = enabled)
-			next.copy(exportMotions = next.motionIdle || next.motionBlink || next.motionNod || next.motionShake || next.motionSkeleton)
-		}
-		scheduleRuntimeBundleUpdate()
-		if (enabled) triggerMotion("Nod")
-	    editorChanged()
-	}
+    fun setMotionNod(enabled: Boolean) {
+        if (!enabled) stopProcessMotion("nod")
+        editPresetSettings(buildJsonObject { put("motionNod", enabled) }) { if (enabled) triggerMotion("Nod") }
+    }
 
-	fun setMotionShake(enabled: Boolean) {
-		if (!enabled) stopProcessMotion("shake")
-		if (submitSettingsIntent(buildJsonObject { put("motionShake", enabled) }) {
-				scheduleRuntimeBundleUpdate()
-				if (enabled) triggerMotion("Shake")
-			}) return
-		updateState { current ->
-			val next = current.copy(motionShake = enabled)
-			next.copy(exportMotions = next.motionIdle || next.motionBlink || next.motionNod || next.motionShake || next.motionSkeleton)
-		}
-		scheduleRuntimeBundleUpdate()
-		if (enabled) triggerMotion("Shake")
-	    editorChanged()
-	}
+    fun setMotionShake(enabled: Boolean) {
+        if (!enabled) stopProcessMotion("shake")
+        editPresetSettings(buildJsonObject { put("motionShake", enabled) }) { if (enabled) triggerMotion("Shake") }
+    }
 
-	fun setMotionSkeleton(enabled: Boolean) {
-		if (submitSettingsIntent(buildJsonObject { put("motionSkeleton", enabled) }) {
-				if (!enabled) closePresetGroupMotion(skeleton = true)
-				scheduleRuntimeBundleUpdate()
-			}) return
-		updateState { current ->
-			val next = current.copy(motionSkeleton = enabled)
-			next.copy(exportMotions = next.motionIdle || next.motionBlink || next.motionNod || next.motionShake || next.motionSkeleton)
-		}
-		if (!enabled) closePresetGroupMotion(skeleton = true)
-		scheduleRuntimeBundleUpdate()
-		editorChanged()
-	}
+    fun setMotionSkeleton(enabled: Boolean) = editPresetSettings(buildJsonObject { put("motionSkeleton", enabled) }) {
+        if (!enabled) closePresetGroupMotion(skeleton = true)
+    }
 
-	fun setGeneratePhysics(enabled: Boolean) {
-		if (submitSettingsIntent(buildJsonObject { put("generatePhysics", enabled) }) {
-				if (!enabled) resetPreviewPhysics()
-				scheduleRuntimeBundleUpdate()
-			}) return
-		updateState { current ->
-			val updated = current.copy(generatePhysics = enabled)
-			if (!enabled) updated.copy(parameterValues = updated.parameterValues + physicsRestValues(current, current.rigEdits)) else updated
-		}
-		if (!enabled) resetPreviewPhysics()
-		scheduleRuntimeBundleUpdate()
-	    editorChanged()
-	}
+    fun setGeneratePhysics(enabled: Boolean) = editPresetSettings(buildJsonObject { put("generatePhysics", enabled) }) {
+        if (!enabled) resetPreviewPhysics()
+    }
 
 	fun setPhysicsFrontHair(enabled: Boolean) = setPresetPhysics(PhysicsGenerator.FRONT_HAIR_ID, enabled)
 	fun setPhysicsBackHair(enabled: Boolean) = setPresetPhysics(PhysicsGenerator.BACK_HAIR_ID, enabled)
@@ -4283,38 +4155,11 @@ class PSD2LiveViewModel : AutoCloseable {
 	}
 
 	/** Back to the default presets; hair simulations stay until their classic sway is restored. */
-	fun resetModelPresetsToDefault() {
-		updateState {
-			it.copy(
-				strengthSubExpanded = false,
-				rigTuningExpanded = false,
-				rigTuningAdvancedExpanded = false,
-				dynamicsSubExpanded = false,
-				headStrength = 1.0f,
-				bodyStrength = 1.0f,
-				rigTuning = io.github.psd2live.core.RigTuning(),
-				featureDisplacementEnabled = false,
-                mouthOutlineEnabled = true,
-                mouthShape = "smile",
-                mouthCurve = io.github.psd2live.core.MouthCurve.preset("smile"),
-                mouthColor = null,
-                mouthThickness = 1.5f,
-				exportMotions = true,
-				motionBasic = true,
-				motionIdle = true,
-				motionBlink = true,
-				motionNod = true,
-				motionShake = true,
-				motionSkeleton = true,
-				generatePhysics = true,
-				physicsFrontHair = true,
-				physicsBackHair = true,
-				physicsEyeJelly = true,
-			)
-		}
-		schedulePreviewRebuild()
-	    editorChanged()
-	}
+    fun resetModelPresetsToDefault() {
+        updateState { it.copy(strengthSubExpanded = false, rigTuningExpanded = false,
+            rigTuningAdvancedExpanded = false, dynamicsSubExpanded = false) }
+        editPresetSettings(io.github.psd2live.application.WorkspaceSettingsDraft.presetDefaults())
+    }
 
 	fun setLanguage(language: AppLanguage) {
 		val ready = tr("status.ready")
@@ -6927,7 +6772,21 @@ class PSD2LiveViewModel : AutoCloseable {
 						)
 					}
 				}
-				val rebuilt = runInterruptible(Dispatchers.Default) {
+				val backend = workspaceBackend
+				val rebuilt = if (backend != null) {
+					val expected = backend.snapshot()
+					val (document, intents, settingsOnly) = synchronized(stateLock) {
+						val intents = editorSettingsIntents.toList()
+						Triple(WorkspaceStateCodec.document(_state.value).copy(meshOverrides = config.meshOverrides), intents,
+							!editorDraftHasDocumentEdits && intents.isNotEmpty() && previewMeshSettingsOverrides.isEmpty())
+					}
+					withContext(io.github.psd2live.application.WorkspacePreviewProgress { fraction ->
+						progress.update("", fraction.toDouble())
+					}) {
+						if (settingsOnly) backend.previewEditorSettingsDraft(requireNotNull(expected.projectId), expected.state, intents)
+						else backend.previewEditorDraft(requireNotNull(expected.projectId), expected.state, document, intents)
+					}
+				} else runInterruptible(Dispatchers.Default) {
 					pipeline.rebuildPreview(previous, config, progress)
 				}
 				val packedAtlasSize = rebuilt.atlas.pages.firstOrNull()?.image?.width ?: config.atlasSize
@@ -6949,7 +6808,7 @@ class PSD2LiveViewModel : AutoCloseable {
 					base.copy(
 						previewModel = rebuilt,
 						analysis = rebuilt.analysis,
-						rigEdits = if (previewMeshSettingsOverrides.isEmpty()) rebuilt.config.rigEdits else current.rigEdits,
+						rigEdits = if (backend == null && previewMeshSettingsOverrides.isEmpty()) rebuilt.config.rigEdits else current.rigEdits,
 						atlasSize = maxOf(current.atlasSize, packedAtlasSize),
 						isUpscaling = false,
 						progress = 1f,

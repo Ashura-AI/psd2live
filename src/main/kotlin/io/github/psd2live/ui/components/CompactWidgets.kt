@@ -1186,14 +1186,15 @@ fun CompactNumberSpinner(
 		BasicTextField(
 			value = textState,
 			onValueChange = { input ->
+				if (input == textState) return@BasicTextField
+				if (!editing) { editing = true; onEditStart() }
 				textState = input
 				input.toDoubleOrNull()?.let { num ->
 					onValueChange(num.coerceIn(min, max))
 				}
 			},
 			modifier = Modifier.weight(1f).padding(horizontal = 4.dp).onFocusChanged { focus ->
-				if (focus.isFocused && !editing) { editing = true; onEditStart() }
-				else if (!focus.isFocused && editing) { editing = false; onEditEnd() }
+				if (!focus.isFocused && editing) { editing = false; onEditEnd() }
 			},
 			textStyle = typography.mono.copy(
 				color = if (enabled) colors.textPrimary else colors.textDisabled,
