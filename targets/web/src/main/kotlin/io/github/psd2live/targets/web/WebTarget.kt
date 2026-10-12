@@ -25,12 +25,26 @@ public object WebTarget : ExportTarget {
 
 	private fun html(text: String) = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
+	/** A JavaScript string literal body. `<` is escaped so the value cannot close the surrounding script. */
+	private fun js(text: String) = buildString {
+		for (ch in text) when (ch) {
+			'\\' -> append("\\\\")
+			'"' -> append("\\\"")
+			'\n' -> append("\\n")
+			'\r' -> append("\\r")
+			'<' -> append("\\u003c")
+			else -> append(ch)
+		}
+	}
+
 	override fun plan(ir: RigIR, options: ExportOptions): LoweredExport {
 		val rig = P2lrt.write(ir)
 		val rigName = "${options.baseName}.p2lrt"
 		val page = resource("index.html").decodeToString()
 			.replace("{{TITLE}}", html(options.settings["title"] ?: options.baseName))
-			.replace("{{RIG}}", html(rigName))
+			// The file is written under its real name. The script asks for the encoded name, so a space,
+			// ampersand or non-ASCII character still resolves when the page is opened.
+			.replace("{{RIG}}", js(java.net.URLEncoder.encode(rigName, Charsets.UTF_8).replace("+", "%20")))
 		return object : LoweredExport {
 			override val losses: List<LossEntry> = CapabilityScan.scan(ir, capabilities, options)
 			override fun write(sink: OutputSink) {

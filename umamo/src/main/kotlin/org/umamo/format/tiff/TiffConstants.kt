@@ -25,6 +25,7 @@ internal object TiffConstants {
 	// Tags the baseline reader consumes.
 	const val TAG_IMAGE_WIDTH = 256
 	const val TAG_IMAGE_HEIGHT = 257
+	const val TAG_ORIENTATION = 274
 	const val TAG_BITS_PER_SAMPLE = 258
 	const val TAG_COMPRESSION = 259
 	const val TAG_PHOTOMETRIC_INTERPRETATION = 262

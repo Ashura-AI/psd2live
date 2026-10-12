@@ -125,7 +125,14 @@ internal class WorkspaceJobs(
         // A lazily scheduled job may be cancelled before its body starts, so its catch is insufficient.
         job.invokeOnCompletion { cause ->
             if (cause is CancellationException) change(state) {
-                if (it.status.terminal) it else it.copy(status = WorkspaceJobStatus.CANCELLED, message = "Cancelled")
+                val committed = completion.result
+                when {
+                    it.status == WorkspaceJobStatus.COMPLETED -> it
+                    committed != null -> it.copy(status = WorkspaceJobStatus.COMPLETED, progress = 1f,
+                        message = "Completed", result = committed)
+                    it.status.terminal -> it
+                    else -> it.copy(status = WorkspaceJobStatus.CANCELLED, message = "Cancelled")
+                }
             }
         }
         entries[id] = Entry(state, job)

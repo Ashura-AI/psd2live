@@ -17,17 +17,33 @@ internal class UserData(
 ) {
 	/** Deletes it all, or nothing while an editor holds the store: returns false then. */
 	fun clear(): Boolean {
-		if (Files.isDirectory(store)) (AppInstanceLock.acquire(store) ?: return false).close()
-		(listOf(store) + folders).forEach(::deleteTree)
-		// The store's parent is the app's own folder (LOCALAPPDATA\PSD2Live); it goes once nothing else is in it.
-		store.parent?.let { parent -> runCatching { Files.deleteIfExists(parent) } }
-		clearPreferences()
-		return true
+		// Hold the instance lock until the store is gone. Releasing it first lets a second editor
+		// start against a directory this cleanup is still deleting.
+		val held = if (Files.isDirectory(store)) AppInstanceLock.acquire(store) ?: return false else null
+		val lockFile = store.resolve(".instance.lock")
+		return try {
+			folders.forEach(::deleteTree)
+			if (held == null) deleteTree(store) else deleteTree(store) { it != lockFile }
+			clearPreferences()
+			true
+		} finally {
+			held?.close()
+			if (held != null) {
+				runCatching { Files.deleteIfExists(lockFile) }
+				runCatching { Files.deleteIfExists(store) }
+			}
+			// The store's parent is the app's own folder (LOCALAPPDATA\PSD2Live); it goes once nothing else is in it.
+			store.parent?.let { parent -> runCatching { Files.deleteIfExists(parent) } }
+		}
 	}
 
-	private fun deleteTree(root: Path) {
+	private fun deleteTree(root: Path, keep: (Path) -> Boolean = { false }) {
 		if (!Files.exists(root)) return
-		Files.walk(root).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach { runCatching { Files.deleteIfExists(it) } } }
+		Files.walk(root).use { paths ->
+			paths.sorted(Comparator.reverseOrder()).forEach { path ->
+				if (!keep(path)) runCatching { Files.deleteIfExists(path) }
+			}
+		}
 	}
 
 	companion object {

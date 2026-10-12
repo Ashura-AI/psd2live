@@ -137,7 +137,35 @@ public object TiffReader : ReadOnlyRasterCodec {
 
 		// A JPEG-compressed YCbCr image is color-converted by the JPEG decoder, so it assembles as RGB.
 		val assemblyPhotometric = if (photometric == TiffConstants.PHOTOMETRIC_YCBCR) TiffConstants.PHOTOMETRIC_RGB else photometric
-		return RasterImage(width, height, assembleRgba(samples, width, height, samplesPerPixel, bitsPerSample, assemblyPhotometric, extraSamples, colorMap))
+		val pixels = assembleRgba(samples, width, height, samplesPerPixel, bitsPerSample, assemblyPhotometric, extraSamples, colorMap)
+		return orient(RasterImage(width, height, pixels), directory.int(TiffConstants.TAG_ORIENTATION, 1))
+	}
+
+	/** Applies TIFF tag 274. Orientations 5..8 swap the width and height. */
+	private fun orient(image: RasterImage, orientation: Int): RasterImage {
+		if (orientation == 1 || orientation !in 2..8) return image
+		val width = image.width
+		val height = image.height
+		val source = image.rgba
+		val swap = orientation >= 5
+		val outWidth = if (swap) height else width
+		val outHeight = if (swap) width else height
+		val out = ByteArray(outWidth * outHeight * 4)
+		for (y in 0 until height) {
+			for (x in 0 until width) {
+				val (nx, ny) = when (orientation) {
+					2 -> width - 1 - x to y
+					3 -> width - 1 - x to height - 1 - y
+					4 -> x to height - 1 - y
+					5 -> y to x
+					6 -> height - 1 - y to x
+					7 -> height - 1 - y to width - 1 - x
+					else -> y to width - 1 - x
+				}
+				System.arraycopy(source, (y * width + x) * 4, out, (ny * outWidth + nx) * 4, 4)
+			}
+		}
+		return RasterImage(outWidth, outHeight, out)
 	}
 
 	/** The per-image coding parameters every unit decode needs. */

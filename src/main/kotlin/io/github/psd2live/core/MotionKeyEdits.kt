@@ -161,12 +161,55 @@ internal object MotionKeyEdits {
 	fun withDuration(clip: MotionClip, duration: Float): MotionClip {
 		if (duration >= clip.duration) return clip.copy(duration = duration)
 		return clip.copy(duration = duration, curves = clip.curves.map { curve ->
-			val inside = curve.keys.filter { it.time <= duration + MotionClips.TIME_EPSILON }
-			val keys = if (inside.size == curve.keys.size) inside
-				else MotionClips.normalized(inside + MotionKey(duration, MotionClips.sample(curve, duration)))
-			MotionCurve(curve.parameterId, keys)
+			MotionCurve(curve.parameterId, trimKeys(curve.keys, duration))
 		})
 	}
 
+	/**
+	 * Keys that remain when the curve ends at [duration]. A Bezier cut through the middle keeps the shape of
+	 * the part that stays: the segment is split instead of replaced by a new key with default handles.
+	 */
+	private fun trimKeys(keys: List<MotionKey>, duration: Float): List<MotionKey> {
+		if (keys.all { it.time <= duration + MotionClips.TIME_EPSILON }) return keys
+		if (keys.any { abs(it.time - duration) <= MotionClips.TIME_EPSILON }) {
+			return keys.filter { it.time <= duration + MotionClips.TIME_EPSILON }
+		}
+		val nextIndex = keys.indexOfFirst { it.time > duration }
+		if (nextIndex <= 0) return listOf(keys.first().copy(time = duration.coerceAtLeast(0f), value = keys.first().value))
+		val left = keys[nextIndex - 1]
+		val right = keys[nextIndex]
+		val value = MotionClips.sampleSegment(left, right, duration)
+		val (start, end) = splitSegment(left, right, duration, value)
+		return MotionClips.normalized(keys.take(nextIndex - 1) + start + end)
+	}
+
+	/** [left] and the key at [time] that together match the original segment up to the cut. */
+	private fun splitSegment(left: MotionKey, right: MotionKey, time: Float, value: Float): Pair<MotionKey, MotionKey> {
+		if (left.interpolation != MotionInterpolation.BEZIER) {
+			return left to MotionKey(time, value, interpolation = left.interpolation)
+		}
+		val (c1, c2) = MotionClips.controlPoints(left, right)
+		var lo = 0f
+		var hi = 1f
+		repeat(28) {
+			val mid = (lo + hi) / 2f
+			if (cubic(left.time, c1.first, c2.first, right.time, mid) < time) lo = mid else hi = mid
+		}
+		val u = (lo + hi) / 2f
+		fun lerp(a: Float, b: Float) = a + (b - a) * u
+		val q1t = lerp(left.time, c1.first); val q1v = lerp(left.value, c1.second)
+		val r1t = lerp(c1.first, c2.first); val r1v = lerp(c1.second, c2.second)
+		val q2t = lerp(q1t, r1t); val q2v = lerp(q1v, r1v)
+		val span = (time - left.time).coerceAtLeast(MotionClips.TIME_EPSILON)
+		val out = MotionHandle(((q1t - left.time) / span).coerceIn(0f, 1f), q1v - left.value)
+		val inn = MotionHandle(((time - q2t) / span).coerceIn(0f, 1f), q2v - value)
+		return left.copy(outHandle = out) to MotionKey(time, value, inHandle = inn, interpolation = MotionInterpolation.LINEAR)
+	}
+
 	fun snap(time: Float, fps: Float): Float = (Math.round(time * fps) / fps)
+
+	private fun cubic(p0: Float, p1: Float, p2: Float, p3: Float, t: Float): Float {
+		val u = 1f - t
+		return u * u * u * p0 + 3f * u * u * t * p1 + 3f * u * t * t * p2 + t * t * t * p3
+	}
 }

@@ -130,7 +130,7 @@ internal fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
             val (x, y) = point(arguments.getValue("point"))
             val tolerance = arguments["tolerance"]?.jsonPrimitive?.int ?: 0
             require(tolerance in 0..255)
-            RasterPaintEngine.floodFill(image, x.toInt(), y.toInt(), color, tolerance, before = before, checkpoint = work::checkpoint)
+            RasterPaintEngine.floodFill(image, x.toInt(), y.toInt(), color, tolerance, before = before, checkpoint = work::checkpoint, opacity = opacity)
         }
         "shape" -> {
             val (x0, y0) = point(arguments.getValue("from"))

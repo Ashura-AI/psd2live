@@ -101,11 +101,22 @@ private fun interface LocalPointMap {
 	fun map(x: Float, y: Float, out: FloatArray)
 }
 
+/** The form at the rest pose: the unkeyed cell, else the cell nearest each parameter's zero. */
+private fun <T> restForm(grid: KeyformGrid<T>?): T? {
+	if (grid == null || grid.cells.isEmpty()) return null
+	grid.cells.firstOrNull { it.coordinate.isEmpty() }?.let { return it.form }
+	if (grid.axes.isEmpty()) return null
+	val coordinate = IntArray(grid.axes.size) { axis ->
+		val keys = grid.axes[axis].keys
+		if (keys.isEmpty()) 0 else keys.indices.minBy { kotlin.math.abs(keys[it]) }
+	}
+	return grid.cells.firstOrNull { cell ->
+		cell.coordinate.size == coordinate.size && coordinate.indices.all { cell.coordinate[it] == coordinate[it] }
+	}?.form
+}
+
 private fun restWarpMapper(warp: Deformer.Warp): LocalPointMap? {
-	val grid = warp.geometryGrid ?: return null
-	val points = grid.cells.firstOrNull { it.coordinate.isEmpty() }?.form?.controlPoints
-		?: grid.cells.firstOrNull()?.form?.controlPoints
-		?: return null
+	val points = restForm(warp.geometryGrid)?.controlPoints ?: return null
 	val cols = warp.columns
 	val rows = warp.rows
 	val bilinear = warp.isQuadTransform
@@ -118,11 +129,10 @@ private fun restWarpMapper(warp: Deformer.Warp): LocalPointMap? {
 }
 
 private fun restRotationMapper(rotation: Deformer.Rotation): LocalPointMap? {
-	val grid = rotation.geometryGrid ?: return null
-	val form = grid.cells.firstOrNull { it.coordinate.isEmpty() }?.form
-		?: grid.cells.firstOrNull()?.form
-		?: return null
-	val xform: RotationXform = rotationXform(form.angle, form.scale, flipX = false, flipY = false, form.originX, form.originY)
+	val form = restForm(rotation.geometryGrid) ?: return null
+	val xform: RotationXform = rotationXform(
+		rotation.baseAngle + form.angle, form.scale, rotation.flipX, rotation.flipY, form.originX, form.originY,
+	)
 	return LocalPointMap { x, y, out -> xform.apply(x, y, out, 0) }
 }
 
@@ -227,32 +237,35 @@ private fun mapDeformerThrough(deformer: Deformer, grandParent: DeformerId?, map
 			)
 		}
 		is Deformer.Rotation -> {
-			val parentAngle = deletedRotation?.geometryGrid?.cells
-				?.firstOrNull { it.coordinate.isEmpty() }?.form?.angle
-				?: deletedRotation?.geometryGrid?.cells?.firstOrNull()?.form?.angle
-				?: 0f
-			val parentScale = deletedRotation?.geometryGrid?.cells
-				?.firstOrNull { it.coordinate.isEmpty() }?.form?.scale
-				?: deletedRotation?.geometryGrid?.cells?.firstOrNull()?.form?.scale
-				?: 1f
-			val grid = reparented.geometryGrid ?: return reparented
+			val rest = deletedRotation?.let { restForm(it.geometryGrid) }
+			val parentAngle = (deletedRotation?.baseAngle ?: 0f) + (rest?.angle ?: 0f)
+			val parentScale = rest?.scale ?: 1f
+			val parentFlipX = deletedRotation?.flipX == true
+			val parentFlipY = deletedRotation?.flipY == true
+			val mirror = if (parentFlipX != parentFlipY) -1f else 1f
+			val grid = reparented.geometryGrid
 			reparented.copy(
-				geometryGrid = KeyformGrid(
-					grid.axes,
-					grid.cells.map { cell ->
-						val scratch = FloatArray(2)
-						mapper.map(cell.form.originX, cell.form.originY, scratch)
-						KeyformCell(
-							cell.coordinate,
-							RotationPivotForm(
-								scratch[0],
-								scratch[1],
-								cell.form.angle + parentAngle,
-								cell.form.scale * parentScale,
-							),
-						)
-					},
-				),
+				baseAngle = parentAngle + reparented.baseAngle * mirror,
+				flipX = reparented.flipX != parentFlipX,
+				flipY = reparented.flipY != parentFlipY,
+				geometryGrid = grid?.let {
+					KeyformGrid(
+						it.axes,
+						it.cells.map { cell ->
+							val scratch = FloatArray(2)
+							mapper.map(cell.form.originX, cell.form.originY, scratch)
+							KeyformCell(
+								cell.coordinate,
+								RotationPivotForm(
+									scratch[0],
+									scratch[1],
+									cell.form.angle * mirror,
+									cell.form.scale * parentScale,
+								),
+							)
+						},
+					)
+				},
 				blendShapes = reparented.blendShapes.map { binding ->
 					binding.copy(
 						forms = binding.forms.map { form ->
@@ -262,10 +275,10 @@ private fun mapDeformerThrough(deformer: Deformer, grandParent: DeformerId?, map
 								RotationForm(
 									scratch[0],
 									scratch[1],
-									it.angle + parentAngle,
+									it.angle * mirror,
 									it.scale * parentScale,
-									it.flipX,
-									it.flipY,
+									it.flipX != parentFlipX,
+									it.flipY != parentFlipY,
 									it.opacity,
 									it.multiplyColor,
 									it.screenColor,

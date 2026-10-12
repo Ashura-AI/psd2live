@@ -412,6 +412,12 @@ fn clips_set_part_and_rig_opacity_and_drive_the_blink_and_lip_sync_effects() {
         // Part 0.5 times rig 0.5.
         assert!((p2l_mesh_opacity(handle, 0) - 0.25).abs() < 1e-6);
         assert!((p2l_opacity(handle) - 0.5).abs() < 1e-6);
+        // Skipping the clip stage drops the opacity that stage set, instead of leaving it in place.
+        p2l_update_stages(handle, 0.0, STAGE_ALL & !STAGE_CLIPS);
+        assert!((p2l_opacity(handle) - 1.0).abs() < 1e-6);
+        assert!((p2l_mesh_opacity(handle, 0) - 1.0).abs() < 1e-6);
+        p2l_update(handle, 0.1);
+        assert!((p2l_opacity(handle) - 0.5).abs() < 1e-6);
         let values = std::slice::from_raw_parts(p2l_parameter_current(handle), 3);
         assert!((values[1] - 0.25).abs() < 1e-6, "{:?}", values);
         assert!((values[2] - 0.5).abs() < 1e-6, "{:?}", values);

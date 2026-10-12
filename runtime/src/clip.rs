@@ -7,8 +7,8 @@ fn cubic(p0: f32, p1: f32, p2: f32, p3: f32, u: f32) -> f32 {
     v * v * v * p0 + 3.0 * v * v * u * p1 + 3.0 * v * u * u * p2 + u * u * u * p3
 }
 
-/// A curve's value at [time] seconds. Bezier handles are restricted to their segment, so the curve
-/// parameter advances linearly with time.
+/// A curve's value at [time] seconds. Bezier time handles stay inside the segment, but they are not
+/// required to sit at one third and two thirds, so the curve parameter is solved from time.
 pub fn value_at(curve: &Curve, time: f32) -> f32 {
     if curve.segments.is_empty() || time <= curve.start_time {
         return curve.start_value;
@@ -23,13 +23,29 @@ pub fn value_at(curve: &Curve, time: f32) -> f32 {
                 Segment::Linear { .. } => from_value + (end_value - from_value) * u,
                 Segment::Stepped { .. } => if time >= end_time { end_value } else { from_value },
                 Segment::InverseStepped { .. } => if time > from_time { end_value } else { from_value },
-                Segment::Bezier { c1, c2, .. } => cubic(from_value, c1.1, c2.1, end_value, u),
+                Segment::Bezier { c1, c2, .. } => {
+                    let parameter = bezier_parameter(from_time, c1.0, c2.0, end_time, time);
+                    cubic(from_value, c1.1, c2.1, end_value, parameter)
+                }
             };
         }
         from_time = end_time;
         from_value = end_value;
     }
     from_value
+}
+
+/// The Bezier parameter in 0..1 whose time coordinate is [time].
+fn bezier_parameter(start: f32, c1: f32, c2: f32, end: f32, time: f32) -> f32 {
+    if end - start <= 1e-6 {
+        return 1.0;
+    }
+    let (mut lo, mut hi) = (0.0, 1.0);
+    for _ in 0..24 {
+        let mid = (lo + hi) * 0.5;
+        if cubic(start, c1, c2, end, mid) < time { lo = mid; } else { hi = mid; }
+    }
+    (lo + hi) * 0.5
 }
 
 /// The clip's local time at [time]: wrapped for a loop, clamped for a one-shot.
@@ -309,6 +325,18 @@ mod tests {
         assert!((value_at(&c, 3.5) - 35.0).abs() < 1e-4);
         assert!(value_at(&c, 3.25) < 32.5);
         assert_eq!(value_at(&c, 9.0), 40.0);
+    }
+
+    #[test]
+    fn bezier_time_handles_are_solved_instead_of_treated_as_uniform() {
+        let curve = Curve {
+            parameter: 0,
+            start_time: 0.0,
+            start_value: 0.0,
+            segments: vec![Segment::Bezier { c1: (0.9, 0.0), c2: (0.95, 0.0), time: 1.0, value: 100.0 }],
+        };
+        // Uniform parameter 0.5 would already be well above 10; the late time handles keep the value down.
+        assert!(value_at(&curve, 0.5) < 5.0, "{}", value_at(&curve, 0.5));
     }
 
     #[test]

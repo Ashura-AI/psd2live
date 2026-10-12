@@ -215,13 +215,15 @@ internal object RasterPaintEngine {
         clipRect: Rectangle? = null,
         before: (Rectangle) -> Unit = {},
         checkpoint: () -> Unit = {},
+        opacity: Float = 1f,
     ): Rectangle? {
         checkpoint()
         if (startX !in 0 until image.width || startY !in 0 until image.height) return null
         if (clipRect != null && !clipRect.contains(startX, startY)) return null
 
         val targetRgb = image.getRGB(startX, startY)
-        val fillArgb = fillColor
+        val cover = (((fillColor ushr 24) and 0xFF) * opacity.coerceIn(0f, 1f)).toInt().coerceIn(0, 255)
+        val fillArgb = (cover shl 24) or (fillColor and 0x00FFFFFF)
         if (targetRgb == fillArgb) return null
 
         val tr = (targetRgb ushr 16) and 0xFF

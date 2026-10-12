@@ -73,6 +73,9 @@ internal object VertexGroupJournal {
         require(value.isFinite() && value in 0f..1f) { "value must be within 0..1" }
         val count = mesh.vertexCount
         val positions = mesh.positions
+        // Rules are specified in canvas pixels. A mesh under a deformer stores positions in its own space.
+        val canvas = runCatching { SkeletonRig.restCanvas(model)[drawableId] }.getOrNull()
+            ?.takeIf { it.size == positions.size } ?: positions
         val base = existing?.weights ?: FloatArray(count)
         val rule = command.getValue("rule").jsonPrimitive.content
         val computed: FloatArray = when (rule) {
@@ -91,7 +94,7 @@ internal object VertexGroupJournal {
                 val length2 = dx * dx + dy * dy
                 require(length2 > 1e-6f) { "Gradient needs two distinct points" }
                 FloatArray(count) {
-                    val t = (((positions[it * 2] - from.first) * dx + (positions[it * 2 + 1] - from.second) * dy) / length2).coerceIn(0f, 1f)
+                    val t = (((canvas[it * 2] - from.first) * dx + (canvas[it * 2 + 1] - from.second) * dy) / length2).coerceIn(0f, 1f)
                     (start + (end - start) * t).coerceIn(0f, 1f)
                 }
             }
@@ -105,8 +108,8 @@ internal object VertexGroupJournal {
                 val (x0, x1) = minOf(rect[0], rect[2]) to maxOf(rect[0], rect[2])
                 val (y0, y1) = minOf(rect[1], rect[3]) to maxOf(rect[1], rect[3])
                 FloatArray(count) {
-                    val x = positions[it * 2]
-                    val y = positions[it * 2 + 1]
+                    val x = canvas[it * 2]
+                    val y = canvas[it * 2 + 1]
                     if (x in x0..x1 && y in y0..y1) value else base[it]
                 }
             }
