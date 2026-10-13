@@ -1716,18 +1716,21 @@ private fun ParameterLinkSlot(
 internal fun ParameterTooltip(text: String) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	Surface(
-		color = colors.panelElevated,
-		shape = RoundedCornerShape(3.dp),
-		border = BorderStroke(1.dp, colors.border),
-		elevation = 4.dp,
-	) {
-		Text(
-			text = text,
-			style = typography.caption.copy(fontSize = 10.sp),
-			color = colors.textPrimary,
-			modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
-		)
+	// A popup has its own layout root. Its text must not register with a SelectionContainer in the owner window.
+	androidx.compose.foundation.text.selection.DisableSelection {
+		Surface(
+			color = colors.panelElevated,
+			shape = RoundedCornerShape(3.dp),
+			border = BorderStroke(1.dp, colors.border),
+			elevation = 4.dp,
+		) {
+			Text(
+				text = text,
+				style = typography.caption.copy(fontSize = 10.sp),
+				color = colors.textPrimary,
+				modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+			)
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package io.github.psd2live
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -11,6 +12,8 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowState
+import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
+import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.application
 import io.github.psd2live.agent.AgentMcpController
 import io.github.psd2live.project.WorkspaceStore
@@ -22,6 +25,8 @@ import io.github.psd2live.i18n.AppLanguage
 import io.github.psd2live.i18n.I18n
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.state.PSD2LiveViewModel
+import io.github.psd2live.ui.state.UiFailureReports
+import io.github.psd2live.ui.state.reportingWindowExceptionHandler
 import io.github.psd2live.ui.views.PSD2LiveApp
 import java.io.IOException
 import java.nio.file.Path
@@ -108,6 +113,7 @@ private fun useAppIconInDock() {
 	}
 }
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 private fun runGui() {
 	val instanceLock = try {
 		AppInstanceLock.acquire(WorkspaceStore.defaultRoot()) ?: run {
@@ -121,6 +127,7 @@ private fun runGui() {
 		null
 	}
 	val viewModel = PSD2LiveViewModel()
+	val failureReports = UiFailureReports()
 	val agentWorkspace = DesktopWorkspace(viewModel)
 	viewModel.attachWorkspace(agentWorkspace)
 	val agentMcp = AgentMcpController(agentWorkspace, observer = viewModel.agentCallObserver)
@@ -149,6 +156,18 @@ private fun runGui() {
 		// Exit from main rather than letting Compose call System.exit on the EDT, which would block
 		// the EDT while the shutdown hooks run.
 		application(exitProcessOnExit = false) {
+			val defaultExceptionHandlers = LocalWindowExceptionHandlerFactory.current
+			val exceptionHandlers = remember(defaultExceptionHandlers) {
+				WindowExceptionHandlerFactory { window ->
+					reportingWindowExceptionHandler(defaultExceptionHandlers.exceptionHandler(window)) { failure ->
+						failureReports.record(failure, "compose-window")
+						viewModel.addLog(failure.message ?: failure.javaClass.name,
+							level = io.github.psd2live.ui.state.LogLevel.ERROR,
+							source = io.github.psd2live.ui.state.LogSource.SYSTEM, tag = "UI",
+							detail = "${failureReports.path}\n${failure.stackTraceToString()}")
+					}
+				}
+			}
 			// The size and maximized state the window last closed with, centred on the screen.
 			val windowState = rememberWindowState(
 				placement = if (AppSettings.windowMaximized) WindowPlacement.Maximized else WindowPlacement.Floating,
@@ -185,28 +204,31 @@ private fun runGui() {
 			// background to or from transparent replaces the window; windowState keeps its bounds.
 			// A language switch replaces it too: text is read through tr() wherever it is composed,
 			// remembered, or handed to Swing, so only a fresh composition shows none of the old language.
-			key(transparent, language) {
-				Window(
-					onCloseRequest = closeApp,
-					title = tr("app.title"),
-					icon = painterResource("icons/psd2live.png"),
-					state = windowState,
-					undecorated = true,
-					transparent = transparent,
-				) {
-					androidx.compose.runtime.CompositionLocalProvider(io.github.psd2live.ui.views.LocalAwtWindow provides window) {
-						PSD2LiveApp(
-							viewModel = viewModel,
-							window = window,
-							windowState = windowState,
-							onCloseRequest = closeApp,
-							agentMcp = agentMcp,
-						)
+			CompositionLocalProvider(LocalWindowExceptionHandlerFactory provides exceptionHandlers) {
+				key(transparent, language) {
+					Window(
+						onCloseRequest = closeApp,
+						title = tr("app.title"),
+						icon = painterResource("icons/psd2live.png"),
+						state = windowState,
+						undecorated = true,
+						transparent = transparent,
+					) {
+						androidx.compose.runtime.CompositionLocalProvider(io.github.psd2live.ui.views.LocalAwtWindow provides window) {
+							PSD2LiveApp(
+								viewModel = viewModel,
+								window = window,
+								windowState = windowState,
+								onCloseRequest = closeApp,
+								agentMcp = agentMcp,
+							)
+						}
 					}
 				}
 			}
 		}
 	} catch (failure: Throwable) {
+		runCatching { failureReports.record(failure, "application") }.onFailure { it.printStackTrace() }
 		failure.printStackTrace()
 		status = 1
 	}
