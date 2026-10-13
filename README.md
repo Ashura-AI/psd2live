@@ -262,6 +262,8 @@ python tools/examples/fetch.py --case tml
 
 欢迎提交 Issue、可复现的 PSD、文档修正与代码改进。
 
+也欢迎向[示例仓库投稿](https://github.com/tsunehimatoi/psd2live-examples/issues/new/choose)，分享素材、工程、制作经验、Prompt 或 Skill，未完成或失败的尝试同样有参考价值。
+
 - **报告问题**：附上版本、操作系统、复现步骤、预期与实际效果，以及日志面板中的相关记录。
 - **提交代码**：先运行与改动相关的测试（`./gradlew test`）；新的编辑功能需要能随工程保存并在重开后重放，见[开发与命令行](docs/zh/guide/DEVELOPMENT.md)。
 - **Agent 案例**：请同时记录宿主、模型、返工次数与消耗，格式见[能力实测](docs/zh/STATUS.md)。
