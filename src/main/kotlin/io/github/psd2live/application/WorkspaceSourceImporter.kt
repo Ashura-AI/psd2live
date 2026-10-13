@@ -23,6 +23,7 @@ internal class WorkspaceSourceImporter(
         runInterruptible(Dispatchers.IO) { sourceArtwork(it) }
     },
     private val newProjectId: () -> String = { UUID.randomUUID().toString() },
+    private val initialWorkspaceIds: () -> List<String> = { emptyList() },
 ) {
     suspend fun importPsd(path: Path, projectId: String?, state: String, discardUnsaved: Boolean = false,
                          initialConfig: PipelineConfig = PipelineConfig(),
@@ -72,6 +73,7 @@ internal class WorkspaceSourceImporter(
         val id = newProjectId()
         val installed = runtime.install(state, id, prepared, preview,
             auxiliary = JsonObject(WorkspaceAuxiliaryCodec.encode(WorkspaceAuxiliaryData()) +
+                PreviewSessions.initial(preview.rig.puppet.parameters, initialWorkspaceIds()) +
                 ("assetCatalog" to WorkspaceAssetCatalog().encode())), discardUnsaved = discardUnsaved, dirty = true) {
             project(prepared, preview, id)
         }

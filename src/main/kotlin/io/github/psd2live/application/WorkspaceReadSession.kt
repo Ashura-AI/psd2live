@@ -43,6 +43,8 @@ internal class WorkspaceReadSession(
         @Volatile var deletedCache: Triple<WorkspaceDocument, PipelineAnalysis, List<WorkspaceLayerSnapshot>>? = null
     }
     override fun snapshot(): WorkspaceProjectSnapshot = projectSnapshot
+    override fun stateToken(): String? = read.runtime.capture?.state
+    override fun hasUnsavedChanges(): Boolean = read.runtime.capture?.dirty == true
 
     override fun sourceMeshComponents(layerId: String): JsonObject {
         val captured = capture()

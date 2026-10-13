@@ -15,6 +15,10 @@ private val noSamplingCancellation: () -> Boolean = { false }
 /** Application capabilities are mandatory contracts; implementations never inherit unavailable fallbacks. */
 interface WorkspaceStatePort {
     fun snapshot(): WorkspaceProjectSnapshot
+    /** The loaded aggregate's opaque version, without copying history, layers or parameter lists. */
+    fun stateToken(): String?
+    /** Whether the committed aggregate has changed since its last successful save. */
+    fun hasUnsavedChanges(): Boolean
 }
 
 interface WorkspaceEditorDraftPort {

@@ -492,6 +492,7 @@ class DesktopWorkspace(
 	private val persistenceScope = CoroutineScope(persistenceJob + Dispatchers.IO.limitedParallelism(1))
 	private val pendingPersistenceWrites = AtomicInteger()
 	@Volatile private var persistenceError: String? = null
+    private val historyPersistence = io.github.psd2live.project.CoalescingPersistence(::schedulePersistence)
 	@Volatile private var recoveringProjectId: String? = null
 	private val spatialByViewId = ConcurrentHashMap<String, WorkspaceViewSpatialMetadata>()
 	private var taskProjectId: String? = null
@@ -529,8 +530,10 @@ class DesktopWorkspace(
     private val draftScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val draftQueue = WorkspaceDraftQueue(runtime, draftScope)
     private val textureCommands = WorkspaceTextureCommands(runtime)
-    private val sourceImporter = WorkspaceSourceImporter(runtime, { document -> previewBuilder.build(document) })
-    private val cmo3Importer = WorkspaceCmo3Importer(runtime, { document, current -> previewBuilder.build(document, current) })
+    private val sourceImporter = WorkspaceSourceImporter(runtime, { document -> previewBuilder.build(document) },
+        initialWorkspaceIds = { viewModel.state.value.workspaces.map { it.id } })
+    private val cmo3Importer = WorkspaceCmo3Importer(runtime, { document, current -> previewBuilder.build(document, current) },
+        initialWorkspaceIds = { viewModel.state.value.workspaces.map { it.id } })
     private fun runtimeModel(): io.github.psd2live.core.RigPreviewModel? = runtime.state.value.capture?.model
 
     /** The committed HEAD, read without the runtime lock. */
@@ -591,7 +594,9 @@ class DesktopWorkspace(
 
     internal fun projectSaved(capture: ProjectCapture) = runtime.saved(capture.runtimeState).also {
         // Queued after the history writes before it, which may still record the marker.
-        if (runtime.state.value.capture?.dirty != true) schedulePersistence { sessionRecovery.forget() }
+        if (runtime.state.value.capture?.dirty != true) schedulePersistence {
+            if (runtime.state.value.capture?.dirty != true) sessionRecovery.forget()
+        }
     }
 
     internal fun savedResult(capture: ProjectCapture): WorkspaceMutationResult {
@@ -612,6 +617,8 @@ class DesktopWorkspace(
         val createdNode: Boolean = true,
         val runtimeState: String,
         val auxiliary: JsonObject = JsonObject(emptyMap()),
+        /** Actual GUI state at capture, before the archive's authority projection normalizes it. */
+        val uiBaseline: PSD2LiveState,
     )
     private val projectDirectories = mutableListOf<Path>()
     internal fun rememberProjectDirectory(path: Path) { projectDirectories.add(path) }
@@ -716,7 +723,26 @@ class DesktopWorkspace(
                     ?.let { viewModel.projectWorkspacePoses(expectedUi, it) }
             })
         return draftScope.async {
-            val result = submitted.await()
+            val result = try { submitted.await() }
+            catch (failure: Exception) {
+                currentCoroutineContext().ensureActive()
+                // Only the newest rejected draft may be withdrawn; a later gesture owns its own visible draft.
+                synchronized(historyLock) {
+                    if (draftQueue.isRejectedTail(submitted)) runtime.withCapture { captured ->
+                        viewModel.withProjectState { current ->
+                            if (captured.projectId == projectId && current.projectId == expectedUi.projectId &&
+                                current.projectOpenGeneration == expectedUi.projectOpenGeneration &&
+                                io.github.psd2live.project.WorkspaceRevisions.of(documentFrom(current)) ==
+                                    io.github.psd2live.project.WorkspaceRevisions.of(document)) {
+                                applyPreviewOrThrow(captured.model, documentFrom(current), captured.document,
+                                    failure.message ?: "Editor draft rejected", current)
+                                draftQueue.forgetRejected(submitted)
+                            }
+                        }
+                    }
+                }
+                throw failure
+            }
             WorkspaceMutationResult(result.capture.historyHead, result.capture.revision, emptyList(), summary,
                 applied = result.applied, state = result.capture.state, projectId = result.capture.projectId)
         }
@@ -748,11 +774,23 @@ class DesktopWorkspace(
             val result = commitPrepared(before, state, document, model, summary,
                 captureAuthor, checkpoint = alwaysCommit)
             if (result.applied) scheduleHistoryPersistence(before.projectId)
-            ProjectCapture(before.projectId, runtime.history(result.capture.state), projection(result.capture),
-                taskManagerFor(before.projectId).list(), workspaceStore, spatialByViewId.toMap(), result.applied, result.capture.state,
-                JsonObject(result.capture.auxiliary + ("assetCatalog" to
-                    (io.github.psd2live.project.WorkspaceAssetCatalog.read(result.capture.auxiliary)
-                        ?: workspaceStore.existingAssetCatalog(before.projectId)).encode())))
+            val tasks = taskManagerFor(before.projectId).list()
+            val catalog = io.github.psd2live.project.WorkspaceAssetCatalog.read(result.capture.auxiliary)
+                ?: workspaceStore.existingAssetCatalog(before.projectId)
+            runtime.withCapture { captured ->
+                requireExpected(result.capture.state, captured)
+                val history = runtime.history(captured.state)
+                // A post-commit renderer failure can leave the panel behind the authoritative history.
+                if (viewModel.state.value.historySnapshot?.headNodeId != captured.historyHead)
+                    viewModel.updateHistorySnapshot(captureQueries().history())
+                viewModel.withProjectState { ui ->
+                    if (ui.workspaceEditBusy || io.github.psd2live.project.WorkspaceRevisions.of(documentFrom(ui)) != captured.revision)
+                        throw WorkspaceBusy()
+                    ProjectCapture(before.projectId, history, projection(captured, ui), tasks, workspaceStore,
+                        spatialByViewId.toMap(), result.applied, captured.state,
+                        JsonObject(captured.auxiliary + ("assetCatalog" to catalog.encode())), uiBaseline = ui)
+                }
+            }
         }
     }
 
@@ -869,6 +907,8 @@ class DesktopWorkspace(
     }
 
 	override fun snapshot(): WorkspaceProjectSnapshot = captureQueries().snapshot()
+    override fun stateToken(): String? = runtime.state.value.capture?.state
+    override fun hasUnsavedChanges(): Boolean = runtime.state.value.capture?.dirty == true
 
     override fun history(): WorkspaceHistorySnapshot = captureQueries().history()
 
@@ -1602,15 +1642,25 @@ class DesktopWorkspace(
         draftQueue.forgetRejected()
         val captured = runtime.history()
         val store = workspaceStore
+        val generation = runtime.state.value.capture?.loadingIdentity
         // In the same queue as the history it points at, so the marker never names a history not yet written.
         val session = if (runtime.state.value.capture?.dirty != true) null else viewModel.state.value.let { ui ->
             SessionRecovery.Session(store.root, projectId, ui.projectFile, ui.inputPath,
                 (ui.projectFile ?: ui.inputPath).let { runCatching { Path.of(it).fileName?.toString() }.getOrNull() }
                     ?: ui.projectSourceName ?: projectId)
         }
-        schedulePersistence {
-            store.persistHistory(projectId, captured)
-            if (session != null) sessionRecovery.record(session) else sessionRecovery.forget()
+        historyPersistence.submit(store to projectId) {
+            val latest = runtime.read()
+            // A delayed producer must not overwrite a newer HEAD already queued by another editor path.
+            val history = latest.history?.takeIf {
+                latest.runtime.capture?.projectId == projectId && latest.runtime.capture.loadingIdentity == generation
+            } ?: captured
+            store.persistHistory(projectId, history)
+            val active = runtime.state.value.capture
+            if (active?.projectId == projectId && active.loadingIdentity == generation) {
+                if (active.dirty && session != null) sessionRecovery.record(session)
+                else if (!active.dirty) sessionRecovery.forget()
+            }
         }
         viewModel.updateHistorySnapshot(history())
     }

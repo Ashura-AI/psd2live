@@ -197,13 +197,14 @@ internal class WorkspaceRuntime<M>(
             try {
                 val candidate = edit.apply(WorkspaceDraft(document, auxiliary), model)
                 val nextRevision = WorkspaceRevisions.of(candidate.document)
+                val previousModel = model
                 if (nextRevision != revision) {
                     // Later commands must observe the rig produced by earlier commands in this draft.
                     model = rebuildFrom?.invoke(candidate.document, model) ?: rebuild(candidate.document)
                     document = adopted(candidate.document, model)
                     revision = WorkspaceRevisions.of(document)
                 }
-                auxiliary = candidate.auxiliary
+                auxiliary = adoptedAuxiliary(previousModel, model, candidate.auxiliary)
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (failure: Exception) { throw editFailure(index, failure) }
         }
@@ -223,16 +224,19 @@ internal class WorkspaceRuntime<M>(
         val before = capture()
         require(before.projectId == projectId) { "Operation targets another project" }
         val document = adopted(document, model)
+        // Prepared drafts already migrated after each member; doing it again would reset a newly created
+        // axis to the final default instead of retaining the value the earlier member introduced.
+        val auxiliary = auxiliary ?: adoptedAuxiliary(before.model, model, before.auxiliary)
         val revision = WorkspaceRevisions.of(document)
         val documentChanged = checkpoint || revision != WorkspaceRevisions.of(before.document)
-        if (!documentChanged && (auxiliary == null || auxiliary == before.auxiliary)) return@synchronized WorkspaceCommit(before, false)
+        if (!documentChanged && auxiliary == before.auxiliary) return@synchronized WorkspaceCommit(before, false)
         // Projection validation is atomic and must fail before touching the authoritative history.
         beforeCommit(before, document, model)
         val head = if (documentChanged) requireNotNull(tree).commit(before.historyHead, document, revision, revision, summary, author.historyActor, taskId)
             else requireNotNull(tree).head()
         version++
         WorkspaceCommit(publish(before.copy(state = token(), historyHead = head.node.id, revision = head.node.revisionId,
-            document = document, model = model, auxiliary = auxiliary ?: before.auxiliary, dirty = true)), true)
+            document = document, model = model, auxiliary = auxiliary, dirty = true)), true)
     }
 
     suspend fun checkout(projectId: String, expectedState: String, nodeId: String,
@@ -252,7 +256,8 @@ internal class WorkspaceRuntime<M>(
             requireNotNull(tree).checkout(nodeId)
             version++
             publish(before.copy(state = token(), historyHead = nodeId, revision = selection.node.revisionId,
-                document = selection.snapshot, model = model, dirty = true))
+                document = selection.snapshot, model = model,
+                auxiliary = adoptedAuxiliary(before.model, model, before.auxiliary), dirty = true))
         }
     }
 
@@ -297,6 +302,12 @@ internal class WorkspaceRuntime<M>(
         if (plain.size != journal.filterNot(io.github.psd2live.core.RigCheckpoint::isRecord).size ||
             plain != journal.filterNot(io.github.psd2live.core.RigCheckpoint::isRecord)) return document
         return document.copy(rigEdits = document.rigEdits.copy(authoringJournal = rebuilt))
+    }
+
+    private fun adoptedAuxiliary(previous: M, next: M, auxiliary: JsonObject): JsonObject {
+        val before = previous as? io.github.psd2live.core.RigPreviewModel ?: return auxiliary
+        val after = next as? io.github.psd2live.core.RigPreviewModel ?: return auxiliary
+        return PreviewSessions.migrate(before.rig.puppet.parameters, after.rig.puppet.parameters, auxiliary)
     }
 
     private fun token(): String = "$instanceId:$generation:$version"

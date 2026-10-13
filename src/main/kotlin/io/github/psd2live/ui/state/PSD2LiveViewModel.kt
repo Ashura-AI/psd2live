@@ -984,8 +984,11 @@ class PSD2LiveViewModel : AutoCloseable {
     private var meshSplitApplying = false
 
     private val stateLock = Any()
+    /** Captures an archive projection and its comparison baseline while the caller holds the runtime capture. */
+    internal fun <T> withProjectState(read: (PSD2LiveState) -> T): T = synchronized(stateLock) { read(_state.value) }
 
     private inline fun updateState(transform: (PSD2LiveState) -> PSD2LiveState) {
+        var resumeSave = false
         synchronized(stateLock) {
             val before = _state.value
             _state.update { current ->
@@ -1040,7 +1043,12 @@ class PSD2LiveViewModel : AutoCloseable {
             // With no preview on screen no frame will replace the last one the sliders show.
             if (before.previewLive && !after.previewLive) setLivePose(emptyMap())
             _uiState.value = _state.value
+            resumeSave = (before.workspaceEditBusy || before.editorDraftBusy) &&
+                !_state.value.workspaceEditBusy && !_state.value.editorDraftBusy
         }
+        // Every editor completion owns this transition, including simulation, undo and source commands.
+        // Defer until its commit/cleanup has left the runtime and projection locks.
+        if (resumeSave) scope.launch { yield(); runQueuedProjectSave() }
     }
 
     private fun replaceState(next: PSD2LiveState) {
@@ -1704,7 +1712,7 @@ class PSD2LiveViewModel : AutoCloseable {
         return canvasEditorFor(canvas.id)
     }
     /** Opaque document generation/version, captured when a gesture or dialog begins. */
-    internal fun currentWorkspaceState(): String? = workspaceBackend?.snapshot()?.takeIf { it.loaded }?.state
+    internal fun currentWorkspaceState(): String? = workspaceBackend?.stateToken()
 
     /** A completed authored gesture hands over frozen poses through the neutral preview port. */
     private fun persistAuthoredPose() {
@@ -2053,10 +2061,12 @@ class PSD2LiveViewModel : AutoCloseable {
         // Anything half-typed is closed first, so the dirty check and the confirm dialog below see the
         // value the user actually ended on rather than the last committed one.
         flushEditorFields()
-        if (!_state.value.projectDirty) { action(); return }
+        if (!_state.value.projectDirty && workspaceBackend?.hasUnsavedChanges() != true &&
+            !_state.value.workspaceEditBusy && !_state.value.editorDraftBusy) { action(); return }
         when (confirmUnsavedChanges?.invoke() ?: 2) {
             0 -> { pendingDestructiveAction = action; requestProjectSave() }
-            1 -> action()
+            1 -> { pendingDestructiveAction = null; queuedCanvasSave = null; action() }
+            else -> pendingDestructiveAction = null
         }
     }
     /**
@@ -2068,7 +2078,7 @@ class PSD2LiveViewModel : AutoCloseable {
     fun requestProjectSave(saveAs: Boolean = false) {
         // A save captures the workspace, so it has to see the value still sitting in a focused field.
         flushEditorFields()
-        if (_state.value.workspaceEditBusy) {
+        if (_state.value.workspaceEditBusy || _state.value.editorDraftBusy) {
             val queued = queuedCanvasSave == true || saveAs
             queuedCanvasSave = queued
             updateState { it.copy(statusText = tr(if (queued) "project.saveAsQueued" else "project.saveQueued")) }
@@ -2081,7 +2091,7 @@ class PSD2LiveViewModel : AutoCloseable {
     }
     /** Runs the save [requestProjectSave] queued, once no edit is being applied; a Save As opens its dialog. */
     internal fun runQueuedProjectSave() {
-        if (_state.value.workspaceEditBusy) return
+        if (_state.value.workspaceEditBusy || _state.value.editorDraftBusy) return
         val saveAs = queuedCanvasSave ?: return
         queuedCanvasSave = null
         if (_state.value.statusText == tr(if (saveAs) "project.saveAsQueued" else "project.saveQueued")) updateState { it.copy(statusText = tr("status.ready")) }
@@ -2097,12 +2107,24 @@ class PSD2LiveViewModel : AutoCloseable {
             try {
                 saveProjectNow(path)
                 updateState { it.copy(showProjectLocationDialog = false) }
-                if (!_state.value.projectDirty) pendingDestructiveAction?.also { pendingDestructiveAction = null; it() }
+                if (!_state.value.projectDirty && workspaceBackend?.hasUnsavedChanges() != true &&
+                    !_state.value.workspaceEditBusy && !_state.value.editorDraftBusy)
+                    pendingDestructiveAction?.also { pendingDestructiveAction = null; it() }
             } catch (_: Exception) { pendingDestructiveAction = null }
         }
     }
-    internal suspend fun saveProjectNow(path: Path? = null): String =
-        executeUserProject({ it.saveProjectAt(path?.toAbsolutePath()?.normalize()) }).historyNodeId
+    internal suspend fun saveProjectNow(path: Path? = null): String {
+        val started = _state.value
+        updateState { it.copy(projectSaveError = null) }
+        try {
+            return executeUserProject({ it.saveProjectAt(path?.toAbsolutePath()?.normalize()) }).historyNodeId
+        } catch (failure: Exception) {
+            if (failure is kotlinx.coroutines.CancellationException) throw failure
+            // Fields can fail before ProjectController starts a save; Save and Close must report that too.
+            if (_state.value.projectSaveError == null) reportProjectSaveFailure(failure, started, _state.value.projectSaving)
+            throw failure
+        }
+    }
 
     private suspend fun executeUserProject(
         action: suspend (io.github.psd2live.application.WorkspaceProjectLifecycle) -> WorkspaceMutationResult,
@@ -2221,6 +2243,9 @@ class PSD2LiveViewModel : AutoCloseable {
     internal fun projectSaveStarted() { pendingProjectSaves.incrementAndGet(); updateState { it.copy(projectSaving = true, projectSaveError = null) } }
     internal fun projectSaveFailed(failure: Exception, captured: PSD2LiveState) {
         val saving = pendingProjectSaves.decrementAndGet() > 0
+        reportProjectSaveFailure(failure, captured, saving)
+    }
+    private fun reportProjectSaveFailure(failure: Exception, captured: PSD2LiveState, saving: Boolean) {
         updateState { current ->
             if (current.projectId != captured.projectId || current.projectOpenGeneration != captured.projectOpenGeneration) {
                 current.copy(projectSaving = saving)
@@ -2229,7 +2254,8 @@ class PSD2LiveViewModel : AutoCloseable {
                     tag = "Project", message = tr("log.project.saveFailed", failure.message ?: failure.javaClass.simpleName)))))
         }
     }
-    internal fun projectSaveFinished(path: Path, headId: String, captured: PSD2LiveState) {
+    internal fun projectSaveFinished(path: Path, headId: String, captured: PSD2LiveState,
+                                     capturedRuntimeState: String, runtimeSaved: Boolean) {
         val saving = pendingProjectSaves.decrementAndGet() > 0
         val saved = path.toAbsolutePath().normalize().toString()
         AppSettings.rememberRecentFile(saved)
@@ -2238,7 +2264,11 @@ class PSD2LiveViewModel : AutoCloseable {
                 return@updateState current.copy(projectSaving = saving, recentFiles = AppSettings.recentFiles())
             }
             current.copy(projectFile = saved, projectSaving = saving,
-            projectDirty = current.historySnapshot?.headNodeId != headId || current.projectAuxiliaryVersion != captured.projectAuxiliaryVersion || io.github.psd2live.ui.state.WorkspaceStateCodec.editableIdentity(current) != io.github.psd2live.ui.state.WorkspaceStateCodec.editableIdentity(captured),
+            projectDirty = current.workspaceEditBusy || current.editorDraftBusy ||
+                !runtimeSaved || workspaceBackend?.stateToken() != capturedRuntimeState ||
+                current.historySnapshot?.headNodeId != headId || current.projectEditVersion != captured.projectEditVersion ||
+                current.projectAuxiliaryVersion != captured.projectAuxiliaryVersion ||
+                WorkspaceStateCodec.editableIdentity(current) != WorkspaceStateCodec.editableIdentity(captured),
             projectSaveError = null, recentFiles = AppSettings.recentFiles(),
             logEntries = current.logEntries.appendingLog(listOf(AppLogEntry(source = LogSource.EDITOR, level = LogLevel.SUCCESS,
                 tag = "Project", message = tr("log.project.saved", path.fileName), detail = saved))))
@@ -6966,14 +6996,21 @@ class PSD2LiveViewModel : AutoCloseable {
 		}
 	}
 
-	private fun tickMotion() {
+    private val previewFrameRecovery = PreviewFrameRecovery()
+    private fun tickMotion() {
+        val current = _state.value
+        val context = "${current.projectOpenGeneration}/${current.activeWorkspace.id}/${currentWorkspaceState()}/$playbackCommands"
+        if (!previewFrameRecovery.shouldAttempt(current.previewModel, context, System.nanoTime())) return
 		try {
 			advanceMotionFrame()
+            previewFrameRecovery.succeeded()
 		} catch (cancelled: kotlinx.coroutines.CancellationException) {
 			throw cancelled
 		} catch (failure: Throwable) {
-			// One bad frame must not end the loop: nothing would play again until a restart.
-			stopProcessMotion()
+            // A concurrent edit can invalidate one frame without breaking the preview.
+            if (failure is io.github.psd2live.application.WorkspaceConflict ||
+                failure is io.github.psd2live.application.WorkspaceProjectConflict) return
+            if (!previewFrameRecovery.failed(failure, System.nanoTime())) return
 			addLog(
 				message = failure.message ?: failure.javaClass.simpleName,
 				level = LogLevel.WARNING,

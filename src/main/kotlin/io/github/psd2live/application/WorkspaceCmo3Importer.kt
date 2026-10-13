@@ -14,6 +14,7 @@ internal class WorkspaceCmo3Importer(
     private val build: suspend (WorkspaceDocument, RigPreviewModel?) -> RigPreviewModel = { document, current -> WorkspacePreviewBuilder().build(document, current) },
     private val read: suspend (Path) -> ByteArray = { path -> runInterruptible(Dispatchers.IO) { Files.readAllBytes(path) } },
     private val newProjectId: () -> String = { UUID.randomUUID().toString() },
+    private val initialWorkspaceIds: () -> List<String> = { emptyList() },
 ) {
     suspend fun import(path: Path, mode: Cmo3ImportMode, projectId: String?, state: String,
                        author: MutationAuthor, discardUnsaved: Boolean = false,
@@ -60,6 +61,7 @@ internal class WorkspaceCmo3Importer(
             val id = newProjectId()
             val installed = runtime.install(state, id, document, preview,
                 auxiliary = JsonObject(WorkspaceAuxiliaryCodec.encode(WorkspaceAuxiliaryData()) +
+                    PreviewSessions.initial(preview.rig.puppet.parameters, initialWorkspaceIds()) +
                     ("assetCatalog" to WorkspaceAssetCatalog().encode())), discardUnsaved = discardUnsaved, dirty = true) {
                 project(before.capture, document, preview, id)
             }

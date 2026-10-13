@@ -189,7 +189,7 @@ internal class WorkspaceDocumentCommands(private val runtime: WorkspaceRuntime<R
         if (!geometry.safe) throw GeometrySafetyRejectedException(geometry)
         val diagnostics = geometry.takeIf { it.affectedTargets.isNotEmpty() }?.toJson()
         return runtime.commitPrepared(projectId, state, summary, author, prepared.draft.document, prepared.model,
-            taskId = taskId, beforeCommit = beforeCommit).copy(geometryDiagnostics = diagnostics)
+            taskId = taskId, auxiliary = prepared.draft.auxiliary, beforeCommit = beforeCommit).copy(geometryDiagnostics = diagnostics)
     }
 
     /** Settings commands that may release authored poses; other generation inputs keep [executeCandidate]. */

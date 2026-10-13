@@ -57,7 +57,15 @@ internal class WorkspaceDraftQueue<M>(
             }
             entry.lineage = (if (follows) previous.lineage else emptySet()) + state + result.capture.state
             entry.completedState = result.capture.state
-            committed(result)
+            // This callback persists/refreshes a commit already published by the runtime. A renderer failure
+            // or late cancellation here cannot turn that edit into a rejected draft and poison future saves.
+            try { committed(result) }
+            catch (failure: Throwable) {
+                runCatching {
+                    System.getLogger("io.github.psd2live.application.WorkspaceDraftQueue")
+                        .log(System.Logger.Level.WARNING, "Unable to refresh committed editor draft", failure)
+                }
+            }
             result
         }
         tail = entry
@@ -94,8 +102,12 @@ internal class WorkspaceDraftQueue<M>(
         catch (_: Exception) { currentCoroutineContext().ensureActive() }
     }
 
-    fun forgetRejected() = synchronized(lock) {
-        if (tail?.result?.isCancelled == true) tail = null
+    fun isRejectedTail(result: Deferred<WorkspaceCommit<M>>): Boolean = synchronized(lock) {
+        tail?.result === result && result.isCancelled
+    }
+
+    fun forgetRejected(result: Deferred<WorkspaceCommit<M>>? = null) = synchronized(lock) {
+        if (tail?.result?.isCancelled == true && (result == null || tail?.result === result)) tail = null
     }
 
     /** Successful project installation ends the old draft chain, including any remembered failure. */

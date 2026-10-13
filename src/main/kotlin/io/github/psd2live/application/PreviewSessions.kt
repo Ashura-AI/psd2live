@@ -30,6 +30,19 @@ internal object PreviewSessions {
         putJsonArray("locked") { pose.locked.map { it.raw }.sorted().forEach { add(it) } }
     }
 
+    fun initial(parameters: List<Parameter>, workspaceIds: List<String>): JsonObject = buildJsonObject {
+        val pose = encode(normalize(parameters, WorkspacePose(emptyMap(), emptySet())))
+        putJsonObject("posesByWorkspace") { workspaceIds.forEach { put(it, pose) } }
+    }
+
+    /** A new definition keeps the previous authored value; new axes start at their own default. */
+    fun migrate(previous: List<Parameter>, next: List<Parameter>, auxiliary: JsonObject): JsonObject {
+        if (previous == next) return auxiliary
+        val records = auxiliary["posesByWorkspace"]?.jsonObject ?: return auxiliary
+        val poses = records.mapValues { (id, _) -> encode(normalize(next, read(previous, auxiliary, id))) }
+        return if (poses == records) auxiliary else JsonObject(auxiliary + ("posesByWorkspace" to JsonObject(poses)))
+    }
+
     fun edit(
         parameters: List<Parameter>,
         current: WorkspacePose,

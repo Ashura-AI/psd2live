@@ -16,8 +16,8 @@ import io.github.psd2live.application.lifecycleResult
 import kotlinx.coroutines.currentCoroutineContext
 
 /** Desktop lifecycle projection; all archive reading/writing is UI-independent. */
-internal class ProjectController(private val viewModel: PSD2LiveViewModel) {
-    private val repository = ProjectRepository()
+internal class ProjectController(private val viewModel: PSD2LiveViewModel,
+                                 private val repository: ProjectRepository = ProjectRepository()) {
     private val saves = Mutex()
 
     suspend fun save(workspace: DesktopWorkspace, path: Path, actor: String = "user"): String =
@@ -27,7 +27,7 @@ internal class ProjectController(private val viewModel: PSD2LiveViewModel) {
     private fun progress(key: String, path: Path, from: Float, to: Float, fraction: Double = 0.0) =
         viewModel.reportProjectProgress(tr(key, path.fileName.toString()), from + (to - from) * fraction.toFloat())
 
-    suspend fun saveCapture(workspace: DesktopWorkspace, path: Path, actor: String = "user"): DesktopWorkspace.ProjectCapture {
+    suspend fun saveCapture(workspace: DesktopWorkspace, path: Path, actor: String = "user"): DesktopWorkspace.ProjectCapture = saves.withLock {
         var capturedState = viewModel.state.value
         val committed = java.util.concurrent.atomic.AtomicBoolean()
         val completion = currentCoroutineContext()[WorkspaceJobCompletion]
@@ -39,7 +39,7 @@ internal class ProjectController(private val viewModel: PSD2LiveViewModel) {
                 workspace.captureProject("Save project", actor)
             }
             capturedState = capture.uiState
-            return saves.withLock {
+            run {
                 workspace.flushProjectPersistence()
                 val state = capture.uiState
                 val originalPath = state.loadedInputPath ?: state.inputPath
@@ -55,8 +55,8 @@ internal class ProjectController(private val viewModel: PSD2LiveViewModel) {
                     }) {
                     committed.set(true)
                     completion?.committed(WorkspaceOperationOutput(workspace.savedResult(capture).lifecycleResult()))
-                    workspace.projectSaved(capture)
-                    viewModel.projectSaveFinished(path, capture.history.headNodeId, state)
+                    val current = workspace.projectSaved(capture)
+                    viewModel.projectSaveFinished(path, capture.history.headNodeId, capture.uiBaseline, capture.runtimeState, current)
                 }
                 capture
             }

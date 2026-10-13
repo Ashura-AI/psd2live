@@ -113,14 +113,16 @@ internal object WorkspaceStateCodec {
         put("panY", camera.panY)
     }
 
-    private fun encodePresentation(p: CanvasPresentation): JsonObject = buildJsonObject {
+    private fun encodePresentation(p: CanvasPresentation, includePreviewControls: Boolean = true): JsonObject = buildJsonObject {
         put("selectedLayerId", p.selectedLayerId)
         putJsonArray("selectedLayerIds") { p.selectedLayerIds.forEach { add(it) } }
         put("selectedDeformerId", p.selectedDeformerId)
         put("isolatedLayerId", p.isolatedLayerId)
-        put("animationEnabled", p.animationEnabled)
-        put("mouseTrackingEnabled", p.mouseTrackingEnabled)
-        put("smoothMouseTracking", p.smoothMouseTracking)
+        if (includePreviewControls) {
+            put("animationEnabled", p.animationEnabled)
+            put("mouseTrackingEnabled", p.mouseTrackingEnabled)
+            put("smoothMouseTracking", p.smoothMouseTracking)
+        }
         putJsonObject("layerVisibility") { p.layerVisibility.forEach { (id, visible) -> put(id, visible) } }
         putJsonObject("deformerVisibility") { p.deformerVisibility.forEach { (id, visible) -> put(id, visible) } }
         p.isolationSnapshot?.let { snapshot -> putJsonObject("isolationSnapshot") { snapshot.forEach { (id, visible) -> put(id, visible) } } }
@@ -165,7 +167,8 @@ internal object WorkspaceStateCodec {
         return if (session.viewMode == null) session else session.withHierarchyView(EditHierarchyMode.SELECT)
     }
 
-    private fun encodeSession(session: CanvasModeSession, presentation: CanvasPresentation = session.presentation): JsonObject =
+    private fun encodeSession(session: CanvasModeSession, presentation: CanvasPresentation = session.presentation,
+                              includePreviewControls: Boolean = true): JsonObject =
         buildJsonObject {
             put("view", encodeViewOptions(session.view))
             session.viewMode?.let { put("viewMode", it.name) }
@@ -173,7 +176,7 @@ internal object WorkspaceStateCodec {
                 session.modeViews.forEach { (mode, view) -> put(mode.name, encodeViewOptions(view)) }
             }
             put("camera", encodeCamera(session.camera))
-            put("presentation", encodePresentation(presentation))
+            put("presentation", encodePresentation(presentation, includePreviewControls))
         }
 
     private fun decodeCanvas(obj: JsonObject, legacyViewOptions: Boolean): CanvasWindowState? {
@@ -300,7 +303,8 @@ internal object WorkspaceStateCodec {
         return parsed to activeId
     }
 
-    fun editableIdentity(state: PSD2LiveState): JsonObject = encode(state)
+    /** Observations are saved for convenience but are not edits made while an archive is being written. */
+    fun editableIdentity(state: PSD2LiveState): JsonObject = encode(state, includeLogs = false, includePreviewControls = false)
     /**
      * The document settings of [state]: the document codec's own text of its chosen settings, so the two never
      * differ - a revision hashes the settings text, and any difference would make every save commit a spurious
@@ -312,7 +316,7 @@ internal object WorkspaceStateCodec {
         state.atlasBudget?.let { put(io.github.psd2live.project.WorkspaceSettingsCodec.ATLAS, io.github.psd2live.project.WorkspaceSettingsCodec.encodeAtlasBudget(it)) }
         state.atlasArrangement?.let { put(io.github.psd2live.project.AtlasArrangementCodec.KEY, io.github.psd2live.project.AtlasArrangementCodec.encode(it)) }
     }
-    fun encode(state: PSD2LiveState): JsonObject = buildJsonObject {
+    fun encode(state: PSD2LiveState, includeLogs: Boolean = true, includePreviewControls: Boolean = true): JsonObject = buildJsonObject {
         put("projectSourceName", state.projectSourceName)
         put("historyZoom", state.historyZoom)
         put("historyPanX", state.historyPanX)
@@ -341,16 +345,18 @@ internal object WorkspaceStateCodec {
             put("activeCanvasId", workspace.activeCanvasId)
             val pose = if (workspace.id == state.activeWorkspace.id) WorkspacePose.capture(state)
                 else workspace.pose ?: WorkspacePose.capture(workspace.activeCanvas.presentation)
-            put("pose", encodePresentation(pose.applyTo(CanvasPresentation())))
+            put("pose", encodePresentation(pose.applyTo(CanvasPresentation()), includePreviewControls))
             put("authoringPose", pose.authoringPose)
             putJsonArray("canvases") { workspace.canvases.forEach { canvas -> add(buildJsonObject {
                 put("id", canvas.id)
                 put("mode", canvas.mode.name)
                 val active = workspace.id == state.activeWorkspace.id && canvas.id == state.activeCanvas.id
                 put("editSession", encodeSession(canvas.editSession,
-                    if (active && canvas.mode == CanvasMode.EDIT) CanvasPresentation.capture(state) else canvas.editSession.presentation))
+                    if (active && canvas.mode == CanvasMode.EDIT) CanvasPresentation.capture(state) else canvas.editSession.presentation,
+                    includePreviewControls))
                 put("previewSession", encodeSession(canvas.previewSession,
-                    if (active && canvas.mode == CanvasMode.PREVIEW) CanvasPresentation.capture(state) else canvas.previewSession.presentation))
+                    if (active && canvas.mode == CanvasMode.PREVIEW) CanvasPresentation.capture(state) else canvas.previewSession.presentation,
+                    includePreviewControls))
             }) } }
         }) } }
         put("activeWorkspaceId", state.activeWorkspaceId)
@@ -440,9 +446,11 @@ internal object WorkspaceStateCodec {
         put("selectedDeformerId", state.selectedDeformerId)
         put("isolatedLayerId", state.isolatedLayerId)
         put("parameterSearchQuery", state.parameterSearchQuery)
-        put("animationEnabled", state.animationEnabled)
-        put("mouseTrackingEnabled", state.mouseTrackingEnabled)
-        put("smoothMouseTracking", state.smoothMouseTracking)
+        if (includePreviewControls) {
+            put("animationEnabled", state.animationEnabled)
+            put("mouseTrackingEnabled", state.mouseTrackingEnabled)
+            put("smoothMouseTracking", state.smoothMouseTracking)
+        }
         put("activeInspectorTab", state.activeInspectorTab.name)
         state.isolationSnapshot?.let { values -> putJsonObject("isolationSnapshot") { values.forEach { (id, v) -> put(id, v) } } }
         putJsonObject("parameterValues") { state.parameterValues.forEach { (id, v) -> put(id.raw, v) } }
@@ -450,7 +458,7 @@ internal object WorkspaceStateCodec {
         WorkspaceAuxiliaryCodec.encode(WorkspaceAuxiliaryData(state.parameterSnapshots, state.historyAnnotations))
             .forEach { (key, value) -> put(key, value) }
         putJsonObject("drawOrderOverrides") { state.drawOrderOverrides.forEach { (k, v) -> put(k, v) } }
-        putJsonArray("logEntries") { state.logEntries.forEach { log -> add(buildJsonObject {
+        if (includeLogs) putJsonArray("logEntries") { state.logEntries.forEach { log -> add(buildJsonObject {
             put("id", log.id); put("timestamp", log.timestamp.toString()); put("source", log.source.name)
             put("level", log.level.name); put("tag", log.tag); put("message", log.message); put("detail", log.detail)
             put("imageLabel", log.imageLabel)
