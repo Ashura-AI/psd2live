@@ -29,4 +29,13 @@ fun interface AgentCallObserver {
 
     /** A client's session closed. */
     fun onClientDisconnected(client: String) {}
+
+    /** Session diagnostics, distinct from HTTP connections and tool calls. */
+    fun onSessionEvent(event: AgentSessionEvent) {
+        when (event.kind) {
+            AgentSessionEventKind.INITIALIZED -> onClientConnected(event.client)
+            AgentSessionEventKind.CLOSED -> onClientDisconnected(event.client)
+            else -> Unit
+        }
+    }
 }

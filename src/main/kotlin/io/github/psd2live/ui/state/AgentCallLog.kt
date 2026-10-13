@@ -1,6 +1,9 @@
 package io.github.psd2live.ui.state
 
 import io.github.psd2live.agent.AgentCallRecord
+import io.github.psd2live.agent.AgentSessionEvent
+import io.github.psd2live.agent.AgentSessionEventKind
+import io.github.psd2live.i18n.tr
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -11,6 +14,32 @@ private const val DETAIL_LIMIT = 600
 
 /** Failures an Agent recovers from by reading the workspace again or waiting. */
 private val RETRYABLE_FAILURES = setOf("state_conflict", "workspace_busy", "project_conflict")
+
+/** Announce a client once per endpoint lifetime; every session's full diagnostics remain available at DEBUG. */
+internal fun agentSessionLogEntries(event: AgentSessionEvent): List<AppLogEntry> {
+	val announcement = if (event.firstClientConnection && event.kind == AgentSessionEventKind.INITIALIZED) {
+		listOf(AppLogEntry(source = LogSource.MCP_SERVER, level = LogLevel.SUCCESS, tag = "Server",
+			message = tr("log.ai.connected", event.client)))
+	} else emptyList()
+	return announcement + agentSessionLogEntry(event)
+}
+
+internal fun agentSessionLogEntry(event: AgentSessionEvent): AppLogEntry {
+	val key = when (event.kind) {
+		AgentSessionEventKind.INITIALIZED -> "log.ai.session.connected"
+		AgentSessionEventKind.INITIALIZED_REPEATED -> "log.ai.session.repeated"
+		AgentSessionEventKind.DELETE_REQUESTED -> "log.ai.session.delete"
+		AgentSessionEventKind.CLOSED -> "log.ai.session.closed"
+	}
+	val reason = event.closeReason?.let { tr("log.ai.session.reason.${it.name.lowercase(java.util.Locale.ROOT)}") }.orEmpty()
+	return AppLogEntry(
+		source = LogSource.MCP_SERVER,
+		level = LogLevel.DEBUG,
+		tag = "Server",
+		message = tr(key, event.client, event.sessionId, event.activeSessions.toString(),
+			event.initializationCount.toString(), event.lifetimeMs.toString(), reason),
+	)
+}
 
 /**
  * The log lines one MCP tool call leaves: one line for the call, with the first returned render on it and a line of its

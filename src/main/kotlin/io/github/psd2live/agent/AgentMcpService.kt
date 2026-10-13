@@ -6,6 +6,8 @@ import io.github.psd2live.application.toJson
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopped
+import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.UserIdPrincipal
 import io.ktor.server.auth.authenticate
@@ -153,6 +155,12 @@ internal fun Application.configureAgentMcp(workspace: WorkspaceBackend, authToke
 	}
 
 	val transports = ConcurrentMap<String, StreamableHttpServerTransport>()
+	val diagnostics = AgentSessionDiagnostics(catalog.observer)
+	monitor.subscribe(ApplicationStopping) { diagnostics.serverStopping() }
+	monitor.subscribe(ApplicationStopped) {
+		diagnostics.serverStopped()
+		transports.clear()
+	}
 	routing {
 		authenticate("agent-mcp-bearer") {
 			route("/mcp") {
@@ -168,7 +176,7 @@ internal fun Application.configureAgentMcp(workspace: WorkspaceBackend, authToke
 				post {
 					val sessionId = call.request.header(MCP_SESSION_ID_HEADER)
 					val transport = if (sessionId == null) {
-						createTransport(workspace, transports, maxRequestBodyBytes, catalog)
+						createTransport(workspace, transports, maxRequestBodyBytes, catalog, diagnostics)
 					} else {
 						findTransport(sessionId, transports)
 					}
@@ -180,12 +188,18 @@ internal fun Application.configureAgentMcp(workspace: WorkspaceBackend, authToke
 				}
 
 				delete {
-					val transport = findTransport(call.request.header(MCP_SESSION_ID_HEADER), transports)
+					val sessionId = call.request.header(MCP_SESSION_ID_HEADER)
+					val transport = findTransport(sessionId, transports)
 					if (transport == null) {
 						call.respond(HttpStatusCode.NotFound, "MCP session not found")
 						return@delete
 					}
-					transport.handleRequest(null, call)
+					diagnostics.deleteRequested(requireNotNull(sessionId))
+					try {
+						transport.handleRequest(null, call)
+					} finally {
+						diagnostics.deleteFinished(sessionId)
+					}
 				}
 			}
 		}
@@ -202,20 +216,26 @@ private suspend fun createTransport(
 	transports: ConcurrentMap<String, StreamableHttpServerTransport>,
     maxRequestBodyBytes: Long,
     catalog: AgentToolCatalog,
+    diagnostics: AgentSessionDiagnostics,
 ): StreamableHttpServerTransport {
 	val transport = StreamableHttpServerTransport(
 		StreamableHttpServerTransport.Configuration(enableJsonResponse = true, maxRequestBodySize = maxRequestBodyBytes),
 	)
-	transport.setOnSessionInitialized { sessionId -> transports[sessionId] = transport }
+	transport.setOnSessionInitialized { sessionId ->
+		diagnostics.opened(sessionId)
+		transports[sessionId] = transport
+	}
 	transport.setOnSessionClosed { sessionId -> transports.remove(sessionId) }
 	val server = createAgentMcpServer(workspace, catalog)
 	server.onClose { transport.sessionId?.let(transports::remove) }
 	val session = server.createSession(transport)
-	catalog.observer?.let { observer ->
-		fun client() = session.clientVersion?.let { "${it.name} ${it.version}" } ?: "MCP client"
-		session.onInitialized { runCatching { observer.onClientConnected(client()) } }
-		session.onClose { runCatching { observer.onClientDisconnected(client()) } }
+	session.onInitialized {
+		transport.sessionId?.let { id ->
+			val client = session.clientVersion?.let { "${it.name} ${it.version}" } ?: "MCP client"
+			diagnostics.initialized(id, client)
+		}
 	}
+	session.onClose { transport.sessionId?.let(diagnostics::closed) }
 	return transport
 }
 

@@ -5294,10 +5294,8 @@ class PSD2LiveViewModel : AutoCloseable {
 	/** Logs every MCP tool call with the renders it returned, and clients connecting and leaving. */
 	val agentCallObserver = object : io.github.psd2live.agent.AgentCallObserver {
 		override fun onCall(record: io.github.psd2live.agent.AgentCallRecord) = addLog(agentCallLogEntries(record))
-		override fun onClientConnected(client: String) =
-			addLog(tr("log.ai.connected", client), level = LogLevel.SUCCESS, source = LogSource.MCP_SERVER, tag = "Server")
-		override fun onClientDisconnected(client: String) =
-			addLog(tr("log.ai.disconnected", client), source = LogSource.MCP_SERVER, tag = "Server")
+		override fun onSessionEvent(event: io.github.psd2live.agent.AgentSessionEvent) =
+			addLog(agentSessionLogEntries(event))
 	}
 
 	/** Logs the MCP endpoint starting, stopping and failing, from the state it is in now on. */
