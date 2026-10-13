@@ -66,7 +66,7 @@ std::string Live2DPal::GetShaderDirectory()
 
 static Csm::csmByte* ReadOpenedFile(std::ifstream& file, long long fileSize, Csm::csmSizeInt* outSize)
 {
-    if (!file.is_open() || fileSize <= 0 || fileSize >= static_cast<long long>(std::numeric_limits<int>::max()))
+    if (!file.is_open() || fileSize <= 0 || fileSize >= static_cast<long long>((std::numeric_limits<int>::max)()))
     {
         return nullptr;
     }
