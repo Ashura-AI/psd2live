@@ -2649,17 +2649,7 @@ class PSD2LiveViewModel : AutoCloseable {
      */
     private fun stepHistory(choose: (WorkspaceHistorySnapshot) -> String?) {
         if (_state.value.workspaceEditBusy) return
-        flushEditorFields()
-        val backend = workspaceBackend
-        if (backend == null) {
-            _state.value.historySnapshot?.let(choose)?.let(::checkoutHistoryNode)
-            return
-        }
-        scope.launch {
-            runCatching { backend.awaitEditorDrafts() }
-            if (_state.value.workspaceEditBusy) return@launch
-            _state.value.historySnapshot?.let(choose)?.let(::checkoutHistoryNode)
-        }
+        checkoutHistorySelection { history -> history?.let(choose) }
     }
     fun setHistoryView(zoom: Float, x: Float, y: Float, search: String, showHidden: Boolean) {
         updateState { if (it.historyZoom == zoom && it.historyPanX == x && it.historyPanY == y && it.historySearch == search && it.historyShowHidden == showHidden) it
@@ -5578,11 +5568,14 @@ class PSD2LiveViewModel : AutoCloseable {
 	    markWorkspaceChanged()
 	}
 
-	fun checkoutHistoryNode(nodeId: String) {
+	fun checkoutHistoryNode(nodeId: String) = checkoutHistorySelection { nodeId }
+
+	private fun checkoutHistorySelection(choose: (WorkspaceHistorySnapshot?) -> String?) {
 		// A field still being typed has to land before the checkout replaces the document, or a later blur
 		// commits that value onto the node this checkout installed.
 		flushEditorFields()
-		// Busy from the press until the checkout lands: an undo pressed meanwhile would read the old head and be lost.
+		// Include draft settlement and node selection in the busy interval: save and later history steps
+		// must not capture the head before this step's checkout lands.
 		val marked = !_state.value.canvasEditBusy
 		if (marked) updateState { it.copy(canvasEditBusy = true) }
 		// A local preview rebuild in flight would publish the document the checkout is leaving over the one it installs.
@@ -5590,6 +5583,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		scope.launch {
 			try {
 				runCatching { workspaceBackend?.awaitEditorDrafts() }
+				val nodeId = choose(_state.value.historySnapshot) ?: return@launch
 				val ws = workspaceBackend ?: throw IllegalStateException("Agent workspace is not attached")
 				val result = withContext(Dispatchers.Default) {
 					ws.checkoutHistory(nodeId, io.github.psd2live.project.MutationAuthor.USER)
