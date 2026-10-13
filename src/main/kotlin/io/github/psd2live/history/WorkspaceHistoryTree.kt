@@ -52,6 +52,7 @@ class WorkspaceHistoryTree<T>(
 
 	private val storedById = linkedMapOf<String, Stored<T>>()
 	private var headId: String
+    private var capturedSelections = WorkspaceHistorySelections.empty<T>()
 
 	init {
 		require(initialRevisionId.isNotBlank()) { "Initial revision ID must not be blank" }
@@ -67,6 +68,7 @@ class WorkspaceHistoryTree<T>(
 			createdAt = clock(),
 		)
 		storedById[root.id] = Stored(root, initialSnapshot)
+        capturedSelections = capturedSelections.append(WorkspaceHistorySelection(root, initialSnapshot))
 		headId = root.id
 	}
 
@@ -77,10 +79,10 @@ class WorkspaceHistoryTree<T>(
 	fun nodes(): List<WorkspaceHistoryNode> = storedById.values.map(Stored<T>::node)
 
 	@Synchronized
-	fun selections(): List<WorkspaceHistorySelection<T>> = storedById.values.map { it.selection() }
+	fun selections(): List<WorkspaceHistorySelection<T>> = capturedSelections
 
 	@Synchronized
-	fun state(): WorkspaceHistoryState<T> = WorkspaceHistoryState(headId, storedById.values.map { it.selection() })
+	fun state(): WorkspaceHistoryState<T> = WorkspaceHistoryState(headId, capturedSelections)
 
 	@Synchronized
 	fun childrenOf(nodeId: String): List<WorkspaceHistoryNode> {
@@ -120,6 +122,7 @@ class WorkspaceHistoryTree<T>(
 			createdAt = clock(),
 		)
 		storedById[node.id] = Stored(node, snapshot)
+        capturedSelections = capturedSelections.append(WorkspaceHistorySelection(node, snapshot))
 		headId = node.id
 		return WorkspaceHistorySelection(node, snapshot)
 	}
@@ -180,8 +183,10 @@ class WorkspaceHistoryTree<T>(
 				newId = { root.node.id },
 			)
 			tree.storedById.clear()
+            tree.capturedSelections = WorkspaceHistorySelections.empty()
 			selections.forEach { selection ->
 				tree.storedById[selection.node.id] = Stored(selection.node, selection.snapshot)
+                tree.capturedSelections = tree.capturedSelections.append(selection)
 			}
 			tree.headId = headNodeId
 			// Future commits must use the caller's ID source, not the bootstrap root ID supplier.

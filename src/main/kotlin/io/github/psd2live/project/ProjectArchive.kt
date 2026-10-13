@@ -290,6 +290,7 @@ internal object ProjectArchive {
         // The temporary directory may be named through a link or a Windows short name; compare where both lead.
         fun real(of: Path) = runCatching { of.toRealPath() }.getOrElse { of.toAbsolutePath().normalize() }
         require(real(path.parent) == real(Path.of(System.getProperty("java.io.tmpdir"))) && path.fileName.toString().startsWith("psd2live-project-"))
+        if (!Files.exists(path)) return
         Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
     }
 }

@@ -113,6 +113,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -125,7 +126,6 @@ import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicInteger
 
 
 
@@ -310,8 +310,9 @@ class DesktopWorkspace(
     override suspend fun importPsd(path: String, discardUnsaved: Boolean): WorkspaceMutationResult = editMutex.withLock {
         val (state, current) = captureSourceImport(discardUnsaved)
         val input = Path.of(path)
-        val result = sourceImporter.importPsd(input, state.capture?.projectId, state.state, discardUnsaved,
-            state.capture?.document?.rawConfig() ?: current.rawConfig()) { document, preview, id ->
+        val owned = runInterruptible(Dispatchers.IO) { io.github.psd2live.project.OwnedProjectSource.capture(workspaceStore.root, input) }
+        val result = sourceImporter.importPsd(owned.path, state.capture?.projectId, state.state, discardUnsaved,
+            state.capture?.document?.rawConfig() ?: current.rawConfig(), sourceAuxiliary = owned.auxiliary) { document, preview, id ->
             viewModel.applySourceImport(current, document, preview, input, id)
         }
         finishSourceImport(result)
@@ -331,7 +332,8 @@ class DesktopWorkspace(
 
     private suspend fun finishSourceImport(result: WorkspaceCommit<io.github.psd2live.core.RigPreviewModel>) {
         synchronized(historyLock) {
-            discardEditorQueues(); recoveringProjectId = null; taskProjectId = null
+            discardEditorQueues(); recoveringProjectId = null; taskProjectId = result.capture.projectId
+            viewModel.lifecycle.restoreTasks(emptyList())
             spatialByViewId.clear()
             scheduleHistoryPersistence(result.capture.projectId)
         }
@@ -347,14 +349,16 @@ class DesktopWorkspace(
         val author = mutationAuthor(MutationAuthor.AGENT)
         if (current.isGenerating || current.projectSaving || (author != MutationAuthor.USER && current.isAnalyzing)) throw WorkspaceBusy()
         if (mode != io.github.psd2live.core.Cmo3ImportMode.REPLACE && !discardUnsaved && current.projectDirty) throw WorkspaceUnsavedChanges()
-        val result = cmo3Importer.import(path, mode, state.capture?.projectId, state.state, author,
-            discardUnsaved, initialConfig = current.rawConfig()) { _, document, preview, id ->
+        val owned = runInterruptible(Dispatchers.IO) { io.github.psd2live.project.OwnedProjectSource.capture(workspaceStore.root, path) }
+        val result = cmo3Importer.import(owned.path, mode, state.capture?.projectId, state.state, author,
+            discardUnsaved, initialConfig = current.rawConfig(), sourceAuxiliary = owned.auxiliary) { _, document, preview, id ->
             viewModel.applyCmo3Import(current, document, preview, path, id, mode == io.github.psd2live.core.Cmo3ImportMode.REPLACE)
         }
         synchronized(historyLock) {
             if (mode == io.github.psd2live.core.Cmo3ImportMode.NEW) {
                 discardEditorQueues()
                 recoveringProjectId = null; taskProjectId = null
+                viewModel.lifecycle.restoreTasks(emptyList())
                 spatialByViewId.clear()
             }
             if (result.applied) scheduleHistoryPersistence(result.capture.projectId)
@@ -488,19 +492,18 @@ class DesktopWorkspace(
 	private var workspaceStore = WorkspaceStore(storeRoot)
 	/** Names the project whose unsaved edits only the store holds, so a killed app can offer them back. */
 	internal val sessionRecovery = SessionRecovery(storeRoot)
-	private val persistenceJob = SupervisorJob()
-	private val persistenceScope = CoroutineScope(persistenceJob + Dispatchers.IO.limitedParallelism(1))
-	private val pendingPersistenceWrites = AtomicInteger()
-	@Volatile private var persistenceError: String? = null
-    private val historyPersistence = io.github.psd2live.project.CoalescingPersistence(::schedulePersistence)
+    private val resources = io.github.psd2live.project.WorkspaceProjectResources(storeRoot).also {
+        it.reclaimOrphans(sessionRecovery.pending()?.storeRoot)
+    }
+	private val persistence = io.github.psd2live.application.WorkspacePersistenceCoordinator()
+	@Volatile private var persistenceReadError: String? = null
 	@Volatile private var recoveringProjectId: String? = null
 	private val spatialByViewId = ConcurrentHashMap<String, WorkspaceViewSpatialMetadata>()
 	private var taskProjectId: String? = null
-	private var taskManager = WorkspaceTaskRecords()
 	private val previewBuilder = WorkspacePreviewBuilder()
     private val runtime = WorkspaceRuntime<io.github.psd2live.core.RigPreviewModel>({ document ->
         previewBuilder.build(document, runtimeModel())
-    }, rebuildFrom = { document, previous -> previewBuilder.build(document, previous) })
+    }, rebuildFrom = { document, previous -> previewBuilder.build(document, previous) }, onCommitted = ::scheduleRecoveryCheckpoint)
     private val simulationWork = object : WorkspaceSimulationWork {
         override fun <T> run(id: String, action: ((Float) -> Unit, () -> Boolean) -> T): T = viewModel.trackSimulationBake(id, action)
     }
@@ -622,8 +625,13 @@ class DesktopWorkspace(
         val uiBaseline: PSD2LiveState,
     )
     private val projectDirectories = mutableListOf<Path>()
-    internal fun rememberProjectDirectory(path: Path) = synchronized(historyLock) { projectDirectories.add(path) }
-    internal suspend fun flushProjectPersistence() { persistenceScope.launch { }.join() }
+    internal fun rememberProjectDirectory(path: Path) = synchronized(historyLock) {
+        resources.adopt(path)
+        if (path !in projectDirectories) projectDirectories.add(path)
+    }
+    internal suspend fun flushProjectPersistence() {
+        persistence.flush { it is PersistenceDestination && (it.root == workspaceStore.root || it.kind == "session") && it.kind != "observation" }
+    }
 
     internal suspend fun importedPsd(recoverLegacy: Boolean = true) = editMutex.withLock {
         val expectedRuntime = expectedRuntimeState()
@@ -645,6 +653,8 @@ class DesktopWorkspace(
             store.copyAuxiliary(legacyId, store.projectRoot(id), targetProjectId = id)
             store.persistTasks(id, store.loadTasks(legacyId))
         }
+        val tasks = withContext(Dispatchers.IO) { store.loadTasks(id) }
+        WorkspaceTaskRecords().restore(tasks)
         currentCoroutineContext().ensureActive()
         synchronized(historyLock) {
             runtime.install(expectedRuntime, id, document, preview, migrated?.state(),
@@ -655,7 +665,8 @@ class DesktopWorkspace(
             discardEditorQueues()
             workspaceStore = store
             recoveringProjectId = null
-            taskProjectId = null
+            taskProjectId = id
+            viewModel.lifecycle.restoreTasks(tasks)
             spatialByViewId.clear()
             scheduleHistoryPersistence(id)
         }
@@ -775,7 +786,7 @@ class DesktopWorkspace(
             val result = commitPrepared(before, state, document, model, summary,
                 captureAuthor, checkpoint = alwaysCommit)
             if (result.applied) scheduleHistoryPersistence(before.projectId)
-            val tasks = taskManagerFor(before.projectId).list()
+            val tasks = tasksForProject(before.projectId)
             val catalog = io.github.psd2live.project.WorkspaceAssetCatalog.read(result.capture.auxiliary)
                 ?: workspaceStore.existingAssetCatalog(before.projectId)
             runtime.withCapture { captured ->
@@ -815,13 +826,14 @@ class DesktopWorkspace(
         auxiliary: JsonObject = JsonObject(emptyMap()),
         /** Installed with unsaved edits: a restored session that was never saved as it stands. */
         dirty: Boolean = false,
+        restoredTasks: List<WorkspaceTaskSnapshot>? = null,
     ) = editMutex.withLock {
         val expected = expectation.uiState
         val expectedRuntime = expectation.runtimeState
         val document = tree.head().snapshot
         val preview = previewBuilder.build(document, state.previewModel, state.drawOrderOverrides)
-        val tasks = store.loadTasks(id) // Validate before replacing the live session.
-        val restoredTasks = WorkspaceTaskRecords().also { it.restore(tasks) }
+        val tasks = restoredTasks ?: store.loadTasks(id) // Validate before replacing the live session.
+        WorkspaceTaskRecords().restore(tasks)
         // ProjectRepository.open validated this catalog against the store it opened.
         val catalog = io.github.psd2live.project.WorkspaceAssetCatalog.read(auxiliary) ?: store.existingAssetCatalog(id)
         currentCoroutineContext().ensureActive()
@@ -832,7 +844,7 @@ class DesktopWorkspace(
             require(current.projectId == expected.projectId && current.projectOpenGeneration == expected.projectOpenGeneration &&
                 current.saveIdentity == expected.saveIdentity) { "Workspace changed while opening project; open again after saving your edits" }
             installed = runtime.install(expectedRuntime, id, document, preview, tree.state(),
-                auxiliary = JsonObject(auxiliaryJson(state) + ("assetCatalog" to catalog.encode())), discardUnsaved = discardUnsaved, dirty = dirty) {
+                auxiliary = JsonObject(auxiliary + auxiliaryJson(state) + ("assetCatalog" to catalog.encode())), discardUnsaved = discardUnsaved, dirty = dirty) {
                 viewModel.installProjectState(state.copy(
                 projectId = id, projectFile = file?.toString(), inputPath = source.toString(), loadedInputPath = source.toString(),
                 analysis = preview.analysis, previewModel = preview,
@@ -846,9 +858,9 @@ class DesktopWorkspace(
             discardEditorQueues()
             workspaceStore = store
             recoveringProjectId = null
-            persistenceError = null
+            persistenceReadError = null
             taskProjectId = id
-            taskManager = restoredTasks
+            viewModel.lifecycle.restoreTasks(tasks)
             spatialByViewId.clear()
             viewModel.updateHistorySnapshot(history())
         }
@@ -877,7 +889,7 @@ class DesktopWorkspace(
         require(path == null || path.isAbsolute) { "Provide an absolute project archive path" }
         captureForMutation()
         val author = mutationAuthor(MutationAuthor.AGENT)
-        val target = path ?: viewModel.state.value.projectFile?.let(Path::of)
+        val target = path ?: viewModel.lifecycle.capture()?.projectFile?.let(Path::of)
             ?: error("Choose a project archive path with save-as first")
         val saved = projectController.saveCapture(this, target, actor = author.historyActor)
         return savedResult(saved)
@@ -907,12 +919,12 @@ class DesktopWorkspace(
             projectSaving = sameProject && ui.projectSaving,
             projectSaveError = ui.projectSaveError.takeIf { sameProject },
             persistenceStatus = when {
-                persistenceError != null -> "error"
+                persistenceReadError != null || persistence.status.value.failures.isNotEmpty() -> "error"
                 recoveringProjectId != null -> "restoring"
-                pendingPersistenceWrites.get() > 0 -> "saving"
+                persistence.status.value.pending > 0 -> "saving"
                 else -> "ready"
             },
-            persistenceError = persistenceError,
+            persistenceError = persistenceReadError ?: persistence.status.value.failures.values.firstOrNull()?.cause?.message,
         ))
     }
 
@@ -1635,45 +1647,68 @@ class DesktopWorkspace(
 	private fun documentFrom(state: PSD2LiveState): WorkspaceDocument = WorkspaceStateCodec.document(state)
 
 
-	private fun taskManagerFor(projectId: String): WorkspaceTaskRecords = synchronized(historyLock) {
+	private fun tasksForProject(projectId: String): List<WorkspaceTaskSnapshot> = synchronized(historyLock) {
 		if (taskProjectId != projectId) {
-			val restored = try {
-				workspaceStore.loadTasks(projectId)
+			try {
+				viewModel.lifecycle.restoreTasks(workspaceStore.loadTasks(projectId))
 			} catch (failure: Exception) {
-				persistenceError = failure.message ?: failure.javaClass.simpleName
-				throw IllegalStateException("Unable to load persisted Agent tasks: ${persistenceError}", failure)
+				persistenceReadError = failure.message ?: failure.javaClass.simpleName
+				throw IllegalStateException("Unable to load persisted Agent tasks: ${persistenceReadError}", failure)
 			}
 			taskProjectId = projectId
-			taskManager = WorkspaceTaskRecords().also { it.restore(restored) }
+            persistenceReadError = null
 		}
-		taskManager
+		viewModel.lifecycle.tasks()
 	}
+
+    private data class PersistenceDestination(val root: Path, val projectId: String?, val kind: String)
 
     private fun scheduleHistoryPersistence(projectId: String) {
         draftQueue.forgetRejected()
-        val captured = runtime.history()
+        val read = runtime.read()
+        if (read.runtime.capture?.projectId == projectId) scheduleRecoveryCheckpoint(read)
+        viewModel.updateHistorySnapshot(history())
+    }
+
+    /** All runtime commits, including auxiliary-only edits, publish one complete recovery capture. */
+    private fun scheduleRecoveryCheckpoint(read: io.github.psd2live.application.WorkspaceReadCapture<io.github.psd2live.core.RigPreviewModel>) {
+        if (isClosed.get()) return
+        val capture = read.runtime.capture ?: return
+        val history = read.history ?: return
         val store = workspaceStore
-        val generation = runtime.state.value.capture?.loadingIdentity
-        // In the same queue as the history it points at, so the marker never names a history not yet written.
-        val session = if (runtime.state.value.capture?.dirty != true) null else viewModel.state.value.let { ui ->
-            SessionRecovery.Session(store.root, projectId, ui.projectFile, ui.inputPath,
-                (ui.projectFile ?: ui.inputPath).let { runCatching { Path.of(it).fileName?.toString() }.getOrNull() }
-                    ?: ui.projectSourceName ?: projectId)
-        }
-        historyPersistence.submit(store to projectId) {
-            val latest = runtime.read()
-            // A delayed producer must not overwrite a newer HEAD already queued by another editor path.
-            val history = latest.history?.takeIf {
-                latest.runtime.capture?.projectId == projectId && latest.runtime.capture.loadingIdentity == generation
-            } ?: captured
-            store.persistHistory(projectId, history)
-            val active = runtime.state.value.capture
-            if (active?.projectId == projectId && active.loadingIdentity == generation) {
-                if (active.dirty && session != null) sessionRecovery.record(session)
-                else if (!active.dirty) sessionRecovery.forget()
+        viewModel.withProjectState { ui ->
+            // A host notification can arrive after a newer runtime publication (including saved()).
+            // Never let its complete snapshot supersede the newer checkpoint in the coalescing queue.
+            if (ui.projectId != capture.projectId || runtime.read().runtime.capture !== capture) return@withProjectState
+            val tasks = viewModel.lifecycle.tasks()
+            val dirty = capture.dirty || ui.projectDirty
+            val session = SessionRecovery.Session(store.root, capture.projectId, ui.projectFile,
+                ui.loadedInputPath ?: ui.inputPath, ui.projectSourceName ?: capture.projectId)
+            persistence.submit(PersistenceDestination(store.root, capture.projectId, "recovery"), capture.state,
+                coalesce = true) {
+                // Capture immutable references at publication; serialize off both runtime and UI locks.
+                val state = projection(capture, ui)
+                val checkpoint = io.github.psd2live.project.WorkspaceRecoveryCheckpoint(capture.loadingIdentity, capture.state,
+                    capture.historyHead, WorkspaceStateCodec.encode(state, includeLogs = false, includePreviewControls = false),
+                    capture.auxiliary, tasks)
+                store.persistRecoveryCheckpoint(capture.projectId, history, checkpoint)
+                val active = runtime.state.value.capture
+                if (active?.loadingIdentity == capture.loadingIdentity) {
+                    if (dirty) sessionRecovery.record(session)
+                    else if (!active.dirty && !viewModel.state.value.projectDirty) sessionRecovery.forget()
+                }
             }
         }
-        viewModel.updateHistorySnapshot(history())
+    }
+
+    /** Host-owned durable fields currently outside the runtime document also participate in recovery. */
+    internal fun projectPresentationChanged(state: PSD2LiveState) {
+        if (isClosed.get()) return
+        val read = runtime.read()
+        val capture = read.runtime.capture ?: return
+        if (capture.projectId == state.projectId && state.analysis != null &&
+            io.github.psd2live.project.WorkspaceRevisions.of(documentFrom(state)) == capture.revision)
+            scheduleRecoveryCheckpoint(read)
     }
 
     /**
@@ -1684,32 +1719,20 @@ class DesktopWorkspace(
         val store = WorkspaceStore(session.storeRoot)
         val tree = withContext(Dispatchers.IO) { store.loadHistory(session.projectId) }
             ?: error("The unsaved history of ${session.name} is no longer on disk")
+        val checkpoint = withContext(Dispatchers.IO) { store.loadRecoveryCheckpoint(session.projectId) }
+        if (checkpoint != null) tree.checkout(checkpoint.historyHead)
         val expected = captureProjectOpen(discardUnsaved = true)
         val installed = installProject(session.projectId, session.projectFile?.let(Path::of), Path.of(session.inputPath),
-            viewModel.state.value, tree, store, expected, discardUnsaved = true, dirty = true)
+            checkpoint?.let { WorkspaceStateCodec.decode(it.presentation) } ?: viewModel.state.value,
+            tree, store, expected, discardUnsaved = true, auxiliary = checkpoint?.auxiliary ?: JsonObject(emptyMap()),
+            dirty = true, restoredTasks = checkpoint?.tasks)
+        session.storeRoot.parent?.takeIf(resources::isManagedDirectory)?.let(::rememberProjectDirectory)
         viewModel.refreshWorkspaceRenderer(installed.model)
         return openedResult(installed)
     }
 
-	private fun scheduleTaskPersistence(projectId: String, manager: WorkspaceTaskRecords) {
-		val tasks = manager.list()
-        val store = workspaceStore
-        viewModel.markProjectAuxiliaryChanged()
-		schedulePersistence { store.persistTasks(projectId, tasks) }
-	}
-
 	private fun schedulePersistence(block: () -> Unit) {
-		pendingPersistenceWrites.incrementAndGet()
-		persistenceScope.launch {
-			try {
-				block()
-				persistenceError = null
-			} catch (failure: Exception) {
-				persistenceError = failure.message ?: failure.javaClass.simpleName
-			} finally {
-				pendingPersistenceWrites.decrementAndGet()
-			}
-		}
+        persistence.submit(PersistenceDestination(storeRoot, null, "session"), runtime.state.value.state, write = block)
 	}
 
 
@@ -1718,7 +1741,9 @@ class DesktopWorkspace(
             if (runtime.state.value.capture?.projectId == projectId) spatialByViewId[it.viewId] = it.spatial
         }
         // Rendering may create an observation resource, but never edits the project or its UI log.
-        schedulePersistence { capturedStore.persistView(projectId, it) }
+        persistence.submit(PersistenceDestination(capturedStore.root, projectId, "observation"), it.viewId) {
+            capturedStore.persistView(projectId, it)
+        }
     }
 
 	private fun applyPreviewOrThrow(
@@ -1795,6 +1820,12 @@ class DesktopWorkspace(
 		.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
 	private val isClosed = AtomicBoolean(false)
+    @Volatile private var closeReason = io.github.psd2live.application.WorkspaceCloseReason.ABNORMAL
+
+    internal fun prepareClose(reason: io.github.psd2live.application.WorkspaceCloseReason) {
+        check(!isClosed.get()) { "Workspace is already closed" }
+        closeReason = reason
+    }
 
 	override fun close() {
 		if (!isClosed.compareAndSet(false, true)) return
@@ -1803,21 +1834,23 @@ class DesktopWorkspace(
         val flushed = runCatching {
 			runBlocking {
 				// Queued history and task writes are the recovery data; let them land rather than drop them.
-				persistenceJob.complete()
-                withTimeoutOrNull(5_000L) { persistenceJob.join(); true } == true
+                withTimeoutOrNull(5_000L) { persistence.finish(); true } == true
 			}
         }.getOrDefault(false)
-		persistenceScope.cancel()
-        if (flushed) {
+        persistence.cancel()
+        val relinquished = closeReason != io.github.psd2live.application.WorkspaceCloseReason.ABNORMAL
+        if (relinquished && sessionRecovery.pending()?.projectId == runtime.state.value.capture?.projectId)
+            sessionRecovery.forget()
+        if (flushed && (relinquished || persistence.status.value.failures.isEmpty())) {
             // Opened archives are owned temporary directories. Recovery may still need the active
             // one after a crash/shutdown, but old or saved sessions need not accumulate on disk.
             val recoveryRoot = sessionRecovery.pending()?.storeRoot
-            val activeRoot = workspaceStore.root.takeIf { viewModel.state.value.projectDirty }
+            val activeRoot = workspaceStore.root.takeIf { !relinquished && viewModel.state.value.projectDirty }
             synchronized(historyLock) {
                 projectDirectories.filterNot { directory ->
                     recoveryRoot?.startsWith(directory) == true || activeRoot?.startsWith(directory) == true
-                }.forEach { directory -> runCatching { io.github.psd2live.project.ProjectArchive.deleteTemporaryDirectory(directory) } }
-                projectDirectories.clear()
+                }.forEach { directory -> runCatching { resources.release(directory) } }
+                projectDirectories.removeIf { directory -> !Files.exists(directory) }
             }
         }
 	}

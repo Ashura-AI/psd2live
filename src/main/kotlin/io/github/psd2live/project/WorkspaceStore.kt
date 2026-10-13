@@ -456,6 +456,34 @@ internal class WorkspaceStore(
 		return readJson(file).optionalArray("tasks").map(::decodeTask)
 	}
 
+    /** Publish the checkpoint only after every historical node it references is on disk. */
+    @Synchronized
+    internal fun persistRecoveryCheckpoint(projectId: String, history: WorkspaceHistoryState<WorkspaceDocument>,
+                                           checkpoint: WorkspaceRecoveryCheckpoint) {
+        require(history.headNodeId == checkpoint.historyHead) { "Recovery checkpoint belongs to another history HEAD" }
+        persistHistory(projectId, history)
+        writeAtomic(projectRoot(projectId).resolve("recovery.json"), buildJsonObject {
+            put("version", 1)
+            put("loadingIdentity", checkpoint.loadingIdentity)
+            put("state", checkpoint.state)
+            put("historyHead", checkpoint.historyHead)
+            put("presentation", checkpoint.presentation)
+            put("auxiliary", checkpoint.auxiliary)
+            putJsonArray("tasks") { checkpoint.tasks.forEach { add(encodeTask(it)) } }
+        }.toString().encodeToByteArray())
+    }
+
+    @Synchronized
+    internal fun loadRecoveryCheckpoint(projectId: String): WorkspaceRecoveryCheckpoint? {
+        val file = projectRoot(projectId).resolve("recovery.json")
+        if (!Files.isRegularFile(file)) return null // Histories from before complete checkpoints remain readable.
+        val value = readJson(file)
+        require(value.requiredInt("version") == 1) { "Unsupported recovery checkpoint version" }
+        return WorkspaceRecoveryCheckpoint(value.requiredString("loadingIdentity"), value.requiredString("state"),
+            value.requiredString("historyHead"), value.getValue("presentation").jsonObject,
+            value.getValue("auxiliary").jsonObject, value.optionalArray("tasks").map(::decodeTask))
+    }
+
 	private fun encodeDocument(document: WorkspaceDocument, project: Path): JsonObject = buildJsonObject {
         put("settings", document.settings)
 		put("version", STORE_VERSION)

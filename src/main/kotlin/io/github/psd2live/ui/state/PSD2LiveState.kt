@@ -624,7 +624,13 @@ data class PSD2LiveState(
 	/** The export that just finished, shown in the export-success dialog until it is closed. */
 	val exportSuccess: ExportSuccess? = null,
 ) {
-    internal val saveIdentity: ProjectSaveIdentity by lazy { ProjectSaveIdentity.of(this) }
+    @Volatile private var savedIdentityCache: ProjectSaveIdentity? = null
+    internal val saveIdentity: ProjectSaveIdentity get() = savedIdentityCache ?: synchronized(this) {
+        savedIdentityCache ?: WorkspaceDurableProjection.of(this).also { savedIdentityCache = it }
+    }
+    internal fun inheritSaveIdentity(before: PSD2LiveState) {
+        if (WorkspaceDurableProjection.unchanged(before, this)) savedIdentityCache = before.saveIdentity
+    }
 	val darkTheme: Boolean get() = toolColors.isDark
 
 	val autoDetectMeshSplitsOnImport: Boolean get() = AppPrompt.START_SCREEN_ON_IMPORT !in mutedPrompts
@@ -699,8 +705,9 @@ data class PSD2LiveState(
 	fun buildConfig(): PipelineConfig = io.github.psd2live.project.WorkspaceSettingsPolicy.effective(rawConfig())
 
 	/** The settings as chosen, for a new document's raw settings. */
-	fun rawConfig(): PipelineConfig {
-		return PipelineConfig(
+    fun rawConfig(): PipelineConfig = authoredConfig
+    private val authoredConfig: PipelineConfig by lazy {
+        PipelineConfig(
 			atlasSize = atlasSize,
 			textureUpscale = textureUpscale,
 			texturePadding = texturePadding,

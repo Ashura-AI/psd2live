@@ -72,6 +72,7 @@ internal class WorkspaceRuntime<M>(
      * journal act on its rig, and a regeneration merges onto it. [rebuild] otherwise.
      */
     private val rebuildFrom: (suspend (WorkspaceDocument, M) -> M)? = null,
+    private val onCommitted: (WorkspaceReadCapture<M>) -> Unit = {},
 ) {
     private val lock = Any()
     private val instanceId = newId()
@@ -79,6 +80,7 @@ internal class WorkspaceRuntime<M>(
     private var version = 0L
     private var tree: WorkspaceHistoryTree<WorkspaceDocument>? = null
     private val mutableState = MutableStateFlow(WorkspaceRuntimeState<M>(token()))
+    @Volatile private var publishedRead = WorkspaceReadCapture(mutableState.value, null)
     val state: StateFlow<WorkspaceRuntimeState<M>> = mutableState.asStateFlow()
 
     fun capture(): WorkspaceCapture<M> = mutableState.value.capture
@@ -91,9 +93,8 @@ internal class WorkspaceRuntime<M>(
     /** Freeze auxiliary resources under the same lock that publishes their catalog. */
     fun <T> withCapture(read: (WorkspaceCapture<M>) -> T): T = synchronized(lock) { read(capture()) }
 
-    fun read(): WorkspaceReadCapture<M> = synchronized(lock) {
-        WorkspaceReadCapture(mutableState.value, tree?.state())
-    }
+    /** One immutable publication: UI notifications can read it without reversing the commit lock order. */
+    fun read(): WorkspaceReadCapture<M> = publishedRead
 
     fun history(): WorkspaceHistoryState<WorkspaceDocument> = synchronized(lock) {
         requireNotNull(tree) { "No workspace is loaded" }.state()
@@ -140,7 +141,9 @@ internal class WorkspaceRuntime<M>(
         generation++
         version = 0
         tree = null
-        mutableState.value = WorkspaceRuntimeState(token())
+        val unloaded = WorkspaceRuntimeState<M>(token())
+        publishedRead = WorkspaceReadCapture(unloaded, null)
+        mutableState.value = unloaded
     }
 
     /** One isolated draft, one successful commit. A failed edit or rebuild never publishes a prefix. */
@@ -218,25 +221,27 @@ internal class WorkspaceRuntime<M>(
         document: WorkspaceDocument, model: M, taskId: String? = null, checkpoint: Boolean = false,
         auxiliary: JsonObject? = null,
         beforeCommit: (WorkspaceCapture<M>, WorkspaceDocument, M) -> Unit = { _, _, _ -> },
-    ): WorkspaceCommit<M> = synchronized(lock) {
+    ): WorkspaceCommit<M> {
         require(summary.isNotBlank()) { "History summary must not be blank" }
-        checkState(expectedState)
-        val before = capture()
+        val before = synchronized(lock) { checkState(expectedState); capture() }
         require(before.projectId == projectId) { "Operation targets another project" }
         val document = adopted(document, model)
         // Prepared drafts already migrated after each member; doing it again would reset a newly created
         // axis to the final default instead of retaining the value the earlier member introduced.
         val auxiliary = auxiliary ?: adoptedAuxiliary(before.model, model, before.auxiliary)
         val revision = WorkspaceRevisions.of(document)
-        val documentChanged = checkpoint || revision != WorkspaceRevisions.of(before.document)
-        if (!documentChanged && auxiliary == before.auxiliary) return@synchronized WorkspaceCommit(before, false)
-        // Projection validation is atomic and must fail before touching the authoritative history.
-        beforeCommit(before, document, model)
-        val head = if (documentChanged) requireNotNull(tree).commit(before.historyHead, document, revision, revision, summary, author.historyActor, taskId)
-            else requireNotNull(tree).head()
-        version++
-        WorkspaceCommit(publish(before.copy(state = token(), historyHead = head.node.id, revision = head.node.revisionId,
-            document = document, model = model, auxiliary = auxiliary, dirty = true)), true)
+        val documentChanged = checkpoint || revision != before.revision
+        return synchronized(lock) {
+            checkState(expectedState)
+            if (!documentChanged && auxiliary == before.auxiliary) return@synchronized WorkspaceCommit(before, false)
+            // Projection validation is atomic and must fail before touching the authoritative history.
+            beforeCommit(before, document, model)
+            val head = if (documentChanged) requireNotNull(tree).commit(before.historyHead, document, revision, revision, summary, author.historyActor, taskId)
+                else requireNotNull(tree).head()
+            version++
+            WorkspaceCommit(publish(before.copy(state = token(), historyHead = head.node.id, revision = head.node.revisionId,
+                document = document, model = model, auxiliary = auxiliary, dirty = true)), true).also { notifyCommitted() }
+        }
     }
 
     suspend fun checkout(projectId: String, expectedState: String, nodeId: String,
@@ -257,7 +262,7 @@ internal class WorkspaceRuntime<M>(
             version++
             publish(before.copy(state = token(), historyHead = nodeId, revision = selection.node.revisionId,
                 document = selection.snapshot, model = model,
-                auxiliary = adoptedAuxiliary(before.model, model, before.auxiliary), dirty = true))
+                auxiliary = adoptedAuxiliary(before.model, model, before.auxiliary), dirty = true)).also { notifyCommitted() }
         }
     }
 
@@ -274,7 +279,15 @@ internal class WorkspaceRuntime<M>(
         }
         beforeCommit(before, auxiliary)
         version++
-        publish(before.copy(state = token(), auxiliary = auxiliary, dirty = true))
+        publish(before.copy(state = token(), auxiliary = auxiliary, dirty = true)).also { notifyCommitted() }
+    }
+
+    private fun notifyCommitted() {
+        // A failed host notification cannot roll back the authoritative commit.
+        try { onCommitted(publishedRead) }
+        catch (failure: Exception) {
+            System.getLogger(WorkspaceRuntime::class.java.name).log(System.Logger.Level.WARNING, "Unable to schedule committed workspace persistence", failure)
+        }
     }
 
     /** A save completing on an old capture cannot mark newer edits (or another project) clean. */
@@ -312,6 +325,8 @@ internal class WorkspaceRuntime<M>(
 
     private fun token(): String = "$instanceId:$generation:$version"
     private fun publish(capture: WorkspaceCapture<M>): WorkspaceCapture<M> = capture.also {
-        mutableState.value = WorkspaceRuntimeState(it.state, it)
+        val next = WorkspaceRuntimeState(it.state, it)
+        publishedRead = WorkspaceReadCapture(next, tree?.state())
+        mutableState.value = next
     }
 }

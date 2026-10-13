@@ -73,7 +73,8 @@ class PreviewFpsTool {
 			Runtime.getRuntime().halt(3)
 		}.apply { isDaemon = true; start() }
 		val vm = PSD2LiveViewModel()
-		vm.attachWorkspace(io.github.psd2live.ui.state.DesktopWorkspace(vm, out.resolve("workspace").toPath()))
+		val workspace = io.github.psd2live.ui.state.DesktopWorkspace(vm, out.resolve("workspace").toPath())
+		vm.attachWorkspace(workspace)
 		val window = AtomicReference<java.awt.Window?>()
 		Thread {
 			application(exitProcessOnExit = false) {
@@ -92,8 +93,13 @@ class PreviewFpsTool {
 			waitFor(30, "GPU") { SkiaGpu.status.value !is SkiaGpu.Status.Starting }
 			val display = window.get()!!.graphicsConfiguration.device.displayMode
 			report.appendLine("GPU: ${SkiaGpu.status.value}; display ${display.width}x${display.height} @ ${display.refreshRate} Hz")
-			vm.openRecentFile(sample.path.toAbsolutePath().toString())
-			waitFor(600, "model") { vm.state.value.previewModel != null && !vm.state.value.isBusy }
+			// Exercise the same application import/open without waiting on interactive confirmation or start screens.
+			kotlinx.coroutines.runBlocking {
+				val path = sample.path.toAbsolutePath()
+				if (path.fileName.toString().endsWith(".psd2live", true)) workspace.openProjectAt(path, true)
+				else workspace.importPsd(path.toString(), true)
+			}
+			waitFor(60, "model") { vm.state.value.previewModel != null && !vm.state.value.isBusy }
 			SwingUtilities.invokeAndWait { vm.dismissStartScreen() }
 			System.getenv("PSD2LIVE_WORKSPACE")?.takeIf { it.isNotBlank() }?.let { name ->
 				SwingUtilities.invokeAndWait {
@@ -199,6 +205,9 @@ class PreviewFpsTool {
 		} finally {
 			File(out, "report.txt").writeText(report.toString())
 			println(report)
+			vm.close()
+			workspace.prepareClose(io.github.psd2live.application.WorkspaceCloseReason.DISCARDED)
+			workspace.close()
 			SwingUtilities.invokeLater { window.get()?.dispose() }
 		}
 	}

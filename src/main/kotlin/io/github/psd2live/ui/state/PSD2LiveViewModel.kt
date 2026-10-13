@@ -1,5 +1,9 @@
 package io.github.psd2live.ui.state
 
+import io.github.psd2live.application.PendingPoseCommit
+import io.github.psd2live.application.WorkspacePoseQueue
+import io.github.psd2live.application.WorkspacePoseQueue.Pending as PendingPose
+import io.github.psd2live.application.WorkspaceRenderCoordinator
 import io.github.psd2live.project.HistoryAnnotation
 
 import io.github.psd2live.project.ParameterSnapshot
@@ -984,27 +988,25 @@ class PSD2LiveViewModel : AutoCloseable {
     private var meshSplitApplying = false
 
     private val stateLock = Any()
-    /** The content actually on disk; UI presentation may continue changing during a save or open. */
-    private data class SavedProjectContent(val projectId: String?, val generation: Long, val identity: ProjectSaveIdentity)
-    private var savedProjectContent: SavedProjectContent? = null
+    internal val lifecycle = io.github.psd2live.application.WorkspaceLifecycleCoordinator()
 
     private fun trackProjectChanges(before: PSD2LiveState, next: PSD2LiveState): PSD2LiveState {
         if (before.projectId != next.projectId || before.projectOpenGeneration != next.projectOpenGeneration ||
             next.analysis == null) return next
+        next.inheritSaveIdentity(before)
         val changed = before.saveIdentity != next.saveIdentity
-        val saved = savedProjectContent?.takeIf {
-            it.projectId == next.projectId && it.generation == next.projectOpenGeneration
-        }
-        val dirty = if (saved == null) next.projectDirty || changed
-            else workspaceBackend?.hasUnsavedChanges() == true || next.saveIdentity != saved.identity ||
-                (next.projectDirty && (next.workspaceEditBusy || next.editorDraftBusy))
+        val dirty = lifecycle.observe(next.projectId, next.projectOpenGeneration, next.saveIdentity,
+            runtimeDirty = workspaceBackend?.hasUnsavedChanges() == true, requestedDirty = next.projectDirty,
+            busy = next.workspaceEditBusy || next.editorDraftBusy)
         return next.copy(projectDirty = dirty, projectEditVersion = before.projectEditVersion + if (changed) 1 else 0)
+            .also { it.inheritSaveIdentity(next) }
     }
     /** Captures an archive projection and its comparison baseline while the caller holds the runtime capture. */
     internal fun <T> withProjectState(read: (PSD2LiveState) -> T): T = synchronized(stateLock) { read(_state.value) }
 
     private inline fun updateState(transform: (PSD2LiveState) -> PSD2LiveState) {
         var resumeSave = false
+        var durableChange: PSD2LiveState? = null
         synchronized(stateLock) {
             val before = _state.value
             _state.update { current ->
@@ -1031,6 +1033,8 @@ class PSD2LiveViewModel : AutoCloseable {
                 trackProjectChanges(current, next)
             }
             val after = _state.value
+            if (before.projectOpenGeneration == after.projectOpenGeneration && before.saveIdentity != after.saveIdentity)
+                durableChange = after
             pruneParameterSnapshotPreview(after)
             if (before.activeWorkspace.id != after.activeWorkspace.id ||
                 before.projectOpenGeneration != after.projectOpenGeneration) {
@@ -1063,6 +1067,7 @@ class PSD2LiveViewModel : AutoCloseable {
             resumeSave = (before.workspaceEditBusy || before.editorDraftBusy) &&
                 !_state.value.workspaceEditBusy && !_state.value.editorDraftBusy
         }
+        durableChange?.let { (workspaceBackend as? DesktopWorkspace)?.projectPresentationChanged(it) }
         // Every editor completion owns this transition, including simulation, undo and source commands.
         // Defer until its commit/cleanup has left the runtime and projection locks.
         if (resumeSave) scope.launch { yield(); runQueuedProjectSave() }
@@ -1089,7 +1094,7 @@ class PSD2LiveViewModel : AutoCloseable {
     /** [this] with the log lines its change from [before] implies; see [stateChangeLogEntries]. */
     private fun PSD2LiveState.withStateChangeLog(before: PSD2LiveState): PSD2LiveState {
         val entries = stateChangeLogEntries(before, this)
-        return if (entries.isEmpty()) this else copy(logEntries = logEntries.withChangeLog(entries))
+        return if (entries.isEmpty()) this else copy(logEntries = logEntries.withChangeLog(entries)).also { it.inheritSaveIdentity(this) }
     }
 
     internal fun updateCanvasPresentation(
@@ -2184,9 +2189,7 @@ class PSD2LiveViewModel : AutoCloseable {
             projectOpenGeneration = _state.value.projectOpenGeneration + 1,
             recentFiles = AppSettings.recentFiles(),
         ))
-        savedProjectContent = if (dirty) null else _state.value.let {
-            SavedProjectContent(it.projectId, it.projectOpenGeneration, it.saveIdentity)
-        }
+        _state.value.let { lifecycle.install(it.projectId, it.projectOpenGeneration, it.saveIdentity, clean = !dirty, projectFile = it.projectFile) }
     }
     internal fun applySourceImport(expected: PSD2LiveState, document: io.github.psd2live.project.WorkspaceDocument,
                                    preview: RigPreviewModel, path: Path?, projectId: String) {
@@ -2282,7 +2285,7 @@ class PSD2LiveViewModel : AutoCloseable {
         AppSettings.rememberRecentFile(saved)
         synchronized(stateLock) {
             if (_state.value.projectId == captured.projectId && _state.value.projectOpenGeneration == captured.projectOpenGeneration)
-                savedProjectContent = SavedProjectContent(captured.projectId, captured.projectOpenGeneration, captured.saveIdentity)
+                lifecycle.saved(captured.projectId, captured.projectOpenGeneration, captured.saveIdentity, saved)
             updateState { current ->
                 if (current.projectId != captured.projectId || current.projectOpenGeneration != captured.projectOpenGeneration) {
                     return@updateState current.copy(projectSaving = saving, recentFiles = AppSettings.recentFiles())
@@ -2337,46 +2340,17 @@ class PSD2LiveViewModel : AutoCloseable {
 		val poseTarget: kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.JsonObject(emptyMap()),
 	)
 
-	/**
-	 * One authored pose change the panels, canvases and physics already show while its commit waits in
-	 * [poseCommits]. A projected commit keeps every later pending change on top, so a slow commit never pulls a
-	 * slider back past a newer value.
-	 */
-	private class PendingPose(val id: Long, val generation: Long, val workspaceId: String,
-		@Volatile var values: Map<ParameterId, Float>)
-
-	/** Guarded by [stateLock]; in submission order. */
-	private val pendingPoses = ArrayList<PendingPose>()
-	private var nextPendingPoseId = 0L
-	private var poseCommitsQueued = 0
-	/** FIFO: each authored pose commit starts from the state the previous one published. */
-	private val poseCommits = kotlinx.coroutines.sync.Mutex()
-	/**
-	 * States this queue replaced with its own commits. A change captured before an earlier queued commit landed
-	 * continues from that commit; any other change since the capture still conflicts. Guarded by [stateLock].
-	 */
-	private val ownPoseSuccessors = object : LinkedHashMap<String, String>() {
-		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>) = size > 64
-	}
+	private val poseQueue = WorkspacePoseQueue()
 
 	/** [workspaceId]'s pending changes in order; [after] skips those up to the commit being projected. */
-	private fun pendingPoseValues(generation: Long, workspaceId: String, after: Long? = null): Map<ParameterId, Float> = synchronized(stateLock) {
-		var values = emptyMap<ParameterId, Float>()
-		for (pending in pendingPoses) {
-			if (pending.generation != generation || pending.workspaceId != workspaceId) continue
-			if (after != null && pending.id <= after) continue
-			values = values + pending.values
-		}
-		values
-	}
+	private fun pendingPoseValues(generation: Long, workspaceId: String, after: Long? = null): Map<ParameterId, Float> =
+		poseQueue.values(generation, workspaceId, after)
 
 	private fun pendingPoseValues(current: PSD2LiveState) = pendingPoseValues(current.projectOpenGeneration, current.activeWorkspace.id)
 
 	/** Removes [commit]'s change once it is projected and returns what stays shown over the committed pose. */
-	private fun consumePendingPose(generation: Long, workspaceId: String, commit: Long?): Map<ParameterId, Float> = synchronized(stateLock) {
-		if (commit != null) pendingPoses.removeAll { it.id == commit }
-		pendingPoseValues(generation, workspaceId, commit)
-	}
+	private fun consumePendingPose(generation: Long, workspaceId: String, commit: Long?): Map<ParameterId, Float> =
+		poseQueue.consume(generation, workspaceId, commit)
 
 	/**
 	 * [state] advanced through the editor drafts queued before the pose (a settings switch committing, say): those
@@ -2390,15 +2364,10 @@ class PSD2LiveViewModel : AutoCloseable {
 		catch (failure: Exception) { if (failure is kotlinx.coroutines.CancellationException) throw failure; state }
 	}
 
-	private fun ownPoseLineage(expected: String): String = synchronized(stateLock) {
-		var state = expected
-		val seen = HashSet<String>()
-		while (seen.add(state)) state = ownPoseSuccessors[state] ?: break
-		state
-	}
+	private fun ownPoseLineage(expected: String): String = poseQueue.lineage(expected)
 
 	private fun publishPoseCommitBusy() {
-		val busy = synchronized(stateLock) { poseCommitsQueued > 0 }
+		val busy = poseQueue.busy
 		updateState { if (it.poseCommitBusy == busy) it else it.copy(poseCommitBusy = busy) }
 		if (!busy && !_state.value.canvasEditBusy) runQueuedProjectSave()
 	}
@@ -2406,16 +2375,14 @@ class PSD2LiveViewModel : AutoCloseable {
 	/** Registers a change that a gesture fills in sample by sample before it is submitted. */
 	private fun openPendingPose(): PendingPose = synchronized(stateLock) {
 		val current = _state.value
-		PendingPose(++nextPendingPoseId, current.projectOpenGeneration, current.activeWorkspace.id, emptyMap())
-			.also { pendingPoses += it }
+		poseQueue.open(current.projectOpenGeneration, current.activeWorkspace.id, emptyMap(), registerEmpty = true)
 	}
 
 	/** Shows [values] at once as the authored pose of the active workspace and holds them until their commit lands. */
 	private fun showPendingPose(values: Map<ParameterId, Float>): PendingPose = synchronized(stateLock) {
 		val current = _state.value
-		val pending = PendingPose(++nextPendingPoseId, current.projectOpenGeneration, current.activeWorkspace.id, values)
+		val pending = poseQueue.open(current.projectOpenGeneration, current.activeWorkspace.id, values)
 		if (values.isNotEmpty()) {
-			pendingPoses += pending
 			updateState { it.copy(animationEnabled = false, parameterValues = it.parameterValues + values)
 				.authoringPose(it.activeCanvas.mode == CanvasMode.EDIT) }
 		}
@@ -2430,19 +2397,19 @@ class PSD2LiveViewModel : AutoCloseable {
 	private fun commitPose(pending: PendingPose, expected: String,
 		commit: suspend (String) -> kotlinx.serialization.json.JsonObject,
 		onCommitted: (kotlinx.serialization.json.JsonObject) -> Unit = {}): kotlinx.coroutines.Deferred<Boolean> {
-		synchronized(stateLock) { poseCommitsQueued++ }
+		poseQueue.enqueued()
 		publishPoseCommitBusy()
 		return scope.async {
 			try {
-				poseCommits.withLock {
+				poseQueue.serialized {
 					check(_state.value.projectOpenGeneration == pending.generation) { "The project changed before its pose was saved" }
 					val state = settledPoseState(ownPoseLineage(expected))
 					val result = withContext(Dispatchers.Default + PendingPoseCommit(pending.id, pending.workspaceId)) { commit(state) }
 					val committed = result["state"]?.jsonPrimitive?.content
 					synchronized(stateLock) {
-						if (committed != null && committed != state) ownPoseSuccessors[state] = committed
+						poseQueue.committed(state, committed)
 						// A commit that changed nothing is never projected; settle its pending values here.
-						if (pendingPoses.removeAll { it.id == pending.id }) {
+						if (poseQueue.remove(pending.id)) {
 							val values = result["values"]?.jsonObject?.mapNotNull { (id, value) ->
 								value.jsonPrimitive.floatOrNull?.let { ParameterId(id) to it } }?.toMap()
 							if (values != null) projectWorkspacePose(pending.generation, pending.workspaceId, values, null)
@@ -2456,7 +2423,7 @@ class PSD2LiveViewModel : AutoCloseable {
 				restoreCommittedPose(pending, failure.message ?: "Could not save the pose")
 				false
 			} finally {
-				synchronized(stateLock) { poseCommitsQueued-- }
+				poseQueue.finished()
 				publishPoseCommitBusy()
 			}
 		}
@@ -2483,10 +2450,10 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	/** Withdraws one change that will never be committed, such as a cancelled snap. */
 	private fun discardPendingPose(pending: PendingPose) {
-		if (synchronized(stateLock) { pendingPoses.none { it.id == pending.id } }) return
+		if (!poseQueue.contains(pending.id)) return
 		val committed = runCatching { workspaceBackend?.authoredPose(pending.workspaceId) }.getOrNull()
 		synchronized(stateLock) {
-			pendingPoses.removeAll { it.id == pending.id }
+			poseQueue.remove(pending.id)
 			if (committed != null) projectWorkspacePose(pending.generation, pending.workspaceId, committed.values, null)
 		}
 	}
@@ -2499,7 +2466,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		val reopened = _state.value.projectOpenGeneration != pending.generation
 		val committed = if (reopened) null else runCatching { workspaceBackend?.authoredPose(pending.workspaceId) }.getOrNull()
 		synchronized(stateLock) {
-			pendingPoses.removeAll { it.generation == pending.generation && it.workspaceId == pending.workspaceId }
+			poseQueue.discard(pending.generation, pending.workspaceId)
 			if (reopened) return
 			if (committed != null) projectWorkspacePose(pending.generation, pending.workspaceId, committed.values, committed.locked)
 			updateState { it.copy(statusText = message) }
@@ -2889,29 +2856,21 @@ class PSD2LiveViewModel : AutoCloseable {
 	val uiState: State<PSD2LiveState> get() = _uiState
 	private val _sdkFrame = MutableStateFlow<PreviewFrame?>(null)
 	val sdkFrame: StateFlow<PreviewFrame?> = _sdkFrame.asStateFlow()
-    private val canvasFrames = mutableMapOf<String, MutableStateFlow<PreviewFrame?>>()
-    private val canvasFrameUsers = mutableMapOf<String, Int>()
+    private val renderCoordinator = WorkspaceRenderCoordinator()
     fun canvasRenderKey(canvasId: String, mode: CanvasMode = state.value.activeWorkspace.canvases
         .firstOrNull { it.id == canvasId }?.mode ?: CanvasMode.EDIT): String =
         "${state.value.projectOpenGeneration}/${state.value.activeWorkspace.id}/$canvasId/${mode.name}"
     fun sdkFrameFor(renderKey: String): StateFlow<PreviewFrame?> =
-        canvasFrames.getOrPut(renderKey) { MutableStateFlow(null) }
+        renderCoordinator.frameFor(renderKey)
     internal fun retainCanvasFrame(renderKey: String): StateFlow<PreviewFrame?> {
-        val flow = sdkFrameFor(renderKey)
-        canvasFrameUsers[renderKey] = (canvasFrameUsers[renderKey] ?: 0) + 1
-        return flow
+        return renderCoordinator.retain(renderKey)
     }
     internal fun releaseRetainedCanvasFrame(renderKey: String) {
-        val users = canvasFrameUsers[renderKey] ?: return
-        if (users > 1) canvasFrameUsers[renderKey] = users - 1
-        else {
-            canvasFrameUsers.remove(renderKey)
-            releaseCanvasFrame(renderKey)
-        }
+        if (renderCoordinator.releaseRetained(renderKey)) releaseCanvasFrame(renderKey)
     }
     fun releaseCanvasFrame(renderKey: String) {
         clearPointer(renderKey)
-        canvasFrames.remove(renderKey)
+        renderCoordinator.remove(renderKey)
         sdkSession.removeView(renderKey)
     }
 
@@ -2936,30 +2895,15 @@ class PSD2LiveViewModel : AutoCloseable {
 	private var lastTick = System.nanoTime()
 	private var lastSdkParameterPublishNanos = 0L
 	private var lastSdkParameterCanvasId: String? = null
-	private var sdkSessionNeedsReload = false
-
-	// Only a mounted canvas renders through Cubism, and its first frame request loads the session. Without one
-	// (an agent or test driving the model) a load would only post its status to the UI thread later, where it
-	// would demote the frames accepted meanwhile and hand the live pose back to the software tick.
-	private val sdkSessionWanted: Boolean get() = canvasFrameUsers.isNotEmpty()
-
 	private fun refreshSdkSession(preview: RigPreviewModel) {
-		if (_state.value.previewLive && sdkSessionWanted) {
-			sdkSession.load(preview)
-			sdkSessionNeedsReload = false
-		} else {
-			sdkSessionNeedsReload = true
-		}
+		renderCoordinator.invalidateModel()
+		if (renderCoordinator.claimModelLoad(_state.value.previewLive)) sdkSession.load(preview)
 	}
 
 	private fun ensureSdkSessionLoaded() {
-		if (sdkSessionNeedsReload && sdkSessionWanted) {
-			val preview = _state.value.previewModel
-			if (preview != null) {
-				sdkSessionNeedsReload = false
-				sdkSession.load(preview)
-			}
-		}
+		val current = _state.value
+		val preview = current.previewModel ?: return
+		if (renderCoordinator.claimModelLoad(current.previewLive)) sdkSession.load(preview)
 	}
 
 	internal fun acceptSdkFrame(frame: PreviewFrame, nowNanos: Long = System.nanoTime()) {
@@ -2968,14 +2912,13 @@ class PSD2LiveViewModel : AutoCloseable {
 			it.mode == CanvasMode.PREVIEW &&
 			"${current.projectOpenGeneration}/${current.activeWorkspace.id}/${it.id}/PREVIEW" == frame.viewId
 		}
-		val frameFlow = canvasFrames[frame.viewId]
-		if (frame.viewId.isNotEmpty() && (canvas == null || frameFlow == null)) return
+		if (frame.viewId.isNotEmpty() && (canvas == null || !renderCoordinator.contains(frame.viewId))) return
 		val animationEnabled = canvas?.presentation?.animationEnabled ?: current.animationEnabled
 		if (!current.previewLive || frame.animationEnabled != (animationEnabled && !current.meshOnly)) return
 
 		// The image and information overlays follow their own view's frame stream. Publishing every
 		// frame through the document state makes every dock and every other canvas recompose.
-		frameFlow?.value = frame
+		renderCoordinator.publish(frame)
 		if (canvas == null || canvas.id == current.activeCanvas.id) {
 			_sdkFrame.value = frame
 		}
@@ -3028,7 +2971,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	private val sdkSession: PreviewSessions = PreviewSessions(
         onFrame = { frame -> acceptSdkFrame(frame) },
 		onStatus = { status ->
-			if (status != "ready") { _sdkFrame.value = null; canvasFrames.values.forEach { it.value = null } }
+			if (status != "ready") { _sdkFrame.value = null; renderCoordinator.clearFrames() }
 			updateState { it.copy(sdkStatus = status) }
 			if (status == "ready") logPreviewRenderPath()
 		},
@@ -3038,7 +2981,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	private fun previewBackendChanged(backend: PreviewBackend) {
 		_sdkFrame.value = null
-		canvasFrames.values.forEach { it.value = null }
+		renderCoordinator.clearFrames()
 		_previewBackend.value = backend
 		sdkSession.cubismFailure?.let { reason ->
 			addLog(tr("log.preview.cubismUnavailable", reason), level = LogLevel.WARNING, tag = "Render")
@@ -7205,7 +7148,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		val presentation = if (canvas == null || canvas.id == snapshot.activeCanvas.id)
 			CanvasPresentation.capture(snapshot) else canvas.presentation
 		val inPreview = snapshot.previewLive
-		if (inPreview && sdkSessionNeedsReload) {
+		if (inPreview) {
 			ensureSdkSessionLoaded()
 		}
 		val isAnim = inPreview && presentation.animationEnabled && !snapshot.meshOnly
@@ -7293,8 +7236,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		activeWorkJob?.cancel()
 		scope.cancel()
 		sdkSession.close()
-        canvasFrames.clear()
-        canvasFrameUsers.clear()
+        renderCoordinator.close()
         synchronized(canvasEditors) { canvasEditors.clear() }
 	}
 
@@ -7441,9 +7383,3 @@ internal fun previewFrameMatchesState(
 	frameAnimationEnabled: Boolean,
 ): Boolean = state.previewLive &&
 	(frameAnimationEnabled == (state.animationEnabled && !state.meshOnly))
-
-/** Marks the coroutine that commits one queued GUI pose change, so its projection knows which change landed. */
-internal class PendingPoseCommit(val id: Long, val workspaceId: String) :
-    kotlin.coroutines.AbstractCoroutineContextElement(Key) {
-    companion object Key : kotlin.coroutines.CoroutineContext.Key<PendingPoseCommit>
-}

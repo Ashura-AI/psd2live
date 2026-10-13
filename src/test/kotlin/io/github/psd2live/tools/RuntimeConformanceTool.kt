@@ -39,7 +39,7 @@ class RuntimeConformanceTool {
 			cases["$sample-skeleton"] = RigIrCompiler.compile(skeletal)
 		}
 		System.getenv("PSD2LIVE_RUNTIME_PROJECT")?.let(::File)?.takeIf { it.isFile }?.let {
-			cases["project"] = RigIrCompiler.compile(kotlinx.coroutines.runBlocking { ExportService.load(it.toPath()) })
+			cases["project"] = RigIrCompiler.compile(kotlinx.coroutines.runBlocking { io.github.psd2live.application.WorkspaceModelLoader.load(it.toPath()) })
 		}
 		for ((name, ir) in cases) write(File(root, name).apply { mkdirs() }, ir, Random(name.hashCode()))
 		// The skeleton samples baked as finely as sampling allows: a reference for how close advanced mode's arcs

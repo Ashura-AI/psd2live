@@ -116,6 +116,8 @@ PSD2LIVE_TOOLS=1 PSD2LIVE_SAMPLE=ds ./gradlew test --tests "io.github.psd2live.t
 | `WarpProbeTool` | 编辑器求值器的黑盒探测：Warp 映射（格子内外）、Warp 下的旋转框架、翻转、混合形、稀疏网格，供运行时独立实现对照 | `warp-probe/*.tsv` |
 | `GeneratorCostTool` | 各生成器（Rig 生成有无骨架、骨架烘焙缓存前后、物理组目录、生成动作缓存前后、Rig IR 编译、两个摆动的生成与重放、模拟烘焙与写回）的耗时，及对其输入做内容哈希的耗时，用于判断生成器是否值得接入生成缓存；`PSD2LIVE_SAMPLE` 指定样例（需有前发与后发） | `generator-cost/report.txt` |
 | `ExportGoldenTool` | `tml`、`ds` 的无骨架、自动骨架、自定义动作三种变体，以及无骨架 cmo3 作为新工程导入后的全部导出文件与预览包摘要（cmo3 取读回后降级为 moc3 的摘要与物理组数），用于逐字节对比重构前后的导出；`PSD2LIVE_GOLDEN_LABEL` 指定输出名 | `export-golden/<名称>.txt`、`<名称>/<示例>-<变体>/` |
+| `ExportGoldenComparisonTool` | 对比两个已生成的金样本报告；CAN3 按配套 CMO3 部件 ID 解析随机 GUID 引用后比较完整 XML，其余比较摘要。保留两份报告和对应 CAN3 / CMO3 文件；`PSD2LIVE_GOLDEN_BEFORE` / `PSD2LIVE_GOLDEN_AFTER` 默认 `baseline` / `optimized` | `export-golden/comparison.txt` |
+| `WorkspaceLifecyclePerfTool` | 合成 20,000 节点历史、20 工作区各 4 画布；比较共享历史快照、纯展示保存身份复用与立即重建方式的耗时和线程分配。仅开发工具启用，不表示真实渲染帧率 | `workspace-lifecycle/performance.txt` |
 | `ExportPerfTool` | 把示例 PSD（`PSD2LIVE_SAMPLE`）按整数倍最近邻放大（`PSD2LIVE_EXPORT_SCALES`，默认 `1,2`）后，逐个导出目标（`PSD2LIVE_EXPORT_TARGETS`，默认除视频外全部）计时，并记录每个导出文件的摘要（cmo3 取其中图像条目与读回后降级为 moc3 的摘要），用于对比导出提速前后的耗时与字节；栅格目标每档放大输出 1024 像素、5 fps；`PSD2LIVE_GOLDEN_LABEL` 指定输出名，大倍数需 `-Ppsd2live.testHeap=8g` 等加大测试堆 | `export-perf/<名称>.txt`、`<名称>.digest.txt` |
 | `ArtPrimitiveV2VisualTool` | 在 `tml` 上把腿按侧连通块拆分、左眼睫多边形拆分、嘴部多边形拆分分别写成版本 1 与版本 2 记录，渲染未拆分、v1、v2 与 v1/v2 差异（×4）在睁眼/半闭/闭眼、闭嘴/张嘴/张嘴笑等姿态下的对照，检查接缝、错位与缺失像素 | `art-primitive-v2/{legs,eye,mouth}.png` |
 | `SafetyGoldenTool` | 自动骨架 Rig 上 24 组带种子的随机几何编辑的完整几何安全报告（不含 `coverage`），用于逐字节对比检查器改动前后的分类；`PSD2LIVE_GOLDEN_LABEL` 指定输出名 | `safety-golden/<名称>.txt` |

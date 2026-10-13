@@ -27,12 +27,13 @@ internal class WorkspaceSourceImporter(
 ) {
     suspend fun importPsd(path: Path, projectId: String?, state: String, discardUnsaved: Boolean = false,
                          initialConfig: PipelineConfig = PipelineConfig(),
+                         sourceAuxiliary: JsonObject = JsonObject(emptyMap()),
                          project: (WorkspaceDocument, RigPreviewModel, String) -> Unit = { _, _, _ -> }): WorkspaceCommit<RigPreviewModel> {
         return install(projectId, state, discardUnsaved, initialConfig, "Imported PSD ${path.fileName}",
             prepare = {
                 require(path.isAbsolute && Files.isRegularFile(path) && path.fileName.toString().endsWith(".psd", true)) { "Provide an absolute local PSD path" }
                 readPsd(path) to emptyMap()
-            }, project = project)
+            }, project = project, sourceAuxiliary = sourceAuxiliary)
     }
 
     suspend fun createArtwork(arguments: JsonObject, projectId: String?, state: String, discardUnsaved: Boolean = false,
@@ -42,7 +43,8 @@ internal class WorkspaceSourceImporter(
 
     private suspend fun install(projectId: String?, state: String, discardUnsaved: Boolean, initialConfig: PipelineConfig,
                                 summary: String, prepare: suspend () -> Pair<SourceArt, Map<String, LayerClassificationOverride>>,
-                                project: (WorkspaceDocument, RigPreviewModel, String) -> Unit): WorkspaceCommit<RigPreviewModel> {
+                                project: (WorkspaceDocument, RigPreviewModel, String) -> Unit,
+                                sourceAuxiliary: JsonObject = JsonObject(emptyMap())): WorkspaceCommit<RigPreviewModel> {
         val before = runtime.state.value
         currentCoroutineContext().ensureActive()
         // Capture before source I/O. Another edit or reload cannot be hidden by taking a newer token.
@@ -72,7 +74,7 @@ internal class WorkspaceSourceImporter(
         progress(0.9f, "Installing new source project")
         val id = newProjectId()
         val installed = runtime.install(state, id, prepared, preview,
-            auxiliary = JsonObject(WorkspaceAuxiliaryCodec.encode(WorkspaceAuxiliaryData()) +
+            auxiliary = JsonObject(sourceAuxiliary + WorkspaceAuxiliaryCodec.encode(WorkspaceAuxiliaryData()) +
                 PreviewSessions.initial(preview.rig.puppet.parameters, initialWorkspaceIds()) +
                 ("assetCatalog" to WorkspaceAssetCatalog().encode())), discardUnsaved = discardUnsaved, dirty = true) {
             project(prepared, preview, id)

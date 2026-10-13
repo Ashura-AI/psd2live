@@ -66,12 +66,16 @@ class SaveAndCloseTest {
     @Test fun presentationChangesAndRepeatedSettersDoNotRequireSaveOrPreventClosing() = editor { vm, workspace ->
         vm.saveProjectNow(temp.resolve("presentation.psd2live"))
         val version = vm.state.value.projectEditVersion
+        val identity = vm.state.value.saveIdentity
+        val contentVersion = vm.lifecycle.capture()!!.contentVersion
         val token = workspace.stateToken()
         val head = workspace.snapshot().historyHeadNodeId
         repeat(2) { changePresentation(vm) }
         assertFalse(vm.state.value.projectDirty)
         assertFalse(workspace.hasUnsavedChanges())
         assertEquals(version, vm.state.value.projectEditVersion)
+        assertSame(identity, vm.state.value.saveIdentity, "Presentation must share the existing content identity")
+        assertEquals(contentVersion, vm.lifecycle.capture()!!.contentVersion)
         assertEquals(token, workspace.stateToken())
         assertEquals(head, workspace.snapshot().historyHeadNodeId)
         var closed = false
@@ -322,6 +326,99 @@ class SaveAndCloseTest {
             workspace.sessionRecovery.forget()
             ProjectArchive.deleteTemporaryDirectory(extracted)
         }
+    }
+
+    @Test fun auxiliaryOnlyChangesAndWorkspaceContentRecoverTogetherWithoutAddingHistory() = editor { vm, workspace ->
+        vm.saveProjectNow(temp.resolve("complete-recovery.psd2live"))
+        val head = workspace.snapshot().historyHeadNodeId!!
+        val layer = vm.state.value.analysis!!.layers.first().source.id.raw
+        workspace.setPreviewSession(buildJsonObject {
+            put("state", workspace.stateToken()); put("mode", "set")
+            putJsonObject("values") { put("ParamAngleX", 20f) }
+            putJsonObject("locks") { put("ParamAngleX", true) }
+        })
+        vm.saveParameterSnapshot("Recovery pose")
+        vm.editHistoryAnnotation(head, "Recovery title", "Recovery note", true)
+        vm.toggleLayerVisibility(layer)
+        vm.setOutputPath(temp.resolve("recovered-output").toString())
+        val expected = vm.state.value
+        val model = Oracles.hash(expected.previewModel!!.rig.puppet)
+        workspace.flushProjectPersistence()
+        val session = assertNotNull(workspace.sessionRecovery.pending())
+        assertEquals(head, workspace.snapshot().historyHeadNodeId)
+        workspace.close()
+        PSD2LiveViewModel().use { reopened ->
+            DesktopWorkspace(reopened, temp.resolve("recovery-store")).use { replacement ->
+                reopened.attachWorkspace(replacement)
+                replacement.restoreSession(session)
+                assertEquals(expected.parameterSnapshots, reopened.state.value.parameterSnapshots)
+                assertEquals(expected.historyAnnotations, reopened.state.value.historyAnnotations)
+                assertEquals(expected.parameterValues, reopened.state.value.parameterValues)
+                assertEquals(expected.lockedParameters, reopened.state.value.lockedParameters)
+                assertEquals(expected.layerVisibility, reopened.state.value.layerVisibility)
+                assertEquals(expected.outputPath, reopened.state.value.outputPath)
+                assertEquals(head, replacement.snapshot().historyHeadNodeId)
+                assertEquals(model, Oracles.hash(reopened.state.value.previewModel!!.rig.puppet))
+                assertTrue(reopened.state.value.projectDirty)
+                reopened.saveProjectNow(temp.resolve("recovered.psd2live"))
+                ProjectController(reopened).open(replacement, temp.resolve("recovered.psd2live"))
+                assertEquals(expected.parameterSnapshots, reopened.state.value.parameterSnapshots)
+                assertFalse(reopened.state.value.projectDirty)
+            }
+        }
+    }
+
+    @Test fun deletingOrChangingTheExternalSourceDoesNotChangeSavedImportBytes() = editor { vm, workspace ->
+        val source = Path.of(vm.state.value.loadedInputPath!!)
+        val bytes = Files.readAllBytes(source)
+        val model = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
+        Files.writeString(source, "External file was changed after import")
+        val changed = temp.resolve("changed-origin.psd2live")
+        vm.saveProjectNow(changed)
+        java.util.zip.ZipFile(changed.toFile()).use { zip ->
+            assertContentEquals(bytes, zip.getInputStream(zip.getEntry("source/original.psd")).use { it.readAllBytes() })
+        }
+        Files.delete(source)
+        val deleted = temp.resolve("deleted-origin.psd2live")
+        vm.saveProjectNow(deleted)
+        ProjectController(vm).open(workspace, deleted)
+        assertEquals(model, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
+        assertEquals(model, Oracles.hash(io.github.psd2live.application.WorkspaceModelLoader.load(deleted).rig.puppet))
+        vm.saveProjectNow(deleted)
+        assertFalse(vm.state.value.projectDirty)
+    }
+
+    @Test fun explicitDiscardReleasesTheRecoveryDirectoryAndMarker() = editor { vm, workspace ->
+        val archive = temp.resolve("discard-close.psd2live")
+        vm.saveProjectNow(archive)
+        ProjectController(vm).open(workspace, archive)
+        val directory = Path.of(vm.state.value.loadedInputPath!!).parent.parent
+        vm.saveParameterSnapshot("Discard snapshot")
+        workspace.flushProjectPersistence()
+        assertNotNull(workspace.sessionRecovery.pending())
+        workspace.prepareClose(io.github.psd2live.application.WorkspaceCloseReason.DISCARDED)
+        workspace.close()
+        workspace.close()
+        assertNull(workspace.sessionRecovery.pending())
+        assertFalse(Files.exists(directory))
+        assertTrue(Files.isRegularFile(archive))
+    }
+
+    @Test fun anImportedCmo3KeepsItsOriginalPayloadAfterTheExternalFileIsDeleted() = editor { vm, workspace ->
+        val exported = temp.resolve("import-payload")
+        val result = workspace.exportTarget(workspace.stateToken()!!, "cmo3", exported.toString(), emptyMap())
+        val source = exported.resolve(result.getValue("files").jsonArray.map { it.jsonPrimitive.content }.single { it.endsWith(".cmo3") })
+        val bytes = Files.readAllBytes(source)
+        workspace.importCmo3(source, io.github.psd2live.core.Cmo3ImportMode.NEW, true)
+        val model = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
+        Files.delete(source)
+        val archive = temp.resolve("owned-cmo3.psd2live")
+        vm.saveProjectNow(archive)
+        java.util.zip.ZipFile(archive.toFile()).use { zip ->
+            assertContentEquals(bytes, zip.getInputStream(zip.getEntry("source/original.cmo3")).use { it.readAllBytes() })
+        }
+        ProjectController(vm).open(workspace, archive)
+        assertEquals(model, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
     }
 
     @Test fun changingAnAgentsParameterDefaultPreservesTheAuthoredPoseThroughSaveCloseAndReopen() = editor { vm, workspace ->

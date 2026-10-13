@@ -22,7 +22,7 @@ internal class SessionRecovery(private val root: Path) {
 
     @Synchronized
     fun record(session: Session) {
-        runCatching {
+        run {
             Files.createDirectories(root)
             val json = buildJsonObject {
                 put("version", 1); put("storeRoot", session.storeRoot.toString()); put("projectId", session.projectId)
@@ -30,14 +30,16 @@ internal class SessionRecovery(private val root: Path) {
                 put("inputPath", session.inputPath); put("name", session.name)
             }
             val staged = Files.createTempFile(root, "session", ".tmp")
-            Files.writeString(staged, json.toString())
-            Files.move(staged, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            try {
+                Files.writeString(staged, json.toString())
+                Files.move(staged, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } finally { Files.deleteIfExists(staged) }
         }
     }
 
     @Synchronized
     fun forget() {
-        runCatching { Files.deleteIfExists(file) }
+        Files.deleteIfExists(file)
     }
 
     /** The session the last run left unsaved, or null; a marker whose history is gone is dropped. */

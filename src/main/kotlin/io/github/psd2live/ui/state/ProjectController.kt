@@ -42,9 +42,8 @@ internal class ProjectController(private val viewModel: PSD2LiveViewModel,
             run {
                 workspace.flushProjectPersistence()
                 val state = capture.uiState
-                val originalPath = state.loadedInputPath ?: state.inputPath
                 repository.save(ProjectSaveCapture(capture.projectId, capture.history,
-                    WorkspaceStateCodec.encode(state), originalPath.takeIf(String::isNotBlank)?.let(Path::of),
+                    WorkspaceStateCodec.encode(state), io.github.psd2live.project.OwnedProjectSource.resolve(capture.store.root, capture.auxiliary),
                     capture.store, capture.spatial, capture.tasks, capture.auxiliary), path,
                     progress = { stage, fraction ->
                         when (stage) {

@@ -137,8 +137,8 @@ private fun runGui() {
 
 	// Both close() calls are idempotent, so the hook (Ctrl+C, SIGTERM, logoff) and the normal exit can race.
 	val shutdown = {
-		runCatching { agentMcp.close() }
 		runCatching { viewModel.close() }
+		runCatching { agentMcp.close() }
 		Unit
 	}
 	val watchdog = ExitWatchdog()
@@ -180,6 +180,9 @@ private fun runGui() {
 					AppSettings.rememberWindow(windowState.size.width.value, windowState.size.height.value,
 						windowState.placement == WindowPlacement.Maximized)
 					quitByUser.set(true)
+                    agentWorkspace.prepareClose(if (viewModel.state.value.projectDirty)
+                        io.github.psd2live.application.WorkspaceCloseReason.DISCARDED
+                        else io.github.psd2live.application.WorkspaceCloseReason.SAVED)
 					watchdog.arm()
 					exitApplication()
 				}
@@ -235,7 +238,6 @@ private fun runGui() {
 	}
 	watchdog.arm()
 	shutdown()
-	if (quitByUser.get() && status == 0) agentWorkspace.sessionRecovery.forget()
 	runCatching { Runtime.getRuntime().removeShutdownHook(shutdownHook) }
 	instanceLock?.close()
 	// AWT, Skiko and pooled threads would otherwise keep the JVM alive.

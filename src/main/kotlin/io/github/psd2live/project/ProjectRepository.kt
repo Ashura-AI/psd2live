@@ -48,9 +48,15 @@ internal class ProjectRepository(
                         require(Files.isRegularFile(original)) { "Original source is unavailable: $original" }
                         val sourceName = if (original.fileName.toString().endsWith(".cmo3", true)) "original.cmo3" else "original.psd"
                         ProjectArchive.copyKeepingTime(original, root.resolve("source/$sourceName"))
+                        capture.auxiliary[OwnedProjectSource.KEY]?.jsonObject?.get("sha256")?.jsonPrimitive?.content?.let { expected ->
+                            require(ProjectArchive.Digests.of("source/$sourceName", root.resolve("source/$sourceName")).sha256 == expected) {
+                                "Owned original source bytes no longer match their descriptor"
+                            }
+                        }
                     }
                     val ui = capture.presentation.toMutableMap()
                     capture.auxiliary["assetCatalog"]?.let { ui["assetCatalog"] = it }
+                    capture.auxiliary[OwnedProjectSource.KEY]?.let { ui[OwnedProjectSource.KEY] = it }
                     ui["logEntries"] = JsonArray(ui["logEntries"]?.jsonArray.orEmpty().map { entry ->
                         val log = entry.jsonObject.toMutableMap()
                         log.remove("image")?.jsonPrimitive?.content?.let { encoded ->
@@ -123,6 +129,9 @@ internal class ProjectRepository(
                 })
                 val source = root.resolve("source/original.cmo3").takeIf(Files::isRegularFile) ?: root.resolve("source/original.psd")
                 require(Files.isRegularFile(source)) { "Project has no original source" }
+                val owned = OwnedProjectSource.capture(store.root, source)
+                ui[OwnedProjectSource.KEY]?.let { require(it == owned.descriptor) { "Original source descriptor does not match the archived bytes" } }
+                ui[OwnedProjectSource.KEY] = owned.descriptor
                 store.validateAssetCatalog(id, WorkspaceAssetCatalog.read(JsonObject(ui)) ?: store.existingAssetCatalog(id))
                 progress.report(ProjectStage.READING, 1.0)
                 OpenedProject(id, path.toAbsolutePath().normalize(), root, source, JsonObject(ui), tree, store, version)

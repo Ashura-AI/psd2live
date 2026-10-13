@@ -64,7 +64,7 @@ Writes the target's files and <base>.<target>.report.json, which lists what the 
 		}
 		return try {
 			val source = input!!.toAbsolutePath()
-			val preview = runBlocking { ExportService.load(source) }
+			val preview = runBlocking { io.github.psd2live.application.WorkspaceModelLoader.load(source) }
 			val target = ExportService.registry(preview.config)[targetId!!]
 			val baseName = name ?: source.fileName.toString().substringBeforeLast('.').ifBlank { "model" }
 			val directory = output ?: source.parent.resolve("${baseName}-${target.id}")

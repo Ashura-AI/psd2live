@@ -1,12 +1,10 @@
 package io.github.psd2live.core
 
-import io.github.psd2live.application.WorkspacePreviewBuilder
 import io.github.psd2live.format.compile.Compiler
 import io.github.psd2live.format.compile.ExportOptions
 import io.github.psd2live.format.compile.ExportRegistry
 import io.github.psd2live.format.compile.ExportReport
 import io.github.psd2live.format.compile.ExportTarget
-import io.github.psd2live.project.ProjectRepository
 import io.github.psd2live.targets.cubism.Cmo3Target
 import io.github.psd2live.targets.cubism.Moc3Target
 import io.github.psd2live.targets.raster.RasterTargets
@@ -84,15 +82,4 @@ internal object ExportService {
 
 	internal fun reportName(options: ExportOptions, target: ExportTarget) = "${options.baseName}.${target.id}.report.json"
 
-	/** The evaluated rig of a `.psd2live` project (its current history state) or of a PSD with default settings. */
-	suspend fun load(path: Path): RigPreviewModel {
-		val name = path.fileName.toString().lowercase()
-		return when {
-			name.endsWith(".psd2live") -> ProjectRepository().open(path).use { opened ->
-				WorkspacePreviewBuilder().build(opened.history.head().snapshot)
-			}
-			name.endsWith(".psd") -> PSD2LivePipeline().buildPreview(path)
-			else -> throw IllegalArgumentException("Export input must be a .psd2live project or a .psd file: $path")
-		}
-	}
 }
