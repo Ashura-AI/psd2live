@@ -1,20 +1,26 @@
 ### 修复
 
-- **保存与关闭更可靠**：修复长时间编辑后无法保存或关闭的问题；保存期间继续编辑会保留未保存状态，放弃修改与崩溃恢复保持一致。
-- **撤销与重做**：先提交正在输入的字段再切换历史，修复连续编辑时历史状态不一致的问题。
-- **导入与变形器**：修复 16 位 PSD、相对图层遮罩和 TIFF 方向的读取；删除变形器时保留子对象的默认姿势与旋转继承。
-- **导出与动作**：导出失败时恢复上一套文件，重新导出较短的帧序列会清理旧尾帧；修复 GIF 帧时长、贝塞尔动作裁剪及部分运行时和 Web 导出问题。
-- **稳定性**：加强损坏文件的检查，修复清除用户数据、预览异常恢复和后台任务取消的问题，减少 MCP 连接日志噪声。
+- **保存与恢复**：完善保存、关闭与崩溃恢复的状态协调，恢复检查点保留完整工程状态，连续姿势编辑按顺序提交。
+- **保留导入源文件**：工程保留导入时的 PSD / CMO3 原始内容，后续读取不再依赖外部源文件。
+- **空图层**：含空图层的 PSD 导入后可正常保存和重新打开。
+- **独立网格检查**：检查失败会显示错误；超过 60 秒会停止，关闭检查后迟到的结果不再重新弹出对话框。内存不足和调用栈溢出也有明确提示。
+
+### 改进
+
+- **示例素材独立分发**：示例素材、工程和输出迁移到[独立示例仓库](https://github.com/tsunehimatoi/psd2live-examples)，可按需下载；主仓库保留说明与固定版本清单，并欢迎投稿。
 
 <details>
 <summary>English</summary>
 
 ### Fixes
 
-- **Reliable saving and closing**: fixed failures after long editing sessions. Edits made during a save remain marked as unsaved, and discarding changes stays consistent with crash recovery.
-- **Undo and redo**: commit the field being edited before switching history, and keep history state consistent during consecutive edits.
-- **Import and deformers**: corrected 16-bit PSD, relative layer masks, and TIFF orientation. Deleting deformers preserves child objects' default poses and rotation inheritance.
-- **Export and animation**: restore the previous file set if export fails and remove stale tail frames when exporting a shorter sequence. Fixed GIF frame timing, Bezier motion trimming, and runtime and Web export issues.
-- **Stability**: improved malformed-file checks, user-data clearing, preview failure recovery, and background-job cancellation; reduced MCP connection log noise.
+- **Saving and recovery**: improved coordination between saving, closing, and crash recovery. Recovery checkpoints preserve complete project state, and consecutive pose edits commit in order.
+- **Retained import sources**: projects retain the original imported PSD / CMO3 content, so later reads no longer depend on the external source file.
+- **Empty layers**: imported PSDs containing empty layers can be saved and reopened correctly.
+- **Independent mesh checks**: failures show an error and checks stop after 60 seconds. Late results no longer reopen a dismissed dialog. Out-of-memory and stack-overflow failures also have clear messages.
+
+### Improvements
+
+- **Separate example distribution**: example assets, projects, and outputs now live in the [dedicated examples repository](https://github.com/tsunehimatoi/psd2live-examples) and can be downloaded on demand. The main repository retains documentation and a pinned catalog; contributions are welcome.
 
 </details>
