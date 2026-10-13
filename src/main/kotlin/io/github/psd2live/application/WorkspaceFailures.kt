@@ -7,6 +7,7 @@ import java.nio.file.AccessDeniedException
 
 internal class WorkspaceUnsavedChanges : IllegalStateException("Current workspace has unsaved changes; save first or explicitly discard them")
 internal class WorkspaceBusy : IllegalStateException("Workspace is busy")
+internal class WorkspaceCheckTimeout : IllegalStateException("Disconnected mesh check timed out")
 internal class WorkspaceOutputContractFailure(val operation: String, val validation: WorkspaceValidationException) :
     IllegalStateException("Operation $operation returned an invalid result: ${validation.message}", validation)
 
@@ -20,8 +21,25 @@ internal data class WorkspaceFailure private constructor(
     fun toJson(): JsonObject = JsonObject(details + mapOf("code" to JsonPrimitive(code), "message" to JsonPrimitive(message)))
 
     companion object {
-        fun from(failure: Exception): WorkspaceFailure {
+        fun from(failure: Throwable): WorkspaceFailure {
             require(failure !is CancellationException) { "Cancellation is a terminal job state, not a failure" }
+            // Worker pools and coroutine adapters can wrap Errors. Classify by type throughout the
+            // cause chain, never by a JVM's implementation-specific message such as "Java heap space".
+            val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
+            var cause: Throwable? = failure
+            var resourceFailure: Throwable? = null
+            while (cause != null && seen.add(cause)) {
+                if (cause is OutOfMemoryError) { resourceFailure = cause; break }
+                if (cause is StackOverflowError) resourceFailure = cause
+                cause = cause.cause
+            }
+            if (resourceFailure != null) return WorkspaceFailure(
+                if (resourceFailure is OutOfMemoryError) "out_of_memory" else "stack_overflow",
+                if (resourceFailure is OutOfMemoryError)
+                    "Not enough memory to complete this operation. Reduce the artwork size or layer count, close other projects, then retry."
+                else "The operation exceeded the stack limit. Reduce the model hierarchy depth, then retry.",
+                buildJsonObject { put("exception_type", resourceFailure.javaClass.name) },
+            )
             val code = when (failure) {
                 is io.github.psd2live.core.GeometrySafetyRejectedException -> "geometry_unsafe"
                 is WorkspaceBatchEditException -> "invalid_edit"
@@ -33,6 +51,7 @@ internal data class WorkspaceFailure private constructor(
                 is WorkspaceRequestReuse -> "request_id_reused"
                 is WorkspaceUnsavedChanges -> "unsaved_changes"
                 is WorkspaceBusy -> "workspace_busy"
+                is WorkspaceCheckTimeout -> "mesh_check_timeout"
                 is AccessDeniedException, is SecurityException -> "permission_denied"
                 is IOException -> "io_error"
                 is IllegalArgumentException -> "invalid_argument"

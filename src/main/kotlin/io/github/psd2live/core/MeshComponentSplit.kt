@@ -17,13 +17,13 @@ internal object MeshComponentSplit {
         val components: List<Component>,
         private val ownerByPixel: IntArray,
         private val source: SourceLayer,
-        private val checkpoint: () -> Unit = {},
+        checkpoint: () -> Unit = {},
         val ownerByVertex: IntArray = IntArray(0),
     ) {
         /** Small transparent thumbnails, prepared with the split plan so the dialog stays responsive. */
-        val previewImages: List<BufferedImage> = buildPreviewImages()
+        val previewImages: List<BufferedImage> = buildPreviewImages(checkpoint)
 
-        private fun buildPreviewImages(): List<BufferedImage> {
+        private fun buildPreviewImages(checkpoint: () -> Unit): List<BufferedImage> {
             val raster = source.raster
             val boxes = Array(components.size) { intArrayOf(raster.width, raster.height, -1, -1) }
             for (pixel in ownerByPixel.indices) {
@@ -67,7 +67,8 @@ internal object MeshComponentSplit {
             return images
         }
 
-        fun pieces(names: List<String>, ids: List<String>? = null, checkpoint: () -> Unit = this.checkpoint): List<WorkspaceSourceLayer> {
+        // A prepared plan must not retain the completed scan's coroutine or cancellation lifetime.
+        fun pieces(names: List<String>, ids: List<String>? = null, checkpoint: () -> Unit = {}): List<WorkspaceSourceLayer> {
             require(names.size == components.size && names.all { it.isNotBlank() })
             require(ids == null || ids.size == names.size && ids.distinct().size == ids.size && ids.all { it.isNotBlank() })
             val raster = source.raster
@@ -182,9 +183,8 @@ internal object MeshComponentSplit {
             }
             val retained = components.indices.filter { occupied[it] }
             if (retained.size < 2) return null
-            val remap = IntArray(components.size) { old ->
-                retained.indexOf(old).takeIf { it >= 0 } ?: 0
-            }
+            val remap = IntArray(components.size)
+            retained.forEachIndexed { index, old -> remap[old] = index }
             val vertexOwners = IntArray(mesh.vertexCount) { -1 }
             sorted.forEachIndexed { index, vertices -> vertices.forEach { vertexOwners[it] = remap[index] } }
             for (vertex in vertexOwners.indices) if (vertexOwners[vertex] < 0) {
@@ -195,7 +195,10 @@ internal object MeshComponentSplit {
                     dx * dx + dy * dy
                 }
             }
-            for (pixel in owners.indices) owners[pixel] = remap[owners[pixel]]
+            for (pixel in owners.indices) {
+                if (pixel % 1024 == 0) checkpoint()
+                owners[pixel] = remap[owners[pixel]]
+            }
             return Plan(retained.map(components::get), owners, source, checkpoint, vertexOwners)
         }
 
@@ -203,7 +206,7 @@ internal object MeshComponentSplit {
 
         // The mesh triangles, rather than their vertices, establish ownership of the art.
         // A vertex Voronoi flood through transparent space can reach another island first.
-        val alpha = ByteArray(width * height) { pixel -> source.raster.rgba[pixel * 4 + 3] }
+        fun alpha(pixel: Int) = source.raster.rgba[pixel * 4 + 3].toInt() and 0xff
         val vertexComponent = IntArray(mesh.vertexCount) { -1 }
         sorted.forEachIndexed { component, vertices -> vertices.forEach { vertexComponent[it] = component } }
         val owners = IntArray(width * height) { -1 }
@@ -227,7 +230,7 @@ internal object MeshComponentSplit {
             for (y in top..bottom) for (x in left..right) {
                 if (x == left) checkpoint()
                 val pixel = y * width + x
-                if ((alpha[pixel].toInt() and 0xff) < 8) continue
+                if (alpha(pixel) < 8) continue
                 val px = x + 0.5f; val py = y + 0.5f
                 val ab = edge(ax, ay, bx, by, px, py)
                 val bc = edge(bx, by, cx, cy, px, py)
@@ -251,16 +254,24 @@ internal object MeshComponentSplit {
         }
         floodOwners(vertexOwners, width, height, checkpoint)
         val hasTriangleSeed = BooleanArray(sorted.size)
-        for (owner in owners) if (owner >= 0) hasTriangleSeed[owner] = true
         for (pixel in owners.indices) {
+            if (pixel % 1024 == 0) checkpoint()
+            val owner = owners[pixel]
+            if (owner >= 0) hasTriangleSeed[owner] = true
+        }
+        for (pixel in owners.indices) {
+            if (pixel % 1024 == 0) checkpoint()
             val component = vertexOwners[pixel]
-            if (!hasTriangleSeed[component] && owners[pixel] == -1 && (alpha[pixel].toInt() and 0xff) > 0) {
+            if (!hasTriangleSeed[component] && owners[pixel] == -1 && alpha(pixel) > 0) {
                 owners[pixel] = component
                 hasTriangleSeed[component] = true
             }
         }
         floodOwners(owners, width, height, checkpoint)
-        for (pixel in owners.indices) if (owners[pixel] == -1) owners[pixel] = vertexOwners[pixel]
+        for (pixel in owners.indices) {
+            if (pixel % 1024 == 0) checkpoint()
+            if (owners[pixel] == -1) owners[pixel] = vertexOwners[pixel]
+        }
         return finish(owners)
     }
 
@@ -281,7 +292,15 @@ internal object MeshComponentSplit {
             val owners = IntArray(width * height) { pixel ->
                 if (pixel % 1024 == 0) checkpoint()
                 val coordinate = if (horizontal) (pixel % width) + 0.5f else (pixel / width) + 0.5f
-                spans[separators.indexOfFirst { coordinate < it }.let { if (it < 0) spans.lastIndex else it }].first
+                // Upper bound keeps boundary pixels in the same island, without searching every island
+                // for every pixel when a layer contains many disconnected details.
+                var low = 0
+                var high = separators.size
+                while (low < high) {
+                    val middle = (low + high) ushr 1
+                    if (coordinate < separators[middle]) high = middle else low = middle + 1
+                }
+                spans[low].first
             }
             return owners
         }
@@ -292,7 +311,10 @@ internal object MeshComponentSplit {
     private fun floodOwners(owners: IntArray, width: Int, height: Int, checkpoint: () -> Unit) {
         val queue = IntArray(width * height)
         var tail = 0
-        for (pixel in owners.indices) if (owners[pixel] >= 0) queue[tail++] = pixel
+        for (pixel in owners.indices) {
+            if (pixel % 1024 == 0) checkpoint()
+            if (owners[pixel] >= 0) queue[tail++] = pixel
+        }
         var head = 0
         while (head < tail) {
             if (head % 1024 == 0) checkpoint()
