@@ -984,6 +984,22 @@ class PSD2LiveViewModel : AutoCloseable {
     private var meshSplitApplying = false
 
     private val stateLock = Any()
+    /** The content actually on disk; UI presentation may continue changing during a save or open. */
+    private data class SavedProjectContent(val projectId: String?, val generation: Long, val identity: ProjectSaveIdentity)
+    private var savedProjectContent: SavedProjectContent? = null
+
+    private fun trackProjectChanges(before: PSD2LiveState, next: PSD2LiveState): PSD2LiveState {
+        if (before.projectId != next.projectId || before.projectOpenGeneration != next.projectOpenGeneration ||
+            next.analysis == null) return next
+        val changed = before.saveIdentity != next.saveIdentity
+        val saved = savedProjectContent?.takeIf {
+            it.projectId == next.projectId && it.generation == next.projectOpenGeneration
+        }
+        val dirty = if (saved == null) next.projectDirty || changed
+            else workspaceBackend?.hasUnsavedChanges() == true || next.saveIdentity != saved.identity ||
+                (next.projectDirty && (next.workspaceEditBusy || next.editorDraftBusy))
+        return next.copy(projectDirty = dirty, projectEditVersion = before.projectEditVersion + if (changed) 1 else 0)
+    }
     /** Captures an archive projection and its comparison baseline while the caller holds the runtime capture. */
     internal fun <T> withProjectState(read: (PSD2LiveState) -> T): T = synchronized(stateLock) { read(_state.value) }
 
@@ -1011,7 +1027,8 @@ class PSD2LiveViewModel : AutoCloseable {
                 // and dock updates must never pay that cost; only a new model can invalidate ids.
                 if (next.previewModel !== current.previewModel ||
                     next.projectOpenGeneration != current.projectOpenGeneration
-                ) pruneCanvasSessions(next) else next
+                ) next = pruneCanvasSessions(next)
+                trackProjectChanges(current, next)
             }
             val after = _state.value
             pruneParameterSnapshotPreview(after)
@@ -1062,7 +1079,7 @@ class PSD2LiveViewModel : AutoCloseable {
                 meshSplitQueue.clear()
                 manualMeshSplitRequests.clear()
             }
-            val logged = next.withStateChangeLog(_state.value)
+            val logged = trackProjectChanges(_state.value, next).withStateChangeLog(_state.value)
             _state.value = logged
             pruneParameterSnapshotPreview(logged)
             _uiState.value = logged
@@ -1141,7 +1158,6 @@ class PSD2LiveViewModel : AutoCloseable {
             ).withLog(tr("editor.paint.applied", summary), level = LogLevel.INFO, tag = "Paint")
         }
         refreshSdkSession(updatedPreview)
-        markWorkspaceChanged()
         commitEditorChange(summary)?.await()
     }
 
@@ -1375,7 +1391,6 @@ class PSD2LiveViewModel : AutoCloseable {
             // One full rebuild covers what the switches above scheduled as runtime updates.
             if (StartPresetChoices.of(_state.value) != StartPresetChoices.of(current)) {
                 schedulePreviewRebuild()
-                markWorkspaceChanged()
             }
         } finally {
             endEditorField(token)
@@ -2135,6 +2150,9 @@ class PSD2LiveViewModel : AutoCloseable {
         catch (failure: Exception) {
             if (failure is kotlinx.coroutines.CancellationException || !discardRejectedDraft) throw failure
         }
+        // Discard follows the edit already in flight, just like source imports. Freeze the open
+        // boundary after that edit, instead of racing its eventual commit with archive loading.
+        if (discardRejectedDraft) _state.first { !it.workspaceEditBusy && !it.editorDraftBusy }
         val expected = workspace.snapshot()
         return withContext(io.github.psd2live.application.WorkspaceExecution(
             expected.projectId, expected.state, MutationAuthor.USER)) { action(workspace) }
@@ -2155,7 +2173,7 @@ class PSD2LiveViewModel : AutoCloseable {
         expected?.let { prior ->
             val current = _state.value
             require(current.projectId == prior.projectId && current.projectOpenGeneration == prior.projectOpenGeneration &&
-                current.projectEditVersion == prior.projectEditVersion) { "Workspace changed while loading project" }
+                current.saveIdentity == prior.saveIdentity) { "Workspace changed while loading project" }
         }
         previewRebuildJob?.cancel()
         if (cancelActiveWork) activeWorkJob?.cancel()
@@ -2166,6 +2184,9 @@ class PSD2LiveViewModel : AutoCloseable {
             projectOpenGeneration = _state.value.projectOpenGeneration + 1,
             recentFiles = AppSettings.recentFiles(),
         ))
+        savedProjectContent = if (dirty) null else _state.value.let {
+            SavedProjectContent(it.projectId, it.projectOpenGeneration, it.saveIdentity)
+        }
     }
     internal fun applySourceImport(expected: PSD2LiveState, document: io.github.psd2live.project.WorkspaceDocument,
                                    preview: RigPreviewModel, path: Path?, projectId: String) {
@@ -2191,7 +2212,7 @@ class PSD2LiveViewModel : AutoCloseable {
                                     replacing: Boolean, status: String) = synchronized(stateLock) {
         val current = _state.value
         check(current.projectId == expected.projectId && current.projectOpenGeneration == expected.projectOpenGeneration &&
-            current.projectEditVersion == expected.projectEditVersion) { "Workspace changed while importing model" }
+            current.saveIdentity == expected.saveIdentity) { "Workspace changed while importing model" }
         val defaults = preview.rig.puppet.parameters.associate { it.id to it.default }
         val workspaces = current.workspaces.map { workspace ->
             val pose = WorkspacePose(parameterValues = defaults,
@@ -2259,23 +2280,24 @@ class PSD2LiveViewModel : AutoCloseable {
         val saving = pendingProjectSaves.decrementAndGet() > 0
         val saved = path.toAbsolutePath().normalize().toString()
         AppSettings.rememberRecentFile(saved)
-        updateState { current ->
-            if (current.projectId != captured.projectId || current.projectOpenGeneration != captured.projectOpenGeneration) {
-                return@updateState current.copy(projectSaving = saving, recentFiles = AppSettings.recentFiles())
+        synchronized(stateLock) {
+            if (_state.value.projectId == captured.projectId && _state.value.projectOpenGeneration == captured.projectOpenGeneration)
+                savedProjectContent = SavedProjectContent(captured.projectId, captured.projectOpenGeneration, captured.saveIdentity)
+            updateState { current ->
+                if (current.projectId != captured.projectId || current.projectOpenGeneration != captured.projectOpenGeneration) {
+                    return@updateState current.copy(projectSaving = saving, recentFiles = AppSettings.recentFiles())
+                }
+                current.copy(projectFile = saved, projectSaving = saving,
+                    projectDirty = current.workspaceEditBusy || current.editorDraftBusy ||
+                        !runtimeSaved || workspaceBackend?.stateToken() != capturedRuntimeState ||
+                        current.historySnapshot?.headNodeId != headId || current.saveIdentity != captured.saveIdentity,
+                    projectSaveError = null, recentFiles = AppSettings.recentFiles(),
+                    logEntries = current.logEntries.appendingLog(listOf(AppLogEntry(source = LogSource.EDITOR, level = LogLevel.SUCCESS,
+                        tag = "Project", message = tr("log.project.saved", path.fileName), detail = saved))))
             }
-            current.copy(projectFile = saved, projectSaving = saving,
-            projectDirty = current.workspaceEditBusy || current.editorDraftBusy ||
-                !runtimeSaved || workspaceBackend?.stateToken() != capturedRuntimeState ||
-                current.historySnapshot?.headNodeId != headId || current.projectEditVersion != captured.projectEditVersion ||
-                current.projectAuxiliaryVersion != captured.projectAuxiliaryVersion ||
-                WorkspaceStateCodec.editableIdentity(current) != WorkspaceStateCodec.editableIdentity(captured),
-            projectSaveError = null, recentFiles = AppSettings.recentFiles(),
-            logEntries = current.logEntries.appendingLog(listOf(AppLogEntry(source = LogSource.EDITOR, level = LogLevel.SUCCESS,
-                tag = "Project", message = tr("log.project.saved", path.fileName), detail = saved))))
         }
     }
     internal fun markProjectAuxiliaryChanged() { updateState { it.copy(projectDirty = true, projectEditVersion = it.projectEditVersion + 1, projectAuxiliaryVersion = it.projectAuxiliaryVersion + 1) } }
-    private fun markWorkspaceChanged() { updateState { if (it.analysis == null) it else it.copy(projectDirty = true, projectEditVersion = it.projectEditVersion + 1) } }
     /**
      * Open field sessions, so a slider drag or a half-typed value commits once rather than per sample or
      * per keystroke. See [EditorFieldSessions].
@@ -2586,7 +2608,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
     private fun editorChanged(summary: String? = null) {
         editorDraftHasDocumentEdits = true
-        if (editorSessions.anyOpen) { markWorkspaceChanged(); return }
+        if (editorSessions.anyOpen) return
         commitEditorChange(summary)
     }
 
@@ -2612,7 +2634,6 @@ class PSD2LiveViewModel : AutoCloseable {
             previewRebuildJob?.cancel()
             captured to draft
         }
-        markWorkspaceChanged()
         val result = if (settingsOnly) workspace.submitEditorSettingsDraft(expected.projectId, expected.state, intents,
             summary ?: "Updated model presets", MutationAuthor.USER)
         else workspace.submitEditorDraft(expected.projectId, expected.state, document, intents,
@@ -2693,7 +2714,7 @@ class PSD2LiveViewModel : AutoCloseable {
     }
     fun setHistoryView(zoom: Float, x: Float, y: Float, search: String, showHidden: Boolean) {
         updateState { if (it.historyZoom == zoom && it.historyPanX == x && it.historyPanY == y && it.historySearch == search && it.historyShowHidden == showHidden) it
-            else it.copy(historyZoom = zoom, historyPanX = x, historyPanY = y, historySearch = search, historyShowHidden = showHidden, projectDirty = it.analysis != null, projectEditVersion = it.projectEditVersion + 1) }
+            else it.copy(historyZoom = zoom, historyPanX = x, historyPanY = y, historySearch = search, historyShowHidden = showHidden) }
     }
     fun setHierarchyView(width: Float = _state.value.hierarchyWidth, collapsed: Boolean = _state.value.hierarchyCollapsed, search: String = _state.value.hierarchySearch) {
         val clampedWidth = width.coerceIn(100f, 600f)
@@ -2708,9 +2729,6 @@ class PSD2LiveViewModel : AutoCloseable {
             else current.copy(
                 hierarchyWidth = clampedWidth,
                 hierarchySearch = search,
-                // Search is a transient filter — do not dirty the project or bump edit version.
-                projectDirty = if (layoutChanged && current.analysis != null) true else current.projectDirty,
-                projectEditVersion = if (layoutChanged) current.projectEditVersion + 1 else current.projectEditVersion,
             ).updateActiveWorkspace { it.copy(hiddenModules = hidden) }
         }
     }
@@ -2725,7 +2743,7 @@ class PSD2LiveViewModel : AutoCloseable {
         val clamped = width.coerceIn(min, max)
         updateState {
             if (it.drawOrderRulerWidth == clamped) it
-            else it.copy(drawOrderRulerWidth = clamped, projectDirty = it.analysis != null, projectEditVersion = it.projectEditVersion + 1)
+            else it.copy(drawOrderRulerWidth = clamped)
         }
     }
 
@@ -2736,7 +2754,6 @@ class PSD2LiveViewModel : AutoCloseable {
             }
             if (current.activeWorkspace.hiddenModules == hidden) current
             else current.updateActiveWorkspace { it.copy(hiddenModules = hidden) }
-                .copy(projectDirty = current.analysis != null, projectEditVersion = current.projectEditVersion + 1)
         }
     }
 
@@ -2808,7 +2825,7 @@ class PSD2LiveViewModel : AutoCloseable {
                         } else canvas
                     },
                 )
-            }.copy(projectDirty = current.analysis != null, projectEditVersion = current.projectEditVersion + 1)
+            }
         }
     }
 
@@ -3089,7 +3106,6 @@ class PSD2LiveViewModel : AutoCloseable {
 		}
 		if (path == _state.value.outputPath) return
 		updateState { it.copy(outputPath = path) }
-	    markWorkspaceChanged()
 	}
 
 	/**
@@ -3363,7 +3379,6 @@ class PSD2LiveViewModel : AutoCloseable {
         }
         updateState { WorkspaceStateCodec.decode(settings, it) }
         if (editorSessions.anyOpen) {
-            markWorkspaceChanged()
             schedulePreviewRebuild()
         } else commitEditorChange("Updated model presets")
     }
@@ -4161,27 +4176,22 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	fun setDynamicsSubExpanded(expanded: Boolean) {
 		updateState { it.copy(dynamicsSubExpanded = expanded) }
-	    markWorkspaceChanged()
 	}
 
 	fun setSimulationPresetsExpanded(expanded: Boolean) {
 		updateState { it.copy(simulationPresetsExpanded = expanded) }
-	    markWorkspaceChanged()
 	}
 
 	fun setStrengthSubExpanded(expanded: Boolean) {
 		updateState { it.copy(strengthSubExpanded = expanded) }
-	    markWorkspaceChanged()
 	}
 
 	fun setRigTuningExpanded(expanded: Boolean) {
 		updateState { it.copy(rigTuningExpanded = expanded) }
-	    markWorkspaceChanged()
 	}
 
 	fun setRigTuningAdvancedExpanded(expanded: Boolean) {
 		updateState { it.copy(rigTuningAdvancedExpanded = expanded) }
-	    markWorkspaceChanged()
 	}
 
 	/** Back to the default presets; hair simulations stay until their classic sway is restored. */
@@ -4864,10 +4874,7 @@ class PSD2LiveViewModel : AutoCloseable {
 					pointerActive = false
 					stopProcessMotion()
 				}
-				// One update: the switch and the change mark land together.
-				val switched = current.withPendingCameras(current.activeWorkspace.id, cameras).copy(activeWorkspaceId = id)
-				if (switched.analysis == null) switched
-				else switched.copy(projectDirty = true, projectEditVersion = switched.projectEditVersion + 1)
+                current.withPendingCameras(current.activeWorkspace.id, cameras).copy(activeWorkspaceId = id)
 			}
 		}
 		if (changed && _state.value.previewLive) ensureSdkSessionLoaded()
@@ -4887,7 +4894,6 @@ class PSD2LiveViewModel : AutoCloseable {
 		updateState { it.copy(workspaces = it.workspaces + workspace) }
 		// Switching syncs the panel toggles and the preview session, and marks the change itself.
 		setActiveWorkspace(workspace.id)
-		if (_state.value.activeWorkspaceId != workspace.id) markWorkspaceChanged()
 		return workspace.id
 	}
 
@@ -4906,7 +4912,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			placeModules = emptyList(),
 		)
 		updateState { it.copy(workspaces = it.workspaces + workspace, activeWorkspaceId = workspace.id) }
-		markWorkspaceChanged()
         persistAuthoredPose()
 		return workspace.id
 	}
@@ -4955,7 +4960,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				else tr("status.workspacesClosed", closing.size),
 			)
 		}
-		markWorkspaceChanged()
 		if (_state.value.previewLive) ensureSdkSessionLoaded()
 		else {
 			pointerActive = false
@@ -4977,7 +4981,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				current.copy(workspaces = reordered)
 			}
 		}
-		if (changed) markWorkspaceChanged()
 	}
 
 	fun renameWorkspace(id: String, name: String) {
@@ -4991,7 +4994,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				current.updateWorkspace(id) { it.copy(name = trimmed) }
 			}
 		}
-		if (changed) markWorkspaceChanged()
 	}
 
 	fun cycleWorkspace(delta: Int) {
@@ -5048,7 +5050,7 @@ class PSD2LiveViewModel : AutoCloseable {
 						},
 					)
 				}
-				if (next.analysis == null) next else next.copy(projectDirty = true, projectEditVersion = next.projectEditVersion + 1)
+                next
 			}
 		}
 		if (mode == CanvasMode.PREVIEW) ensureSdkSessionLoaded()
@@ -5070,7 +5072,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				)
 			}
 		}
-		markWorkspaceChanged()
 		if (mode == CanvasMode.PREVIEW) ensureSdkSessionLoaded()
 		return id
 	}
@@ -5095,7 +5096,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			}
 		}
 		synchronized(canvasEditors) { canvasEditors.remove(workspace.id to canvasId) }?.resetPaintSession()
-		markWorkspaceChanged()
 		if (!_state.value.previewLive) {
 			pointerActive = false
 			stopProcessMotion()
@@ -5114,7 +5114,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				workspace.copy(hiddenModules = hidden, placeModules = place)
 			}
 		}
-		markWorkspaceChanged()
 		if (isCanvasModule(module) && !_state.value.previewLive) {
 			pointerActive = false
 			stopProcessMotion()
@@ -5146,7 +5145,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			)
 		}
 		updateState { current -> current.updateWorkspace(workspace.id) { next } }
-		markWorkspaceChanged()
 	}
 
 	fun setPlaceModules(modules: List<String>) {
@@ -5167,7 +5165,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				current.updateWorkspace(workspaceId) { it.copy(layoutJson = layoutJson) }
 			}
 		}
-		if (changed) markWorkspaceChanged()
 	}
 
 	/** Returns the active workspace to its preset's arrangement; its canvases are kept. */
@@ -5177,7 +5174,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				it.copy(layoutJson = null, placeModules = emptyList(), hiddenModules = it.preset.hiddenModules, sidebarRestore = emptyMap())
 			}
 		}
-		markWorkspaceChanged()
 	}
 
 	/** Focus an existing visible edit canvas without changing the workspace layout. */
@@ -5244,7 +5240,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				current.updateCanvas(canvasId) { it.updateSession(targetMode) { session -> session.copy(view = normalized) } }
 			}
 		}
-		if (changed) markWorkspaceChanged()
 	}
 
 	/**
@@ -5297,7 +5292,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				current.updateCanvas(canvasId) { it.updateSession(targetMode) { session -> session.copy(view = defaults) } }
 			}
 		}
-		if (changed) markWorkspaceChanged()
 	}
 
 	fun addLog(
@@ -5356,7 +5350,6 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	fun clearLogs() {
 		updateState { it.copy(logEntries = emptyList()) }
-	    markWorkspaceChanged()
 	}
 
 	private fun PSD2LiveState.withLog(
@@ -5385,7 +5378,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			if (current.activeWorkspace.hiddenModules == hidden) current
 			else current.updateActiveWorkspace { it.copy(hiddenModules = hidden) }
 		}
-	    markWorkspaceChanged()
 	}
 
 	fun setLogPanelHeight(height: Float) {
@@ -5398,7 +5390,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				it.copy(logPanelHeight = clamped)
 			}
 		}
-		if (changed) markWorkspaceChanged()
 	}
 
 	fun openLightbox(imageBytes: ByteArray, title: String? = null) {
@@ -5421,7 +5412,6 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	fun selectHistoryNode(nodeId: String?) {
 		updateState { it.copy(selectedHistoryNodeId = nodeId) }
-	    markWorkspaceChanged()
 	}
 
 	fun checkoutHistoryNode(nodeId: String) {
@@ -5466,13 +5456,11 @@ class PSD2LiveViewModel : AutoCloseable {
 			}
 		}
 		lastTick = System.nanoTime()
-	    markWorkspaceChanged()
 	}
 
 
 	fun setParameterSearchQuery(query: String) {
 		updateState { it.copy(parameterSearchQuery = query) }
-	    markWorkspaceChanged()
 	}
 
 	/** Last plain click. Shift-range stays anchored here until the next replace or toggle. */
@@ -5506,7 +5494,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			additive && layerId != null -> selectionAnchorId = layerId
 			subtractive && selectionAnchorId == layerId -> selectionAnchorId = _state.value.selectedLayerId
 		}
-	    markWorkspaceChanged()
 	}
 
 	/** Selects [layerIds] at once, as a marquee does: they replace the selection unless [additive]. */
@@ -5522,7 +5509,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			current.copy(selectedLayerId = layerIds.last(), selectedLayerIds = selected, selectedDeformerId = null)
 		}
 		selectionAnchorId = layerIds.last()
-		markWorkspaceChanged()
 	}
 
 	/** Takes [layerIds] out of the selection, as an Alt box does. */
@@ -5534,7 +5520,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			current.copy(selectedLayerId = current.selectedLayerId?.takeIf { it in selected } ?: selected.lastOrNull(), selectedLayerIds = selected)
 		}
 		if (selectionAnchorId in removed) selectionAnchorId = _state.value.selectedLayerId
-		markWorkspaceChanged()
 	}
 
 	fun beginClipMaskPick(sourceDrawableId: String) {
@@ -5585,7 +5570,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				selectedDeformerId = null,
 			)
 		}
-		markWorkspaceChanged()
 	}
 
 	/** Ctrl-click: add the layer, or drop it when it is already selected. */
@@ -5603,7 +5587,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				selectedDeformerId = if (layerId != null) null else it.selectedDeformerId,
 			)
 		}
-		markWorkspaceChanged()
 	}
 
 	fun selectDeformer(deformerId: String?) {
@@ -5614,7 +5597,6 @@ class PSD2LiveViewModel : AutoCloseable {
 				selectedLayerIds = if (deformerId != null) emptySet() else it.selectedLayerIds,
 			)
 		}
-	    markWorkspaceChanged()
 	}
 
 	fun setAutoDetectMeshSplitsOnImport(enabled: Boolean) = setPromptEnabled(AppPrompt.START_SCREEN_ON_IMPORT, enabled)
@@ -5673,7 +5655,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			it.copy(layerVisibility = next.layers, deformerVisibility = next.deformers, isolatedLayerId = next.isolatedLayerId,
 				isolationSnapshot = next.isolationSnapshot, statusText = tr("status.visibilityChanged"))
 		}
-		markWorkspaceChanged()
 	}
 
 	/**
@@ -6314,7 +6295,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			pointerX = 0f
 			pointerY = 0f
 		}
-	    markWorkspaceChanged()
 	}
 
 	fun setSmoothMouseTracking(enabled: Boolean) {
@@ -6327,7 +6307,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			if (workspaceBackend != null && currentWorkspaceState() != null) return
 			updateState { it.copy(smoothMouseTracking = enabled) }
 		}
-		markWorkspaceChanged()
 	}
 
 	fun updatePointer(screenNormX: Float, screenNormY: Float, owner: String? = null) {

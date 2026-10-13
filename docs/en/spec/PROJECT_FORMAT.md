@@ -6,6 +6,22 @@
 
 ZIP entry methods: PNGs (`assets/`, `images/`, view images) and a CMO3 source are compressed already and are written `STORED`. Other non-JSON files of 1 MiB or more (such as the source PSD) are sampled first: they are DEFLATEd (at the fastest level) only when the sample shrinks to under half at that level, and `STORED` otherwise. JSON and every other entry are DEFLATEd as before. `manifest.json` is the last entry. Readers accept either method and any entry order; archives from earlier builds, with every entry DEFLATEd and the manifest among the others, open as before. Methods and entry order are not part of the format's identity; manifest hashes cover the uncompressed bytes.
 
+## Save state and project replacement
+
+The title-bar `*` and Save/Discard prompt track project content separately from presentation recorded in the archive:
+
+| Change | Requires saving |
+| --- | --- |
+| Source artwork, model edits, generation/export settings, output directory, history checkout | Yes |
+| Authored parameter poses and locks, snapshots, history annotations, canvas layer/deformer visibility, assets and task records | Yes |
+| Creating, deleting, renaming or reordering workspaces; creating or closing canvases | Yes |
+| Selection/hover, search, cameras, workspace/canvas focus, edit/preview mode, layout, panel expansion and view options | No; manual saves still capture restorable presentation |
+| Playback/tracking controls, evaluated preview frames and observation logs | No |
+
+A save captures one complete version. Content edits made during the disk write remain unsaved; presentation changes do not prevent completion. Restoring an uncommitted field to its saved value clears its dirty state; committed history still needs saving.
+
+GUI Discard and Open waits for earlier in-flight edits and field submissions before capturing the replacement boundary. Discard permits replacing earlier unsaved content; a new content edit or another project load during opening still rejects the replacement. Presentation changes during loading do not block opening. Cancel or failure preserves the original project and recovery record. Successful installation of a clean project clears the abandoned recovery marker after older queued recovery writes.
+
 ## Archive layout (v2)
 
 Saves write v2. Each history revision is split into content-addressed document nodes, which revisions share where they did not change; each node carries its own schema version.

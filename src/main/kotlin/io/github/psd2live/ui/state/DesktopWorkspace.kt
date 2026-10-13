@@ -621,7 +621,7 @@ class DesktopWorkspace(
         val uiBaseline: PSD2LiveState,
     )
     private val projectDirectories = mutableListOf<Path>()
-    internal fun rememberProjectDirectory(path: Path) { projectDirectories.add(path) }
+    internal fun rememberProjectDirectory(path: Path) = synchronized(historyLock) { projectDirectories.add(path) }
     internal suspend fun flushProjectPersistence() { persistenceScope.launch { }.join() }
 
     internal suspend fun importedPsd(recoverLegacy: Boolean = true) = editMutex.withLock {
@@ -797,6 +797,9 @@ class DesktopWorkspace(
     internal data class ProjectOpenExpectation(val uiState: PSD2LiveState, val runtimeState: String)
 
     internal suspend fun captureProjectOpen(discardUnsaved: Boolean): ProjectOpenExpectation {
+        // A field completion must settle before freezing the replacement boundary. Discard permits
+        // replacing a rejected draft, but never permits overwriting a newer committed edit.
+        if (discardUnsaved) draftQueue.awaitSettled() else awaitEditorDrafts()
         val expected = expectedRuntimeState()
         val current = viewModel.state.value
         check(!current.isAnalyzing && !current.isGenerating) { "Workspace is still loading" }
@@ -826,7 +829,7 @@ class DesktopWorkspace(
             val current = viewModel.state.value
             if (!discardUnsaved && current.projectDirty) throw WorkspaceUnsavedChanges()
             require(current.projectId == expected.projectId && current.projectOpenGeneration == expected.projectOpenGeneration &&
-                current.projectEditVersion == expected.projectEditVersion) { "Workspace changed while opening project; open again after saving your edits" }
+                current.saveIdentity == expected.saveIdentity) { "Workspace changed while opening project; open again after saving your edits" }
             installed = runtime.install(expectedRuntime, id, document, preview, tree.state(),
                 auxiliary = JsonObject(auxiliaryJson(state) + ("assetCatalog" to catalog.encode())), discardUnsaved = discardUnsaved, dirty = dirty) {
                 viewModel.installProjectState(state.copy(
@@ -847,6 +850,12 @@ class DesktopWorkspace(
             taskManager = restoredTasks
             spatialByViewId.clear()
             viewModel.updateHistorySnapshot(history())
+        }
+        // Clear the abandoned session only after the replacement committed. Queue behind older
+        // recovery writes, and do not erase recovery for edits made to the newly opened project.
+        if (!dirty) schedulePersistence {
+            val active = runtime.state.value.capture
+            if (active?.loadingIdentity == installed.loadingIdentity && !active.dirty) sessionRecovery.forget()
         }
         installed
     }
@@ -1786,13 +1795,25 @@ class DesktopWorkspace(
 		if (!isClosed.compareAndSet(false, true)) return
         discardEditorQueues()
         draftScope.cancel()
-		runCatching {
+        val flushed = runCatching {
 			runBlocking {
 				// Queued history and task writes are the recovery data; let them land rather than drop them.
 				persistenceJob.complete()
-				withTimeoutOrNull(5_000L) { persistenceJob.join() }
+                withTimeoutOrNull(5_000L) { persistenceJob.join(); true } == true
 			}
-		}
+        }.getOrDefault(false)
 		persistenceScope.cancel()
+        if (flushed) {
+            // Opened archives are owned temporary directories. Recovery may still need the active
+            // one after a crash/shutdown, but old or saved sessions need not accumulate on disk.
+            val recoveryRoot = sessionRecovery.pending()?.storeRoot
+            val activeRoot = workspaceStore.root.takeIf { viewModel.state.value.projectDirty }
+            synchronized(historyLock) {
+                projectDirectories.filterNot { directory ->
+                    recoveryRoot?.startsWith(directory) == true || activeRoot?.startsWith(directory) == true
+                }.forEach { directory -> runCatching { io.github.psd2live.project.ProjectArchive.deleteTemporaryDirectory(directory) } }
+                projectDirectories.clear()
+            }
+        }
 	}
 }

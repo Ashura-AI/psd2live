@@ -303,8 +303,6 @@ internal object WorkspaceStateCodec {
         return parsed to activeId
     }
 
-    /** Observations are saved for convenience but are not edits made while an archive is being written. */
-    fun editableIdentity(state: PSD2LiveState): JsonObject = encode(state, includeLogs = false, includePreviewControls = false)
     /**
      * The document settings of [state]: the document codec's own text of its chosen settings, so the two never
      * differ - a revision hashes the settings text, and any difference would make every save commit a spurious

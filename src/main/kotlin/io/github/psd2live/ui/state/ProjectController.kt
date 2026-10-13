@@ -54,9 +54,14 @@ internal class ProjectController(private val viewModel: PSD2LiveViewModel,
                         }
                     }) {
                     committed.set(true)
-                    completion?.committed(WorkspaceOperationOutput(workspace.savedResult(capture).lifecycleResult()))
-                    val current = workspace.projectSaved(capture)
-                    viewModel.projectSaveFinished(path, capture.history.headNodeId, capture.uiBaseline, capture.runtimeState, current)
+                    try {
+                        completion?.committed(WorkspaceOperationOutput(workspace.savedResult(capture).lifecycleResult()))
+                    } finally {
+                        // The archive is already durable. A job-result validation failure must not
+                        // leave Save permanently busy or describe this content as unwritten.
+                        val current = workspace.projectSaved(capture)
+                        viewModel.projectSaveFinished(path, capture.history.headNodeId, capture.uiBaseline, capture.runtimeState, current)
+                    }
                 }
                 capture
             }

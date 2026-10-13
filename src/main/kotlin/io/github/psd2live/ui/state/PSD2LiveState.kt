@@ -624,6 +624,7 @@ data class PSD2LiveState(
 	/** The export that just finished, shown in the export-success dialog until it is closed. */
 	val exportSuccess: ExportSuccess? = null,
 ) {
+    internal val saveIdentity: ProjectSaveIdentity by lazy { ProjectSaveIdentity.of(this) }
 	val darkTheme: Boolean get() = toolColors.isDark
 
 	val autoDetectMeshSplitsOnImport: Boolean get() = AppPrompt.START_SCREEN_ON_IMPORT !in mutedPrompts
