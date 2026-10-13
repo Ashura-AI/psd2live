@@ -100,6 +100,7 @@ Windows 也可以直接运行根目录的 `run-gui.bat`。不带参数启动 GUI
 `src/test/kotlin/io/github/psd2live/tools/` 中是用于目视检查和测量的开发工具。它们写成测试，以便调用流水线内部接口；只有设置 `PSD2LIVE_TOOLS=1` 时才运行，平时的 `./gradlew test` 会跳过。输出写到 `build/tools/`。
 
 ```bash
+python tools/examples/fetch.py --case ds
 PSD2LIVE_TOOLS=1 PSD2LIVE_SAMPLE=ds ./gradlew test --tests "io.github.psd2live.tools.MotionSheetTool.body"
 ```
 

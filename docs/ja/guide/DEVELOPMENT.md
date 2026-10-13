@@ -100,6 +100,7 @@ Windows ではリポジトリ直下の `run-gui.bat` でも GUI を起動でき�
 `src/test/kotlin/io/github/psd2live/tools/` には、結果を目視で確認したり測定したりする開発ツールがあります。パイプラインの内部 API を使えるようにテストとして書かれており、`PSD2LIVE_TOOLS=1` を設定したときだけ実行されます。通常の `./gradlew test` では skip されます。出力先は `build/tools/` です。
 
 ```bash
+python tools/examples/fetch.py --case ds
 PSD2LIVE_TOOLS=1 PSD2LIVE_SAMPLE=ds ./gradlew test --tests "io.github.psd2live.tools.MotionSheetTool.body"
 ```
 
