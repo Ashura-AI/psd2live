@@ -96,6 +96,7 @@ PSD2LIVE_TOOLS=1 PSD2LIVE_SAMPLE=ds ./gradlew test --tests "io.github.psd2live.t
 
 | ツール | 内容 | 出力 |
 | --- | --- | --- |
+| `DeformerDeletionVisualTool` | 合成した非対称メッシュの親デフォーマ削除前後と MOC3 書き出し・再読込後のシルエット比較 | `deformer-deletion/comparison.png` |
 | `MotionSheetTool.motions` | 各プリセットモーションを時間順に並べた一覧、待機ループ、呼吸の前後と差分画像、体 Z | `motion-sheet/<サンプル>-*.png` |
 | `MotionSheetTool.body` | 体 X × 体 Y、脚と上半身の拡大、前後傾、頭身、脚のポーズ。スケルトンなしと自動スケルトンの両方 | `motion-sheet/<サンプル>-{stance,lean,size,legposes}*.png` |
 | `MotionSheetTool.tracking` | ポインタが画面上をゆっくり 12 秒周回し、頭と体がプレビューと同じゲインと速さで追従 | `motion-frames/<サンプル>-track/` |

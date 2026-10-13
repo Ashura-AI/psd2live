@@ -96,6 +96,7 @@ PSD2LIVE_TOOLS=1 PSD2LIVE_SAMPLE=ds ./gradlew test --tests "io.github.psd2live.t
 
 | Tool | What it produces | Output |
 | --- | --- | --- |
+| `DeformerDeletionVisualTool` | Synthetic asymmetric meshes before and after deleting their parent deformer, and after MOC3 export and readback | `deformer-deletion/comparison.png` |
 | `MotionSheetTool.motions` | Every preset motion laid out over time, the idle loop, a breath with its difference image, body Z | `motion-sheet/<sample>-*.png` |
 | `MotionSheetTool.body` | Body X × body Y, close-ups of the legs and the upper body, lean, proportion and leg poses, without a skeleton and on the auto skeleton | `motion-sheet/<sample>-{stance,lean,size,legposes}*.png` |
 | `MotionSheetTool.tracking` | Twelve seconds of the pointer circling the canvas slowly, the head and body following with the preview's gains and rates | `motion-frames/<sample>-track/` |
