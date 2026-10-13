@@ -15,6 +15,7 @@ This page is for running from source, using the command line or contributing cod
 ```bash
 ./gradlew run                     # no arguments: start the GUI
 ./gradlew run --args="--help"     # CLI help
+python tools/examples/fetch.py --case tml
 ./gradlew run --args="--input examples/tml/psd-input/tml.psd --output build/example-output"
 ```
 
@@ -85,6 +86,14 @@ The `export` command exports a `.psd2live` project (its current history state) o
 - There is no separate lint task; code style is `kotlin.code.style=official`.
 - The Rust runtime builds in `runtime/` with `cargo test` and `cargo build --release`. See [Runtime (中文)](../../zh/spec/RUNTIME.md). Without a usable cargo, `./gradlew run` and packaging on Linux download the library CI (`runtime-prebuilt.yml`) built from the same sources, matched by a hash of `runtime/src`, `Cargo.toml` and `Cargo.lock` (`./gradlew printRuntimeHash`) and checked against its sha256; if none is found or you are offline, the built-in evaluator is used. `-Ppsd2live.prebuiltRuntime=false` turns the download off. When iterating on `runtime/`, `-Ppsd2live.fastRuntime=true` drops LTO for a much quicker build; the library is slower, so do not package with it.
 - The test suite keeps only fast unit and contract tests; a full `./gradlew test` should finish within one minute. Do not add tests that run the whole pipeline on the example PSDs (tml, ds), compare every step against a cold replay or render whole frames; write such checks as the development tools below and run them by hand.
+
+## External examples and acceptance
+
+Assets, projects and showcase exports are maintained in [psd2live-examples](https://github.com/tsunehimatoi/psd2live-examples), with CC0 1.0 as the default unless separately marked. With Python 3.11+, run `python tools/examples/fetch.py --case tml`, or use `--all` for every pinned case. Files keep their `examples/<id>/` paths; archives are cached in `build/example-assets/`.
+
+`tools/examples/fixtures.lock.json` pins versions, URLs, sizes and archive/file SHA-256 checksums. Update this lock explicitly when adopting new assets. Download or integrity failures fail the command.
+
+Ordinary CI uses small synthetic inputs and internal contract tests without downloading examples. Manually run the `Example acceptance` workflow to fetch pinned `tml` and `ds`, run `ExportGoldenTool` through generation, export and CMO3 import, and require export/preview reports for all four variants. Review its uploaded artifacts before a release; this does not replace visual acceptance or baseline comparisons. Internal MCP regression tests stay in this repository; external cases and discovery checks live in the examples repository.
 
 ## Development tools
 

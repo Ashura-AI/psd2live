@@ -232,6 +232,7 @@ JDK 21 が必要で、Gradle はリポジトリ同梱のラッパーを使いま
 ./gradlew run
 
 # コマンドラインで PSD からモデルを生成
+python tools/examples/fetch.py --case tml
 ./gradlew run --args="--input examples/tml/psd-input/tml.psd --output build/example-output"
 
 # プロジェクトを別の形式で書き出す（例：GIF）

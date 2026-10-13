@@ -15,6 +15,7 @@
 ```bash
 ./gradlew run                     # 引数なし：GUI を起動
 ./gradlew run --args="--help"     # CLI のヘルプ
+python tools/examples/fetch.py --case tml
 ./gradlew run --args="--input examples/tml/psd-input/tml.psd --output build/example-output"
 ```
 
@@ -85,6 +86,14 @@ Windows ではリポジトリ直下の `run-gui.bat` でも GUI を起動でき�
 - 独立した lint タスクはありません。コードスタイルは `kotlin.code.style=official` です。
 - Rust ランタイムは `runtime/` で `cargo test`、`cargo build --release` によりビルドします。[ランタイム（中国語）](../../zh/spec/RUNTIME.md) を参照してください。使える cargo がない場合、Linux の `./gradlew run` とパッケージ作成は、同じソースから CI（`runtime-prebuilt.yml`）がビルドしたライブラリをダウンロードします。`runtime/src`、`Cargo.toml`、`Cargo.lock` のハッシュ（`./gradlew printRuntimeHash`）で照合し、sha256 を検証します。見つからない、またはオフラインの場合は内蔵の評価器を使います。`-Ppsd2live.prebuiltRuntime=false` でダウンロードを無効にできます。`runtime/` を繰り返し変更して実行するときは `-Ppsd2live.fastRuntime=true` で LTO を無効にしてビルドを大幅に短縮できます（ライブラリは遅くなるため、パッケージ作成には使わないでください）。
 - テストスイートには高速な単体テストと契約テストだけを残し、`./gradlew test` 全体は 1 分以内に終わるようにします。サンプル PSD（tml、ds）でパイプライン全体を実行するテスト、各ステップをコールドリプレイと比較するテスト、画面全体を描画するテストは追加せず、下記の開発ツールとして書いて必要なときに手動で実行します。
+
+## 外部サンプルと受け入れ確認
+
+素材、プロジェクト、表示用の書き出しは [psd2live-examples](https://github.com/tsunehimatoi/psd2live-examples) で管理します。個別の指定がなければ CC0 1.0 です。Python 3.11+ で `python tools/examples/fetch.py --case tml` を実行し、全サンプルは `--all` を使います。保存先は従来の `examples/<id>/`、キャッシュは `build/example-assets/` です。
+
+`tools/examples/fixtures.lock.json` はバージョン、URL、サイズ、アーカイブと各ファイルの SHA-256 を固定します。素材の更新時にこのファイルを明示的に更新します。取得や整合性の検証に失敗するとコマンドは失敗します。
+
+通常の CI は小さな合成入力と内部契約テストを使い、サンプルを取得しません。`Example acceptance` ワークフローを手動実行すると、固定した `tml` と `ds` を取得し、`ExportGoldenTool` で生成、書き出し、CMO3 の読み込みを確認し、4 種の結果の書き出しとプレビューレポートを要求します。リリース前に出力を確認してください。視覚的な検証や過去の基準との比較は別途必要です。内部 MCP 回帰テストは主リポジトリに残し、外部の使用事例と接続確認はサンプル側で管理します。
 
 ## 開発ツール
 

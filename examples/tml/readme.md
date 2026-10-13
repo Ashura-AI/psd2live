@@ -1,7 +1,7 @@
 # tml 示例
 
-[输入 PSD](psd-input/tml.psd) · [输出目录](moc3-cmo3-output/) · [示例索引](../readme.md)
+[完整案例与来源说明](https://github.com/tsunehimatoi/psd2live-examples/blob/main/cases/tml/README.md) · [示例索引](../readme.md)
 
-原作者说明：此示例由 AI 生成；形象与文件在符合法律和道德的范围内可随意使用。该说明保留作者原意，不额外推定第三方权利授权。
+素材和展示输出按 CC0 1.0 发布，已迁移到独立示例仓库的版本化素材包。
 
-输出效果可能随程序版本和设置变化，重新生成请参见示例索引。
+在主仓库运行 `python tools/examples/fetch.py --case tml`，恢复 `examples/tml/` 下的素材，供 CLI 和开发工具使用。

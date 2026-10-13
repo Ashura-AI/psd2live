@@ -52,7 +52,7 @@ PSD2Live 是一套完整的 2D 角色绑定工具链：从分层 PSD 自动生�
 
 ## 能力验证
 
-以下图片基于仓库内的两份示例 PSD（膝盖测试与身体运动动图另用一份长腿角色工程）：两份示例均在导入时选用「完整」预设、未经手工修改，头发与裙摆为烘焙后的模拟。测试图由开发工具与命令行导出结果生成，界面截图取自真实编辑器窗口的渲染帧。
+以下图片基于公开示例仓库中的两份 PSD（膝盖测试与身体运动动图另用一份长腿角色工程）：两份示例均在导入时选用「完整」预设、未经手工修改，头发与裙摆为烘焙后的模拟。测试图由开发工具与命令行导出结果生成，界面截图取自真实编辑器窗口的渲染帧。
 
 ### 编辑器
 
@@ -232,6 +232,7 @@ PSD2Live 不依赖 Cubism Editor 或 SDK 运行，但与 Cubism 格式保持兼�
 ./gradlew run
 
 # 命令行直接从 PSD 生成模型
+python tools/examples/fetch.py --case tml
 ./gradlew run --args="--input examples/tml/psd-input/tml.psd --output build/example-output"
 
 # 把工程导出为其他格式，例如 GIF

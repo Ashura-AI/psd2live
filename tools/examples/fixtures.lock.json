@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "id": "tml",
+      "version": "1.0.0",
+      "archive": {
+        "url": "https://github.com/tsunehimatoi/psd2live-examples/releases/download/assets-v1/tml-1.0.0.zip",
+        "size_bytes": 9718929,
+        "sha256": "f6c98e308e4419d58328e0ced5b703b4ee0e790424ae503f2b0d6d5ad7620a66"
+      },
+      "files": [
+        {
+          "path": "tml/moc3-cmo3-output/tml.4096/texture_00.png",
+          "size_bytes": 2310265,
+          "sha256": "086860835db3caba7c62d4adab74be8ff21a2bd5da84e737fec5ef6b81099219"
+        },
+        {
+          "path": "tml/moc3-cmo3-output/tml.blink.motion3.json",
+          "size_bytes": 1155,
+          "sha256": "399f91b7bfac0666f589ab7c6daace5e33e5c6d6e7c6e7ca4024b6db48a65110"
+        },
+        {
+          "path": "tml/moc3-cmo3-output/tml.cdi3.json",
+          "size_bytes": 4029,
+          "sha256": "d03f19d19bc3fe6e281c0f7eebc22ec1b73d4120f57affcb2fbfcf57423d0cb3"
+        },
+        {
+          "path": "tml/moc3-cmo3-output/tml.cmo3",
+          "size_bytes": 4148007,
+          "sha256": "8b54dfa946f61d9da72ff651011ef5c049d485c81b1badb4c26d427c6a4a9fa0"
+        },
+        {
+          "path": "tml/moc3-cmo3-output/tml.idle.motion3.json",
+          "size_bytes": 2282,
+          "sha256": "5f709b9834310a670e1b55b448421568377031f26ad79040925db29da8943990"
+        },
+        {
+          "path": "tml/moc3-cmo3-output/tml.moc3",
+          "size_bytes": 106368,
+          "sha256": "2c315b9aff9a4f7ba6387a0bbbaca29ea62d2c4934f5ff135bf3e22937e5ac02"
+        },
+        {
+          "path": "tml/moc3-cmo3-output/tml.model3.json",
+          "size_bytes": 701,
+          "sha256": "745cf6be1bfeb61fb497cd89a0d7505c020a6b49ba3e6911905f5bf5ff298607"
+        },
+        {
+          "path": "tml/moc3-cmo3-output/tml.nod.motion3.json",
+          "size_bytes": 1751,
+          "sha256": "bfd9a247d5ec8479145c2dddfd5fdbf03e1c46df8d7460f07badd146c1e19418"
+        },
+        {
+          "path": "tml/moc3-cmo3-output/tml.physics3.json",
+          "size_bytes": 8555,
+          "sha256": "8d764028c6536e7acb6171c4db6dc5f1383891e0d37026a81f97f27d38f1d475"
+        },
+        {
+          "path": "tml/moc3-cmo3-output/tml.psd2live.json",
+          "size_bytes": 6272,
+          "sha256": "ce64d7103092601c13048338772376fa4944b71c5c6636ba398526c844d414eb"
+        },
+        {
+          "path": "tml/moc3-cmo3-output/tml.shake.motion3.json",
+          "size_bytes": 1571,
+          "sha256": "9714b72b47dba8e33b6b08d0f9e84c77309a6ce6c98d2a3815c3a59d69163b01"
+        },
+        {
+          "path": "tml/psd-input/tml.psd",
+          "size_bytes": 7014798,
+          "sha256": "d8564e0181368a5b70de461e2938206bc1dc25b60100dc227e88381087630c36"
+        }
+      ]
+    },
+    {
+      "id": "ds",
+      "version": "1.0.0",
+      "archive": {
+        "url": "https://github.com/tsunehimatoi/psd2live-examples/releases/download/assets-v1/ds-1.0.0.zip",
+        "size_bytes": 9120777,
+        "sha256": "c3f97b6e6ee62ad706667aab5fd765a1603eb4a86a21ec7f62853626aab22eb3"
+      },
+      "files": [
+        {
+          "path": "ds/moc3-cmo3-output/ds.4096/texture_00.png",
+          "size_bytes": 2407727,
+          "sha256": "ad0fb25bcc3d4ff76f28e607e8a34009f055d5d398ebfec079ddacdc61eebf21"
+        },
+        {
+          "path": "ds/moc3-cmo3-output/ds.blink.motion3.json",
+          "size_bytes": 1155,
+          "sha256": "399f91b7bfac0666f589ab7c6daace5e33e5c6d6e7c6e7ca4024b6db48a65110"
+        },
+        {
+          "path": "ds/moc3-cmo3-output/ds.cdi3.json",
+          "size_bytes": 4131,
+          "sha256": "cc5caddb16d24593e09e273440df4487c166f9e3409ef1de456a50963cee18b1"
+        },
+        {
+          "path": "ds/moc3-cmo3-output/ds.cmo3",
+          "size_bytes": 4058700,
+          "sha256": "3d50f646032df665246cfb63ebe86b94ee0e3e2a3547e7ac351b3b8d37a7d925"
+        },
+        {
+          "path": "ds/moc3-cmo3-output/ds.idle.motion3.json",
+          "size_bytes": 2282,
+          "sha256": "5f709b9834310a670e1b55b448421568377031f26ad79040925db29da8943990"
+        },
+        {
+          "path": "ds/moc3-cmo3-output/ds.moc3",
+          "size_bytes": 95104,
+          "sha256": "506e244aae84a0df584533e3109e2d5ff57cd5cf39f59fb7a48e245d3ca56065"
+        },
+        {
+          "path": "ds/moc3-cmo3-output/ds.model3.json",
+          "size_bytes": 693,
+          "sha256": "659b5bcbc4f15d556e9e082703a9c8ecb8a4d916fcd768fc8b72d28bf8887234"
+        },
+        {
+          "path": "ds/moc3-cmo3-output/ds.nod.motion3.json",
+          "size_bytes": 1751,
+          "sha256": "bfd9a247d5ec8479145c2dddfd5fdbf03e1c46df8d7460f07badd146c1e19418"
+        },
+        {
+          "path": "ds/moc3-cmo3-output/ds.physics3.json",
+          "size_bytes": 8555,
+          "sha256": "8d764028c6536e7acb6171c4db6dc5f1383891e0d37026a81f97f27d38f1d475"
+        },
+        {
+          "path": "ds/moc3-cmo3-output/ds.psd2live.json",
+          "size_bytes": 6382,
+          "sha256": "14cbf9e9055388cfcfb07673d32e7a7c655089d3c0ea5325e30b2b639bfa28dd"
+        },
+        {
+          "path": "ds/moc3-cmo3-output/ds.shake.motion3.json",
+          "size_bytes": 1571,
+          "sha256": "9714b72b47dba8e33b6b08d0f9e84c77309a6ce6c98d2a3815c3a59d69163b01"
+        },
+        {
+          "path": "ds/psd-input/ds.psd",
+          "size_bytes": 3852760,
+          "sha256": "0bc23c9f2b60edf7af81a9a8761bdf2ad6144e55fe9243b82331c7cac073f104"
+        }
+      ]
+    },
+    {
+      "id": "star_lan",
+      "version": "1.0.0",
+      "archive": {
+        "url": "https://github.com/tsunehimatoi/psd2live-examples/releases/download/assets-v1/star_lan-1.0.0.zip",
+        "size_bytes": 97431002,
+        "sha256": "9485008ffd52c165dbdcf6ec8dd035d882bbd0dfdc54404c65bf3230453b52fe"
+      },
+      "files": [
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.4096/texture_00.png",
+          "size_bytes": 9560267,
+          "sha256": "02ced72ac2a8b8ee15d66a8e5927ede971fa7db661e50a6c8b8c1887b7ad5da9"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.4096/texture_01.png",
+          "size_bytes": 4146106,
+          "sha256": "21d03cec77354c7f9f28992cd58af57379d51feed9c3660385ccaee46fee4616"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.4096/texture_02.png",
+          "size_bytes": 2400032,
+          "sha256": "5ffdbc8a2bedb7829c135a98c5dc22cbf9f625acc1c20f9e69370475591a8e83"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.blink.motion3.json",
+          "size_bytes": 1155,
+          "sha256": "399f91b7bfac0666f589ab7c6daace5e33e5c6d6e7c6e7ca4024b6db48a65110"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.cdi3.json",
+          "size_bytes": 6969,
+          "sha256": "6c9597ee0789d41b6959cff46194f17cb0d4de77a8475cba9f502c208c935aa3"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.cmo3",
+          "size_bytes": 18308138,
+          "sha256": "797ab0fa468fada05ec829dd67006fb91340868268459c9f78cc78020bb49a2d"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.idle.motion3.json",
+          "size_bytes": 15999,
+          "sha256": "14674d50d8765df706ac253975629f7cffe97a2442248a41af59f68d9cd3f2dc"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.moc3",
+          "size_bytes": 355840,
+          "sha256": "9338bb0631474f43e0f4f9d911ef94572da078f9c320bc5b449f2b026b2a315d"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.model3.json",
+          "size_bytes": 811,
+          "sha256": "2b93ffb4d3e865314c3bd5a310d85c35cca533a358f1ffa728691beb0c1db1d5"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.nod.motion3.json",
+          "size_bytes": 1751,
+          "sha256": "bfd9a247d5ec8479145c2dddfd5fdbf03e1c46df8d7460f07badd146c1e19418"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.physics3.json",
+          "size_bytes": 32633,
+          "sha256": "6022c5df075f4fbc66f6d4c6c59d192b64f4362d418b3c4576a0f427620a2595"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.psd2live.json",
+          "size_bytes": 12955,
+          "sha256": "a843ba9ccbed4110f0d7f8d3302579541c407787ba61a6cb89a3214a4460532d"
+        },
+        {
+          "path": "star_lan/moc3-cmo3-output/star_lan.shake.motion3.json",
+          "size_bytes": 1573,
+          "sha256": "81f50690b925cab5487c64cd1fc9781485a141f758a1f7085d36f0596bbfe54b"
+        },
+        {
+          "path": "star_lan/prj/star_lan.psd2live",
+          "size_bytes": 26801286,
+          "sha256": "46fa1a13be0755b715728e3917d62115745ed4965d5fa29a874901cddbe9956e"
+        },
+        {
+          "path": "star_lan/psd-input/star_lan.concept.png",
+          "size_bytes": 1715499,
+          "sha256": "df89adff983d8e890aadbf6fa60acc4196969ec64129d20c9764bbf6f33a8ad1"
+        },
+        {
+          "path": "star_lan/psd-input/star_lan.psd",
+          "size_bytes": 9382662,
+          "sha256": "536b69dfcb506e6742562c02ce68e3443835c425b539451253dfc56549cb94d9"
+        },
+        {
+          "path": "star_lan/webp-output/star_lan.webp",
+          "size_bytes": 34859266,
+          "sha256": "9a35790b86f82de4fc81fbbacc789b62d8638f2258d6609cb60dec6d85fc3d92"
+        },
+        {
+          "path": "star_lan/webp-output/star_lan.webp.report.json",
+          "size_bytes": 204,
+          "sha256": "43bce01fc413b96ba15a0a235dc3c5ca3a01cdeb4a4082d246b18fd783704c57"
+        }
+      ]
+    }
+  ]
+}

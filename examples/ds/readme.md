@@ -1,7 +1,7 @@
 # ds 示例
 
-[输入 PSD](psd-input/ds.psd) · [输出目录](moc3-cmo3-output/) · [示例索引](../readme.md)
+[完整案例与来源说明](https://github.com/tsunehimatoi/psd2live-examples/blob/main/cases/ds/README.md) · [示例索引](../readme.md)
 
-原作者说明：素材为社区自发创作的 DeepSeek 形象“大肥鱼”，与 DeepSeek 官方没有联系；版权归属不详。不能将本项目代码的 GPL 许可视为该素材的使用授权。
+素材和展示输出按 CC0 1.0 发布，已迁移到独立示例仓库的版本化素材包。
 
-输出效果可能随版本和设置变化，使用前请确认素材权利与适用范围。
+在主仓库运行 `python tools/examples/fetch.py --case ds`，恢复 `examples/ds/` 下的素材，供 CLI 和开发工具使用。

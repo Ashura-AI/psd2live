@@ -31,3 +31,13 @@ __pycache__/
 .vscode/
 dist/
 docs/local/
+
+# Example binaries are downloaded from the pinned external catalog.
+examples/tml/psd-input/
+examples/tml/moc3-cmo3-output/
+examples/ds/psd-input/
+examples/ds/moc3-cmo3-output/
+examples/star_lan/psd-input/
+examples/star_lan/moc3-cmo3-output/
+examples/star_lan/prj/
+examples/star_lan/webp-output/
