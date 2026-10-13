@@ -90,6 +90,7 @@ internal data class PsdUserMask(
 	val defaultColor: Int,
 	val disabled: Boolean,
 	val inverted: Boolean,
+	val relativeToLayer: Boolean,
 ) {
 	val width: Int get() = (right - left).coerceAtLeast(0)
 	val height: Int get() = (bottom - top).coerceAtLeast(0)
@@ -301,21 +302,30 @@ internal object PsdLayerRecords {
 		val right = buffer.readU32AsInt()
 		val defaultColor = buffer.readU8()
 		val flags = buffer.readU8()
-		if (length >= 36 && (flags and 0x10) != 0 && start + 36 < end) {
-			val paramFlags = buffer.bytes[start + 36].toInt() and 0xFF
-			var cursor = start + 37
-			val density = if ((paramFlags and 0x01) != 0 && cursor < end) buffer.bytes[cursor].toInt() and 0xFF else 255
-			if ((paramFlags and 0x01) != 0) cursor += 1
-			val feather = if ((paramFlags and 0x02) != 0 && cursor + 8 <= end) {
+		if ((flags and 0x10) != 0) {
+			fun byte(): Int {
+				require(buffer.position < end) { "PSD layer mask parameters are truncated" }
+				return buffer.readU8()
+			}
+			fun feather(): Double {
+				require(end - buffer.position >= 8) { "PSD layer mask parameters are truncated" }
 				var bits = 0L
-				for (i in 0 until 8) bits = (bits shl 8) or (buffer.bytes[cursor + i].toLong() and 0xFF)
-				Double.fromBits(bits)
-			} else 0.0
-			if (density != 255 || feather > 0.0) notes += "Raster mask feather or density is not applied"
+				repeat(8) { bits = (bits shl 8) or byte().toLong() }
+				return Double.fromBits(bits)
+			}
+			// Mask parameters follow the base flags, before the optional real-mask fields.
+			val paramFlags = byte()
+			val density = if ((paramFlags and 0x01) != 0) byte() else 255
+			val rasterFeather = if ((paramFlags and 0x02) != 0) feather() else 0.0
+			val vectorDensity = if ((paramFlags and 0x04) != 0) byte() else 255
+			val vectorFeather = if ((paramFlags and 0x08) != 0) feather() else 0.0
+			if (density != 255 || rasterFeather > 0.0) notes += "Raster mask feather or density is not applied"
+			if (vectorDensity != 255 || vectorFeather > 0.0) notes += "Vector mask feather or density is not applied"
 		}
 		buffer.position = end
 		if ((flags and 0x02) != 0) return null
-		return PsdUserMask(top, left, bottom, right, defaultColor, disabled = false, inverted = (flags and 0x04) != 0)
+		return PsdUserMask(top, left, bottom, right, defaultColor, disabled = false,
+			inverted = (flags and 0x04) != 0, relativeToLayer = (flags and 0x01) != 0)
 	}
 
 	/**

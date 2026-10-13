@@ -88,13 +88,13 @@ class AuditImportTest {
 			ByteBuffer.allocate(2 + samples.size).order(ByteOrder.BIG_ENDIAN).putShort(0).put(samples).array()
 		}
 		val maskBytes = if (mask == null) byteArrayOf() else {
-			// 18 byte base + 18 byte real-mask fields, then a density parameter of 0 when feather is requested.
+			// 18-byte base, then mask parameters, then the optional 18-byte real-mask fields.
 			val maskBlock = ByteBuffer.allocate(if (feather) 38 else 20).order(ByteOrder.BIG_ENDIAN)
 			maskBlock.putInt(mask[0]); maskBlock.putInt(mask[1]); maskBlock.putInt(mask[2]); maskBlock.putInt(mask[3])
 			maskBlock.put(0); maskBlock.put(if (feather) 0x10 else 0)
 			if (feather) {
-				maskBlock.put(ByteArray(18))
 				maskBlock.put(0x01); maskBlock.put(0)
+				maskBlock.put(ByteArray(18))
 			}
 			maskBlock.array()
 		}

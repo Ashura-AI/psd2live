@@ -100,8 +100,8 @@ internal object PsdRaster {
 		val info = record.userMask ?: return
 		for (y in 0 until height) {
 			for (x in 0 until width) {
-				val mx = record.bounds.left + x - info.left
-				val my = record.bounds.top + y - info.top
+				val mx = (if (info.relativeToLayer) x else record.bounds.left + x) - info.left
+				val my = (if (info.relativeToLayer) y else record.bounds.top + y) - info.top
 				val sample = if (mx in 0 until info.width && my in 0 until info.height) mask[my * info.width + mx].toInt() and 0xFF
 					else info.defaultColor
 				val coverage = if (info.inverted) 255 - sample else sample
