@@ -64,7 +64,7 @@ internal class ProjectController(private val viewModel: PSD2LiveViewModel,
                 }
                 capture
             }
-        } catch (failure: Exception) {
+        } catch (failure: Throwable) {
             if (!committed.get()) viewModel.projectSaveFailed(failure, capturedState)
             throw failure
         } finally { viewModel.clearProjectProgress() }

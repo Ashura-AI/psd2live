@@ -119,7 +119,7 @@ internal class WorkspaceJobs(
                 val committed = completion.result
                 change(state) { if (committed != null) it.copy(status = WorkspaceJobStatus.COMPLETED, progress = 1f,
                     message = "Completed", result = committed) else it.copy(status = WorkspaceJobStatus.FAILED,
-                    message = "Failed", error = WorkspaceFailure.from(failure as? Exception ?: IllegalStateException(failure.toString(), failure))) }
+                    message = "Failed", error = WorkspaceFailure.from(failure)) }
             }
         }
         // A lazily scheduled job may be cancelled before its body starts, so its catch is insufficient.

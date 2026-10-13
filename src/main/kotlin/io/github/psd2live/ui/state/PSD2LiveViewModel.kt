@@ -81,6 +81,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
@@ -984,7 +985,8 @@ class PSD2LiveViewModel : AutoCloseable {
 
     private val meshSplitQueue = ArrayDeque<String>()
     private val manualMeshSplitRequests = mutableSetOf<String>()
-    private var meshSplitChecking = false
+    private val meshSplitCheck by lazy { MeshSplitCheck(scope) }
+    private val meshSplitChecking get() = meshSplitCheck.running
     private var meshSplitApplying = false
 
     private val stateLock = Any()
@@ -1018,6 +1020,7 @@ class PSD2LiveViewModel : AutoCloseable {
                     if (clips != next.rigEdits.motionClips) next = next.copy(rigEdits = next.rigEdits.copy(motionClips = clips))
                 }
                 if (next.projectOpenGeneration != current.projectOpenGeneration) {
+                    meshSplitCheck.cancel()
                     pendingMeshSplit = null
                     pendingStartScreen = null
                     meshSplitQueue.clear()
@@ -1076,6 +1079,7 @@ class PSD2LiveViewModel : AutoCloseable {
     private fun replaceState(next: PSD2LiveState) {
         synchronized(stateLock) {
             if (next.projectOpenGeneration != _state.value.projectOpenGeneration) {
+                meshSplitCheck.cancel()
                 simulationEpoch++; simPreparing?.cancel(); simStepping?.cancel()
                 simulationSessionId = null; pendingSimulationDelta = 0f
                 _simulationFrames.value = null; _simulationStatus.value = SimulationStatus.Idle
@@ -1241,22 +1245,17 @@ class PSD2LiveViewModel : AutoCloseable {
         if (!AppSettings.autoDetectMeshSplitsOnImport) return
         if (meshSplitChecking || meshSplitApplying || pendingMeshSplit != null || pendingStartScreen != null) return
         val preview = _state.value.previewModel ?: return
-        meshSplitChecking = true
-        scope.launch {
-            try {
-                val offers = detectMeshSplits(preview, layerIds)
+        meshSplitCheck.start(
+            action = { detectMeshSplits(preview, layerIds) },
+            completed = { offers ->
                 if (_state.value.previewModel === preview) when {
                     offers.size == 1 -> pendingMeshSplit = offers.single()
                     offers.size > 1 -> pendingStartScreen = StartScreenOffer(preview, presets = false, splits = offers,
                         initial = StartPresetChoices.of(_state.value))
                 }
-            } catch (failure: Exception) {
-                if (failure is kotlinx.coroutines.CancellationException) throw failure
-                setErrorMessage(failure.message ?: failure.javaClass.simpleName)
-            } finally {
-                meshSplitChecking = false
-            }
-        }
+            },
+            failed = { reportMeshSplitCheckFailure(it) },
+        )
     }
 
     /**
@@ -1271,27 +1270,33 @@ class PSD2LiveViewModel : AutoCloseable {
         val offer = StartScreenOffer(preview, presets = !current.meshOnly && current.rigEdits.importedCmo3 == null,
             splits = null, initial = initial)
         pendingStartScreen = offer
-        meshSplitChecking = true
-        scope.launch {
-            try {
-                val offers = detectMeshSplits(preview, preview.analysis.source.layers.map { it.id.raw })
+        meshSplitCheck.start(
+            action = { detectMeshSplits(preview, preview.analysis.source.layers.map { it.id.raw }) },
+            completed = { offers ->
                 if (pendingStartScreen === offer) pendingStartScreen = offer.copy(splits = offers)
-            } catch (failure: Exception) {
-                if (failure is kotlinx.coroutines.CancellationException) throw failure
-                if (pendingStartScreen === offer) pendingStartScreen = offer.copy(splits = emptyList())
-                setErrorMessage(failure.message ?: failure.javaClass.simpleName)
-            } finally {
-                meshSplitChecking = false
-            }
-        }
+            },
+            failed = {
+                if (pendingStartScreen === offer) pendingStartScreen = null
+                reportMeshSplitCheckFailure(it)
+            },
+        )
+    }
+
+    private fun reportMeshSplitCheckFailure(failure: Throwable) {
+        meshSplitQueue.clear()
+        manualMeshSplitRequests.clear()
+        val message = tr("error.meshSplitCheckFailed", workspaceFailureMessage(failure))
+        updateState { it.withLog(message, level = LogLevel.ERROR, tag = "MeshSplit").copy(errorMessage = message) }
     }
 
     /** The source layers among [layerIds] whose mesh falls apart into several pieces and can still be split. */
     private suspend fun detectMeshSplits(preview: RigPreviewModel, layerIds: List<String>): List<MeshSplitOffer> {
         val expected = workspaceBackend?.snapshot()
         return withContext(Dispatchers.Default) {
+            val context = kotlinx.coroutines.currentCoroutineContext()
             layerIds.mapNotNull { id ->
-                val plan = io.github.psd2live.application.WorkspacePartitionEdits.componentPlan(preview, id)
+                context.ensureActive()
+                val plan = io.github.psd2live.application.WorkspacePartitionEdits.componentPlan(preview, id) { context.ensureActive() }
                     ?: return@mapNotNull null
                 val source = preview.analysis.source.layers.firstOrNull { it.id.raw == id }
                     ?: preview.analysis.layers.first { it.source.id.raw == id }.source
@@ -1306,6 +1311,7 @@ class PSD2LiveViewModel : AutoCloseable {
      */
     internal fun applyStartScreen(choices: StartPresetChoices?, decisions: List<LayerSplitDecision>) {
         val offer = pendingStartScreen ?: return
+        meshSplitCheck.cancel()
         pendingStartScreen = null
         val valid = validSplitDecisions(decisions)
         if (valid.isEmpty() && choices == null) return
@@ -1314,9 +1320,9 @@ class PSD2LiveViewModel : AutoCloseable {
             try {
                 if (valid.isNotEmpty()) applyMeshSplits(offer.preview, valid)
                 if (choices != null) applyPresetChoices(choices)
-            } catch (failure: Exception) {
+            } catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
-                setErrorMessage(failure.message ?: failure.javaClass.simpleName)
+                setErrorMessage(workspaceFailureMessage(failure))
             } finally {
                 meshSplitApplying = false
                 if (pendingMeshSplit == null && pendingStartScreen == null) checkNextMeshSplit()
@@ -1325,7 +1331,9 @@ class PSD2LiveViewModel : AutoCloseable {
     }
 
     internal fun dismissStartScreen() {
+        meshSplitCheck.cancel()
         pendingStartScreen = null
+        checkNextMeshSplit()
     }
 
     /** A PSD import with the start screen turned off still gets the default presets, clothing included. */
@@ -1335,9 +1343,9 @@ class PSD2LiveViewModel : AutoCloseable {
         scope.launch {
             try {
                 applyPresetChoices(StartQuickPreset.DEFAULT.choices)
-            } catch (failure: Exception) {
+            } catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
-                setErrorMessage(failure.message ?: failure.javaClass.simpleName)
+                setErrorMessage(workspaceFailureMessage(failure))
             } finally {
                 meshSplitApplying = false
             }
@@ -1626,6 +1634,7 @@ class PSD2LiveViewModel : AutoCloseable {
     }
 
     internal fun dismissAllMeshSplits() {
+        meshSplitCheck.cancel()
         pendingMeshSplit = null
         pendingStartScreen = null
         meshSplitQueue.clear()
@@ -1642,22 +1651,19 @@ class PSD2LiveViewModel : AutoCloseable {
             checkNextMeshSplit()
             return
         }
-        meshSplitChecking = true
-        scope.launch {
-            try {
-                val offer = detectMeshSplits(preview, listOf(id)).singleOrNull()
+        meshSplitCheck.start(
+            action = { detectMeshSplits(preview, listOf(id)).singleOrNull() },
+            completed = { offer ->
                 if (_state.value.previewModel === preview && offer != null) pendingMeshSplit = offer
                 else if (id in manualMeshSplitRequests && _state.value.previewModel === preview)
                     setErrorMessage(tr("editor.meshSplit.none"))
                 manualMeshSplitRequests -= id
-            } catch (failure: Exception) {
-                if (failure is kotlinx.coroutines.CancellationException) throw failure
-                setErrorMessage(failure.message ?: failure.javaClass.simpleName)
-            } finally {
-                meshSplitChecking = false
+            },
+            failed = { reportMeshSplitCheckFailure(it) },
+            finished = {
                 if (pendingMeshSplit == null && pendingStartScreen == null) checkNextMeshSplit()
-            }
-        }
+            },
+        )
     }
 
     internal fun confirmMeshSplit(names: List<String>, sides: List<Side>) {
@@ -1669,9 +1675,9 @@ class PSD2LiveViewModel : AutoCloseable {
         scope.launch {
             try {
                 applyMeshSplits(offer.preview, valid)
-            } catch (failure: Exception) {
+            } catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
-                setErrorMessage(failure.message ?: failure.javaClass.simpleName)
+                setErrorMessage(workspaceFailureMessage(failure))
             } finally {
                 meshSplitApplying = false
                 if (pendingMeshSplit == null && pendingStartScreen == null) checkNextMeshSplit()
@@ -2130,7 +2136,7 @@ class PSD2LiveViewModel : AutoCloseable {
                 if (!_state.value.projectDirty && workspaceBackend?.hasUnsavedChanges() != true &&
                     !_state.value.workspaceEditBusy && !_state.value.editorDraftBusy)
                     pendingDestructiveAction?.also { pendingDestructiveAction = null; it() }
-            } catch (_: Exception) { pendingDestructiveAction = null }
+            } catch (_: Throwable) { pendingDestructiveAction = null }
         }
     }
     internal suspend fun saveProjectNow(path: Path? = null): String {
@@ -2138,7 +2144,7 @@ class PSD2LiveViewModel : AutoCloseable {
         updateState { it.copy(projectSaveError = null) }
         try {
             return executeUserProject({ it.saveProjectAt(path?.toAbsolutePath()?.normalize()) }).historyNodeId
-        } catch (failure: Exception) {
+        } catch (failure: Throwable) {
             if (failure is kotlinx.coroutines.CancellationException) throw failure
             // Fields can fail before ProjectController starts a save; Save and Close must report that too.
             if (_state.value.projectSaveError == null) reportProjectSaveFailure(failure, started, _state.value.projectSaving)
@@ -2265,17 +2271,17 @@ class PSD2LiveViewModel : AutoCloseable {
     }
     private val pendingProjectSaves = java.util.concurrent.atomic.AtomicInteger()
     internal fun projectSaveStarted() { pendingProjectSaves.incrementAndGet(); updateState { it.copy(projectSaving = true, projectSaveError = null) } }
-    internal fun projectSaveFailed(failure: Exception, captured: PSD2LiveState) {
+    internal fun projectSaveFailed(failure: Throwable, captured: PSD2LiveState) {
         val saving = pendingProjectSaves.decrementAndGet() > 0
         reportProjectSaveFailure(failure, captured, saving)
     }
-    private fun reportProjectSaveFailure(failure: Exception, captured: PSD2LiveState, saving: Boolean) {
+    private fun reportProjectSaveFailure(failure: Throwable, captured: PSD2LiveState, saving: Boolean) {
         updateState { current ->
             if (current.projectId != captured.projectId || current.projectOpenGeneration != captured.projectOpenGeneration) {
                 current.copy(projectSaving = saving)
-            } else current.copy(projectSaving = saving, projectDirty = true, projectSaveError = failure.message ?: "Save failed",
+            } else current.copy(projectSaving = saving, projectDirty = true, projectSaveError = workspaceFailureMessage(failure),
                 logEntries = current.logEntries.appendingLog(listOf(AppLogEntry(source = LogSource.EDITOR, level = LogLevel.ERROR,
-                    tag = "Project", message = tr("log.project.saveFailed", failure.message ?: failure.javaClass.simpleName)))))
+                    tag = "Project", message = tr("log.project.saveFailed", workspaceFailureMessage(failure))))))
         }
     }
     internal fun projectSaveFinished(path: Path, headId: String, captured: PSD2LiveState,
@@ -6361,9 +6367,11 @@ class PSD2LiveViewModel : AutoCloseable {
                 withContext(io.github.psd2live.application.WorkspaceExecution(expected.projectId, expected.state, MutationAuthor.USER)) { action(workspace) }
                 updateState { it.copy(isAnalyzing = false, isIndeterminateProgress = false) }
                 afterImport()
-            } catch (failure: Exception) {
+            } catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
-                updateState { it.copy(errorMessage = failure.message ?: failure.toString(), statusText = tr("status.failed", failure.message)) }
+                val detail = workspaceFailureMessage(failure)
+                updateState { it.withLog(tr("log.failed", detail), level = LogLevel.ERROR, tag = "Analysis")
+                    .copy(errorMessage = detail, statusText = tr("status.failed", detail)) }
             } finally { updateState { it.copy(isAnalyzing = false, isIndeterminateProgress = false) } }
         }
     }
@@ -6543,12 +6551,12 @@ class PSD2LiveViewModel : AutoCloseable {
 					action(workspace, settled)
 				}
 				if (currentExport()) succeeded(result)
-			} catch (failure: Exception) {
+			} catch (failure: Throwable) {
 				val committed = completion.result
 				if (committed != null) { if (currentExport()) succeeded(committed.data) }
 				else {
 					if (failure is kotlinx.coroutines.CancellationException) throw failure
-					val detail = failure.message ?: failure.javaClass.simpleName
+					val detail = workspaceFailureMessage(failure)
 					if (currentExport()) updateState { it.withLog(tr("log.failed", detail), level = LogLevel.ERROR, tag = "Export")
 						.copy(statusText = tr("status.failed", detail), errorMessage = detail) }
 				}
@@ -6697,7 +6705,7 @@ class PSD2LiveViewModel : AutoCloseable {
 				if (accepted) refreshSdkSession(updated) else scheduleRuntimeBundleUpdate()
 			} catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
-				val detail = failure.message ?: failure.javaClass.simpleName
+				val detail = workspaceFailureMessage(failure)
 				updateState {
 					it.withLog(tr("log.previewUpdateFailed", detail), level = LogLevel.ERROR, tag = "Preview").copy(
 						statusText = tr("status.previewUpdateFailed", detail),
@@ -6808,7 +6816,7 @@ class PSD2LiveViewModel : AutoCloseable {
 				if (published) refreshSdkSession(rebuilt)
 			} catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
-				val detail = failure.message ?: failure.javaClass.simpleName
+				val detail = workspaceFailureMessage(failure)
 				updateState {
 					it.withLog(
 						message = if (isUpscalingJob) tr("log.upscaleFailed", detail) else tr("log.previewUpdateFailed", detail),
@@ -7231,6 +7239,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	override fun close() {
 		if (!isClosed.compareAndSet(false, true)) return
+        meshSplitCheck.cancel()
 		motionJob?.cancel()
 		previewRebuildJob?.cancel()
 		activeWorkJob?.cancel()

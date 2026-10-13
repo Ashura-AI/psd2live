@@ -982,7 +982,22 @@ internal class WorkspaceStore(
 	}
 
 	private fun persistRaster(project: Path, rgba: ByteArray, width: Int, height: Int): String {
+		require(width >= 0 && height >= 0) { "Raster dimensions must not be negative" }
+		require(rgba.size == Math.multiplyExact(Math.multiplyExact(width, height), 4)) { "Raster dimensions do not match pixel data" }
 		val hash = WorkspaceRevisions.rasterDigest(rgba)
+        // PNG cannot represent an empty PSD layer. Keep its dimensions in the document and its empty
+        // pixels in the existing raw blob format, which also survives staging and v2 archive packing.
+        if (rgba.isEmpty()) {
+            val path = project.resolve("blobs/${fileKey(hash)}.rgba.gz")
+            if (!isStored(path)) {
+                val bytes = ByteArrayOutputStream().use { out ->
+                    GZIPOutputStream(out).use { it.write(rgba) }; out.toByteArray()
+                }
+                writeImmutable(path, bytes)
+                stored.add(path)
+            }
+            return hash
+        }
         val name = rasterFileName(hash, width, height)
         val path = project.resolve("blobs/$name")
         if (isStored(path)) return hash
@@ -1021,8 +1036,8 @@ internal class WorkspaceStore(
 	}
 
 	private fun loadRaster(project: Path, hash: String, width: Int, height: Int): ByteArray {
+		require(width >= 0 && height >= 0) { "Stored raster dimensions must not be negative" }
 		val expected = Math.multiplyExact(Math.multiplyExact(width, height), 4)
-		require(expected > 0) { "Stored raster dimensions must be positive" }
 		val png = project.resolve("blobs/${fileKey(hash)}-${width}x${height}.png")
         if (Files.isRegularFile(png)) {
             val encoded = Files.readAllBytes(png)
