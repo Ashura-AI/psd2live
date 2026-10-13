@@ -23,7 +23,14 @@ public class LittleEndianReader(private val data: ByteArray) {
 	 * @param Int offset Absolute position to seek to.
 	 */
 	public fun seek(offset: Int) {
+		require(offset in 0..data.size) { "MOC3 seek $offset is outside 0..${data.size}" }
 		position = offset
+	}
+
+	private fun ensure(count: Int) {
+		require(count >= 0 && position >= 0 && position.toLong() + count <= data.size.toLong()) {
+			"MOC3 read past end at $position length $count (size ${data.size})"
+		}
 	}
 
 	/**
@@ -32,6 +39,7 @@ public class LittleEndianReader(private val data: ByteArray) {
 	 * @param Int count Number of bytes to skip.
 	 */
 	public fun skip(count: Int) {
+		ensure(count)
 		position += count
 	}
 
@@ -41,6 +49,7 @@ public class LittleEndianReader(private val data: ByteArray) {
 	 * @return Int The byte value in 0..255.
 	 */
 	public fun readU8(): Int {
+		ensure(1)
 		val value = data[position].toInt() and 0xFF
 		position += 1
 		return value
@@ -52,6 +61,7 @@ public class LittleEndianReader(private val data: ByteArray) {
 	 * @return Int The decoded value.
 	 */
 	public fun readU16(): Int {
+		ensure(2)
 		val low = data[position].toInt() and 0xFF
 		val high = data[position + 1].toInt() and 0xFF
 		position += 2
@@ -64,6 +74,7 @@ public class LittleEndianReader(private val data: ByteArray) {
 	 * @return Int The decoded value.
 	 */
 	public fun readInt32(): Int {
+		ensure(4)
 		val byte0 = data[position].toInt() and 0xFF
 		val byte1 = data[position + 1].toInt() and 0xFF
 		val byte2 = data[position + 2].toInt() and 0xFF
@@ -96,6 +107,7 @@ public class LittleEndianReader(private val data: ByteArray) {
 	 * @return ByteArray A freshly allocated copy of the bytes.
 	 */
 	public fun readBytes(count: Int): ByteArray {
+		ensure(count)
 		val out = data.copyOfRange(position, position + count)
 		position += count
 		return out

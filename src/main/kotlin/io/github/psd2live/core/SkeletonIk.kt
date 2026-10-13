@@ -48,10 +48,19 @@ internal object SkeletonIk {
 		val dx = tx - rx
 		val dy = ty - ry
 		val length = hypot(dx, dy)
-		if (length < 1e-9) return doubleArrayOf(rx + l1, ry)
+		if (l1 < 1e-6 && l2 < 1e-6) return doubleArrayOf(rx, ry)
+		if (length < 1e-9 || l1 < 1e-6) {
+			if (length < 1e-9) return doubleArrayOf(rx + l1, ry)
+			return doubleArrayOf(rx + dx / length * l1, ry + dy / length * l1)
+		}
 		val ux = dx / length
 		val uy = dy / length
-		val d = length.coerceIn(abs(l1 - l2) + 1e-6, l1 + l2 - 1e-6)
+		val lower = abs(l1 - l2) + 1e-6
+		val upper = l1 + l2 - 1e-6
+		// A parent and child that start on the same point leave one segment with no reach. Folding that
+		// into coerceIn would ask for a range whose lower bound is above its upper bound.
+		if (lower > upper) return doubleArrayOf(rx + ux * l1, ry + uy * l1)
+		val d = length.coerceIn(lower, upper)
 		val along = (l1 * l1 - l2 * l2 + d * d) / (2.0 * d)
 		val across = sqrt((l1 * l1 - along * along).coerceAtLeast(0.0)) * if (bend >= 0.0) 1.0 else -1.0
 		return doubleArrayOf(rx + ux * along - uy * across, ry + uy * along + ux * across)

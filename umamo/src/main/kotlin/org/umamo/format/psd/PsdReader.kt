@@ -68,7 +68,7 @@ object PsdReader : ArtReader {
 		// folder markers are structural and are not emitted as drawable layers.
 		val groups = ArrayList<SourceGroup>()
 		val ids = PsdLayerIds(parse.records.mapNotNull { it.layerId })
-		val warnings = mutableListOf<String>()
+		val warnings = parse.warnings.toMutableList()
 		val folderStack = ArrayDeque<String>()
 		val layersTopToBottom = ArrayList<SourceLayer>()
 		var emittedOrder = 0

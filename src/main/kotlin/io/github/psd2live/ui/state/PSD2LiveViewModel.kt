@@ -2700,17 +2700,28 @@ class PSD2LiveViewModel : AutoCloseable {
     fun editHistoryAnnotation(id: String, title: String, note: String, hidden: Boolean) {
         editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.PutAnnotation(id, HistoryAnnotation(title, note, hidden)))
     }
-    fun undoHistory() {
-        if (_state.value.workspaceEditBusy) return
-        val history = _state.value.historySnapshot ?: return
-        history.nodes.firstOrNull { it.id == history.headNodeId }?.parentId?.let(::checkoutHistoryNode)
+    fun undoHistory() = stepHistory { history ->
+        history.nodes.firstOrNull { it.id == history.headNodeId }?.parentId
     }
-    fun redoHistory() {
-        if (_state.value.workspaceEditBusy) return
-        val history = _state.value.historySnapshot ?: return
+    fun redoHistory() = stepHistory { history ->
         val children = history.nodes.filter { it.parentId == history.headNodeId }
-        if (children.size == 1) checkoutHistoryNode(children.single().id)
-        else showHistoryModule()
+        when (children.size) {
+            1 -> children.single().id
+            else -> {
+                if (children.size > 1) showHistoryModule()
+                null
+            }
+        }
+    }
+
+    /**
+     * Commits a field that is still being typed, then chooses the history node from the head that commit
+     * produced. Undo and redo are handled before a focused field sees the key, so leaving the session open
+     * would drop the typed value and let a later blur commit it onto the checked-out document.
+     */
+    private fun stepHistory(choose: (WorkspaceHistorySnapshot) -> String?) {
+        if (_state.value.workspaceEditBusy) return
+        checkoutHistorySelection { history -> history?.let(choose) }
     }
     fun setHistoryView(zoom: Float, x: Float, y: Float, search: String, showHidden: Boolean) {
         updateState { if (it.historyZoom == zoom && it.historyPanX == x && it.historyPanY == y && it.historySearch == search && it.historyShowHidden == showHidden) it
@@ -4576,6 +4587,12 @@ class PSD2LiveViewModel : AutoCloseable {
 	/** Drops the session: every tile shows as committed again. */
 	fun discardTextureSession() = updateTextureWorkspace { it.copy(session = emptyMap(), sessionUndo = emptyList(), sessionRedo = emptyList(), error = null) }
 
+	/** Drops atlas edits that belong to the document being left: the session, queued tiles, and the density drag. */
+	internal fun discardUncommittedTextureEdits() = updateTextureWorkspace {
+		it.copy(session = emptyMap(), sessionUndo = emptyList(), sessionRedo = emptyList(),
+			pending = emptyMap(), densityPreview = emptyMap(), error = null)
+	}
+
 	/**
 	 * Applies the session: every density, spot and turn it changed, as one batch - one rebuild and one history node.
 	 * The tiles keep showing where the session put them until that version lands.
@@ -5414,14 +5431,22 @@ class PSD2LiveViewModel : AutoCloseable {
 		updateState { it.copy(selectedHistoryNodeId = nodeId) }
 	}
 
-	fun checkoutHistoryNode(nodeId: String) {
-		// Busy from the press until the checkout lands: an undo pressed meanwhile would read the old head and be lost.
+	fun checkoutHistoryNode(nodeId: String) = checkoutHistorySelection { nodeId }
+
+	private fun checkoutHistorySelection(choose: (WorkspaceHistorySnapshot?) -> String?) {
+		// A field still being typed has to land before the checkout replaces the document, or a later blur
+		// commits that value onto the node this checkout installed.
+		flushEditorFields()
+		// Include draft settlement and node selection in the busy interval: save and later history steps
+		// must not capture the head before this step's checkout lands.
 		val marked = !_state.value.canvasEditBusy
 		if (marked) updateState { it.copy(canvasEditBusy = true) }
 		// A local preview rebuild in flight would publish the document the checkout is leaving over the one it installs.
 		synchronized(stateLock) { previewRebuildToken++; previewRebuildJob?.cancel() }
 		scope.launch {
 			try {
+				runCatching { workspaceBackend?.awaitEditorDrafts() }
+				val nodeId = choose(_state.value.historySnapshot) ?: return@launch
 				val ws = workspaceBackend ?: throw IllegalStateException("Agent workspace is not attached")
 				val result = withContext(Dispatchers.Default) {
 					ws.checkoutHistory(nodeId, io.github.psd2live.project.MutationAuthor.USER)
@@ -6638,6 +6663,7 @@ class PSD2LiveViewModel : AutoCloseable {
         generationSource: SourceArt? = null,
         meshSource: SourceArt? = null,
         textureOverrides: Map<String, io.github.psd2live.project.TextureOverride> = emptyMap(),
+        restoreCheckedOutPose: Boolean = false,
 	): Boolean {
 		var applied = false
 		updateState { current ->
@@ -6679,8 +6705,17 @@ class PSD2LiveViewModel : AutoCloseable {
 				// Canvas solo is local presentation; a document commit neither ends nor forgets it.
 				isolationSnapshot = current.isolationSnapshot,
 				lockedParameters = current.lockedParameters.intersect(preview.rig.puppet.parameters.mapTo(mutableSetOf()) { it.id }),
-				parameterValues = preview.rig.puppet.parameters.associate { parameter ->
-					parameter.id to (current.parameterValues[parameter.id] ?: parameter.default).coerceIn(parameter.min, parameter.max)
+				parameterValues = if (restoreCheckedOutPose) {
+					preview.rig.puppet.parameters.associate { it.id to it.default }
+				} else {
+					preview.rig.puppet.parameters.associate { parameter ->
+						parameter.id to (current.parameterValues[parameter.id] ?: parameter.default).coerceIn(parameter.min, parameter.max)
+					}
+				},
+				previewParameterValues = if (restoreCheckedOutPose) {
+					preview.rig.puppet.parameters.associate { it.id to it.default }
+				} else {
+					current.previewParameterValues
 				},
 				statusText = status,
 				errorMessage = null,

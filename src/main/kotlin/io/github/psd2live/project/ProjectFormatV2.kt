@@ -104,9 +104,12 @@ internal object ProjectFormatV2 {
 
 	/** Rebuilds the working-store layout under [root]/workspace/[projectId] from an extracted v2 archive. */
 	fun unpack(root: Path, projectId: String) {
+		require(projectId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]*"))) { "Invalid project ID" }
 		val history = root.resolve("history")
 		require(Files.isRegularFile(history.resolve("HEAD.json"))) { "Project has no history" }
-		val store = root.resolve("workspace").resolve(projectId)
+		val workspace = root.toAbsolutePath().normalize().resolve("workspace")
+		val store = workspace.resolve(projectId).normalize()
+		require(store.startsWith(workspace)) { "Project store path escapes the archive" }
 		require(!Files.exists(store)) { "Project store entries in a v2 archive" }
 		val revisions = history.resolve("revisions")
 		val cache = HashMap<String, JsonObject>()

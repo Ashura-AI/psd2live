@@ -32,7 +32,11 @@ impl V2 {
     }
     fn normalized(self) -> V2 {
         let length = (self.x * self.x + self.y * self.y).sqrt();
-        V2::new(self.x / length, self.y / length)
+        if length == 0.0 || !length.is_finite() {
+            V2::new(0.0, 0.0)
+        } else {
+            V2::new(self.x / length, self.y / length)
+        }
     }
 }
 
@@ -297,5 +301,33 @@ impl Physics {
                 write_output(&mut values[o.parameter], p.min, p.max, raw, o);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rig::{Normalization, PhysicsGroup, PhysicsSegment};
+
+    #[test]
+    fn zero_length_segment_stays_finite() {
+        let group = PhysicsGroup {
+            id: "p".into(),
+            name: "p".into(),
+            inputs: vec![],
+            outputs: vec![],
+            segments: vec![PhysicsSegment { length: 0.0, mobility: 1.0, delay: 1.0, acceleration: 1.0 }],
+            normalization: Normalization {
+                position_min: -10.0,
+                position_default: 0.0,
+                position_max: 10.0,
+                angle_min: -10.0,
+                angle_default: 0.0,
+                angle_max: 10.0,
+            },
+        };
+        let mut strand = Strand::new(&group);
+        strand.update(V2::new(0.0, 0.0), 0.0, V2::new(0.0, 0.0), 0.001, 1.0 / 30.0);
+        assert!(strand.particles.iter().all(|particle| particle.position.x.is_finite() && particle.position.y.is_finite()));
     }
 }

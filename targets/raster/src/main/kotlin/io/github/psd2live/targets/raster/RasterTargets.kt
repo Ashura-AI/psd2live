@@ -43,8 +43,8 @@ public class RasterTargets(private val renderer: FrameRenderer) {
 	 * opened from Finder does not see the shell's PATH.
 	 */
 	private fun ffmpeg(options: ExportOptions): String =
-		options.setting("ffmpeg") ?: System.getenv("PSD2LIVE_FFMPEG")?.takeIf { it.isNotBlank() } ?: bundledFfmpeg()?.path
-			?: macPackageFfmpeg() ?: "ffmpeg"
+		requireFfmpegExecutable(options.setting("ffmpeg") ?: System.getenv("PSD2LIVE_FFMPEG")?.takeIf { it.isNotBlank() } ?: bundledFfmpeg()?.path
+			?: macPackageFfmpeg() ?: "ffmpeg")
 
 	private fun macPackageFfmpeg(): String? {
 		if (!System.getProperty("os.name").startsWith("Mac", ignoreCase = true)) return null
@@ -80,21 +80,35 @@ public class RasterTargets(private val renderer: FrameRenderer) {
 				listOf("-fflags", "+bitexact", "-flags:v", "+bitexact", "-map_metadata", "-1", output.toString())
 			val process = try { ProcessBuilder(command).redirectErrorStream(true).start() }
 				catch (failure: java.io.IOException) { throw IllegalStateException("ffmpeg is not available ($ffmpeg); set the ffmpeg setting or PSD2LIVE_FFMPEG", failure) }
-			val log = StringBuilder()
-			val reader = Thread { process.inputStream.bufferedReader().forEachLine { log.appendLine(it) } }.apply { start() }
-			process.outputStream.buffered().use { input ->
-				val row = ByteArray(width * height * 4)
-				for (frame in frames) {
-					for (i in frame.argb.indices) {
-						val argb = frame.argb[i]
-						row[i * 4] = (argb shr 16).toByte(); row[i * 4 + 1] = (argb shr 8).toByte(); row[i * 4 + 2] = argb.toByte(); row[i * 4 + 3] = (argb ushr 24).toByte()
+			try {
+				val log = StringBuilder()
+				val reader = Thread { process.inputStream.bufferedReader().forEachLine { log.appendLine(it) } }.apply { isDaemon = true; start() }
+				try {
+					process.outputStream.buffered().use { input ->
+						val row = ByteArray(width * height * 4)
+						for (frame in frames) {
+							for (i in frame.argb.indices) {
+								val argb = frame.argb[i]
+								row[i * 4] = (argb shr 16).toByte(); row[i * 4 + 1] = (argb shr 8).toByte(); row[i * 4 + 2] = argb.toByte(); row[i * 4 + 3] = (argb ushr 24).toByte()
+							}
+							input.write(row)
+						}
 					}
-					input.write(row)
+					val status = process.waitFor(); reader.join()
+					check(status == 0) { "ffmpeg failed ($status): ${log.toString().trim().take(500)}" }
+					return java.nio.file.Files.readAllBytes(output)
+				} finally {
+					// Cancellation stops this thread while ffmpeg is still reading the frame stream.
+					if (process.isAlive) {
+						process.destroy()
+						if (!process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) process.destroyForcibly()
+					}
+					reader.join(2_000)
 				}
+			} catch (failure: InterruptedException) {
+				Thread.currentThread().interrupt()
+				throw java.io.InterruptedIOException("Video encoding was cancelled")
 			}
-			val status = process.waitFor(); reader.join()
-			check(status == 0) { "ffmpeg failed ($status): ${log.toString().trim().take(500)}" }
-			return java.nio.file.Files.readAllBytes(output)
 		} finally {
 			java.nio.file.Files.deleteIfExists(output)
 		}
@@ -209,7 +223,9 @@ public class RasterTargets(private val renderer: FrameRenderer) {
 					(clip?.let { ClipSampler.valuesAt(it, time) } ?: emptyMap()) to (time - previous).also { previous = time }
 				}, spec).also { simulated = session.simulatesPhysics }
 			}
-			val losses = CapabilityScan.scan(ir, capabilities, options).filter { it.feature != Feature.PHYSICS || !simulated } + listOfNotNull(extraLoss)
+			val timing = if (id == "gif" && fps > 100f) LossEntry("*", Feature.TIMELINE, Handling.APPROXIMATED,
+				note = "GIF delays are whole centiseconds, so playback is capped at 100 fps") else null
+			val losses = CapabilityScan.scan(ir, capabilities, options).filter { it.feature != Feature.PHYSICS || !simulated } + listOfNotNull(extraLoss, timing)
 			val write = writer(frames, options, clip, fps)
 			return object : LoweredExport {
 				override val losses: List<LossEntry> = losses
@@ -230,7 +246,7 @@ public class RasterTargets(private val renderer: FrameRenderer) {
 		ImageIO.createImageOutputStream(output).use { stream ->
 			writer.output = stream
 			writer.prepareWriteSequence(null)
-			val delay = (100f / fps).toInt().coerceAtLeast(1)
+			val delays = gifCentisecondDelays(frames.size, fps)
 			val palette = GifPalette.of(frames)
 			val palettized = frames.parallelStream().map { indexed(it, palette, dither) }.toList()
 			palettized.forEachIndexed { index, indexed ->
@@ -241,7 +257,7 @@ public class RasterTargets(private val renderer: FrameRenderer) {
 					setAttribute("disposalMethod", "restoreToBackgroundColor")
 					setAttribute("userInputFlag", "FALSE")
 					setAttribute("transparentColorFlag", "TRUE")
-					setAttribute("delayTime", delay.toString())
+					setAttribute("delayTime", delays[index].toString())
 					setAttribute("transparentColorIndex", "0")
 				}
 				val model = indexed.colorModel as java.awt.image.IndexColorModel
@@ -288,4 +304,36 @@ public class RasterTargets(private val renderer: FrameRenderer) {
 		const val MAX_SHEET = 16384L
 		const val MAX_FRAMES = 3600
 	}
+}
+
+/**
+ * Accepts only a program whose file name is `ffmpeg` or `ffmpeg.exe`. Export settings and the MCP
+ * `ffmpeg` key are a path to that program, not an arbitrary executable.
+ */
+/**
+ * Per-frame GIF delays in centiseconds. The format stores one integer delay per frame, so the delays
+ * follow the cumulative target time instead of truncating `100 / fps` for every frame. Above 100 fps the
+ * shortest legal delay is one centisecond, which is 100 fps.
+ */
+public fun gifCentisecondDelays(frameCount: Int, fps: Float): IntArray {
+	require(frameCount >= 0 && fps.isFinite() && fps > 0f)
+	val rate = fps.coerceAtMost(100f)
+	val delays = IntArray(frameCount)
+	var assigned = 0
+	for (index in 0 until frameCount) {
+		val target = kotlin.math.round((index + 1) * 100.0 / rate).toInt()
+		val delay = (target - assigned).coerceIn(1, 65535)
+		delays[index] = delay
+		assigned += delay
+	}
+	return delays
+}
+
+public fun requireFfmpegExecutable(command: String): String {
+	val name = java.io.File(command).name
+	require(command.none { it == '\u0000' || it == '\n' || it == '\r' } &&
+		(name.equals("ffmpeg", ignoreCase = true) || name.equals("ffmpeg.exe", ignoreCase = true))) {
+		"ffmpeg must name the ffmpeg program, not $name"
+	}
+	return command
 }

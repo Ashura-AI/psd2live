@@ -44,10 +44,15 @@ object ModelDownloader {
         "https://mirror.ghproxy.com/https://github.com/nagadomi/nunif/releases/download/0.0.0/waifu2x_pretrained_models_swin_unet_v3_art_20260816.zip",
     )
 
+    /** Commit archive of nagadomi/nunif. A floating branch cannot be hashed; this pin can. */
+    const val NUNIF_COMMIT = "c4df6f31b1a2808a90ca40f011192f51798af4bf"
+    const val NUNIF_SHA256 = "ff62897fa0d0d30f3508b3aedd5a6e8f7d3605befcdaa58e6ad4caa32760e529"
+    const val NUNIF_ZIP_BYTES = 4_206_485L
+
     private val NUNIF_URLS = listOf(
-        "https://codeload.github.com/nagadomi/nunif/zip/refs/heads/dev",
-        "https://ghfast.top/https://github.com/nagadomi/nunif/archive/refs/heads/dev.zip",
-        "https://mirror.ghproxy.com/https://github.com/nagadomi/nunif/archive/refs/heads/dev.zip",
+        "https://codeload.github.com/nagadomi/nunif/zip/$NUNIF_COMMIT",
+        "https://ghfast.top/https://github.com/nagadomi/nunif/archive/$NUNIF_COMMIT.zip",
+        "https://mirror.ghproxy.com/https://github.com/nagadomi/nunif/archive/$NUNIF_COMMIT.zip",
     )
 
     fun defaultRuntimeDir(): Path =
@@ -89,12 +94,12 @@ object ModelDownloader {
         try {
             // Step 1: Check and download nunif repo if not present (~2.5 MB)
             if (!isNunifInstalled(nunifDir)) {
-                onStateChange(DownloadState.Downloading(0, 2_600_000L, 0, "nunif", 0.01f))
-                val nunifZip = tempDir.resolve("nunif-dev.zip")
+                onStateChange(DownloadState.Downloading(0, NUNIF_ZIP_BYTES, 0, "nunif", 0.01f))
+                val nunifZip = tempDir.resolve("nunif-$NUNIF_COMMIT.zip")
                 val nunifSuccess = downloadWithFallback(
                     urls = NUNIF_URLS,
                     targetFile = nunifZip,
-                    expectedSha256 = null,
+                    expectedSha256 = NUNIF_SHA256,
                     itemName = "nunif",
                     cancelFlag = cancelFlag,
                     onProgress = { read, total, speed ->
@@ -260,6 +265,18 @@ object ModelDownloader {
         return true
     }
 
+    /** Resolves a zip entry under [targetDir], rejecting absolute paths and `..` escapes. */
+    internal fun zipEntryDestination(targetDir: Path, entryName: String): Path {
+        val name = entryName.replace('\\', '/')
+        require(!name.startsWith("/") && !name.contains(":") && name.split('/').none { it == ".." }) {
+            "zip entry escapes the destination: $entryName"
+        }
+        val root = targetDir.toAbsolutePath().normalize()
+        val dest = root.resolve(name).normalize()
+        require(dest.startsWith(root)) { "zip entry escapes the destination: $entryName" }
+        return dest
+    }
+
     internal fun extractNunifZip(zipPath: Path, targetDir: Path) {
         Files.createDirectories(targetDir)
         ZipInputStream(BufferedInputStream(Files.newInputStream(zipPath))).use { zis ->
@@ -269,7 +286,7 @@ object ModelDownloader {
                 // Strip root folder e.g. "nunif-dev/"
                 val subPath = if (name.contains('/')) name.substringAfter('/') else ""
                 if (subPath.isNotBlank()) {
-                    val dest = targetDir.resolve(subPath)
+                    val dest = zipEntryDestination(targetDir, subPath)
                     if (entry.isDirectory) {
                         Files.createDirectories(dest)
                     } else {
@@ -291,7 +308,7 @@ object ModelDownloader {
                 val name = entry.name.replace('\\', '/')
                 if (!entry.isDirectory && name.endsWith(".pth", ignoreCase = true)) {
                     val fileName = name.substringAfterLast('/')
-                    val dest = targetDir.resolve(fileName)
+                    val dest = zipEntryDestination(targetDir, fileName)
                     Files.copy(zis, dest, StandardCopyOption.REPLACE_EXISTING)
                 }
                 zis.closeEntry()

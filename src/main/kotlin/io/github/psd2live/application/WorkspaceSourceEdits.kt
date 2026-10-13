@@ -2,6 +2,7 @@ package io.github.psd2live.application
 
 import io.github.psd2live.project.WorkspaceSourceArt
 import io.github.psd2live.project.WorkspaceSourceLayer
+import io.github.psd2live.project.transform
 
 import io.github.psd2live.core.*
 import kotlinx.serialization.json.*
@@ -51,8 +52,11 @@ internal fun partitionSourcePolygon(layer: SourceLayer, arguments: JsonObject, p
     for (y in 0 until sourceRaster.height) {
         work.progress(0.1f + 0.5f * y / sourceRaster.height, "Partitioning source pixels")
         for (x in 0 until sourceRaster.width) {
-            val inside = shape.contains(layer.bounds.left + (x + 0.5) * layer.bounds.width / sourceRaster.width,
-                layer.bounds.top + (y + 0.5) * layer.bounds.height / sourceRaster.height)
+            val localX = layer.bounds.left + (x + 0.5) * layer.bounds.width / sourceRaster.width
+            val localY = layer.bounds.top + (y + 0.5) * layer.bounds.height / sourceRaster.height
+            // The polygon is in canvas pixels. A layer moved as a whole still stores its original frame.
+            val inside = shape.contains(layer.transform.x(localX.toFloat(), localY.toFloat()).toDouble(),
+                layer.transform.y(localX.toFloat(), localY.toFloat()).toDouble())
             val alpha = (y * sourceRaster.width + x) * 4 + 3
             if (inside) { remainder[alpha] = 0; if (selected[alpha].toInt() != 0) selectedPixels++ }
             else { selected[alpha] = 0; if (remainder[alpha].toInt() != 0) remainingPixels++ }

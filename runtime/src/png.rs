@@ -56,7 +56,18 @@ pub fn decode(bytes: &[u8]) -> Option<Image> {
                 }
                 _ => {}
             },
-            b"IDAT" => data.extend_from_slice(body),
+            b"IDAT" => {
+                // IHDR comes first. Cap the compressed bytes by the image the header already declared
+                // so a chunk cannot allocate an unbounded buffer before inflation.
+                if width == 0 || height == 0 || (width as u64) * (height as u64) > (1 << 28) {
+                    return None;
+                }
+                let budget = ((width as u64) * (height as u64) * 8).saturating_add(1024 * 1024) as usize;
+                if data.len().saturating_add(body.len()) > budget {
+                    return None;
+                }
+                data.extend_from_slice(body);
+            }
             b"IEND" => break,
             _ => {}
         }
@@ -79,9 +90,10 @@ pub fn decode(bytes: &[u8]) -> Option<Image> {
     if !ok_depth {
         return None;
     }
-    let raw = miniz_oxide::inflate::decompress_to_vec_zlib(&data).ok()?;
     let bits = channels * depth as usize;
     let stride = (width as usize * bits + 7) / 8;
+    let raw_limit = (stride as u64 + 1).saturating_mul(height as u64) as usize;
+    let raw = miniz_oxide::inflate::decompress_to_vec_zlib_with_limit(&data, raw_limit).ok()?;
     let step = ((bits + 7) / 8).max(1);
     if raw.len() < (stride + 1) * height as usize {
         return None;
@@ -211,5 +223,25 @@ mod tests {
         let rgb = decode(&png(1, 1, 16, 2, &[0, 1, 2, 3, 4, 5, 6], &[])).unwrap();
         assert_eq!(rgb.rgba, [1, 3, 5, 255]);
         assert!(decode(b"not a png").is_none());
+    }
+
+    #[test]
+    fn inflated_idat_cannot_exceed_the_image() {
+        // A 1x1 header whose IDAT inflates far past one scanline. The decoder must refuse it.
+        let compressed = miniz_oxide::deflate::compress_to_vec_zlib(&vec![0u8; 64 * 1024], 9);
+        let mut bytes = SIGNATURE.to_vec();
+        let mut ihdr = 1u32.to_be_bytes().to_vec();
+        ihdr.extend(1u32.to_be_bytes());
+        ihdr.extend([8, 6, 0, 0, 0]);
+        fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], body: &[u8]) {
+            out.extend((body.len() as u32).to_be_bytes());
+            out.extend(kind);
+            out.extend(body);
+            out.extend(crate::container::crc32(&[&kind[..], body].concat()).to_be_bytes());
+        }
+        chunk(&mut bytes, b"IHDR", &ihdr);
+        chunk(&mut bytes, b"IDAT", &compressed);
+        chunk(&mut bytes, b"IEND", &[]);
+        assert!(decode(&bytes).is_none());
     }
 }

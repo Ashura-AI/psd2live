@@ -77,7 +77,11 @@ class KeyformGrid<TForm>(
 	val cellsByLinearIndex: Map<Int, KeyformCell<TForm>> by lazy(LazyThreadSafetyMode.PUBLICATION) {
 		val byIndex = HashMap<Int, KeyformCell<TForm>>(cells.size)
 		for (cell in cells) {
-			byIndex[linearIndexOf(cell.coordinate)] = cell
+			val index = linearIndexOf(cell.coordinate)
+			val previous = byIndex.put(index, cell)
+			if (previous != null) {
+				throw IllegalArgumentException("keyform grid has two cells at linear index $index")
+			}
 		}
 		byIndex
 	}

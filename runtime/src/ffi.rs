@@ -568,6 +568,10 @@ fn update(h: &mut Handle, dt: f32, stages: u32) {
         }
         h.poses.set_clip_opacities(&effects.part_opacity);
         h.clip_opacity = effects.model_opacity.map_or(1.0, |o| if o.is_finite() { o.clamp(0.0, 1.0) } else { 1.0 });
+    } else {
+        // A frame that skips clips must not keep the opacity the previous clip frame applied.
+        h.poses.set_clip_opacities(&[]);
+        h.clip_opacity = 1.0;
     }
     if stages & STAGE_EXPRESSIONS != 0 {
         h.expressions.update(rig, dt, &mut h.current);

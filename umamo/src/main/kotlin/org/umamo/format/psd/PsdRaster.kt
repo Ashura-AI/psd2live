@@ -73,7 +73,42 @@ internal object PsdRaster {
 			MODE_BITMAP -> assembleBitmap(planes, rgba, width * height)
 			else -> error("PSD color mode ${header.colorMode} is not supported")
 		}
+		decodeUserMask(bytes, record, header.depth)?.let { mask -> applyUserMask(rgba, width, height, record, mask) }
 		return LayerRaster(width = width, height = height, rgba = rgba)
+	}
+
+	/** The user-mask plane, or null when the layer has no enabled raster mask. */
+	private fun decodeUserMask(bytes: ByteArray, record: PsdLayerRecord, depth: Int): ByteArray? {
+		val mask = record.userMask ?: return null
+		if (mask.disabled || mask.width <= 0 || mask.height <= 0) return null
+		var cursor = record.channelDataOffset
+		for (channel in record.channels) {
+			val blockStart = cursor
+			require(channel.length >= 0 && blockStart.toLong() + channel.length <= bytes.size) { "PSD channel data is truncated" }
+			cursor = blockStart + channel.length.toInt()
+			if (channel.id != -2) continue
+			val rowBytes = bytesPerRow(mask.width, depth)
+			val compression = readU16BE(bytes, blockStart)
+			val samples = decodeChannel(bytes, blockStart + 2, cursor, compression, mask.width, mask.height, depth, rowBytes)
+			return samplesToPlane(samples, mask.width, mask.height, depth, rowBytes)
+		}
+		return null
+	}
+
+	/** Multiplies each pixel's alpha by the user mask. Samples outside the mask rectangle use its default color. */
+	private fun applyUserMask(rgba: ByteArray, width: Int, height: Int, record: PsdLayerRecord, mask: ByteArray) {
+		val info = record.userMask ?: return
+		for (y in 0 until height) {
+			for (x in 0 until width) {
+				val mx = (if (info.relativeToLayer) x else record.bounds.left + x) - info.left
+				val my = (if (info.relativeToLayer) y else record.bounds.top + y) - info.top
+				val sample = if (mx in 0 until info.width && my in 0 until info.height) mask[my * info.width + mx].toInt() and 0xFF
+					else info.defaultColor
+				val coverage = if (info.inverted) 255 - sample else sample
+				val alpha = (y * width + x) * 4 + 3
+				rgba[alpha] = (((rgba[alpha].toInt() and 0xFF) * coverage) / 255).toByte()
+			}
+		}
 	}
 
 	/**
@@ -226,8 +261,7 @@ internal object PsdRaster {
 	 * Inflates a zlib stream of [length] bytes at [offset] into a buffer of [expected] bytes.
 	 *
 	 * PSD ZIP channels are standard zlib streams (header + Adler-32), so the shared platform bridge
-	 * decodes them.  A short or malformed stream yields a partially filled (zero-padded) buffer rather
-	 * than throwing.
+	 * decodes them.  A stream that ends cleanly before [expected] is zero-padded.  A corrupt stream throws.
 	 *
 	 * @param ByteArray bytes   The buffer holding the compressed stream.
 	 * @param Int offset        Offset of the zlib stream.

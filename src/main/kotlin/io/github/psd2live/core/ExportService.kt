@@ -12,7 +12,6 @@ import io.github.psd2live.targets.cubism.Moc3Target
 import io.github.psd2live.targets.raster.RasterTargets
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import io.github.psd2live.format.compile.GeometryEvaluator
 import io.github.psd2live.format.eval.NativeGeometryEvaluator
 import io.github.psd2live.format.eval.P2lRuntime
@@ -59,29 +58,31 @@ internal object ExportService {
 	 * `<baseName>.<target>.report.json`. Files are staged and moved in only after the export succeeds.
 	 */
 	fun export(preview: RigPreviewModel, target: ExportTarget, options: ExportOptions, directory: Path): ExportReport {
-		// The runtime's own targets carry its advanced mode's live simulations.
-		val ir = RigIrCompiler.compile(preview, tileArt = target.id == "cmo3", simulations = target.id == "p2lrt" || target.id == "web")
 		val root = directory.toAbsolutePath().normalize()
 		Files.createDirectories(root)
 		val stage = Files.createTempDirectory(root, ".export-")
 		try {
-			val report = Compiler.export(target, ir, options) { path, bytes ->
-				val file = stage.resolve(path).normalize()
-				require(file.startsWith(stage)) { "Export path escapes the output: $path" }
-				Files.createDirectories(file.parent)
-				Files.write(file, bytes)
-			}
-			for (path in report.files) {
-				val destination = root.resolve(path)
-				Files.createDirectories(destination.parent)
-				Files.move(stage.resolve(path), destination, StandardCopyOption.REPLACE_EXISTING)
-			}
-			Files.writeString(root.resolve("${options.baseName}.${target.id}.report.json"), report.toJson())
+			val report = writeStaged(preview, target, options, stage)
+			ExportPublication.commit(root, stage, report.files, reportName(options, target), report.toJson())
 			return report
 		} finally {
 			stage.toFile().deleteRecursively()
 		}
 	}
+
+	/** Writes [target]'s files into [stage] and returns the report. The caller publishes them. */
+	internal fun writeStaged(preview: RigPreviewModel, target: ExportTarget, options: ExportOptions, stage: Path): ExportReport {
+		val ir = RigIrCompiler.compile(preview, tileArt = target.id == "cmo3", simulations = target.id == "p2lrt" || target.id == "web")
+		val root = stage.toAbsolutePath().normalize()
+		return Compiler.export(target, ir, options) { path, bytes ->
+			val file = root.resolve(path).normalize()
+			require(file.startsWith(root)) { "Export path escapes the output: $path" }
+			Files.createDirectories(file.parent)
+			Files.write(file, bytes)
+		}
+	}
+
+	internal fun reportName(options: ExportOptions, target: ExportTarget) = "${options.baseName}.${target.id}.report.json"
 
 	/** The evaluated rig of a `.psd2live` project (its current history state) or of a PSD with default settings. */
 	suspend fun load(path: Path): RigPreviewModel {

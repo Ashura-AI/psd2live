@@ -88,7 +88,10 @@ internal object ProjectArchive {
         }
         private fun key(name: String, file: Path): String {
             val attributes = Files.readAttributes(file, BasicFileAttributes::class.java)
-            return "$name|${attributes.size()}|${attributes.lastModifiedTime().to(TimeUnit.NANOSECONDS)}"
+            // Size and time alone collide when two different sources share both, and a STORED write then
+            // fails its CRC check. The file key separates them; a copy without one is keyed by its path.
+            val identity = attributes.fileKey()?.toString() ?: file.toAbsolutePath().normalize().toString()
+            return "$name|${attributes.size()}|${attributes.lastModifiedTime().to(TimeUnit.NANOSECONDS)}|$identity"
         }
         fun of(name: String, file: Path): Digest {
             val key = key(name, file)

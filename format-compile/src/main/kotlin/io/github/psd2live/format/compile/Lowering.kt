@@ -89,8 +89,11 @@ public object ClipSampler {
 					is CurveSegment.Linear -> fromValue + (segment.value - fromValue) * u
 					is CurveSegment.Stepped -> if (time >= segment.time) segment.value else fromValue
 					is CurveSegment.InverseStepped -> if (time > fromTime) segment.value else fromValue
-					// Time handles are restricted to the segment, so the curve parameter advances with time.
-					is CurveSegment.Bezier -> cubic(fromValue, segment.c1Value, segment.c2Value, segment.value, u)
+					// Time handles stay inside the segment, but they need not sit at 1/3 and 2/3.
+					is CurveSegment.Bezier -> cubic(
+						fromValue, segment.c1Value, segment.c2Value, segment.value,
+						bezierParameter(fromTime, segment.c1Time, segment.c2Time, segment.time, time),
+					)
 				}
 			}
 			fromTime = segment.time
@@ -104,11 +107,37 @@ public object ClipSampler {
 		return v * v * v * p0 + 3f * v * v * u * p1 + 3f * v * u * u * p2 + u * u * u * p3
 	}
 
-	/** Frame times of a clip at [fps]: [0, duration) for a loop, [0, duration] for a one-shot. */
+	/** The Bezier parameter in 0..1 whose time coordinate is [time]. */
+	private fun bezierParameter(start: Float, c1: Float, c2: Float, end: Float, time: Float): Float {
+		if (end - start <= 1e-6f) return 1f
+		var lo = 0f
+		var hi = 1f
+		repeat(24) {
+			val mid = (lo + hi) / 2f
+			if (cubic(start, c1, c2, end, mid) < time) lo = mid else hi = mid
+		}
+		return (lo + hi) / 2f
+	}
+
+	/**
+	 * Frame times of a clip at [fps]: [0, duration) for a loop, and [0, duration] for a one-shot.
+	 * A duration that is not a whole number of frames still includes the one-shot's last instant.
+	 */
 	public fun frameTimes(clip: Clip, fps: Float): List<Float> {
 		require(fps > 0f && fps.isFinite()) { "FPS must be positive" }
-		val count = (clip.duration * fps).toInt().coerceAtLeast(1)
-		return List(if (clip.loop) count else count + 1) { it / fps }
+		val duration = clip.duration.coerceAtLeast(0f)
+		val step = 1f / fps
+		val times = ArrayList<Float>()
+		var index = 0
+		while (index < 1_000_000) {
+			val time = index * step
+			if (time >= duration - 1e-4f) break
+			times.add(time)
+			index++
+		}
+		if (times.isEmpty()) times.add(0f)
+		if (!clip.loop && times.last() < duration - 1e-4f) times.add(duration)
+		return times
 	}
 }
 

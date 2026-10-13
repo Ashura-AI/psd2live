@@ -36,7 +36,19 @@ public object XmlCodec {
 	 * @return Document The parsed JDOM document.
 	 */
 	public fun parse(bytes: ByteArray): Document =
-		SAXBuilder().build(ByteArrayInputStream(bytes))
+		saxBuilder().build(ByteArrayInputStream(bytes))
+
+	/**
+	 * A fresh builder that refuses DOCTYPE declarations and external entities. JDOM 1.1.3's default
+	 * SAXBuilder follows the JDK parser, which allows both, so a CMO3 main.xml could otherwise read
+	 * local files while it is imported.
+	 */
+	private fun saxBuilder(): SAXBuilder = SAXBuilder().apply {
+		setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+		setFeature("http://xml.org/sax/features/external-general-entities", false)
+		setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+		setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+	}
 
 	/**
 	 * Serializes a JDOM document back to bytes using the editor's exact format.

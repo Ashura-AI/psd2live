@@ -52,18 +52,31 @@ internal class WorkspaceExportSession(
         val baseName = sourceName.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9._-]+"), "_").trim('_', '.').ifEmpty { "model" }
         val context = currentCoroutineContext()
         context.ensureActive()
-        val report = runInterruptible(Dispatchers.Default) {
-            ExportService.export(captured.model, target, ExportService.options(target, baseName, config, settings), outputDirectory.normalize())
-        }
-        return buildJsonObject {
-            put("state", captured.state); put("revision", captured.revision); put("target", report.target); put("compiler", report.compiler)
-            put("directory", outputDirectory.normalize().toString())
-            putJsonArray("files") { report.files.forEach { add(JsonPrimitive(it)) } }
-            putJsonArray("losses") { report.losses.forEach { loss -> add(buildJsonObject {
-                put("object", loss.objectId); put("feature", loss.feature.name.lowercase()); put("handling", loss.handling.name.lowercase())
-                loss.error?.let { put("error", it) }; put("note", loss.note)
-            }) } }
-        }
+        val destination = outputDirectory.normalize()
+        val stage = staging(destination.parent ?: destination)
+        try {
+            val options = ExportService.options(target, baseName, config, settings)
+            val report = runInterruptible(Dispatchers.Default) {
+                ExportService.writeStaged(captured.model, target, options, stage)
+            }
+            val output = buildJsonObject {
+                put("state", captured.state); put("revision", captured.revision); put("target", report.target); put("compiler", report.compiler)
+                put("directory", destination.toString())
+                putJsonArray("files") { report.files.forEach { add(JsonPrimitive(it)) } }
+                putJsonArray("losses") { report.losses.forEach { loss -> add(buildJsonObject {
+                    put("object", loss.objectId); put("feature", loss.feature.name.lowercase()); put("handling", loss.handling.name.lowercase())
+                    loss.error?.let { put("error", it) }; put("note", loss.note)
+                }) } }
+            }
+            context.ensureActive()
+            // Publishing and recording the result share one non-cancellable boundary. A cancel that arrives
+            // after the files are in place still reports the export that was published.
+            return withContext(NonCancellable + Dispatchers.IO) {
+                ExportPublication.commit(destination, stage, report.files, ExportService.reportName(options, target), report.toJson())
+                context[WorkspaceJobCompletion]?.committed(WorkspaceOperationOutput(output))
+                output
+            }
+        } finally { cleanup(stage) }
     }
 
     suspend fun psd(path: Path, scale: Int, includeGeneratedLayers: Boolean): JsonObject {

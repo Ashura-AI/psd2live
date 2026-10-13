@@ -6,6 +6,7 @@
 #include <cstdarg>
 #include <iostream>
 #include <fstream>
+#include <limits>
 #include <vector>
 #include <string>
 #include <sys/stat.h>
@@ -63,6 +64,25 @@ std::string Live2DPal::GetShaderDirectory()
     return s_shaderDir;
 }
 
+static Csm::csmByte* ReadOpenedFile(std::ifstream& file, long long fileSize, Csm::csmSizeInt* outSize)
+{
+    if (!file.is_open() || fileSize <= 0 || fileSize >= static_cast<long long>(std::numeric_limits<int>::max()))
+    {
+        return nullptr;
+    }
+    const int size = static_cast<int>(fileSize);
+    char* buf = new char[static_cast<size_t>(size) + 1];
+    file.read(buf, size);
+    if (file.gcount() != static_cast<std::streamsize>(size))
+    {
+        delete[] buf;
+        return nullptr;
+    }
+    buf[size] = '\0';
+    *outSize = size;
+    return reinterpret_cast<Csm::csmByte*>(buf);
+}
+
 #ifdef _WIN32
 // UTF-8 path → wchar_t for Windows filesystem APIs (non-ASCII model / shader paths).
 static bool Utf8ToWide(const std::string& utf8, std::wstring& outWide)
@@ -93,20 +113,8 @@ static Csm::csmByte* ReadBinaryFileWide(const std::wstring& widePath, Csm::csmSi
         return nullptr;
     }
 
-    int size = static_cast<int>(statBuf.st_size);
     std::ifstream file(widePath, std::ios::in | std::ios::binary);
-    if (!file.is_open())
-    {
-        return nullptr;
-    }
-
-    char* buf = new char[size + 1];
-    file.read(buf, size);
-    buf[size] = '\0';
-    file.close();
-
-    *outSize = size;
-    return reinterpret_cast<Csm::csmByte*>(buf);
+    return ReadOpenedFile(file, static_cast<long long>(statBuf.st_size), outSize);
 }
 
 static Csm::csmByte* ReadBinaryFile(const std::string& path, Csm::csmSizeInt* outSize)
@@ -124,20 +132,8 @@ static Csm::csmByte* ReadBinaryFile(const std::string& path, Csm::csmSizeInt* ou
         return nullptr;
     }
 
-    int size = static_cast<int>(statBuf.st_size);
     std::ifstream file(path, std::ios::in | std::ios::binary);
-    if (!file.is_open())
-    {
-        return nullptr;
-    }
-
-    char* buf = new char[size + 1];
-    file.read(buf, size);
-    buf[size] = '\0';
-    file.close();
-
-    *outSize = size;
-    return reinterpret_cast<Csm::csmByte*>(buf);
+    return ReadOpenedFile(file, static_cast<long long>(statBuf.st_size), outSize);
 }
 #endif
 

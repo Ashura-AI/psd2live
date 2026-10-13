@@ -235,7 +235,9 @@ class GlRenderDevice : RenderDevice {
 			val program = attachGlShaders(tfDeformVertexShader(DIALECT), tfDiscardFragmentShader(DIALECT))
 			GL30.glTransformFeedbackVaryings(program, arrayOf("outWorld"), GL30.GL_INTERLEAVED_ATTRIBS)
 			GL20.glLinkProgram(program)
-			check(GL20.glGetProgrami(program, GL20.GL_LINK_STATUS) != GL11.GL_FALSE) {
+			val linked = GL20.glGetProgrami(program, GL20.GL_LINK_STATUS) != GL11.GL_FALSE
+			detachAndDeleteShaders(program)
+			check(linked) {
 				"deform-capture program link failed: ${GL20.glGetProgramInfoLog(program)}"
 			}
 			GlDeformCapturePipeline(program, GlUniformLocations(program)).also { deformCapturePipeline = it }
@@ -256,6 +258,12 @@ class GlRenderDevice : RenderDevice {
 		if (glMesh.indexEbo != 0) {
 			GL15.glDeleteBuffers(glMesh.indexEbo)
 		}
+	}
+
+	override fun destroyDeformedPositionStore(store: DeformedPositionStore) {
+		val glStore = store as GlDeformedPositionStore
+		GL15.glDeleteBuffers(glStore.buffer)
+		GL11.glDeleteTextures(glStore.textureBuffer)
 	}
 
 	override fun destroyRenderTarget(target: RenderTarget) {
@@ -560,7 +568,9 @@ private fun interleaveGlueAttributes(attributes: org.umamo.render.puppet.GlueVer
 internal fun linkGlProgram(vertexSource: String, fragmentSource: String, label: String): Int {
 	val program = attachGlShaders(vertexSource, fragmentSource)
 	GL20.glLinkProgram(program)
-	check(GL20.glGetProgrami(program, GL20.GL_LINK_STATUS) != GL11.GL_FALSE) {
+	val linked = GL20.glGetProgrami(program, GL20.GL_LINK_STATUS) != GL11.GL_FALSE
+	detachAndDeleteShaders(program)
+	check(linked) {
 		"$label program link failed: ${GL20.glGetProgramInfoLog(program)}"
 	}
 	return program
@@ -581,8 +591,24 @@ internal fun compileGlShader(stage: Int, source: String): Int {
 	val shader = GL20.glCreateShader(stage)
 	GL20.glShaderSource(shader, source)
 	GL20.glCompileShader(shader)
-	check(GL20.glGetShaderi(shader, GL20.GL_COMPILE_STATUS) != GL11.GL_FALSE) {
-		"GL shader compile failed: ${GL20.glGetShaderInfoLog(shader)}"
+	val compiled = GL20.glGetShaderi(shader, GL20.GL_COMPILE_STATUS) != GL11.GL_FALSE
+	if (!compiled) {
+		val log = GL20.glGetShaderInfoLog(shader)
+		GL20.glDeleteShader(shader)
+		error("GL shader compile failed: $log")
 	}
 	return shader
+}
+
+/** The linked program keeps its own copy of the stages, so the shader objects are released. */
+internal fun detachAndDeleteShaders(program: Int) {
+	val count = GL20.glGetProgrami(program, GL20.GL_ATTACHED_SHADERS)
+	if (count <= 0) return
+	val shaders = BufferUtils.createIntBuffer(count)
+	GL20.glGetAttachedShaders(program, null, shaders)
+	repeat(count) { index ->
+		val shader = shaders.get(index)
+		GL20.glDetachShader(program, shader)
+		GL20.glDeleteShader(shader)
+	}
 }

@@ -3,16 +3,21 @@ package org.umamo.edit
 import org.umamo.render.eval.RotationXform
 import org.umamo.render.eval.rotationXform
 import org.umamo.render.eval.warpApply
+import org.umamo.runtime.eval.flagAt
+import org.umamo.runtime.eval.rotationFormAt
+import org.umamo.runtime.eval.warpControlPointsAt
 import org.umamo.runtime.model.Deformer
 import org.umamo.runtime.model.DeformerId
 import org.umamo.runtime.model.Drawable
 import org.umamo.runtime.model.DrawableId
 import org.umamo.runtime.model.DrawableMesh
+import org.umamo.runtime.model.FormChannel
 import org.umamo.runtime.model.KeyformCell
 import org.umamo.runtime.model.KeyformGrid
 import org.umamo.runtime.model.MeshDeltaForm
 import org.umamo.runtime.model.MeshForm
 import org.umamo.runtime.model.OrgChild
+import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PartId
 import org.umamo.runtime.model.PuppetModel
 import org.umamo.runtime.model.RotationForm
@@ -101,11 +106,8 @@ private fun interface LocalPointMap {
 	fun map(x: Float, y: Float, out: FloatArray)
 }
 
-private fun restWarpMapper(warp: Deformer.Warp): LocalPointMap? {
-	val grid = warp.geometryGrid ?: return null
-	val points = grid.cells.firstOrNull { it.coordinate.isEmpty() }?.form?.controlPoints
-		?: grid.cells.firstOrNull()?.form?.controlPoints
-		?: return null
+private fun restWarpMapper(warp: Deformer.Warp, defaultValue: (ParameterId) -> Float): LocalPointMap? {
+	val points = warpControlPointsAt(warp.geometryGrid, defaultValue) ?: return null
 	val cols = warp.columns
 	val rows = warp.rows
 	val bilinear = warp.isQuadTransform
@@ -117,19 +119,20 @@ private fun restWarpMapper(warp: Deformer.Warp): LocalPointMap? {
 	}
 }
 
-private fun restRotationMapper(rotation: Deformer.Rotation): LocalPointMap? {
-	val grid = rotation.geometryGrid ?: return null
-	val form = grid.cells.firstOrNull { it.coordinate.isEmpty() }?.form
-		?: grid.cells.firstOrNull()?.form
-		?: return null
-	val xform: RotationXform = rotationXform(form.angle, form.scale, flipX = false, flipY = false, form.originX, form.originY)
+private fun restRotationMapper(rotation: Deformer.Rotation, defaultValue: (ParameterId) -> Float): LocalPointMap? {
+	val form = rotationFormAt(rotation.geometryGrid, defaultValue) ?: return null
+	val xform: RotationXform = rotationXform(
+		rotation.baseAngle + form.angle, form.scale,
+		rotation.channelGrids.flagAt(FormChannel.FLIP_X, rotation.flipX, defaultValue),
+		rotation.channelGrids.flagAt(FormChannel.FLIP_Y, rotation.flipY, defaultValue), form.originX, form.originY,
+	)
 	return LocalPointMap { x, y, out -> xform.apply(x, y, out, 0) }
 }
 
-private fun restLocalMapper(deformer: Deformer): LocalPointMap? =
+private fun restLocalMapper(deformer: Deformer, defaultValue: (ParameterId) -> Float): LocalPointMap? =
 	when (deformer) {
-		is Deformer.Warp -> restWarpMapper(deformer)
-		is Deformer.Rotation -> restRotationMapper(deformer)
+		is Deformer.Warp -> restWarpMapper(deformer, defaultValue)
+		is Deformer.Rotation -> restRotationMapper(deformer, defaultValue)
 	}
 
 private fun mapInterleaved(points: FloatArray, mapper: LocalPointMap): FloatArray {
@@ -197,7 +200,8 @@ private fun mapDrawableThrough(drawable: Drawable, grandParent: DeformerId?, map
 	)
 }
 
-private fun mapDeformerThrough(deformer: Deformer, grandParent: DeformerId?, mapper: LocalPointMap?, deletedRotation: Deformer.Rotation?): Deformer {
+private fun mapDeformerThrough(deformer: Deformer, grandParent: DeformerId?, mapper: LocalPointMap?,
+	deletedRotation: Deformer.Rotation?, defaultValue: (ParameterId) -> Float): Deformer {
 	val reparented = deformer.reparentedTo(grandParent)
 	if (mapper == null) return reparented
 	return when (reparented) {
@@ -227,32 +231,35 @@ private fun mapDeformerThrough(deformer: Deformer, grandParent: DeformerId?, map
 			)
 		}
 		is Deformer.Rotation -> {
-			val parentAngle = deletedRotation?.geometryGrid?.cells
-				?.firstOrNull { it.coordinate.isEmpty() }?.form?.angle
-				?: deletedRotation?.geometryGrid?.cells?.firstOrNull()?.form?.angle
-				?: 0f
-			val parentScale = deletedRotation?.geometryGrid?.cells
-				?.firstOrNull { it.coordinate.isEmpty() }?.form?.scale
-				?: deletedRotation?.geometryGrid?.cells?.firstOrNull()?.form?.scale
-				?: 1f
-			val grid = reparented.geometryGrid ?: return reparented
+			val rest = deletedRotation?.let { rotationFormAt(it.geometryGrid, defaultValue) }
+			val parentFlipY = deletedRotation?.let {
+				it.channelGrids.flagAt(FormChannel.FLIP_Y, it.flipY, defaultValue)
+			} == true
+			// Rotation children inherit the parent's -Y heading and scale, but keep their own reflections.
+			// Match buildRotationWorld: a flipped parent Y adds a half-turn, without reflecting the child angle.
+			val parentAngle = (deletedRotation?.baseAngle ?: 0f) + (rest?.angle ?: 0f) + (if (parentFlipY) 180f else 0f)
+			val parentScale = rest?.scale ?: 1f
+			val grid = reparented.geometryGrid
 			reparented.copy(
-				geometryGrid = KeyformGrid(
-					grid.axes,
-					grid.cells.map { cell ->
-						val scratch = FloatArray(2)
-						mapper.map(cell.form.originX, cell.form.originY, scratch)
-						KeyformCell(
-							cell.coordinate,
-							RotationPivotForm(
-								scratch[0],
-								scratch[1],
-								cell.form.angle + parentAngle,
-								cell.form.scale * parentScale,
-							),
-						)
-					},
-				),
+				baseAngle = parentAngle + reparented.baseAngle,
+				geometryGrid = grid?.let {
+					KeyformGrid(
+						it.axes,
+						it.cells.map { cell ->
+							val scratch = FloatArray(2)
+							mapper.map(cell.form.originX, cell.form.originY, scratch)
+							KeyformCell(
+								cell.coordinate,
+								RotationPivotForm(
+									scratch[0],
+									scratch[1],
+								cell.form.angle,
+									cell.form.scale * parentScale,
+								),
+							)
+						},
+					)
+				},
 				blendShapes = reparented.blendShapes.map { binding ->
 					binding.copy(
 						forms = binding.forms.map { form ->
@@ -262,7 +269,7 @@ private fun mapDeformerThrough(deformer: Deformer, grandParent: DeformerId?, map
 								RotationForm(
 									scratch[0],
 									scratch[1],
-									it.angle + parentAngle,
+									it.angle,
 									it.scale * parentScale,
 									it.flipX,
 									it.flipY,
@@ -291,12 +298,14 @@ private fun mapDeformerThrough(deformer: Deformer, grandParent: DeformerId?, map
 fun PuppetModel.withDeformerDeleted(id: DeformerId): PuppetModel {
 	val deformer = deformers.firstOrNull { it.id == id } ?: return this
 	val grandParent = deformer.parent
-	val mapper = restLocalMapper(deformer)
+	val defaults = parameters.associate { it.id to it.default }
+	val defaultValue: (ParameterId) -> Float = { defaults[it] ?: 0f }
+	val mapper = restLocalMapper(deformer, defaultValue)
 	val deletedRotation = deformer as? Deformer.Rotation
 	val updatedDeformers =
 		deformers.filter { it.id != id }
 			.map { other ->
-				if (other.parent == id) mapDeformerThrough(other, grandParent, mapper, deletedRotation) else other
+				if (other.parent == id) mapDeformerThrough(other, grandParent, mapper, deletedRotation, defaultValue) else other
 			}
 	val updatedDrawables =
 		drawables.map { drawable ->

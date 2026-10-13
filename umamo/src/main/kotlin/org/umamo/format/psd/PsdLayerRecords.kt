@@ -75,7 +75,26 @@ internal data class PsdLayerRecord(
 	val channels: List<PsdChannelInfo>,
 	// Absolute file offset of this layer's channel image data (assigned after all records are read).
 	val channelDataOffset: Int,
+	/** The user (raster) layer mask, when the layer has one that is enabled. */
+	val userMask: PsdUserMask? = null,
+	/** Import limits for this layer: a vector mask or a feather the decoder does not apply. */
+	val notes: List<String> = emptyList(),
 )
+
+/** A PSD user mask rectangle and the flags that change how its samples hide the layer. */
+internal data class PsdUserMask(
+	val top: Int,
+	val left: Int,
+	val bottom: Int,
+	val right: Int,
+	val defaultColor: Int,
+	val disabled: Boolean,
+	val inverted: Boolean,
+	val relativeToLayer: Boolean,
+) {
+	val width: Int get() = (right - left).coerceAtLeast(0)
+	val height: Int get() = (bottom - top).coerceAtLeast(0)
+}
 
 /**
  * The whole of a PSD relevant to art ingestion: the header, the (optional) indexed palette, and the
@@ -89,6 +108,7 @@ internal data class PsdParse(
 	// non-interleaved (all reds, then all greens, then all blues).  Empty for every other color mode.
 	val colorModeData: ByteArray,
 	val records: List<PsdLayerRecord>,
+	val warnings: List<String> = emptyList(),
 )
 
 internal object PsdLayerRecords {
@@ -127,10 +147,21 @@ internal object PsdLayerRecords {
 		skipLengthPrefixed(buffer) // PSD: Image Resources section (u32 length + data) - not needed here
 
 		// PSD: a flattened file without layers stores an empty Layer and Mask Information section (or an empty
-		// Layer Info inside it); what follows is the merged image, not a layer count.
+		// Layer Info inside it); what follows is the merged image, not a layer count. A 16-bit file often
+		// leaves that layer info empty and stores the real layers in an Lr16 additional-info block.
 		val layerAndMaskLength = buffer.readU32AsInt()
 		if (layerAndMaskLength == 0) return PsdParse(header = header, colorModeData = colorModeData, records = emptyList())
-		if (buffer.readU32AsInt() == 0) return PsdParse(header = header, colorModeData = colorModeData, records = emptyList())
+		require(layerAndMaskLength <= bytes.size - buffer.position) { "PSD layer section is truncated" }
+		val sectionEnd = buffer.position + layerAndMaskLength
+		val layerInfoLength = buffer.readU32AsInt()
+		require(layerInfoLength <= (sectionEnd - buffer.position).toLong()) { "PSD layer info is truncated" }
+		val standardStart = buffer.position
+		val standardEnd = standardStart + layerInfoLength
+		val lr16 = if (header.depth == 16) lr16Range(buffer, standardEnd, sectionEnd) else null
+		val infoStart = lr16?.first ?: standardStart
+		val infoEnd = lr16?.second ?: standardEnd
+		if (infoStart == infoEnd) return PsdParse(header = header, colorModeData = colorModeData, records = emptyList())
+		buffer.position = infoStart
 
 		// PSD: layer count, signed i16; a negative value means the first alpha channel holds the
 		// merged transparency - irrelevant to record parsing, so take the magnitude.
@@ -163,9 +194,10 @@ internal object PsdLayerRecords {
 			buffer.readU8() // PSD: filler (unused)
 
 			// PSD: extra data length (u32) bounds the mask + ranges + name + any additional info.
-			val extraLength = buffer.readU32AsInt()
+			val extraLength = buffer.readU32()
+			require(extraLength <= buffer.bytes.size.toLong() - buffer.position) { "PSD layer extra data is truncated" }
 			val extraDataStart = buffer.position
-			val extraDataEnd = extraDataStart + extraLength
+			val extraDataEnd = extraDataStart + extraLength.toInt()
 			// PSD: folder membership is carried by lsct (Section Divider Setting) in the additional
 			// layer info, scanned out of the whole extra region before we consume mask/ranges/name.
 			val dividerType = findAdditionalInfoInt(buffer, extraDataStart, extraDataEnd, "lsct") ?: 0
@@ -173,7 +205,9 @@ internal object PsdLayerRecords {
 			val layerId = findAdditionalInfoInt(buffer, extraDataStart, extraDataEnd, "lyid")
 			// PSD: the luni block carries the definitive UTF-16BE Unicode layer name (Photoshop 5.0+).
 			val unicodeName = findAdditionalInfoUnicodeString(buffer, extraDataStart, extraDataEnd, "luni")
-			skipLengthPrefixed(buffer) // PSD: layer mask / adjustment data
+			val notes = mutableListOf<String>()
+			val userMask = readLayerMask(buffer, notes)
+			if (channelInfos.any { it.id == -3 }) notes += "Vector mask is not applied"
 			skipLengthPrefixed(buffer) // PSD: layer blending ranges
 			val nameLength = buffer.readU8() // PSD: legacy Pascal-string name length
 			val legacyName = decodeLegacyPsdText(buffer.readBytes(nameLength))
@@ -194,6 +228,8 @@ internal object PsdLayerRecords {
 					layerId = layerId,
 					channels = channelInfos,
 					channelDataOffset = 0, // placeholder; filled in below once the data start is known
+					userMask = userMask,
+					notes = notes,
 				)
 		}
 
@@ -205,10 +241,91 @@ internal object PsdLayerRecords {
 			records.map { record ->
 				val recordOffset = channelDataCursor.toInt()
 				channelDataCursor += record.channels.sumOf { channel -> channel.length }
+				require(channelDataCursor <= infoEnd.toLong() && channelDataCursor <= buffer.bytes.size.toLong()) {
+					"PSD channel data is truncated"
+				}
 				record.copy(channelDataOffset = recordOffset)
 			}
 
-		return PsdParse(header = header, colorModeData = colorModeData, records = withOffsets)
+		return PsdParse(
+			header = header,
+			colorModeData = colorModeData,
+			records = withOffsets,
+			warnings = withOffsets.flatMap { record -> record.notes.map { note -> "${record.name}: $note" } },
+		)
+	}
+
+	/**
+	 * The byte range of an `Lr16` block in the layer-and-mask section, after the standard layer info.
+	 * Photoshop stores 16-bit layer records there and leaves the standard layer info empty.
+	 */
+	private fun lr16Range(buffer: ByteReader, afterLayerInfo: Int, sectionEnd: Int): Pair<Int, Int>? {
+		if (afterLayerInfo + 4 > sectionEnd) return null
+		val global = buffer.u32AsInt(afterLayerInfo).coerceAtLeast(0)
+		val additional = (afterLayerInfo + 4L + global).toInt().coerceAtMost(sectionEnd)
+		return additionalRange(buffer, additional, sectionEnd, "Lr16")
+	}
+
+	/** The payload range of additional-info [key], or null when the block is absent or truncated. */
+	private fun additionalRange(buffer: ByteReader, regionStart: Int, regionEnd: Int, key: String): Pair<Int, Int>? {
+		var scan = regionStart
+		while (scan + 12 <= regionEnd) {
+			val signature = buffer.asciiAt(scan, 4)
+			if ((signature == "8BIM" || signature == "8B64") && buffer.asciiAt(scan + 4, 4) == key) {
+				val length = buffer.u32AsInt(scan + 8)
+				val data = scan + 12
+				if (length < 0 || data.toLong() + length > regionEnd) return null
+				return data to data + length
+			}
+			scan++
+		}
+		return null
+	}
+
+	/**
+	 * Reads the layer-mask block at the cursor. A raster mask is returned so its channel can hide pixels.
+	 * Feather and density are reported and not applied. The cursor moves past the block.
+	 */
+	private fun readLayerMask(buffer: ByteReader, notes: MutableList<String>): PsdUserMask? {
+		val length = buffer.readU32AsInt()
+		require(length >= 0 && length <= buffer.bytes.size - buffer.position) { "PSD layer mask is truncated" }
+		if (length == 0) return null
+		val start = buffer.position
+		val end = start + length
+		if (length < 20) {
+			buffer.position = end
+			return null
+		}
+		val top = buffer.readU32AsInt()
+		val left = buffer.readU32AsInt()
+		val bottom = buffer.readU32AsInt()
+		val right = buffer.readU32AsInt()
+		val defaultColor = buffer.readU8()
+		val flags = buffer.readU8()
+		if ((flags and 0x10) != 0) {
+			fun byte(): Int {
+				require(buffer.position < end) { "PSD layer mask parameters are truncated" }
+				return buffer.readU8()
+			}
+			fun feather(): Double {
+				require(end - buffer.position >= 8) { "PSD layer mask parameters are truncated" }
+				var bits = 0L
+				repeat(8) { bits = (bits shl 8) or byte().toLong() }
+				return Double.fromBits(bits)
+			}
+			// Mask parameters follow the base flags, before the optional real-mask fields.
+			val paramFlags = byte()
+			val density = if ((paramFlags and 0x01) != 0) byte() else 255
+			val rasterFeather = if ((paramFlags and 0x02) != 0) feather() else 0.0
+			val vectorDensity = if ((paramFlags and 0x04) != 0) byte() else 255
+			val vectorFeather = if ((paramFlags and 0x08) != 0) feather() else 0.0
+			if (density != 255 || rasterFeather > 0.0) notes += "Raster mask feather or density is not applied"
+			if (vectorDensity != 255 || vectorFeather > 0.0) notes += "Vector mask feather or density is not applied"
+		}
+		buffer.position = end
+		if ((flags and 0x02) != 0) return null
+		return PsdUserMask(top, left, bottom, right, defaultColor, disabled = false,
+			inverted = (flags and 0x04) != 0, relativeToLayer = (flags and 0x01) != 0)
 	}
 
 	/**
@@ -281,8 +398,9 @@ internal object PsdLayerRecords {
 	 * @param ByteReader buffer Positioned at the 4-byte length field.
 	 */
 	private fun skipLengthPrefixed(buffer: ByteReader) {
-		val length = buffer.readU32AsInt()
-		buffer.position += length
+		val length = buffer.readU32()
+		require(length <= buffer.bytes.size.toLong() - buffer.position) { "PSD block is truncated" }
+		buffer.position += length.toInt()
 	}
 
 	/**

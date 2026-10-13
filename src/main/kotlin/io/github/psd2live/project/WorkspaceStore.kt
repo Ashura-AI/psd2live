@@ -1077,7 +1077,7 @@ internal class WorkspaceStore(
 	}
 
 	internal fun projectRoot(projectId: String): Path {
-		require(projectId.matches(Regex("[A-Za-z0-9._-]+"))) { "Invalid project ID" }
+		require(projectId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]*"))) { "Invalid project ID" }
 		val normalizedRoot = root.toAbsolutePath().normalize()
 		return normalizedRoot.resolve(projectId).normalize().also { path ->
 			require(path.startsWith(normalizedRoot)) { "Project store path escapes its root" }

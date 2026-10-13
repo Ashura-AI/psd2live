@@ -70,13 +70,16 @@ fun ChannelGrids.colorAt(
 	var red = 0f
 	var green = 0f
 	var blue = 0f
+	var contributed = false
 	for (corner in corners) {
 		val color = (cells[corner.linearIndex]?.form as? ChannelValue.Color)?.color ?: continue
+		contributed = true
 		red += corner.weight * color.red
 		green += corner.weight * color.green
 		blue += corner.weight * color.blue
 	}
-	return ColorRgb(red, green, blue)
+	// Every corner missing is an empty sparse track, not a blend toward black.
+	return if (contributed) ColorRgb(red, green, blue) else staticValue
 }
 
 /**
@@ -128,11 +131,13 @@ fun ChannelGrids.scalarOrNull(
 	val corners = gridCorners(grid, paramValue) ?: return null
 	val cells = cellsByLinearIndex(grid)
 	var total = 0f
+	var contributed = false
 	for (corner in corners) {
 		val value = (cells[corner.linearIndex]?.form as? ChannelValue.Scalar)?.value ?: continue
+		contributed = true
 		total += corner.weight * value
 	}
-	return total
+	return if (contributed) total else null
 }
 
 /**

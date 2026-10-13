@@ -1312,6 +1312,13 @@ internal object SkeletonRig {
 	 * from are the ones the runtime will use. A thigh's turn is only right before the thighs carry their
 	 * own pose shapes; the joints below it read the same either way.
 	 */
+	/** How far [reach] stretches a bone of [length]; a zero-length bone keeps scale 1 instead of dividing by it. */
+	private fun scaleTo(reach: Double, length: Double): Float =
+		if (length < 1e-4) 1f else (reach / length).toFloat().takeIf(Float::isFinite) ?: 1f
+
+	private fun finiteRatio(numerator: Float, denominator: Float): Float =
+		if (denominator < 1e-4f) 1f else (numerator / denominator).takeIf(Float::isFinite) ?: 1f
+
 	internal fun solveLegPoses(model: PuppetModel, legs: List<Leg>, stance: BodyStance? = null): Map<String, LegJointPose> {
 		if (legs.isEmpty()) return emptyMap()
 		val centerX = legCenter(legs)
@@ -1341,13 +1348,13 @@ internal object SkeletonRig {
 						}
 						val knee = project(leg.shin.headX, leg.shin.headY)
 						val ankle = project(leg.ankleX.toFloat(), leg.ankleY.toFloat())
-						val thighScale = (hypot(knee[0] - hip[0], knee[1] - hip[1]) / leg.thigh.length).toFloat()
-						val shinScale = (hypot(ankle[0] - knee[0], ankle[1] - knee[1]) / leg.shin.length).toFloat()
+						val thighScale = scaleTo(hypot(knee[0] - hip[0], knee[1] - hip[1]), leg.thigh.length.toDouble())
+						val shinScale = scaleTo(hypot(ankle[0] - knee[0], ankle[1] - knee[1]), leg.shin.length.toDouble())
 						val inheritedScale = scaleOf(thigh) / scaleOf(rest.getValue(thighId) as RotationWorld)
 						val index = pose.keys.indexOfFirst { it == key }
-						weightScales.getValue(leg.thigh.id)[index] = thighScale / inheritedScale
-						weightScales.getValue(leg.shin.id)[index] = shinScale / thighScale
-						leg.foot?.let { weightScales.getValue(it.id)[index] = 1f / shinScale }
+						weightScales.getValue(leg.thigh.id)[index] = finiteRatio(thighScale, inheritedScale)
+						weightScales.getValue(leg.shin.id)[index] = finiteRatio(shinScale, thighScale)
+						leg.foot?.let { weightScales.getValue(it.id)[index] = finiteRatio(1f, shinScale) }
 						SkeletonIk.wrap(SkeletonIk.heading(knee[0] - hip[0], knee[1] - hip[1]) - restHeading(leg.thigh)) to
 							SkeletonIk.wrap(SkeletonIk.heading(ankle[0] - knee[0], ankle[1] - knee[1]) - restHeading(leg.shin))
 					} else legTurns(leg, hip[0].toDouble(), hip[1].toDouble(), centerX, pose == SkeletonPoses.kneesIn)

@@ -73,6 +73,19 @@ data class TextureUpscaleConfig(
     }
 }
 
+/**
+ * Accepts a Python interpreter command. Settings and MCP may point at an interpreter, not an arbitrary program.
+ * The file name must be `python`, `python3`, `py`, or a versioned form such as `python3.12`.
+ */
+internal fun requirePythonExecutable(command: String): String {
+    val name = java.io.File(command).name
+    require(command.none { it == '\u0000' || it == '\n' || it == '\r' } &&
+        name.matches(Regex("""(?i)(?:python\d?(?:\.\d+)?|py)(?:\.exe)?"""))) {
+        "python must name a Python interpreter, not $name"
+    }
+    return command
+}
+
 /** One model load for all cache misses; only one output layer is decoded at a time by the packer. */
 internal object TextureUpscale {
     private val inferenceLock = java.util.concurrent.locks.ReentrantLock()
@@ -155,7 +168,7 @@ internal object TextureUpscale {
                 val manifest = temporary.resolve("tasks.json")
                 Files.writeString(manifest, JsonArray(tasks).toString())
                 val log = temporary.resolve("worker.log")
-                val command = mutableListOf(config.python, "-u", script.toString(), "--repo", repo.toString(),
+                val command = mutableListOf(requirePythonExecutable(config.python), "-u", script.toString(), "--repo", repo.toString(),
                     "--models", models.toString(), "--scale", config.scale.toString(), "--tile", config.tileSize.toString(),
                     "--noise-level", config.noiseLevel.toString(),
                     "--manifest", manifest.toString())

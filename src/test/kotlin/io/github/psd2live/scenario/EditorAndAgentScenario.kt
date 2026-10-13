@@ -311,8 +311,16 @@ class EditorAndAgentScenario {
 		consistent("settings switch")
 		vm.createMotionClip("Wave")
 		consistent("motion")
-		vm.undoHistory(); consistent("undo")
-		vm.redoHistory(); consistent("redo")
+		withContext(Dispatchers.Main) {
+			vm.undoHistory()
+			assertTrue(vm.state.value.workspaceEditBusy, "undo must be tracked while drafts and history settle")
+		}
+		consistent("undo")
+		withContext(Dispatchers.Main) {
+			vm.redoHistory()
+			assertTrue(vm.state.value.workspaceEditBusy, "redo must be tracked while drafts and history settle")
+		}
+		consistent("redo")
 
 		val archive = temp.resolve("figure.psd2live")
 		val saved = vm.saveProjectNow(archive)
