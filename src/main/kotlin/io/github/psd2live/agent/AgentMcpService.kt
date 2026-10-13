@@ -252,7 +252,7 @@ internal fun createAgentMcpServer(workspace: WorkspaceBackend, operations: Works
 
 internal fun createAgentMcpServer(workspace: WorkspaceBackend, catalog: AgentToolCatalog): Server {
 	val server = Server(
-		serverInfo = Implementation("psd2live", "3.4.3"),
+		serverInfo = Implementation("psd2live", "3.4.4"),
 		options = ServerOptions(
 			ServerCapabilities(
 				resources = ServerCapabilities.Resources(subscribe = false, listChanged = false),
