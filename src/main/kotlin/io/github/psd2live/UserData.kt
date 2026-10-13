@@ -23,7 +23,7 @@ internal class UserData(
 		val lockFile = store.resolve(".instance.lock")
 		return try {
 			folders.forEach(::deleteTree)
-			if (held == null) deleteTree(store) else deleteTree(store) { it != lockFile }
+			if (held == null) deleteTree(store) else deleteTree(store) { it == lockFile }
 			clearPreferences()
 			true
 		} finally {
