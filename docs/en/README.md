@@ -232,6 +232,7 @@ Requires JDK 21; Gradle runs through the bundled wrapper. With Rust (cargo, rust
 ./gradlew run
 
 # Generate a model from a PSD on the command line
+python tools/examples/fetch.py --case tml
 ./gradlew run --args="--input examples/tml/psd-input/tml.psd --output build/example-output"
 
 # Export a project to another format, for example GIF

@@ -15,6 +15,7 @@
 ```bash
 ./gradlew run                     # 不带参数：启动 GUI
 ./gradlew run --args="--help"     # 查看 CLI 帮助
+python tools/examples/fetch.py --case tml
 ./gradlew run --args="--input examples/tml/psd-input/tml.psd --output build/example-output"
 ```
 
@@ -86,11 +87,20 @@ Windows 也可以直接运行根目录的 `run-gui.bat`。不带参数启动 GUI
 - Rust 运行时在 `runtime/` 中用 `cargo test`、`cargo build --release` 构建，见[运行时](../spec/RUNTIME.md)。`./gradlew run` 和打包在没有可用 cargo 时，Linux 上会下载 CI（`runtime-prebuilt.yml`）按同一份源码构建的库，按 `runtime/src`、`Cargo.toml`、`Cargo.lock` 的哈希匹配（`./gradlew printRuntimeHash`）并校验 sha256；找不到或离线则回退到内置求值器。`-Ppsd2live.prebuiltRuntime=false` 关闭下载。改 `runtime/` 反复运行时可加 `-Ppsd2live.fastRuntime=true`，关闭 LTO 以大幅缩短编译，生成的库更慢，不要用于打包。
 - 测试套件只保留快速的单元与契约测试，全量 `./gradlew test` 应在 1 分钟内完成。不要加入在示例 PSD（tml、ds）上跑完整流水线、逐步对比冷重放或渲染整幅画面的测试；这类检查写成下面的开发工具，需要时手动运行。
 
+## 外部示例与验收
+
+示例素材、工程和展示输出在 [psd2live-examples](https://github.com/tsunehimatoi/psd2live-examples) 中管理，未单独注明许可证时默认 CC0 1.0。Python 3.11+ 下载命令：`python tools/examples/fetch.py --case tml`；`--all` 下载全部固定案例。文件仍写入 `examples/<id>/`，下载缓存位于 `build/example-assets/`。
+
+主项目的 `tools/examples/fixtures.lock.json` 固定素材版本、下载地址、压缩包及逐文件 SHA-256 与大小。素材升级通过独立修改锁文件进行，不跟随示例仓库最新分支。下载失败、大小或哈希不符会报错。
+
+普通 CI 使用小型合成素材与内部契约测试，不下载大示例。GitHub Actions 的 `Example acceptance` 工作流手动启用，下载固定的 `tml`、`ds`，运行 `ExportGoldenTool` 检查完整生成、导出及 CMO3 导入路径，并要求四个变体的导出与预览报告齐全。报告用于生成链路检查，不替代视觉验收或历史基准比较；发行前可运行并检查上传的报告。MCP 内部回归测试留在主仓库，外部使用案例与发现检查见示例仓库。
+
 ## 开发工具
 
 `src/test/kotlin/io/github/psd2live/tools/` 中是用于目视检查和测量的开发工具。它们写成测试，以便调用流水线内部接口；只有设置 `PSD2LIVE_TOOLS=1` 时才运行，平时的 `./gradlew test` 会跳过。输出写到 `build/tools/`。
 
 ```bash
+python tools/examples/fetch.py --case ds
 PSD2LIVE_TOOLS=1 PSD2LIVE_SAMPLE=ds ./gradlew test --tests "io.github.psd2live.tools.MotionSheetTool.body"
 ```
 

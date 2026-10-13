@@ -232,6 +232,7 @@ JDK 21이 필요하며 Gradle은 저장소에 포함된 Wrapper를 사용합니�
 ./gradlew run
 
 # 명령줄에서 PSD로 모델 생성
+python tools/examples/fetch.py --case tml
 ./gradlew run --args="--input examples/tml/psd-input/tml.psd --output build/example-output"
 
 # 프로젝트를 다른 형식으로 내보내기(예: GIF)

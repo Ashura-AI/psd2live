@@ -52,7 +52,7 @@ PSD2Live 是一套完整的 2D 角色绑定工具链：从分层 PSD 自动生�
 
 ## 能力验证
 
-以下图片基于仓库内的两份示例 PSD（膝盖测试与身体运动动图另用一份长腿角色工程）：两份示例均在导入时选用「完整」预设、未经手工修改，头发与裙摆为烘焙后的模拟。测试图由开发工具与命令行导出结果生成，界面截图取自真实编辑器窗口的渲染帧。
+以下图片基于[示例仓库](https://github.com/tsunehimatoi/psd2live-examples)中的两份 PSD（膝盖测试与身体运动动图另用一份长腿角色工程）：两份示例均在导入时选用「完整」预设、未经手工修改，头发与裙摆为烘焙后的模拟。测试图由开发工具与命令行导出结果生成，界面截图取自真实编辑器窗口的渲染帧。
 
 ### 编辑器
 
@@ -232,6 +232,7 @@ PSD2Live 不依赖 Cubism Editor 或 SDK 运行，但与 Cubism 格式保持兼�
 ./gradlew run
 
 # 命令行直接从 PSD 生成模型
+python tools/examples/fetch.py --case tml
 ./gradlew run --args="--input examples/tml/psd-input/tml.psd --output build/example-output"
 
 # 把工程导出为其他格式，例如 GIF
@@ -255,7 +256,7 @@ PSD2Live 不依赖 Cubism Editor 或 SDK 运行，但与 Cubism 格式保持兼�
 | [变形路径](docs/zh/guide/DEFORM_PATHS.md) | [模拟图文教程](docs/zh/guide/SIMULATION_TUTORIAL.md) | [运行时与导出边界](docs/zh/spec/RUNTIME_EXPORT_ARCHITECTURE_AND_GAPS.md) |
 | [开发与命令行](docs/zh/guide/DEVELOPMENT.md) | [MCP 使用与接口](docs/zh/agent/MCP_AUTHORING.md) | [工程格式](docs/zh/spec/PROJECT_FORMAT.md) · [文档层](docs/zh/spec/DOCUMENT_LAYER.md) |
 
-全部文档见[文档目录](docs/README.md)，示例 PSD 与输出见 [examples](examples/readme.md)，后续方向见[路线图](docs/zh/ROADMAP.md)。
+全部文档见[文档目录](docs/README.md)，示例素材、工程、制作案例、Prompt 与 Skill 见[示例仓库](https://github.com/tsunehimatoi/psd2live-examples)，后续方向见[路线图](docs/zh/ROADMAP.md)。
 
 ## 参与贡献
 
