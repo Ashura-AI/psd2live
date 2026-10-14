@@ -98,6 +98,9 @@ internal fun WorkspaceQueries.inspect(a: JsonObject): JsonObject {
                         put("role", layer.semanticTag); put("side", layer.side)
                         put("type", layer.classificationType); put("parameter", layer.parameterBinding)
                         put("switch_id", layer.switchId)
+                        putJsonArray("tags") { layer.tags.forEach { add(JsonPrimitive(it)) } }
+                        if (layer.pending) put("pending", true)
+                        layer.materialId?.let { put("material_id", it) }
                         put("mesh", queries.layerMeshSettings(layer.id))
                         putJsonArray("bounds") { listOf(layer.opaqueBounds.left, layer.opaqueBounds.top, layer.opaqueBounds.right, layer.opaqueBounds.bottom).forEach { add(JsonPrimitive(it)) } }
                     } }

@@ -23,6 +23,8 @@ data class WorkspaceDocument(
 	 * the automatic atlas budget; the atlas packer reads them through [PipelineConfig.textureOverrides].
 	 */
 	val textureOverrides: Map<String, TextureOverride> = emptyMap(),
+	/** Materials, user tags and generation state ([WorkspaceLayout]); empty in documents written before Layout. */
+	val layout: WorkspaceLayout = WorkspaceLayout.Empty,
 ) {
 	/** [textureOverrides] without entries that change nothing, as stored and hashed. */
 	val storedTextureOverrides: Map<String, TextureOverride>

@@ -37,7 +37,7 @@ internal object WorkspaceJobResultSchemas {
         "workspace_preview_edits" to WorkspaceGeometrySafetySchemas.preview,
         "workspace_preview_regeneration" to regenerationPreview,
     ).apply {
-        for (id in WorkspaceIntentOperations.batches) put(id, batch)
+        for (id in WorkspaceIntentOperations.batches + WorkspaceLayoutOperations.batches) put(id, batch)
         put("preview_pose", requireNotNull(WorkspaceAuthoringResultSchemas.forOperation("preview_pose")))
         put("paint_session_commit", WorkspacePaintSessionSchemas.commit)
         put("swing_preview", WorkspaceSwingSessionSchemas.result)

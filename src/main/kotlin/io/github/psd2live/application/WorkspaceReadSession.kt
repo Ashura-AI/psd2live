@@ -75,13 +75,16 @@ internal class WorkspaceReadSession(
             val id = source.id.raw
             val metadata = source as? WorkspaceSourceMetadata
             val deleted = id in document!!.deletedLayerIds
+            val semantic = WorkspaceLayoutEdits.pending(document, layer.semantic, id)
             WorkspaceLayerSnapshot(id, source.name, source.raster.width, source.raster.height,
-                source.groupPath, source.order, layer.semantic.tag.name.lowercase(), layer.semantic.side.name.lowercase(),
-                layer.semantic.type.name.lowercase(), layer.semantic.parameter, layer.semantic.switchId, layer.semantic.confidence,
+                source.groupPath, source.order, semantic.tag.name.lowercase(), semantic.side.name.lowercase(),
+                semantic.type.name.lowercase(), semantic.parameter, semantic.switchId, semantic.confidence,
                 Bounds(source.bounds.left.toFloat(), source.bounds.top.toFloat(),
                     (source.bounds.left + source.bounds.width).toFloat(), (source.bounds.top + source.bounds.height).toFloat()),
                 layer.bounds, (document.layerVisibility[id] ?: analysis!!.source.isEffectivelyVisible(source)) && !deleted, deleted,
-                metadata?.derived == true, metadata?.sourceAssetId, metadata?.sourceSpatialReferenceId)
+                metadata?.derived == true, metadata?.sourceAssetId, metadata?.sourceSpatialReferenceId,
+                WorkspaceLayoutEdits.tags(document, semantic, id).sorted(), WorkspaceLayoutEdits.isPending(document, id),
+                document.layout.layerMaterials[id])
         }
         // Deleted artwork remains in the immutable source even when the generator omits it from analysis.
         val deleted = if (document == null || analysis == null) emptyList() else deletedLayers(document, analysis, active)
@@ -126,7 +129,8 @@ internal class WorkspaceReadSession(
             val metadata = source as? WorkspaceSourceMetadata
             WorkspaceLayerSnapshot(id, source.name, source.raster.width, source.raster.height, source.groupPath, source.order,
                 semantic.tag.name.lowercase(), semantic.side.name.lowercase(), semantic.type.name.lowercase(), semantic.parameter, semantic.switchId,
-                semantic.confidence, bounds, classified.bounds, false, true, metadata?.derived == true, metadata?.sourceAssetId, metadata?.sourceSpatialReferenceId)
+                semantic.confidence, bounds, classified.bounds, false, true, metadata?.derived == true, metadata?.sourceAssetId, metadata?.sourceSpatialReferenceId,
+                WorkspaceLayoutEdits.tags(document, semantic, id).sorted())
         }
         synchronized(deletedCacheLock) {
             deletedCache = Triple(document, analysis, layers)

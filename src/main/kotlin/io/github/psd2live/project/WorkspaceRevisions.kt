@@ -64,6 +64,8 @@ internal object WorkspaceRevisions {
 			}
 			appendLayers(source)
 		}
+		// Absent for documents without Layout state.
+		append(WorkspaceLayoutCodec.canonical(document.layout))
 	}
 
 	private fun StringBuilder.appendLayers(source: SourceArt) {

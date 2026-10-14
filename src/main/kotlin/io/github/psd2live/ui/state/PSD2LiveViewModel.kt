@@ -2247,7 +2247,7 @@ class PSD2LiveViewModel : AutoCloseable {
             analysis = preview.analysis, previewModel = preview, previewModelDirty = false,
             rigEdits = document.rigEdits, generationSource = document.generationSource,
             meshSource = document.meshSource,
-            textureOverrides = document.textureOverrides,
+            textureOverrides = document.textureOverrides, layout = document.layout,
             layerOverrides = document.layerOverrides, documentLayerVisibility = document.layerVisibility,
             deletedLayerIds = document.deletedLayerIds, parentOverrides = document.parentOverrides, meshOverrides = document.meshOverrides,
             layerVisibility = if (replacing) current.layerVisibility else emptyMap(),
@@ -5790,6 +5790,35 @@ class PSD2LiveViewModel : AutoCloseable {
         }
     }
 
+	/** Sets, adds or removes semantic tags on [layerIds]: the same `layer_tag` edit MCP makes. */
+	fun tagLayers(layerIds: List<String>, set: Set<String>? = null, add: Set<String> = emptySet(), remove: Set<String> = emptySet()) {
+		if (layerIds.isEmpty() || (set == null && add.isEmpty() && remove.isEmpty())) return
+		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return
+		val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace
+		fun strings(values: Collection<String>) = kotlinx.serialization.json.JsonArray(values.map { kotlinx.serialization.json.JsonPrimitive(it) })
+		runWorkspaceCommand { state -> port.applyDocumentEdits(state, tr("layers.tags.summary", layerIds.size), listOf(
+			io.github.psd2live.application.WorkspaceDocumentOperation(io.github.psd2live.application.WorkspaceLayoutEdits.TAG,
+				kotlinx.serialization.json.buildJsonObject {
+					put("layer_ids", strings(layerIds))
+					if (set != null) put("set", strings(set))
+					if (add.isNotEmpty()) put("add", strings(add))
+					if (remove.isNotEmpty()) put("remove", strings(remove))
+				})), MutationAuthor.USER) }
+	}
+
+	/** A layer's variant (none, toggle, switch): the same `layer_set_variant` edit MCP makes. */
+	fun setLayerVariant(layerId: String, variant: io.github.psd2live.core.LayerVariant) {
+		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return
+		val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace
+		runWorkspaceCommand { state -> port.applyDocumentEdits(state, tr("layers.variant.summary"), listOf(
+			io.github.psd2live.application.WorkspaceDocumentOperation(io.github.psd2live.application.WorkspaceLayoutEdits.VARIANT,
+				kotlinx.serialization.json.buildJsonObject {
+					put("layer_id", layerId)
+					put("variant", when (variant.type) { LayerType.PRESET -> "none"; LayerType.TOGGLE -> "toggle"; LayerType.SWITCH -> "switch" })
+					if (variant.type != LayerType.PRESET) { put("parameter", variant.parameter); put("switch_id", variant.switchId) }
+				})), MutationAuthor.USER) }
+	}
+
 	/** Rebuilds [layerId]'s meshes from its current pixels, migrating their bindings (`layer_mesh_rebuild`). */
 	fun rebuildLayerMesh(layerId: String) {
 		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return
@@ -6603,6 +6632,7 @@ class PSD2LiveViewModel : AutoCloseable {
         expectedGenerationSource: SourceArt? = null,
         expectedMeshSource: SourceArt? = null,
         expectedTextureOverrides: Map<String, io.github.psd2live.project.TextureOverride> = emptyMap(),
+        expectedLayout: io.github.psd2live.project.WorkspaceLayout = io.github.psd2live.project.WorkspaceLayout.Empty,
 		layerVisibility: Map<String, Boolean>,
 		deletedLayerIds: Set<String>,
 		layerOverrides: Map<String, LayerClassificationOverride>,
@@ -6614,6 +6644,7 @@ class PSD2LiveViewModel : AutoCloseable {
         generationSource: SourceArt? = null,
         meshSource: SourceArt? = null,
         textureOverrides: Map<String, io.github.psd2live.project.TextureOverride> = emptyMap(),
+        layout: io.github.psd2live.project.WorkspaceLayout = io.github.psd2live.project.WorkspaceLayout.Empty,
         restoreCheckedOutPose: Boolean = false,
 	): Boolean {
 		var applied = false
@@ -6630,6 +6661,7 @@ class PSD2LiveViewModel : AutoCloseable {
                 current.generationSource != expectedGenerationSource ||
                 current.meshSource != expectedMeshSource ||
                 current.textureOverrides != expectedTextureOverrides ||
+                current.layout != expectedLayout ||
                 current.meshOverrides != expectedMeshOverrides ||
                 (expectedSettings.isNotEmpty() && io.github.psd2live.ui.state.WorkspaceStateCodec.settings(current) != expectedSettings)
 			) return@updateState current
@@ -6646,6 +6678,7 @@ class PSD2LiveViewModel : AutoCloseable {
 				generationSource = generationSource,
 				meshSource = meshSource,
                 textureOverrides = textureOverrides,
+                layout = layout,
 				meshOverrides = meshOverrides,
 				selectedLayerId = current.selectedLayerId?.takeIf { selected ->
 					preview.analysis.layers.any { it.source.id.raw == selected } && selected !in deletedLayerIds

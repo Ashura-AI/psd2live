@@ -60,6 +60,11 @@ data class WorkspaceLayerSnapshot(
 	val derived: Boolean = false,
 	val sourceAssetId: String? = null,
 	val sourceSpatialReferenceId: String? = null,
+	/** The layer's semantic tags: its classification's words and the user's own ([io.github.psd2live.core.LayerTags]). */
+	val tags: List<String> = emptyList(),
+	/** Placed or reclassified since the last generation ([WorkspaceGeneration]). */
+	val pending: Boolean = false,
+	val materialId: String? = null,
 )
 
 data class WorkspaceHistoryNodeSnapshot(

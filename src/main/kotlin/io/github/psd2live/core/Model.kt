@@ -320,6 +320,9 @@ data class LayerClassificationOverride(
 		parameter = "",
 		switchId = 0,
 	)
+
+	/** Factories over semantic tags live beside [LayerTags]. */
+	companion object
 }
 
 /**

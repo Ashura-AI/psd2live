@@ -567,9 +567,9 @@ internal fun LayersTableView(
 		) {
 			Text(text = tr("layers.header.number"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, modifier = Modifier.width(26.dp).padding(start = 2.dp))
 			Text(text = tr("layers.header.name"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, modifier = Modifier.weight(1.0f))
-			Text(text = tr("layers.header.type"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, modifier = Modifier.width(76.dp).padding(horizontal = 2.dp))
-			Text(text = tr("layers.header.binding"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, modifier = Modifier.weight(1.1f).padding(horizontal = 2.dp))
-			Text(text = tr("layers.header.paramId"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, modifier = Modifier.width(52.dp).padding(horizontal = 2.dp))
+			Text(text = tr("layers.header.tags"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, modifier = Modifier.weight(1.3f).padding(horizontal = 2.dp))
+			Text(text = tr("layers.header.variant"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, modifier = Modifier.width(64.dp).padding(horizontal = 2.dp))
+			Text(text = tr("layers.header.paramId"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, modifier = Modifier.width(78.dp).padding(horizontal = 2.dp))
 			Spacer(Modifier.width(22.dp))
 		}
 
@@ -590,7 +590,8 @@ internal fun LayersTableView(
 					val layerId = layer.source.id.raw
 					val isSelected = state.selectedLayerId == layerId || layerId in state.selectedLayerIds
 					val isVisible = state.isLayerVisible(layerId, layer.source.visible)
-					val override = state.layerOverrides[layerId]
+					// A classification waiting for the next generation shows over the one the rig reads.
+					val override = state.layout.generation.pendingClassifications[layerId] ?: state.layerOverrides[layerId]
 					val currentType = override?.type ?: layer.semantic.type
 					val currentTag = override?.tag ?: layer.semantic.tag
 					val currentSide = override?.side ?: layer.semantic.side
@@ -660,7 +661,16 @@ internal fun LayersTableView(
 							}
 						}
 
-						// 1. Type Dropdown (预设 / 开关差分 / 切换差分)
+						// 1. Semantic tags: the part and side words the generators read and the user's own (`layer_tag`).
+						val currentTags = io.github.psd2live.core.LayerTags.of(currentTag, currentSide) + state.layout.layerTags[layerId].orEmpty()
+						LayerTagCell(
+							tags = currentTags,
+							pending = layerId in state.layout.generation.pendingClassifications,
+							onSet = { next -> viewModel.tagLayers(listOf(layerId), set = next) },
+							modifier = Modifier.weight(1.3f).padding(horizontal = 2.dp),
+						)
+
+						// 2. Variant (none / toggle / switch): not a semantic, kept beside the tags.
 						CompactDropdown(
 							items = LayerType.entries,
 							selectedItem = currentType,
@@ -677,32 +687,26 @@ internal fun LayersTableView(
 								)
 							},
 							itemLabel = { it.localizedName() },
-							modifier = Modifier.width(76.dp).padding(horizontal = 2.dp),
+							modifier = Modifier.width(64.dp).padding(horizontal = 2.dp),
 							height = 20.dp,
 						)
 
-						// 2. Parameter Binding (参数关联 / 预设部件)
+						// 3. The variant's parameter, and a switch's choice.
 						when (currentType) {
 							LayerType.PRESET -> {
-								CompactDropdown(
-									items = SemanticTag.entries,
-									selectedItem = currentTag,
-									onItemSelected = { nextTag ->
-										viewModel.setLayerClassification(
-											layerId,
-											LayerClassificationOverride(
-												type = LayerType.PRESET,
-												tag = nextTag,
-												side = currentSide,
-												parameter = currentParam,
-												switchId = currentSwitchId,
-											),
-										)
-									},
-									itemLabel = { it.localizedName() },
-									modifier = Modifier.weight(1.1f).padding(horizontal = 2.dp),
-									height = 20.dp,
-								)
+								Box(
+									modifier = Modifier
+										.width(78.dp)
+										.height(20.dp)
+										.padding(horizontal = 2.dp),
+									contentAlignment = Alignment.Center,
+								) {
+									Text(
+										text = "-",
+										style = typography.caption.copy(fontSize = 11.sp),
+										color = colors.textDisabled,
+									)
+								}
 							}
 							LayerType.TOGGLE -> {
 								CompactTextField(
@@ -722,7 +726,7 @@ internal fun LayersTableView(
 									placeholder = tr("layers.param.placeholder.toggle"),
 									onEditStart = { viewModel.beginEditorField("classification.$layerId.parameter") },
 									onEditEnd = { viewModel.endEditorField("classification.$layerId.parameter") },
-									modifier = Modifier.weight(1.1f).padding(horizontal = 2.dp),
+									modifier = Modifier.width(78.dp).padding(horizontal = 2.dp),
 									height = 20.dp,
 								)
 							}
@@ -744,51 +748,9 @@ internal fun LayersTableView(
 									existingParams = existingSwitchParams,
 									onEditStart = { viewModel.beginEditorField("classification.$layerId.parameter") },
 									onEditEnd = { viewModel.endEditorField("classification.$layerId.parameter") },
-									modifier = Modifier.weight(1.1f).padding(horizontal = 2.dp),
+									modifier = Modifier.width(50.dp).padding(horizontal = 2.dp),
 									height = 20.dp,
 								)
-							}
-						}
-
-						// 3. Associated ID / Side (关联 ID / 侧别)
-						when (currentType) {
-							LayerType.PRESET -> {
-								CompactDropdown(
-									items = Side.entries,
-									selectedItem = currentSide,
-									onItemSelected = { nextSide ->
-										viewModel.setLayerClassification(
-											layerId,
-											LayerClassificationOverride(
-												type = LayerType.PRESET,
-												tag = currentTag,
-												side = nextSide,
-												parameter = currentParam,
-												switchId = currentSwitchId,
-											),
-										)
-									},
-									itemLabel = { it.localizedName() },
-									modifier = Modifier.width(52.dp).padding(horizontal = 2.dp),
-									height = 20.dp,
-								)
-							}
-							LayerType.TOGGLE -> {
-								Box(
-									modifier = Modifier
-										.width(52.dp)
-										.height(20.dp)
-										.padding(horizontal = 2.dp),
-									contentAlignment = Alignment.Center,
-								) {
-									Text(
-										text = "-",
-										style = typography.caption.copy(fontSize = 11.sp),
-										color = colors.textDisabled,
-									)
-								}
-							}
-							LayerType.SWITCH -> {
 								CompactTextField(
 									value = currentSwitchId.toString(),
 									onEditStart = { viewModel.beginEditorField("classification.$layerId.switch") },
@@ -806,7 +768,7 @@ internal fun LayersTableView(
 											),
 										)
 									},
-									modifier = Modifier.width(52.dp).padding(horizontal = 2.dp),
+									modifier = Modifier.width(28.dp).padding(horizontal = 1.dp),
 									height = 20.dp,
 									isMono = true,
 								)

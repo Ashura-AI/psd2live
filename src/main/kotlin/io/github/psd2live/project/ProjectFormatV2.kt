@@ -68,6 +68,11 @@ internal object ProjectFormatV2 {
 	private val sourceKeys = listOf("canvasWidth", "canvasHeight", "groups", "layers")
 	private val layerKeys = listOf("layerVisibility", "deletedLayerIds", "layerOverrides", "parentOverrides", "meshOverrides", "textureOverrides")
 	private val sourceParts = mapOf("generationSource" to "generation-source", "meshSource" to "mesh-source", "placementSource" to "placement-source")
+	/**
+	 * Layout state ([WorkspaceLayoutCodec]): one node kind per key. Builds without Layout reject the unknown kinds
+	 * rather than open the document without its materials.
+	 */
+	private val layoutParts = mapOf(WorkspaceLayoutCodec.LAYOUT to "layout", WorkspaceLayoutCodec.MATERIALS to "materials")
 	private val clipKeys = listOf("motions", "motionPresets")
 	private const val JOURNAL = "authoringJournal"
 	private const val OVERRIDE = "generated_override"
@@ -162,7 +167,7 @@ internal object ProjectFormatV2 {
 				clips = content(root, "document/clips", buildJsonObject { put("schema", NODE_SCHEMA); put("kind", "clips"); put("value", value) })
 			}
 		}
-		val known = sourceKeys + layerKeys + "settings" + sourceParts.keys + "rigEdits"
+		val known = sourceKeys + layerKeys + "settings" + sourceParts.keys + layoutParts.keys + "rigEdits"
 		nodes["document"] = node(root, "document", JsonObject(snapshot.filterKeys { it !in known }))
 		val rigObjects = io.github.psd2live.core.RigCheckpoint.hashes(snapshot["rigEdits"]?.jsonObject?.get(JOURNAL)?.jsonArray.orEmpty()
 			.mapNotNull { it as? JsonObject }).distinct()
@@ -183,6 +188,7 @@ internal object ProjectFormatV2 {
 		subset(layerKeys).takeIf { it.isNotEmpty() }?.let { add("layers" to it) }
 		subset(listOf("settings")).takeIf { it.isNotEmpty() }?.let { add("settings" to it) }
 		for ((key, kind) in sourceParts) snapshot[key]?.let { add(kind to JsonObject(mapOf(key to it))) }
+		for ((key, kind) in layoutParts) snapshot[key]?.let { add(kind to JsonObject(mapOf(key to it))) }
 	}
 
 	/**
@@ -238,7 +244,7 @@ internal object ProjectFormatV2 {
 		val schema = index["schema"]?.jsonPrimitive?.intOrNull
 		require(schema in REVISION_SCHEMA..REVISION_SCHEMA_RIG) { "Unsupported revision schema" }
 		val nodes = index.getValue("nodes").jsonObject.mapValues { it.value.jsonPrimitive.content }
-		val unknown = nodes.keys - (listOf("source", "layers", "settings", "rig", "journal", "document") + sourceParts.values).toSet()
+		val unknown = nodes.keys - (listOf("source", "layers", "settings", "rig", "journal", "document") + sourceParts.values + layoutParts.values).toSet()
 		require(unknown.isEmpty()) { "Unsupported document nodes: $unknown" }
 		val payloads = index["payloads"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty()
 		require(if (schema == REVISION_SCHEMA_RIG) true else (schema == REVISION_SCHEMA_PAYLOADS) == payloads.isNotEmpty()) {
@@ -273,6 +279,7 @@ internal object ProjectFormatV2 {
 		value("document")?.let(snapshot::putAll)
 		for (kind in listOf("settings", "source")) value(kind)?.let(snapshot::putAll)
 		for (kind in sourceParts.values) value(kind)?.let(snapshot::putAll)
+		for (kind in layoutParts.values) value(kind)?.let(snapshot::putAll)
 		value("layers")?.let(snapshot::putAll)
 		val rig = value("rig")?.getValue("rigEdits")?.jsonObject
 		if (rig != null) {

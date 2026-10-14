@@ -584,6 +584,7 @@ class DesktopWorkspace(
             generationSource = capture.document.generationSource,
             meshSource = capture.document.meshSource,
             textureOverrides = capture.document.textureOverrides,
+            layout = capture.document.layout,
             projectDirty = capture.dirty || ui.projectDirty)
         val workspaces = persisted.workspaces.map { workspace ->
             val authored = PreviewSessions.read(capture.model.rig.puppet.parameters, capture.auxiliary, workspace.id)
@@ -853,6 +854,7 @@ class DesktopWorkspace(
                 generationSource = document.generationSource,
                 meshSource = document.meshSource,
                 textureOverrides = document.textureOverrides,
+                layout = document.layout,
                 ), expected, dirty = dirty)
             }
             discardEditorQueues()
@@ -1779,6 +1781,7 @@ class DesktopWorkspace(
             expectedGenerationSource = expected.generationSource,
             expectedMeshSource = expected.meshSource,
             expectedTextureOverrides = expected.textureOverrides,
+            expectedLayout = expected.layout,
             expectedSettings = expected.settings,
 			expectedMeshOverrides = expected.meshOverrides,
 			layerVisibility = next.layerVisibility,
@@ -1789,6 +1792,7 @@ class DesktopWorkspace(
             generationSource = next.generationSource,
             meshSource = next.meshSource,
             textureOverrides = next.textureOverrides,
+            layout = next.layout,
 			status = status,
             settings = next.settings,
 			meshOverrides = next.meshOverrides,

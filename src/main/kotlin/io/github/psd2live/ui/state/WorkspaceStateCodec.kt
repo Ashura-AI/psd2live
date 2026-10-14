@@ -38,6 +38,7 @@ internal object WorkspaceStateCodec {
         generationSource = state.generationSource,
         meshSource = state.meshSource,
         textureOverrides = state.textureOverrides,
+        layout = state.layout,
     )
     /**
      * Stamped into every workspace this build writes. A file that predates the selection-bounds

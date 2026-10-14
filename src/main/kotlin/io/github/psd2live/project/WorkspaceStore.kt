@@ -525,6 +525,10 @@ internal class WorkspaceStore(
 		}
 		// Written only when a layer has one, so earlier documents keep their stored form.
 		TextureOverrideCodec.encodeAll(document.textureOverrides)?.let { put(TEXTURE_OVERRIDES, it) }
+		// Likewise only for documents with Layout state.
+		WorkspaceLayoutCodec.encodeLayout(document.layout)?.let { put(WorkspaceLayoutCodec.LAYOUT, it) }
+		WorkspaceLayoutCodec.encodeMaterials(document.layout.materials) { persistRaster(project, it.rgba, it.width, it.height) }
+			?.let { put(WorkspaceLayoutCodec.MATERIALS, it) }
 		putJsonObject("rigEdits") {
 			document.rigEdits.importedCmo3?.let { put("importedCmo3", it) }
 			put("importedLayerIds", JsonObject(document.rigEdits.importedLayerIds.mapValues { JsonPrimitive(it.value) }))
@@ -802,6 +806,9 @@ internal class WorkspaceStore(
             settings = value["settings"] as? JsonObject ?: JsonObject(emptyMap()),
 			meshOverrides = meshOverrides,
 			textureOverrides = TextureOverrideCodec.decodeAll(value[TEXTURE_OVERRIDES]?.jsonObject),
+			layout = WorkspaceLayoutCodec.decode(value[WorkspaceLayoutCodec.LAYOUT]?.jsonObject, value[WorkspaceLayoutCodec.MATERIALS]?.jsonObject) { hash, width, height ->
+				rasterCache.getOrPut(hash) { loadRaster(project, hash, width, height) }
+			},
 		)
 	}
 
@@ -1074,6 +1081,8 @@ internal class WorkspaceStore(
 				val height = layer["rasterHeight"]?.jsonPrimitive?.intOrNull ?: continue
 				blobs.getOrPut(hash) { Blob(hash, width, height) }
 			}
+			for ((hash, width, height) in WorkspaceLayoutCodec.rasterRefs(snapshot[WorkspaceLayoutCodec.MATERIALS] as? JsonObject))
+				blobs.getOrPut(hash) { Blob(hash, width, height) }
 		}
 		if (blobs.isEmpty()) return emptyMap()
 		val largest = blobs.values.maxOf { it.width.toLong() * it.height * 4 }

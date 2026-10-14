@@ -614,6 +614,8 @@ data class PSD2LiveState(
 	val meshSource: org.umamo.format.art.SourceArt? = null,
 	/** Projection of the document's per-layer texture overrides; kept so GUI commits do not drop them. */
 	val textureOverrides: Map<String, io.github.psd2live.project.TextureOverride> = emptyMap(),
+	/** Projection of the document's Layout state (materials, user tags, generation); changed only through commands. */
+	val layout: io.github.psd2live.project.WorkspaceLayout = io.github.psd2live.project.WorkspaceLayout.Empty,
 	/** Projection of the optional `atlas` budget setting; null keeps the legacy atlasSize/texturePadding behaviour. */
 	val atlasBudget: io.github.psd2live.core.AtlasBudget? = null,
 	/** Projection of the optional stored atlas arrangement; kept so GUI commits do not drop it. */
