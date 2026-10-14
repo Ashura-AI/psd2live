@@ -59,6 +59,8 @@ internal object WorkspaceMaterialFiles {
         val origin: String = "",
         val opacity: Float = 1f,
         val visible: Boolean = true,
+        /** The index in [folder] of the folder that stands for the file the entry was read from (a PSD or CMO3), or -1. */
+        val fileFolder: Int = -1,
     )
 
     /**
@@ -80,8 +82,8 @@ internal object WorkspaceMaterialFiles {
             val data = Files.readAllBytes(path)
             val origin = path.name
             return when (path.extension.lowercase()) {
-                "psd" -> layered(PsdReader.read(data), folder + name(path.nameWithoutExtension, "psd"), origin, checkCancelled)
-                "cmo3" -> cmo3(data, folder + name(path.nameWithoutExtension, "cmo3"), origin, checkCancelled)
+                "psd" -> layered(PsdReader.read(data), folder + name(path.nameWithoutExtension, "psd"), origin, checkCancelled).map { it.copy(fileFolder = folder.size) }
+                "cmo3" -> cmo3(data, folder + name(path.nameWithoutExtension, "cmo3"), origin, checkCancelled).map { it.copy(fileFolder = folder.size) }
                 "svg" -> listOf(vector(data.decodeToString(), name(path.nameWithoutExtension, "svg"), folder, origin))
                 else -> listOf(Entry(name(path.nameWithoutExtension, "image"), folder, MaterialKind.BITMAP, bitmap(data, path.name), origin = origin))
             }

@@ -35,7 +35,7 @@ internal class WorkspaceSourceImporter(
             prepare = {
                 require(path.isAbsolute && Files.isRegularFile(path) && path.fileName.toString().endsWith(".psd", true)) { "Provide an absolute local PSD path" }
                 readPsd(path) to emptyMap()
-            }, project = project, sourceAuxiliary = sourceAuxiliary, materialFolder = displayName.substringBeforeLast('.'))
+            }, project = project, sourceAuxiliary = sourceAuxiliary, materialFolder = displayName)
     }
 
     suspend fun createArtwork(arguments: JsonObject, projectId: String?, state: String, discardUnsaved: Boolean = false,

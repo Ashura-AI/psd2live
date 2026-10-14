@@ -107,7 +107,7 @@ internal object WorkspaceLayoutOperations {
     val listSchema: JsonObject by lazy {
         val s = WorkspaceResultSchema
         val tags = s.array(s.string())
-        val folder = s.obj(mapOf("id" to s.handle(), "name" to s.string(), "parent_id" to s.handle(), "tags" to tags,
+        val folder = s.obj(mapOf("id" to s.handle(), "name" to s.string(), "parent_id" to s.handle(), "tags" to tags, "origin" to s.string(),
             "folders" to s.integer(0), "items" to s.integer(0)), setOf("id", "name", "tags", "folders", "items"))
         val item = s.obj(mapOf("id" to s.handle(), "name" to s.string(), "folder_id" to s.handle(), "kind" to s.choices("bitmap", "vector"),
             "width" to s.integer(1), "height" to s.integer(1), "tags" to tags, "origin" to s.string(), "placement" to s.vector(4),

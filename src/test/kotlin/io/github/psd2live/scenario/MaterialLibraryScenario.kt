@@ -32,6 +32,7 @@ class MaterialLibraryScenario {
 		val library = now.document.layout.materials
 		val figure = library.folders.single { it.name == "figure" && it.parentId == null }
 		expect("imported", library.items.count { it.folderId == figure.id } == now.document.source.layers.size) { "the PSD folder holds ${library.items.count { it.folderId == figure.id }} items" }
+		expect("imported", figure.origin == psd.fileName.toString()) { "the PSD folder does not name its file: '${figure.origin}'" }
 		val vector = library.items.single { it.name == "badge" }
 		expect("imported", vector.kind == MaterialKind.VECTOR && vector.raster.width == 40 && vector.raster.height == 20) { "the SVG reads as ${vector.kind} ${vector.raster.width}x${vector.raster.height}" }
 		val hairItem = library.items.single { it.folderId == figure.id && it.name == "front_hair" }
@@ -80,6 +81,7 @@ class MaterialLibraryScenario {
 		expect("generated", !WorkspaceLayoutPreview.isPendingMesh(mesh("badge"))) { "the badge did not generate" }
 		reopen()
 		expect("reopened", now.document.layout.materials.items.size == entries.size) { "the saved project lost materials" }
+		expect("reopened", now.document.layout.materials.folder(figure.id)?.origin == figure.origin) { "the saved project lost the folder's file" }
 
 		val state = WorkspaceLayoutState(now.document.layout, now.document.source.layers, emptySet(), now.document.deletedLayerIds,
 			now.document.source.widthPx, now.document.source.heightPx)

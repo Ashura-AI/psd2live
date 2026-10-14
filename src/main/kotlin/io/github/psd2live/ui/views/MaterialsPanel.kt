@@ -5,6 +5,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -28,6 +30,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -55,7 +59,6 @@ import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.utils.NativeFilePicker
 import io.github.psd2live.ui.utils.rgbaImageBitmap
-import io.github.psd2live.ui.views.texture.FloatingMenu
 import io.github.psd2live.ui.views.texture.FloatingMenuDivider
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
 import io.github.psd2live.ui.views.texture.FloatingMenuSection
@@ -173,11 +176,23 @@ private sealed interface MaterialEntry {
 	data class Item(val item: MaterialItem) : MaterialEntry { override val id get() = item.id; override val name get() = item.name }
 }
 
+/** The kind of file a folder was read from, by its extension: "PSD", "CMO3", or null for a plain folder. */
+private fun fileKind(folder: MaterialFolder): String? = folder.origin.substringAfterLast('.', "").uppercase().takeIf { it == "PSD" || it == "CMO3" }
+
+/** A line of the material context menu. */
+private sealed interface MenuLine {
+	data class Section(val text: String) : MenuLine
+	data object Rule : MenuLine
+	data class Action(val label: String, val run: () -> Unit, val enabled: Boolean = true, val hint: String? = null, val trailing: String? = null) : MenuLine
+}
+
 /**
- * The material browser: one view of the open folder - its folders, then its items, as a grid or a list - under a path
- * bar that walks back up. Double-click opens a folder, or an item in the material window to look at and paint; an item
- * or folder dragged onto an edit canvas is placed where it lands, onto a folder tile or a path segment it moves there.
- * Files dropped from the system import into the folder under the pointer. Every change is one undoable document edit.
+ * The material browser: a slim folder tree beside the open folder's contents - its folders, then its items, as a grid
+ * or a list - under a path bar that walks back up; the divider between them drags to share the width. Double-click
+ * opens a folder, or an item in the material window to look at and paint; an item or folder dragged onto an edit
+ * canvas is placed where it lands, onto a folder (tile, tree row or path segment) it moves there. Files dropped from
+ * the system import into the folder under the pointer. A folder read from a PSD or CMO3 shows that file. Every change
+ * is one undoable document edit.
  */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -185,6 +200,7 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val window = LocalAwtWindow.current
+	val density = androidx.compose.ui.platform.LocalDensity.current
 	val library = state.layout.materials
 	val references = remember(state.layout.layerMaterials, state.analysis?.source) {
 		val present = state.analysis?.source?.layers?.mapTo(HashSet()) { it.id.raw }.orEmpty() - state.deletedLayerIds
@@ -196,14 +212,21 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 	var query by remember { mutableStateOf("") }
 	var thumb by remember { mutableStateOf(88f) }
 	var selected by remember { mutableStateOf<String?>(null) }
-	var menu by remember { mutableStateOf<String?>(null) }
+	var showTree by remember { mutableStateOf(true) }
+	var treeWidth by remember { mutableStateOf(140f) }
+	val expanded = remember { mutableStateMapOf<String, Boolean>() }
+	// The open folder's ancestors stay unfolded in the tree.
+	LaunchedEffect(folderId) { library.ancestry(folderId).drop(1).forEach { expanded[it.id] = true } }
+	var menuShown by remember { mutableStateOf(false) }
+	var menuTarget by remember { mutableStateOf<String?>(null) }
+	var menuAt by remember { mutableStateOf(Offset.Zero) }
 	var renaming by remember { mutableStateOf<String?>(null) }
 	var resolution by remember { mutableStateOf<String?>(null) }
 	val loaded = state.analysis != null
 
-	// Where each folder target sits in the window: folder tiles and rows, and the path segments (ROOT for the top).
+	// Where each folder target sits in the window, by slot ("tile:", "tree:", "crumb:" and the folder id, ROOT for the top).
 	val targets = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
-	fun targetAt(at: Offset): String? = targets.entries.firstOrNull { at in it.value }?.key
+	fun targetAt(at: Offset): String? = targets.entries.firstOrNull { at in it.value }?.key?.substringAfter(':')
 	var panelCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
 	DisposableEffect(panelCoordinates) {
 		vm.materialsImportHitTest = hit@{ windowX, windowY ->
@@ -234,9 +257,14 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 		if (accepts(carried.id, target) && into != from) vm.moveMaterials(listOf(carried.id), into)
 		return true
 	}
-	fun track(id: String) = Modifier.onGloballyPositioned { c ->
-		if (c.isAttached) targets[id] = androidx.compose.ui.geometry.Rect(c.positionInWindow(),
+	fun track(slot: String) = Modifier.onGloballyPositioned { c ->
+		if (c.isAttached) targets[slot] = androidx.compose.ui.geometry.Rect(c.positionInWindow(),
 			androidx.compose.ui.geometry.Size(c.size.width.toFloat(), c.size.height.toFloat()))
+	}
+	fun openMenu(id: String, root: Offset) {
+		selected = id; menuTarget = id
+		menuAt = root - (panelCoordinates?.takeIf { it.isAttached }?.positionInRoot() ?: Offset.Zero)
+		menuShown = true
 	}
 
 	fun entries(): List<MaterialEntry> {
@@ -249,109 +277,174 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 		return folders.map { MaterialEntry.Folder(it) } + items.map { MaterialEntry.Item(it) }
 	}
 	val shown = entries()
-	// Targets of another folder's tiles do not linger.
-	val live = remember(shown, folderId) { shown.mapTo(HashSet()) { it.id } + ROOT + library.ancestry(folderId).map { it.id } }
+	val treeRows = flattenFolders(library, expanded)
+	// Targets that no longer show do not linger.
+	val live = remember(shown, treeRows, folderId, showTree) {
+		buildSet {
+			shown.forEach { add("tile:${it.id}") }
+			if (showTree) { add("tree:$ROOT"); treeRows.forEach { add("tree:${it.first.id}") } }
+			add("crumb:$ROOT"); library.ancestry(folderId).forEach { add("crumb:${it.id}") }
+		}
+	}
 	SideEffect { targets.keys.retainAll { it in live } }
+	// What each folder holds directly, for its tile's count.
+	val held = remember(library) { library.folders.groupingBy { it.parentId }.eachCount() to library.items.groupingBy { it.folderId }.eachCount() }
+	fun counts(id: String) = (held.first[id] ?: 0) + (held.second[id] ?: 0)
 
-	Column(Modifier.fillMaxSize().onGloballyPositioned { panelCoordinates = it }) {
-		val labels = listOf(tr("materials.import"), tr("materials.folder.new"))
-		PanelToolbar(labels = labels, iconCount = 3, search = PanelSearch(query, { query = it }, tr("materials.search")), reservedWidth = 40.dp) { labelsShown ->
-			PanelToolButton(labels[0], showLabel = labelsShown > 0, enabled = loaded, tooltip = tr("materials.import.tip"), onClick = {
-				val files = NativeFilePicker.chooseMaterialFiles(window)
-				if (files.isNotEmpty()) vm.importMaterials(files.map { it.toPath() }, folderId)
-			}) { IconAdd(Modifier.size(11.dp), colors.textPrimary) }
-			PanelToolButton(labels[1], showLabel = labelsShown > 1, enabled = loaded, tooltip = tr("materials.folder.new"), onClick = {
-				vm.createMaterialFolder(uniqueName(library, folderId, tr("materials.folder.default")), folderId)
-			}) { IconFolder(Modifier.size(12.dp), colors.textPrimary) }
-			Spacer(Modifier.weight(1f))
-			PanelToolButton(tr("materials.view.grid"), showLabel = false, enabled = true, tooltip = tr("materials.view.grid"), active = view == MaterialView.GRID,
-				onClick = { view = MaterialView.GRID }) { GridGlyph(colors.textPrimary) }
-			PanelToolButton(tr("materials.view.list"), showLabel = false, enabled = true, tooltip = tr("materials.view.list"), active = view == MaterialView.LIST,
-				onClick = { view = MaterialView.LIST }) { ListGlyph(colors.textPrimary) }
-		}
-		// The path to the open folder: back up a level, or to any folder above; each segment takes a dragged material.
-		Row(Modifier.fillMaxWidth().height(24.dp).background(colors.windowBackground).padding(horizontal = 4.dp),
-			verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-			val parent = folderId?.let { library.folder(it)?.parentId }
-			val up = folderId != null && query.isBlank()
-			Box(Modifier.size(20.dp).clip(RoundedCornerShape(3.dp)).clickable(enabled = up) { folderId = parent }, contentAlignment = Alignment.Center) {
-				Text("↑", color = if (up) colors.textPrimary else colors.textMuted.copy(alpha = 0.4f), fontSize = 12.sp)
+	Box(Modifier.fillMaxSize().onGloballyPositioned { panelCoordinates = it }) {
+		Column(Modifier.fillMaxSize()) {
+			val labels = listOf(tr("materials.import"), tr("materials.folder.new"))
+			PanelToolbar(labels = labels, iconCount = 4, search = PanelSearch(query, { query = it }, tr("materials.search")), reservedWidth = 60.dp) { labelsShown ->
+				PanelToolButton(labels[0], showLabel = labelsShown > 0, enabled = loaded, tooltip = tr("materials.import.tip"), onClick = {
+					val files = NativeFilePicker.chooseMaterialFiles(window)
+					if (files.isNotEmpty()) vm.importMaterials(files.map { it.toPath() }, folderId)
+				}) { IconAdd(Modifier.size(11.dp), colors.textPrimary) }
+				PanelToolButton(labels[1], showLabel = labelsShown > 1, enabled = loaded, tooltip = tr("materials.folder.new"), onClick = {
+					vm.createMaterialFolder(uniqueName(library, folderId, tr("materials.folder.default")), folderId)
+				}) { IconFolder(Modifier.size(12.dp), colors.textPrimary) }
+				Spacer(Modifier.weight(1f))
+				PanelToolButton(tr("materials.view.tree"), showLabel = false, enabled = true, tooltip = tr("materials.view.tree"), active = showTree,
+					onClick = { showTree = !showTree }) { TreeGlyph(colors.textPrimary) }
+				PanelToolButton(tr("materials.view.grid"), showLabel = false, enabled = true, tooltip = tr("materials.view.grid"), active = view == MaterialView.GRID,
+					onClick = { view = MaterialView.GRID }) { GridGlyph(colors.textPrimary) }
+				PanelToolButton(tr("materials.view.list"), showLabel = false, enabled = true, tooltip = tr("materials.view.list"), active = view == MaterialView.LIST,
+					onClick = { view = MaterialView.LIST }) { ListGlyph(colors.textPrimary) }
 			}
-			if (query.isNotBlank()) Text(tr("materials.searching", query.trim()), color = colors.textMuted, fontSize = 10.5.sp, maxLines = 1,
-				overflow = TextOverflow.Ellipsis)
-			else {
-				Crumb(tr("materials.root"), folderId == null, dropFolder == ROOT, track(ROOT)) { folderId = null }
-				for (folder in library.ancestry(folderId).reversed()) {
-					Text("›", color = colors.textMuted, fontSize = 10.sp)
-					Crumb(folder.name, folder.id == folderId, dropFolder == folder.id, track(folder.id)) { folderId = folder.id }
+			// The path to the open folder: back up a level, or to any folder above; each segment takes a dragged material.
+			Row(Modifier.fillMaxWidth().height(24.dp).background(colors.windowBackground).padding(horizontal = 4.dp),
+				verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+				val parent = folderId?.let { library.folder(it)?.parentId }
+				val up = folderId != null && query.isBlank()
+				Box(Modifier.size(20.dp).clip(RoundedCornerShape(3.dp)).clickable(enabled = up) { folderId = parent }, contentAlignment = Alignment.Center) {
+					Text("↑", color = if (up) colors.textPrimary else colors.textMuted.copy(alpha = 0.4f), fontSize = 12.sp)
 				}
-			}
-		}
-		Divider(color = colors.divider)
-		if (!loaded) {
-			Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-				Text(tr("canvas.preview.empty"), style = typography.caption.copy(fontSize = 11.sp), color = colors.textMuted)
-			}
-			return@Column
-		}
-		Box(Modifier.weight(1f).fillMaxWidth()) {
-			if (shown.isEmpty()) Text(if (query.isBlank()) tr("materials.empty") else tr("materials.noMatch"), style = typography.caption.copy(fontSize = 11.sp),
-				color = colors.textMuted, modifier = Modifier.align(Alignment.Center).padding(12.dp))
-			val select: (MaterialEntry) -> Unit = { entry -> selected = entry.id; if (entry is MaterialEntry.Item) vm.showInMaterialEditor(entry.id) }
-			val open: (MaterialEntry) -> Unit = { entry -> if (entry is MaterialEntry.Folder) { folderId = entry.id; query = "" } else vm.openMaterialEditor(entry.id) }
-			when (view) {
-				MaterialView.GRID -> LazyVerticalGrid(GridCells.Adaptive(thumb.dp + 14.dp), Modifier.fillMaxSize().padding(4.dp)) {
-					items(shown, key = { it.id }) { entry ->
-						MaterialTile(entry, thumb.dp, entry.id == selected, entry.id == dropFolder, references[entry.id].orEmpty().size, vm,
-							if (entry is MaterialEntry.Folder) track(entry.id) else Modifier,
-							{ select(entry) }, { open(entry) }, { select(entry); menu = entry.id }, ::drop, first = entry == shown.first())
-					}
-				}
-				MaterialView.LIST -> LazyColumn(Modifier.fillMaxSize()) {
-					items(shown, key = { it.id }) { entry ->
-						MaterialRow(entry, entry.id == selected, entry.id == dropFolder, references[entry.id].orEmpty().size, vm,
-							if (entry is MaterialEntry.Folder) track(entry.id) else Modifier,
-							{ select(entry) }, { open(entry) }, { select(entry); menu = entry.id }, ::drop)
+				if (query.isNotBlank()) Text(tr("materials.searching", query.trim()), color = colors.textMuted, fontSize = 10.5.sp, maxLines = 1,
+					overflow = TextOverflow.Ellipsis)
+				else {
+					Crumb(tr("materials.root"), folderId == null, dropFolder == ROOT, track("crumb:$ROOT")) { folderId = null }
+					for (folder in library.ancestry(folderId).reversed()) {
+						Text("›", color = colors.textMuted, fontSize = 10.sp)
+						Crumb(folder.name, folder.id == folderId, dropFolder == folder.id, track("crumb:${folder.id}")) { folderId = folder.id }
 					}
 				}
 			}
-			// The context menu of the entry right-clicked, dropping from the panel's top right.
-			val target = menu
-			FloatingMenu(expanded = target != null, onDismiss = { menu = null }, width = 230.dp, alignment = Alignment.TopEnd) {
+			Divider(color = colors.divider)
+			if (!loaded) {
+				Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+					Text(tr("canvas.preview.empty"), style = typography.caption.copy(fontSize = 11.sp), color = colors.textMuted)
+				}
+				return@Column
+			}
+			Row(Modifier.weight(1f).fillMaxWidth()) {
+				if (showTree) {
+					// The folder tree: every folder at a glance, a drop target for files and materials alike.
+					LazyColumn(Modifier.width(treeWidth.dp).fillMaxHeight().background(colors.panelElevated.copy(alpha = 0.35f))) {
+						item(key = ROOT) {
+							var origin by remember { mutableStateOf(Offset.Zero) }
+							FolderRow(tr("materials.root"), null, 0, folderId == null, dropFolder == ROOT, false, null,
+								track("tree:$ROOT").onGloballyPositioned { origin = it.positionInRoot() }, { folderId = null; query = "" }, {}, {})
+						}
+						items(treeRows, key = { it.first.id }) { (folder, depth) ->
+							var origin by remember { mutableStateOf(Offset.Zero) }
+							FolderRow(folder.name, fileKind(folder), depth + 1, folder.id == folderId, dropFolder == folder.id,
+								library.folders.any { it.parentId == folder.id }, expanded[folder.id] == true,
+								track("tree:${folder.id}").onGloballyPositioned { origin = it.positionInRoot() },
+								{ folderId = folder.id; query = "" }, { expanded[folder.id] = expanded[folder.id] != true }, { at -> openMenu(folder.id, origin + at) })
+						}
+					}
+					// The divider drags to share the width between the tree and the contents.
+					val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+					val hovered by interaction.collectIsHoveredAsState()
+					var resizing by remember { mutableStateOf(false) }
+					Box(Modifier.width(5.dp).fillMaxHeight().hoverable(interaction)
+						.pointerHoverIcon(PointerIcon(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.E_RESIZE_CURSOR)))
+						.drawBehind {
+							drawLine(if (hovered || resizing) colors.accent else colors.divider, Offset(size.width / 2, 0f), Offset(size.width / 2, size.height), 1.dp.toPx())
+						}
+						.pointerInput(Unit) {
+							detectDragGestures(onDragStart = { resizing = true }, onDragEnd = { resizing = false }, onDragCancel = { resizing = false }) { change, delta ->
+								change.consume()
+								treeWidth = (treeWidth + delta.x / density.density).coerceIn(72f, 360f)
+							}
+						})
+				}
+				Box(Modifier.weight(1f).fillMaxHeight()) {
+					if (shown.isEmpty()) Text(if (query.isBlank()) tr("materials.empty") else tr("materials.noMatch"), style = typography.caption.copy(fontSize = 11.sp),
+						color = colors.textMuted, modifier = Modifier.align(Alignment.Center).padding(12.dp))
+					val select: (MaterialEntry) -> Unit = { entry -> selected = entry.id; if (entry is MaterialEntry.Item) vm.showInMaterialEditor(entry.id) }
+					val open: (MaterialEntry) -> Unit = { entry -> if (entry is MaterialEntry.Folder) { folderId = entry.id; query = "" } else vm.openMaterialEditor(entry.id) }
+					when (view) {
+						MaterialView.GRID -> LazyVerticalGrid(GridCells.Adaptive(thumb.dp + 14.dp), Modifier.fillMaxSize().padding(4.dp)) {
+							items(shown, key = { it.id }) { entry ->
+								MaterialTile(entry, thumb.dp, entry.id == selected, entry.id == dropFolder, references[entry.id].orEmpty().size,
+									counts(entry.id), vm, if (entry is MaterialEntry.Folder) track("tile:${entry.id}") else Modifier,
+									{ select(entry) }, { open(entry) }, { at -> openMenu(entry.id, at) }, ::drop, first = entry == shown.first())
+							}
+						}
+						MaterialView.LIST -> LazyColumn(Modifier.fillMaxSize()) {
+							items(shown, key = { it.id }) { entry ->
+								MaterialRow(entry, entry.id == selected, entry.id == dropFolder, references[entry.id].orEmpty().size, counts(entry.id), vm,
+									if (entry is MaterialEntry.Folder) track("tile:${entry.id}") else Modifier,
+									{ select(entry) }, { open(entry) }, { at -> openMenu(entry.id, at) }, ::drop)
+							}
+						}
+					}
+				}
+			}
+			Divider(color = colors.divider)
+			Row(Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+				val chosen = selected?.let(library::item)
+				Text(chosen?.let { "${it.name} · ${it.raster.width}×${it.raster.height}" } ?: tr("materials.count", library.items.size, library.folders.size),
+					style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted,
+					modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+				if (view == MaterialView.GRID) CompactSlider(thumb, { thumb = it }, valueRange = 48f..200f, modifier = Modifier.width(90.dp), height = 12.dp)
+			}
+		}
+
+		// The context menu of the entry right-clicked, opening at the press as the canvas's does.
+		val target = menuTarget
+		val lines = remember(target, library, references, state.selectedLayerId, folderId) {
+			buildList {
 				val item = target?.let(library::item); val folder = target?.let(library::folder)
-				if (item != null || folder != null) FloatingMenuSection(item?.name ?: folder!!.name)
-				if (item != null) FloatingMenuRow(tr("materials.menu.edit"), { menu = null; vm.openMaterialEditor(item.id) }, hint = tr("materials.menu.edit.hint"))
-				if (folder != null) FloatingMenuRow(tr("materials.menu.open"), { menu = null; folderId = folder.id; query = "" })
-				FloatingMenuRow(tr("materials.menu.place"), { menu = null; target?.let { vm.placeMaterial(it) } }, hint = tr("materials.menu.place.hint"))
+				if (item == null && folder == null) return@buildList
+				val close = { menuShown = false }
+				add(MenuLine.Section(item?.name ?: folder!!.name))
+				if (item != null) add(MenuLine.Action(tr("materials.menu.edit"), { close(); vm.openMaterialEditor(item.id) }, hint = tr("materials.menu.edit.hint")))
+				if (folder != null) add(MenuLine.Action(tr("materials.menu.open"), { close(); folderId = folder.id; query = "" },
+					trailing = fileKind(folder)))
+				add(MenuLine.Action(tr("materials.menu.place"), { close(); vm.placeMaterial(target) }, hint = tr("materials.menu.place.hint")))
 				val layer = state.selectedLayerId
-				if (item != null && layer != null) FloatingMenuRow(tr("materials.menu.replace"), { menu = null; vm.replaceLayerWithMaterial(layer, item.id) },
-					hint = tr("materials.menu.replace.hint"))
-				if (item?.kind == MaterialKind.VECTOR) FloatingMenuRow(tr("materials.menu.resolution"), { menu = null; resolution = item.id },
-					trailing = "${item.raster.width}×${item.raster.height}")
-				val users = target?.let { references[it] }.orEmpty()
-				if (users.isNotEmpty()) FloatingMenuRow(tr("materials.menu.locate", users.size), { menu = null; vm.selectLayer(users.first()) })
-				FloatingMenuDivider()
-				FloatingMenuRow(tr("materials.menu.rename"), { menu = null; renaming = target })
+				if (item != null && layer != null) add(MenuLine.Action(tr("materials.menu.replace"), { close(); vm.replaceLayerWithMaterial(layer, item.id) },
+					hint = tr("materials.menu.replace.hint")))
+				if (item?.kind == MaterialKind.VECTOR) add(MenuLine.Action(tr("materials.menu.resolution"), { close(); resolution = item.id },
+					trailing = "${item.raster.width}×${item.raster.height}"))
+				val users = references[target].orEmpty()
+				if (users.isNotEmpty()) add(MenuLine.Action(tr("materials.menu.locate", users.size), { close(); vm.selectLayer(users.first()) }))
+				add(MenuLine.Rule)
+				add(MenuLine.Action(tr("materials.menu.rename"), { close(); renaming = target }))
 				if (folder != null) {
-					FloatingMenuRow(tr("materials.folder.new"), { menu = null; vm.createMaterialFolder(uniqueName(library, folder.id, tr("materials.folder.default")), folder.id) })
-					FloatingMenuRow(tr("materials.menu.exportPsd"), {
-						menu = null
+					add(MenuLine.Action(tr("materials.folder.new"), { close(); vm.createMaterialFolder(uniqueName(library, folder.id, tr("materials.folder.default")), folder.id) }))
+					add(MenuLine.Action(tr("materials.menu.exportPsd"), {
+						close()
 						NativeFilePicker.chooseSavePsdFile(window, folder.name)?.let { vm.exportMaterialFolder(folder.id, java.nio.file.Path.of(it)) }
-					})
+					}))
 				}
-				if (folderId != null) FloatingMenuRow(tr("materials.menu.moveUp"), { menu = null; target?.let { vm.moveMaterials(listOf(it), library.folder(folderId!!)?.parentId) } })
-				FloatingMenuRow(tr("materials.menu.delete"), { menu = null; target?.let { vm.deleteMaterials(listOf(it)) } },
-					enabled = users.isEmpty(), hint = if (users.isEmpty()) null else tr("materials.menu.delete.used", users.size))
+				val parent = item?.folderId ?: folder?.parentId
+				if (parent != null) add(MenuLine.Action(tr("materials.menu.moveUp"), { close(); vm.moveMaterials(listOf(target), library.folder(parent)?.parentId) }))
+				add(MenuLine.Action(tr("materials.menu.delete"), { close(); vm.deleteMaterials(listOf(target)) },
+					enabled = users.isEmpty(), hint = if (users.isEmpty()) null else tr("materials.menu.delete.used", users.size)))
 			}
 		}
-		Divider(color = colors.divider)
-		Row(Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-			val chosen = selected?.let(library::item)
-			Text(chosen?.let { "${it.name} · ${it.raster.width}×${it.raster.height}" } ?: tr("materials.count", library.items.size, library.folders.size),
-				style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted,
-				modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-			if (view == MaterialView.GRID) CompactSlider(thumb, { thumb = it }, valueRange = 48f..200f, modifier = Modifier.width(90.dp), height = 12.dp)
+		PressMenu(menuShown && lines.isNotEmpty(), menuAt, onDismissRequest = { menuShown = false }) {
+			io.github.psd2live.ui.views.tooloptions.GlidingColumn(Modifier.width(236.dp), lines.size,
+				highlights = { i -> (lines[i] as? MenuLine.Action)?.enabled == true }) { i ->
+				when (val line = lines[i]) {
+					is MenuLine.Section -> FloatingMenuSection(line.text)
+					MenuLine.Rule -> FloatingMenuDivider()
+					is MenuLine.Action -> FloatingMenuRow(line.label, line.run, enabled = line.enabled, hint = line.hint, trailing = line.trailing)
+				}
+			}
 		}
 	}
 
@@ -377,6 +470,20 @@ private fun uniqueName(library: MaterialLibrary, parent: String?, base: String):
 	return generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base $it" }.first { it !in names }
 }
 
+/** The folder tree in display order, with depth, below expanded folders only. */
+private fun flattenFolders(library: MaterialLibrary, expanded: Map<String, Boolean>): List<Pair<MaterialFolder, Int>> {
+	val children = library.folders.groupBy { it.parentId }
+	val out = ArrayList<Pair<MaterialFolder, Int>>()
+	fun visit(parent: String?, depth: Int) {
+		for (folder in children[parent].orEmpty()) {
+			out += folder to depth
+			if (expanded[folder.id] == true) visit(folder.id, depth + 1)
+		}
+	}
+	visit(null, 0)
+	return out
+}
+
 @Composable
 private fun Crumb(label: String, current: Boolean, dropping: Boolean, modifier: Modifier, onClick: () -> Unit) {
 	val colors = LocalToolColors.current
@@ -385,14 +492,36 @@ private fun Crumb(label: String, current: Boolean, dropping: Boolean, modifier: 
 			.clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 2.dp))
 }
 
+/** A tree row: the disclosure chevron, the folder's icon (its file's for a PSD or CMO3) and its name. */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun FolderRow(name: String, kind: String?, depth: Int, selected: Boolean, dropping: Boolean, hasChildren: Boolean, open: Boolean?,
+                      modifier: Modifier, onSelect: () -> Unit, onToggle: () -> Unit, onMenu: (Offset) -> Unit) {
+	val colors = LocalToolColors.current
+	Row(modifier.fillMaxWidth().height(22.dp)
+		.background(when { dropping -> colors.accent.copy(alpha = 0.25f); selected -> colors.selection; else -> Color.Transparent })
+		.onPointerEvent(PointerEventType.Press) { event -> if (event.button == PointerButton.Secondary) onMenu(event.changes.first().position) }
+		.clickable(onClick = onSelect).padding(start = (2 + depth * 9).dp, end = 4.dp),
+		verticalAlignment = Alignment.CenterVertically) {
+		Box(Modifier.size(12.dp).clickable(enabled = hasChildren, onClick = onToggle), contentAlignment = Alignment.Center) {
+			if (hasChildren) IconChevron(open == true, Modifier.size(10.dp))
+		}
+		val tint = if (selected) colors.selectionText else colors.textMuted
+		if (kind != null) FileGlyph(Modifier.size(12.dp), tint) else IconFolder(Modifier.size(12.dp), tint)
+		Spacer(Modifier.width(4.dp))
+		Text(name, color = if (selected) colors.selectionText else colors.textPrimary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+	}
+}
+
 /**
  * Press, drag to an edit canvas to place or onto a folder to move, click to select, double-click to open, right-click
- * for the menu. [onDrop] takes a drop the panel handles itself (onto a folder) and says so.
+ * for the menu (at the press, in root coordinates). [onDrop] takes a drop the panel handles itself (onto a folder) and
+ * says so.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 private fun Modifier.materialGestures(entry: MaterialEntry, vm: PSD2LiveViewModel, onSelect: () -> Unit, onOpen: () -> Unit,
-                                      onMenu: () -> Unit, onDrop: () -> Boolean, origin: () -> Offset): Modifier = this
-	.onPointerEvent(PointerEventType.Press) { event -> if (event.button == PointerButton.Secondary) onMenu() }
+                                      onMenu: (Offset) -> Unit, onDrop: () -> Boolean, origin: () -> Offset): Modifier = this
+	.onPointerEvent(PointerEventType.Press) { event -> if (event.button == PointerButton.Secondary) onMenu(origin() + event.changes.first().position) }
 	.pointerInput(entry.id) { detectTapGestures(onTap = { onSelect() }, onDoubleTap = { onOpen() }) }
 	.pointerInput(entry.id) {
 		detectDragGestures(
@@ -403,41 +532,85 @@ private fun Modifier.materialGestures(entry: MaterialEntry, vm: PSD2LiveViewMode
 		)
 	}
 
+/**
+ * A folder's face in the grid: a folder, or for one read from a PSD or CMO3 the file itself - a page with its kind on
+ * a band - over a second page behind it, so it reads as something holding more; the count of what it holds sits in
+ * the corner with an arrow that says it opens.
+ */
 @Composable
-private fun MaterialTile(entry: MaterialEntry, size: Dp, selected: Boolean, dropping: Boolean, references: Int, vm: PSD2LiveViewModel, target: Modifier,
-                         onSelect: () -> Unit, onOpen: () -> Unit, onMenu: () -> Unit, onDrop: () -> Boolean, first: Boolean = false) {
+private fun FolderFace(kind: String?, size: Dp, count: Int, dropping: Boolean) {
+	val colors = LocalToolColors.current
+	val tint = if (dropping) colors.accent else colors.textMuted
+	Box(Modifier.size(size).clip(RoundedCornerShape(3.dp)).background(colors.panelElevated.copy(alpha = 0.5f)), contentAlignment = Alignment.Center) {
+		if (kind == null) IconFolder(Modifier.size(size * 0.45f), tint)
+		else {
+			val band = if (kind == "PSD") Color(0xFF3D8FD6) else Color(0xFFE08A3C)
+			val page = size * 0.46f
+			Box(Modifier.size(page * 1.1f, page * 1.3f)) {
+				// The page behind: there is more inside.
+				Box(Modifier.align(Alignment.TopEnd).size(page * 0.92f, page * 1.18f).clip(RoundedCornerShape(3.dp))
+					.background(colors.textMuted.copy(alpha = 0.18f)).border(1.dp, colors.textMuted.copy(alpha = 0.35f), RoundedCornerShape(3.dp)))
+				Column(Modifier.align(Alignment.BottomStart).size(page * 0.92f, page * 1.18f).clip(RoundedCornerShape(3.dp))
+					.background(colors.panelBackground).border(1.dp, tint.copy(alpha = 0.8f), RoundedCornerShape(3.dp))) {
+					Spacer(Modifier.weight(1f))
+					Box(Modifier.fillMaxWidth().background(band).padding(vertical = 1.dp), contentAlignment = Alignment.Center) {
+						Text(kind, color = Color.White, fontSize = (size.value * 0.11f).coerceIn(7f, 13f).sp, maxLines = 1,
+							fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+					}
+					Spacer(Modifier.height(page * 0.12f))
+				}
+			}
+		}
+		Row(Modifier.align(Alignment.BottomEnd).padding(3.dp).clip(RoundedCornerShape(6.dp)).background(colors.panelBackground.copy(alpha = 0.85f))
+			.padding(start = 4.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+			Text("$count", color = colors.textMuted, fontSize = 9.sp)
+			IconChevron(false, Modifier.size(9.dp), colors.textMuted)
+		}
+	}
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MaterialTile(entry: MaterialEntry, size: Dp, selected: Boolean, dropping: Boolean, references: Int, count: Int, vm: PSD2LiveViewModel,
+                         target: Modifier, onSelect: () -> Unit, onOpen: () -> Unit, onMenu: (Offset) -> Unit, onDrop: () -> Boolean, first: Boolean = false) {
 	val colors = LocalToolColors.current
 	var origin by remember { mutableStateOf(Offset.Zero) }
 	val px = with(androidx.compose.ui.platform.LocalDensity.current) { size.roundToPx() }
 	val shape = RoundedCornerShape(5.dp)
-	Column(target.padding(3.dp).clip(shape)
-		.background(when { dropping -> colors.accent.copy(alpha = 0.25f); selected -> colors.selection; else -> Color.Transparent })
-		.border(if (dropping) 1.dp else 0.5.dp, if (dropping || selected) colors.accent.copy(alpha = 0.7f) else Color.Transparent, shape)
-		.onGloballyPositioned {
-			origin = it.positionInRoot()
-			if (first) MaterialsPanelProbe.firstEntry = androidx.compose.ui.geometry.Rect(origin, androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat()))
-		}
-		.materialGestures(entry, vm, onSelect, onOpen, onMenu, onDrop) { origin }
-		.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-		Box(Modifier.size(size)) {
-			when (entry) {
-				is MaterialEntry.Item -> MaterialThumbnail(entry.item.raster, px, Modifier.fillMaxSize().clip(RoundedCornerShape(3.dp)))
-				is MaterialEntry.Folder -> Box(Modifier.fillMaxSize().clip(RoundedCornerShape(3.dp)).background(colors.panelElevated.copy(alpha = 0.5f)),
-					contentAlignment = Alignment.Center) { IconFolder(Modifier.size(size * 0.45f), if (dropping) colors.accent else colors.textMuted) }
+	val tip = when (entry) {
+		is MaterialEntry.Folder -> listOfNotNull(entry.folder.origin.takeIf { it.isNotEmpty() }, tr("materials.folder.openHint", count)).joinToString("\n")
+		is MaterialEntry.Item -> listOfNotNull(entry.name, "${entry.item.raster.width}×${entry.item.raster.height}", entry.item.origin.substringBefore('#').takeIf { it.isNotEmpty() },
+			tr("materials.item.openHint")).joinToString("\n")
+	}
+	io.github.psd2live.ui.views.texture.BarTooltip(tip) {
+		Column(target.padding(3.dp).clip(shape)
+			.background(when { dropping -> colors.accent.copy(alpha = 0.25f); selected -> colors.selection; else -> Color.Transparent })
+			.border(if (dropping) 1.dp else 0.5.dp, if (dropping || selected) colors.accent.copy(alpha = 0.7f) else Color.Transparent, shape)
+			.onGloballyPositioned {
+				origin = it.positionInRoot()
+				if (first) MaterialsPanelProbe.firstEntry = androidx.compose.ui.geometry.Rect(origin, androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat()))
 			}
-			if (references > 0) Text("$references", color = colors.selectionText, fontSize = 9.sp,
-				modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).clip(RoundedCornerShape(6.dp)).background(colors.accent).padding(horizontal = 4.dp))
-			if (entry is MaterialEntry.Item && entry.item.kind == MaterialKind.VECTOR) Text("SVG", color = colors.textMuted, fontSize = 8.sp,
-				modifier = Modifier.align(Alignment.BottomStart).padding(2.dp).background(colors.panelElevated.copy(alpha = 0.8f)).padding(horizontal = 2.dp))
+			.materialGestures(entry, vm, onSelect, onOpen, onMenu, onDrop) { origin }
+			.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+			Box(Modifier.size(size)) {
+				when (entry) {
+					is MaterialEntry.Item -> MaterialThumbnail(entry.item.raster, px, Modifier.fillMaxSize().clip(RoundedCornerShape(3.dp)))
+					is MaterialEntry.Folder -> FolderFace(fileKind(entry.folder), size, count, dropping)
+				}
+				if (references > 0) Text("$references", color = colors.selectionText, fontSize = 9.sp,
+					modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).clip(RoundedCornerShape(6.dp)).background(colors.accent).padding(horizontal = 4.dp))
+				if (entry is MaterialEntry.Item && entry.item.kind == MaterialKind.VECTOR) Text("SVG", color = colors.textMuted, fontSize = 8.sp,
+					modifier = Modifier.align(Alignment.BottomStart).padding(2.dp).background(colors.panelElevated.copy(alpha = 0.8f)).padding(horizontal = 2.dp))
+			}
+			Text(entry.name, color = if (selected) colors.selectionText else colors.textPrimary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+				textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.width(size).padding(top = 3.dp))
 		}
-		Text(entry.name, color = if (selected) colors.selectionText else colors.textPrimary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-			textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.width(size).padding(top = 3.dp))
 	}
 }
 
 @Composable
-private fun MaterialRow(entry: MaterialEntry, selected: Boolean, dropping: Boolean, references: Int, vm: PSD2LiveViewModel, target: Modifier,
-                        onSelect: () -> Unit, onOpen: () -> Unit, onMenu: () -> Unit, onDrop: () -> Boolean) {
+private fun MaterialRow(entry: MaterialEntry, selected: Boolean, dropping: Boolean, references: Int, count: Int, vm: PSD2LiveViewModel, target: Modifier,
+                        onSelect: () -> Unit, onOpen: () -> Unit, onMenu: (Offset) -> Unit, onDrop: () -> Boolean) {
 	val colors = LocalToolColors.current
 	var origin by remember { mutableStateOf(Offset.Zero) }
 	Row(target.fillMaxWidth().height(30.dp)
@@ -447,7 +620,9 @@ private fun MaterialRow(entry: MaterialEntry, selected: Boolean, dropping: Boole
 		.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 		when (entry) {
 			is MaterialEntry.Item -> MaterialThumbnail(entry.item.raster, 48, Modifier.size(24.dp).clip(RoundedCornerShape(2.dp)))
-			is MaterialEntry.Folder -> Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { IconFolder(Modifier.size(16.dp), colors.textMuted) }
+			is MaterialEntry.Folder -> Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+				if (fileKind(entry.folder) != null) FileGlyph(Modifier.size(16.dp), colors.textMuted) else IconFolder(Modifier.size(16.dp), colors.textMuted)
+			}
 		}
 		val text = if (selected) colors.selectionText else colors.textPrimary
 		Text(entry.name, color = text, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -457,7 +632,11 @@ private fun MaterialRow(entry: MaterialEntry, selected: Boolean, dropping: Boole
 				Text("${entry.item.raster.width}×${entry.item.raster.height}", color = colors.textMuted, fontSize = 10.sp)
 				Text(if (references > 0) tr("materials.references", references) else tr("materials.unused"), color = colors.textMuted, fontSize = 10.sp)
 			}
-			is MaterialEntry.Folder -> Text("›", color = colors.textMuted, fontSize = 12.sp)
+			is MaterialEntry.Folder -> {
+				fileKind(entry.folder)?.let { Text(it, color = colors.textMuted, fontSize = 10.sp) }
+				Text("$count", color = colors.textMuted, fontSize = 10.sp)
+				IconChevron(false, Modifier.size(10.dp), colors.textMuted)
+			}
 		}
 	}
 }
@@ -501,4 +680,14 @@ internal fun MaterialDragGhost(vm: PSD2LiveViewModel) {
 }
 @Composable private fun ListGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
 	listOf(4f, 9f, 14f).forEach { y -> line(2.5f, y, 4f, y); line(6.5f, y, 15.5f, y) }
+}
+/** The folder tree's toggle: a trunk with two branches. */
+@Composable private fun TreeGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
+	line(4f, 3f, 4f, 14f); line(4f, 8f, 8f, 8f); line(4f, 14f, 8f, 14f)
+	box(9f, 6f, 6f, 4f, 1f); box(9f, 12f, 6f, 4f, 1f)
+}
+/** A file: a page with its corner folded, for a folder read from a PSD or CMO3. */
+@Composable private fun FileGlyph(modifier: Modifier, tint: Color) = io.github.psd2live.ui.components.GridIcon(modifier, tint) {
+	shape(path { m(4f, 2f); l(11f, 2f); l(15f, 6f); l(15f, 16f); l(4f, 16f); z() })
+	outline(path { m(11f, 2f); l(11f, 6f); l(15f, 6f) })
 }

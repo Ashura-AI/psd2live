@@ -64,8 +64,11 @@ data class WorkspaceGeneration(
 
 enum class MaterialKind { BITMAP, VECTOR }
 
-/** A folder of the material library. A null [parentId] puts it at the top. */
-data class MaterialFolder(val id: String, val name: String, val parentId: String?, val tags: Set<String> = emptySet())
+/**
+ * A folder of the material library. A null [parentId] puts it at the top. [origin] names the file it was read from
+ * (a PSD or CMO3, whose layers it holds); empty for a folder made in the library or read from a directory.
+ */
+data class MaterialFolder(val id: String, val name: String, val parentId: String?, val tags: Set<String> = emptySet(), val origin: String = "")
 
 /**
  * One material: a raster, or a vector drawing with the raster it is rendered to at its texture resolution
@@ -157,6 +160,7 @@ internal object WorkspaceLayoutCodec {
 					put("id", folder.id); put("name", folder.name)
 					folder.parentId?.let { put("parentId", it) }
 					if (folder.tags.isNotEmpty()) putJsonArray("tags") { folder.tags.sorted().forEach { add(JsonPrimitive(it)) } }
+					if (folder.origin.isNotEmpty()) put("origin", folder.origin)
 				} }
 			}
 			putJsonArray("items") {
@@ -193,7 +197,7 @@ internal object WorkspaceLayoutCodec {
 				folders = value["folders"]?.jsonArray.orEmpty().map { element ->
 					val folder = element.jsonObject
 					MaterialFolder(folder.getValue("id").jsonPrimitive.content, folder.getValue("name").jsonPrimitive.content,
-						folder["parentId"]?.jsonPrimitive?.contentOrNull, strings(folder["tags"]))
+						folder["parentId"]?.jsonPrimitive?.contentOrNull, strings(folder["tags"]), folder["origin"]?.jsonPrimitive?.content.orEmpty())
 				},
 				items = value["items"]?.jsonArray.orEmpty().map { element ->
 					val item = element.jsonObject

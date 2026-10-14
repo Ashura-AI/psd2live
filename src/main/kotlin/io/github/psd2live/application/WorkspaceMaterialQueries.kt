@@ -23,6 +23,7 @@ internal object WorkspaceMaterialQueries {
 
     fun folder(folder: MaterialFolder, library: MaterialLibrary): JsonObject = buildJsonObject {
         put("id", folder.id); put("name", folder.name); folder.parentId?.let { put("parent_id", it) }
+        if (folder.origin.isNotEmpty()) put("origin", folder.origin)
         putJsonArray("tags") { folder.tags.sorted().forEach { add(JsonPrimitive(it)) } }
         put("folders", library.folders.count { it.parentId == folder.id }); put("items", library.items.count { it.folderId == folder.id })
     }

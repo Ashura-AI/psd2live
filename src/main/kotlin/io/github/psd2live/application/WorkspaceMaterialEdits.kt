@@ -98,18 +98,20 @@ internal object WorkspaceMaterialEdits {
         requireFolder(library, folderId)
         val folders = ArrayList(library.folders); val items = ArrayList(library.items)
         val ids = HashSet<String>().apply { folders.mapTo(this) { it.id }; items.mapTo(this) { it.id } }
-        fun folderFor(path: List<String>): String? {
+        // The folder standing for a PSD or CMO3 keeps the file's name, so the browser can show what it was read from.
+        fun folderFor(entry: WorkspaceMaterialFiles.Entry): String? {
             var parent = folderId
-            for (name in path) {
+            for ((index, name) in entry.folder.withIndex()) {
                 val existing = folders.firstOrNull { it.parentId == parent && it.name == name }
                 parent = existing?.id ?: StableIds.fresh(StableIds.stem("folder_", parent, name)) { it in ids }.also { id ->
-                    ids += id; folders += MaterialFolder(id, requireName(name), parent)
+                    ids += id
+                    folders += MaterialFolder(id, requireName(name), parent, origin = if (index == entry.fileFolder) entry.origin.substringBefore('#') else "")
                 }
             }
             return parent
         }
         for (entry in entries) {
-            val folder = folderFor(entry.folder)
+            val folder = folderFor(entry)
             val id = StableIds.fresh(StableIds.stem("mat_", folder, entry.name, WorkspaceRevisions.rasterDigest(entry.raster.rgba), entry.origin)) { it in ids }
             ids += id
             items += MaterialItem(id, requireName(entry.name), folder, entry.kind, entry.raster, entry.placement, entry.svg,
@@ -120,13 +122,16 @@ internal object WorkspaceMaterialEdits {
     }
 
     /**
-     * [document] with its source layers added as materials in a folder [folderName] (its groups as subfolders), each
-     * layer linked to its own material ([WorkspaceLayout.layerMaterials]). The materials share the layers' pixels.
+     * [document] with its source layers added as materials in a folder named after [fileName] (its groups as
+     * subfolders), each layer linked to its own material ([WorkspaceLayout.layerMaterials]). The materials share the
+     * layers' pixels.
      */
-    fun addLinked(document: WorkspaceDocument, folderName: String): WorkspaceDocument {
+    fun addLinked(document: WorkspaceDocument, fileName: String): WorkspaceDocument {
         val layers = document.source.layers.filter { it.raster.width > 0 && it.raster.height > 0 }
         if (layers.isEmpty()) return document
-        val entries = WorkspaceMaterialFiles.layered(document.source, listOf(WorkspaceMaterialFiles.name(folderName, "source")), folderName)
+        val folderName = fileName.substringBeforeLast('.').ifEmpty { fileName }
+        val entries = WorkspaceMaterialFiles.layered(document.source, listOf(WorkspaceMaterialFiles.name(folderName, "source")), fileName)
+            .map { it.copy(fileFolder = 0) }
         val before = document.layout.materials.items.size
         val added = add(document, entries, null)
         val items = added.layout.materials.items.drop(before)
