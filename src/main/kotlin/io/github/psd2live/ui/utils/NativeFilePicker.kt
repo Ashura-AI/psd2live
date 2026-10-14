@@ -446,6 +446,34 @@ object NativeFilePicker {
 	}
 
 	/**
+	 * Opens a multi-select picker for material files and folders: images, PSD, CMO3 and SVG
+	 * ([io.github.psd2live.application.WorkspaceMaterialFiles.extensions]).
+	 */
+	fun chooseMaterialFiles(window: Window? = null): List<File> {
+		if (!isPicking.compareAndSet(false, true)) {
+			focusOpenPicker()
+			return emptyList()
+		}
+		try {
+			try {
+				UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+				val chooser = chooser().apply {
+					dialogTitle = tr("materials.import.title")
+					isMultiSelectionEnabled = true
+					fileSelectionMode = JFileChooser.FILES_AND_DIRECTORIES
+					fileFilter = javax.swing.filechooser.FileNameExtensionFilter(tr("materials.import.filter"),
+						*io.github.psd2live.application.WorkspaceMaterialFiles.extensions.toTypedArray())
+				}
+				if (chooser.showOpenDialog(owner(window)) == JFileChooser.APPROVE_OPTION) return chooser.selectedFiles?.toList().orEmpty()
+			} catch (_: Throwable) {}
+			return emptyList()
+		} finally {
+			openPicker = null
+			isPicking.set(false)
+		}
+	}
+
+	/**
 	 * Opens a multi-select picker for transparent raster images (PNG / WebP / TIFF / BMP).
 	 */
 	fun chooseTransparentImages(window: Window? = null, initialPath: String? = null): List<File> {

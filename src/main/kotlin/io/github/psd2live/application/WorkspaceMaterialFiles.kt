@@ -80,14 +80,14 @@ internal object WorkspaceMaterialFiles {
             val data = Files.readAllBytes(path)
             val origin = path.name
             return when (path.extension.lowercase()) {
-                "psd" -> layered(PsdReader.read(data), folder + path.nameWithoutExtension, origin, checkCancelled)
-                "cmo3" -> cmo3(data, folder + path.nameWithoutExtension, origin, checkCancelled)
-                "svg" -> listOf(vector(data.decodeToString(), path.nameWithoutExtension, folder, origin))
-                else -> listOf(Entry(path.nameWithoutExtension, folder, MaterialKind.BITMAP, bitmap(data, path.name), origin = origin))
+                "psd" -> layered(PsdReader.read(data), folder + name(path.nameWithoutExtension, "psd"), origin, checkCancelled)
+                "cmo3" -> cmo3(data, folder + name(path.nameWithoutExtension, "cmo3"), origin, checkCancelled)
+                "svg" -> listOf(vector(data.decodeToString(), name(path.nameWithoutExtension, "svg"), folder, origin))
+                else -> listOf(Entry(name(path.nameWithoutExtension, "image"), folder, MaterialKind.BITMAP, bitmap(data, path.name), origin = origin))
             }
         }
         fun directory(path: Path, folder: List<String>): List<Entry> {
-            val here = folder + path.name
+            val here = folder + name(path.name, "folder")
             val children = Files.list(path).use { stream -> stream.sorted().toList() }
             return children.flatMap { child ->
                 when {
@@ -144,12 +144,16 @@ internal object WorkspaceMaterialFiles {
     fun layered(art: SourceArt, folder: List<String>, origin: String, checkCancelled: () -> Unit = {}): List<Entry> =
         art.layers.filter { it.raster.width > 0 && it.raster.height > 0 }.map { layer ->
             checkCancelled()
-            val groups = layer.groupPath.split('/').filter { it.isNotEmpty() }
+            val groups = layer.groupPath.split('/').filter { it.isNotEmpty() }.map { name(it, "group") }
             val hidden = groups.indices.any { depth -> art.groups.firstOrNull { it.path == groups.take(depth + 1).joinToString("/") }?.visible == false }
-            Entry(layer.name.ifBlank { layer.id.raw }, folder + groups, MaterialKind.BITMAP, layer.raster,
+            Entry(name(layer.name, layer.id.raw), folder + groups, MaterialKind.BITMAP, layer.raster,
                 layer.storedCanvasRect ?: LayerCanvasRect.of(layer.bounds), origin = "$origin#${layer.id.raw}",
                 opacity = layer.opacity, visible = layer.visible && !hidden)
         }
+
+    /** [raw] as a material name: printable, at most 128 characters, [fallback] when nothing is left. */
+    fun name(raw: String, fallback: String): String =
+        raw.filterNot(Char::isISOControl).trim().take(128).trim().ifEmpty { fallback.filterNot(Char::isISOControl).take(128).ifEmpty { "material" } }
 
     /** A CMO3's layered images as materials, or its atlas pages when it holds none. */
     fun cmo3(bytes: ByteArray, folder: List<String>, origin: String, checkCancelled: () -> Unit = {}): List<Entry> {

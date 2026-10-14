@@ -5790,6 +5790,130 @@ class PSD2LiveViewModel : AutoCloseable {
         }
     }
 
+	// ---- Layout: materials, placement and generation (the same document edits MCP makes) ----
+
+	/** A material carried by the pointer from the materials panel, at [position] in root coordinates. */
+	data class MaterialDrag(val id: String, val label: String, val position: androidx.compose.ui.geometry.Offset)
+
+	private val _materialDrag = kotlinx.coroutines.flow.MutableStateFlow<MaterialDrag?>(null)
+	val materialDrag: kotlinx.coroutines.flow.StateFlow<MaterialDrag?> = _materialDrag
+
+	/**
+	 * Where a material dropped at a root position lands on each edit canvas, in canvas units; null off the canvas.
+	 * Each edit canvas registers its own while it shows.
+	 */
+	val materialDropTargets = java.util.concurrent.ConcurrentHashMap<String, (androidx.compose.ui.geometry.Offset) -> androidx.compose.ui.geometry.Offset?>()
+
+	/** Where files dropped from the system land in the materials panel: the folder under the point, or null off the panel. */
+	var materialsImportHitTest: ((windowX: Int, windowY: Int) -> MaterialsDropTarget?)? = null
+
+	/** A drop target of the materials panel: [folderId] is null for the top level. */
+	data class MaterialsDropTarget(val folderId: String?)
+
+	fun startMaterialDrag(id: String, label: String, position: androidx.compose.ui.geometry.Offset) { _materialDrag.value = MaterialDrag(id, label, position) }
+	fun moveMaterialDrag(position: androidx.compose.ui.geometry.Offset) { _materialDrag.value = _materialDrag.value?.copy(position = position) }
+	fun cancelMaterialDrag() { _materialDrag.value = null }
+
+	/** Drops the carried material where the pointer is: on an edit canvas it is placed centred there. */
+	fun endMaterialDrag() {
+		val drag = _materialDrag.value ?: return
+		_materialDrag.value = null
+		val at = materialDropTargets.values.firstNotNullOfOrNull { it(drag.position) } ?: return
+		placeMaterial(drag.id, at.x, at.y)
+	}
+
+	private fun layoutEdit(summary: String, operation: String, request: kotlinx.serialization.json.JsonObject) {
+		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return
+		val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace
+		runWorkspaceCommand { state -> port.applyDocumentEdits(state, summary,
+			listOf(io.github.psd2live.application.WorkspaceDocumentOperation(operation, request)), MutationAuthor.USER) }
+	}
+
+	private fun strings(values: Collection<String>) = kotlinx.serialization.json.JsonArray(values.map { kotlinx.serialization.json.JsonPrimitive(it) })
+
+	/** Reads [files] (images, PSD, CMO3 images, SVG, folders) into the material library under [folderId]: one history edit. */
+	fun importMaterials(files: List<java.nio.file.Path>, folderId: String?) {
+		if (files.isEmpty()) return
+		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return
+		val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace
+		updateState { it.copy(statusText = tr("materials.importing", files.size)) }
+		runWorkspaceCommand { state ->
+			val entries = kotlinx.coroutines.withContext(Dispatchers.IO) {
+				io.github.psd2live.application.WorkspaceMaterialFiles.read(files.map { it.toAbsolutePath() })
+			}
+			val token = io.github.psd2live.application.WorkspaceMaterialStaging.stage(entries)
+			port.applyDocumentEdits(state, tr("materials.imported", entries.size), listOf(io.github.psd2live.application.WorkspaceDocumentOperation(
+				io.github.psd2live.application.WorkspaceMaterialEdits.ADD, kotlinx.serialization.json.buildJsonObject {
+					put("staging", token); folderId?.let { put("folder_id", it) }
+				})), MutationAuthor.USER)
+		}
+	}
+
+	fun createMaterialFolder(name: String, parentId: String?) = layoutEdit(tr("materials.folder.created", name), io.github.psd2live.application.WorkspaceMaterialEdits.FOLDER,
+		kotlinx.serialization.json.buildJsonObject { put("name", name); parentId?.let { put("parent_id", it) } })
+
+	fun moveMaterials(ids: Collection<String>, folderId: String?) = layoutEdit(tr("materials.moved"), io.github.psd2live.application.WorkspaceMaterialEdits.MOVE,
+		kotlinx.serialization.json.buildJsonObject { put("ids", strings(ids)); put("folder_id", folderId?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull) })
+
+	fun renameMaterial(id: String, name: String) = layoutEdit(tr("materials.renamed"), io.github.psd2live.application.WorkspaceMaterialEdits.RENAME,
+		kotlinx.serialization.json.buildJsonObject { put("id", id); put("name", name) })
+
+	fun deleteMaterials(ids: Collection<String>) = layoutEdit(tr("materials.deleted"), io.github.psd2live.application.WorkspaceMaterialEdits.DELETE,
+		kotlinx.serialization.json.buildJsonObject { put("ids", strings(ids)) })
+
+	fun tagMaterials(ids: Collection<String>, set: Set<String>) = layoutEdit(tr("materials.tagged"), io.github.psd2live.application.WorkspaceMaterialEdits.TAG,
+		kotlinx.serialization.json.buildJsonObject { put("ids", strings(ids)); put("set", strings(set)) })
+
+	fun setMaterialResolution(id: String, width: Int, height: Int) = layoutEdit(tr("materials.resolution.set"), io.github.psd2live.application.WorkspaceMaterialEdits.RESOLUTION,
+		kotlinx.serialization.json.buildJsonObject { put("id", id); put("width", width); put("height", height) })
+
+	/** Places material [id] on the canvas, centred at ([x], [y]) in canvas units, or at its own place when null. */
+	fun placeMaterial(id: String, x: Float? = null, y: Float? = null) = layoutEdit(tr("materials.placed"), io.github.psd2live.application.WorkspaceMaterialEdits.PLACE,
+		kotlinx.serialization.json.buildJsonObject {
+			put("material_id", id)
+			if (x != null && y != null) put("at", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive(x)); add(kotlinx.serialization.json.JsonPrimitive(y)) })
+		})
+
+	/** Layer [layerId] shows material [materialId] over its unchanged rectangle: `layer_replace_image` with the material. */
+	fun replaceLayerWithMaterial(layerId: String, materialId: String) = layoutEdit(tr("materials.replaced"), "layer_replace_image",
+		kotlinx.serialization.json.buildJsonObject { put("layer_id", layerId); put("material_id", materialId) })
+
+	/** Generates the rig, or generates it again: what waits joins it, the user's edits stay. [refresh]: mesh replaced images from their new pixels. */
+	fun generateLayout(refresh: Boolean = true) = layoutEdit(tr("layout.generate.summary"), io.github.psd2live.application.WorkspaceGenerationEdits.GENERATE,
+		kotlinx.serialization.json.buildJsonObject { if (!refresh) put("refresh_geometry", kotlinx.serialization.json.JsonArray(emptyList())) })
+
+	/** A new empty project to place materials on before generating; the Layout workspace shows it. */
+	fun createLayoutProject(width: Int, height: Int) {
+		val workspace = workspaceBackend ?: return
+		withSavedChanges {
+			scope.launch {
+				try {
+					workspace.createLayoutProject(width, height, discardUnsaved = true)
+					openWorkspacePreset(WorkspacePreset.LAYOUT)
+				} catch (failure: Exception) {
+					if (failure is kotlinx.coroutines.CancellationException) throw failure
+					setErrorMessage(failure.message)
+				}
+			}
+		}
+	}
+
+	/** Writes material folder [folderId] to [path] as a PSD. */
+	fun exportMaterialFolder(folderId: String, path: java.nio.file.Path) {
+		val queries = (workspaceBackend as? io.github.psd2live.application.WorkspaceReadPort)?.captureQueries() ?: return
+		val layout = queries.layoutState() ?: return
+		scope.launch {
+			try {
+				val (bytes, count) = kotlinx.coroutines.withContext(Dispatchers.Default) { io.github.psd2live.application.WorkspaceMaterialQueries.psd(layout, folderId) }
+				kotlinx.coroutines.withContext(Dispatchers.IO) { java.nio.file.Files.write(path, bytes) }
+				setStatusText(tr("materials.exported", count, path.fileName.toString()))
+			} catch (failure: Exception) {
+				if (failure is kotlinx.coroutines.CancellationException) throw failure
+				setErrorMessage(failure.message)
+			}
+		}
+	}
+
 	/** Sets, adds or removes semantic tags on [layerIds]: the same `layer_tag` edit MCP makes. */
 	fun tagLayers(layerIds: List<String>, set: Set<String>? = null, add: Set<String> = emptySet(), remove: Set<String> = emptySet()) {
 		if (layerIds.isEmpty() || (set == null && add.isEmpty() && remove.isEmpty())) return

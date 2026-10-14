@@ -369,6 +369,17 @@ fun CanvasViewportComposable(
 			else computeEditorViewport(model, drawSize, zoom, panX, panY)
 		}
 	}
+	val currentViewportFor by rememberUpdatedState(viewportFor)
+	// A material dropped from the materials panel lands where the pointer is on this canvas.
+	DisposableEffect(canvasId, mode) {
+		if (mode == CanvasMode.EDIT) viewModel.materialDropTargets[canvasId] = drop@{ root ->
+			val local = root - canvasOrigin
+			if (local.x < 0f || local.y < 0f || local.x > viewSize.width || local.y > viewSize.height) return@drop null
+			val viewport = currentViewportFor(viewSize)
+			Offset(viewport.canvasX(local.x).toFloat(), viewport.canvasY(local.y).toFloat())
+		}
+		onDispose { viewModel.materialDropTargets.remove(canvasId) }
+	}
 	val editingPainter = remember(previewModel?.atlas) { previewModel?.atlas?.let(::SkiaRigPainter) }
 	DisposableEffect(editingPainter) { onDispose { editingPainter?.close() } }
 	// Source pixels: the edit canvas samples each layer's raster instead of its atlas tile. Only the software

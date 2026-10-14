@@ -48,6 +48,7 @@ enum class TutorialTargetId {
 	SIMULATION_DOCK,
 	WORKSPACE_STRIP,
 	DOCK_AREA,
+	MATERIALS_DOCK,
 }
 
 class TutorialTargetRegistry {

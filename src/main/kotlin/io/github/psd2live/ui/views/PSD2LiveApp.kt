@@ -223,6 +223,8 @@ fun FrameWindowScope.PSD2LiveApp(
 		}
 	}
 
+	var newLayoutDialog by remember { mutableStateOf(false) }
+
 	// Window Drop Target for PSD Drag & Drop and Project Files
 	LaunchedEffect(window) {
 		if (window != null) {
@@ -230,6 +232,15 @@ fun FrameWindowScope.PSD2LiveApp(
 				window = window,
 				onDragStateChanged = { isDraggingOver = it },
 				onFilesDropped = { files, screenLocation ->
+					// Files dropped on the materials panel go into the material library, whatever they are.
+					val materialsTarget = screenLocation?.let { point ->
+						val origin = window.locationOnScreen
+						viewModel.materialsImportHitTest?.invoke(point.x - (origin?.x ?: 0), point.y - (origin?.y ?: 0))
+					}
+					if (materialsTarget != null && viewModel.state.value.analysis != null) {
+						viewModel.importMaterials(files.map { it.toPath() }, materialsTarget.folderId)
+						return@install
+					}
 					val rasters = io.github.psd2live.core.LayerImport.transparentRasterFiles(files)
 					val hasPreview = viewModel.state.value.previewModel != null
 					// Transparent rasters never go through the PSD/project drop path once a preview
@@ -367,6 +378,7 @@ fun FrameWindowScope.PSD2LiveApp(
 		) {
 			if (!tutorial.active) return@LaunchedEffect
 			val step = tutorial.step
+			step.openWorkspace?.let { preset -> if (state.activeWorkspace.preset != preset) viewModel.openWorkspacePreset(preset) }
 			if (step.ensureEditTab) viewModel.ensureEditCanvas()
 			if (step.ensureHistoryTab) viewModel.showHistoryModule()
 			if (step.ensureHierarchyVisible && state.hierarchyCollapsed) {
@@ -572,6 +584,7 @@ fun FrameWindowScope.PSD2LiveApp(
                                 viewModel.importCmo3(Path.of(it), io.github.psd2live.core.Cmo3ImportMode.REPLACE)
                             }
                         },
+                        onNewLayout = { newLayoutDialog = true },
                         onNewCmo3 = {
                             NativeFilePicker.chooseCmo3File(window, state.inputPath)?.let {
                                 viewModel.withSavedChanges { viewModel.importCmo3(Path.of(it), io.github.psd2live.core.Cmo3ImportMode.NEW) }
@@ -658,6 +671,13 @@ fun FrameWindowScope.PSD2LiveApp(
 						Spacer(Modifier.fillMaxWidth().height(24.dp).tutorialTarget(TutorialTargetId.STATUS_BAR))
 					}
 				}
+			}
+
+			// A material carried from the materials panel follows the pointer until it lands on a canvas.
+			MaterialDragGhost(viewModel)
+			if (newLayoutDialog) CanvasSizeDialog(onDismiss = { newLayoutDialog = false }) { width, height ->
+				newLayoutDialog = false
+				viewModel.createLayoutProject(width, height)
 			}
 
 			if (tutorialShown && !tutorial.step.coachBesideMenu) {

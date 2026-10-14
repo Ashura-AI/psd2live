@@ -1586,6 +1586,9 @@ internal fun BoxScope.CanvasEditorOverlay(
 
     // Top centre: the paint session, in the bar the atlas's edit session shows.
     PaintSessionBar(editor, modeBarWidth, focus)
+
+    // Top right: what waits for generation, and the button that generates the rig.
+    LayoutGenerationBar(viewModel, focus)
 }
 
 /**

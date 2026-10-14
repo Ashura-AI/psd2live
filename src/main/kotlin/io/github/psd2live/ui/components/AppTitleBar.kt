@@ -127,6 +127,7 @@ fun AppTitleBar(
 	onOpenPsd: () -> Unit,
     onReplaceCmo3: () -> Unit = {},
     onNewCmo3: () -> Unit = {},
+    onNewLayout: () -> Unit = {},
     onOpenProject: () -> Unit,
 	/** Recently opened projects and PSDs, newest first; File > Open Recent lists those that still exist. */
 	recentFiles: List<String> = emptyList(),
@@ -329,6 +330,7 @@ fun AppTitleBar(
 							onClick = { activeMenu = null; activeSubmenu = null; onOpenPsd() },
 						)
 						AppMenuItem(text = tr("cmo3.new"), enabled = !isBusy, onClick = { activeMenu = null; activeSubmenu = null; onNewCmo3() })
+						AppMenuItem(text = tr("menu.file.newLayout"), enabled = !isBusy, onClick = { activeMenu = null; activeSubmenu = null; onNewLayout() })
 						AppMenuSeparator()
 						AppMenuItem(text = tr("cmo3.replace"), enabled = !isBusy, onClick = { activeMenu = null; activeSubmenu = null; onReplaceCmo3() })
 						AppMenuItem(

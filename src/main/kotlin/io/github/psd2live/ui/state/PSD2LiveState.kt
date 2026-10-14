@@ -50,6 +50,9 @@ internal val DEFAULT_DOCK_MODULES = setOf(
 /** The texture workspace's atlas page view and per-layer texture panel; like history, not in every layout. */
 internal val TEXTURE_DOCK_MODULES = setOf("atlas", "texture")
 
+/** The Layout workspace's material browser; like the texture panels, docked by its preset and shown from the window menu elsewhere. */
+internal val LAYOUT_DOCK_MODULES = setOf("materials")
+
 /** Which edge of the dock a sidebar hugs, relative to the region holding the canvases. */
 enum class SidebarSide { LEFT, TOP, BOTTOM, RIGHT }
 
@@ -263,6 +266,15 @@ enum class WorkspacePreset(
 	TEXTURE(
 		listOf(CanvasMode.EDIT),
 		setOf("hierarchy", "skeleton", "log", "animationEditor", "settings", "tools", "mesh", "inspector", "parameters", "animation", "physics", "simulation"),
+	),
+
+	/**
+	 * Placing materials before and between generations: the material browser on the left, an edit canvas in object
+	 * mode, the hierarchy and the layer table with tags on the right. A new empty project opens in it.
+	 */
+	LAYOUT(
+		listOf(CanvasMode.EDIT),
+		setOf("skeleton", "log", "animationEditor", "settings", "tools", "mesh", "parameters", "animation", "physics", "simulation"),
 	),
 
 	/**

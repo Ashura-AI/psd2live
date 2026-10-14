@@ -472,6 +472,7 @@ private fun DockTree(node: DockNode, session: DockSession, modifier: Modifier, w
 				"animationEditor" -> Modifier.tutorialTarget(TutorialTargetId.ANIMATION_EDITOR_DOCK)
 				"physics" -> Modifier.tutorialTarget(TutorialTargetId.PHYSICS_DOCK)
 				"simulation" -> Modifier.tutorialTarget(TutorialTargetId.SIMULATION_DOCK)
+				"materials" -> Modifier.tutorialTarget(TutorialTargetId.MATERIALS_DOCK)
 				else -> Modifier
 			},
 		)
@@ -1082,6 +1083,7 @@ private fun DockModuleContent(
 		"simulation" -> io.github.psd2live.ui.views.simulation.SimulationPanelView(vm, state)
 		"atlas" -> io.github.psd2live.ui.views.texture.AtlasPageView(state, vm)
 		"texture" -> io.github.psd2live.ui.views.texture.TextureInspectorPanel(state, vm)
+		"materials" -> MaterialsPanel(state, vm)
 	}
 }
 

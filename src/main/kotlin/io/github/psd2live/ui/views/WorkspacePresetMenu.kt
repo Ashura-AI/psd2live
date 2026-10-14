@@ -312,6 +312,13 @@ internal fun WorkspacePresetIcon(preset: WorkspacePreset, tint: Color, modifier:
 					fillBox(4f, 10.4f, 3.2f, 3.6f, 0.8f, packed)
 					fillBox(8.6f, 9.4f, 5.4f, 4.6f, 0.8f, soft)
 				}
+				// Pieces laid out on a page, one being placed.
+				WorkspacePreset.LAYOUT -> {
+					box(2f, 2f, 14f, 14f, 1.2f, ICON_FINE)
+					fillBox(4.2f, 4.2f, 4.4f, 4.4f, 0.8f, soft)
+					box(9.6f, 9.6f, 4.4f, 4.4f, 0.8f, ICON_FINE)
+					line(6.4f, 9.8f, 9.6f, 11.8f, ICON_FINE)
+				}
 				// A trunk with one branch forking off, like the history tree.
 				WorkspacePreset.HISTORY -> {
 					line(5.4f, 15f, 5.4f, 3f)

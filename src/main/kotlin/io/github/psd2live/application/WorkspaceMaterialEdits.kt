@@ -117,6 +117,21 @@ internal object WorkspaceMaterialEdits {
         return document.withLibrary(library)
     }
 
+    /**
+     * [document] with its source layers added as materials in a folder [folderName] (its groups as subfolders), each
+     * layer linked to its own material ([WorkspaceLayout.layerMaterials]). The materials share the layers' pixels.
+     */
+    fun addLinked(document: WorkspaceDocument, folderName: String): WorkspaceDocument {
+        val layers = document.source.layers.filter { it.raster.width > 0 && it.raster.height > 0 }
+        if (layers.isEmpty()) return document
+        val entries = WorkspaceMaterialFiles.layered(document.source, listOf(WorkspaceMaterialFiles.name(folderName, "source")), folderName)
+        val before = document.layout.materials.items.size
+        val added = add(document, entries, null)
+        val items = added.layout.materials.items.drop(before)
+        check(items.size == layers.size) { "Every layer becomes one material" }
+        return added.copy(layout = added.layout.copy(layerMaterials = added.layout.layerMaterials + layers.map { it.id.raw }.zip(items.map { it.id })))
+    }
+
     fun createFolder(document: WorkspaceDocument, name: String, parentId: String?, id: String?): WorkspaceDocument {
         val library = document.layout.materials
         requireFolder(library, parentId)

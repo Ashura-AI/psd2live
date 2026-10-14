@@ -10,6 +10,7 @@ enum class TutorialId {
 	WORKSPACE,
 	HIERARCHY,
 	VARIANTS,
+	LAYOUT,
 	PARAMETERS,
 	SELECT_MODE,
 	CREATE_DEFORMER,
@@ -33,6 +34,7 @@ enum class TutorialId {
 			WORKSPACE -> "workspace"
 			HIERARCHY -> "hierarchy"
 			VARIANTS -> "variants"
+			LAYOUT -> "layout"
 			PARAMETERS -> "parameters"
 			SELECT_MODE -> "select"
 			CREATE_DEFORMER -> "create"
@@ -67,7 +69,7 @@ enum class TutorialPath(val i18nKey: String, val chapters: List<TutorialId>) {
 	BEGINNER(
 		"beginner",
 		listOf(
-			TutorialId.BASIC, TutorialId.WORKSPACE, TutorialId.HIERARCHY, TutorialId.VARIANTS,
+			TutorialId.BASIC, TutorialId.WORKSPACE, TutorialId.HIERARCHY, TutorialId.VARIANTS, TutorialId.LAYOUT,
 			TutorialId.PARAMETERS, TutorialId.SELECT_MODE, TutorialId.CREATE_DEFORMER,
 			TutorialId.DEFORM_MODE, TutorialId.EDIT_MODE, TutorialId.PAINT_MODE,
 			TutorialId.INSPECTOR, TutorialId.TOOL_DETAILS, TutorialId.SKELETON, TutorialId.ANIMATION,
@@ -77,7 +79,7 @@ enum class TutorialPath(val i18nKey: String, val chapters: List<TutorialId>) {
 	EXPERIENCED(
 		"experienced",
 		listOf(
-			TutorialId.LIVE2D_BRIDGE, TutorialId.WORKSPACE, TutorialId.HIERARCHY,
+			TutorialId.LIVE2D_BRIDGE, TutorialId.WORKSPACE, TutorialId.HIERARCHY, TutorialId.LAYOUT,
 			TutorialId.PARAMETERS, TutorialId.DEFORM_MODE, TutorialId.EDIT_MODE,
 			TutorialId.INSPECTOR, TutorialId.SKELETON, TutorialId.ANIMATION,
 			TutorialId.PHYSICS, TutorialId.SIMULATION, TutorialId.PROJECT_HISTORY, TutorialId.TEXTURE_UPSCALE,
@@ -134,6 +136,8 @@ data class TutorialStep(
 	val skippable: Boolean = true,
 	/** Text scope shared across chapters; the chapter's own scope otherwise. */
 	val i18nScope: String? = null,
+	/** Switch to this workspace preset (opening one when none of it exists) before the step shows. */
+	val openWorkspace: io.github.psd2live.ui.state.WorkspacePreset? = null,
 ) {
 	fun titleKey(tutorialId: TutorialId): String = "tutorial.${i18nScope ?: tutorialId.i18nKey}.step.$key.title"
 	fun bodyKey(tutorialId: TutorialId): String = "tutorial.${i18nScope ?: tutorialId.i18nKey}.step.$key.body"
@@ -495,6 +499,20 @@ private fun buildTutorialCatalog(): Map<TutorialId, TutorialDefinition> = mapOf(
 			step("branch", TutorialTargetId.HISTORY_TAB, ensureHistoryTab = true),
 			step("regenerate", TutorialTargetId.TOOLS_MENU, preferSideBubble = false),
 			step("done", isDone = true, preferSideBubble = false),
+		),
+	),
+	TutorialId.LAYOUT to TutorialDefinition(
+		TutorialId.LAYOUT,
+		listOf(
+			TutorialStep("workspace", TutorialTargetId.WORKSPACE_STRIP, openWorkspace = io.github.psd2live.ui.state.WorkspacePreset.LAYOUT),
+			TutorialStep("import", TutorialTargetId.MATERIALS_DOCK, selectDock = "materials", showAction = true),
+			TutorialStep("browse", TutorialTargetId.MATERIALS_DOCK, selectDock = "materials"),
+			TutorialStep("place", TutorialTargetId.CANVAS_VIEWPORT, ensureEditTab = true, setHierarchyMode = EditHierarchyMode.SELECT, showAction = true),
+			TutorialStep("tags", TutorialTargetId.LAYERS_DOCK, selectDock = "layers", showAction = true),
+			TutorialStep("replace", TutorialTargetId.MATERIALS_DOCK, selectDock = "materials"),
+			TutorialStep("generate", TutorialTargetId.CANVAS_VIEWPORT, ensureEditTab = true, showAction = true),
+			TutorialStep("again", TutorialTargetId.CANVAS_VIEWPORT, ensureEditTab = true),
+			TutorialStep("done", isDone = true, preferSideBubble = false),
 		),
 	),
 	TutorialId.TEXTURE_UPSCALE to TutorialDefinition(
