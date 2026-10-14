@@ -42,7 +42,7 @@ PSD2Live is a complete 2D character rigging toolchain: it generates meshes, defo
 | Area | Capabilities |
 | --- | --- |
 | **Generation** | Chinese / English / Japanese / Korean layer names; adaptive meshes, head and body deformer chains, facial parameters, idle / blink / nod / shake motions, hair physics and cloth simulation |
-| **Canvas editing** | Seven modes: Select, Deform, Edit, Simulate, Skeleton, Paint, Preview; deformation brushes, mesh topology editing, layer splits and depth splits, Warp / Rotation, Glue |
+| **Canvas editing** | Seven modes: Object, Deform, Edit, Simulate, Skeleton, Paint, Preview; deformation brushes, mesh topology editing, layer splits and depth splits, Warp / Rotation, Glue |
 | **Skeleton and simulation** | Automatic armatures, FK / IK, preset motions; XPBD cloth and hair simulation; all baked into native Cubism structures |
 | **Animation and physics** | Timeline, keyframes and curves; visual pendulum editing evaluated to match the Cubism Native Framework |
 | **Textures** | Atlas layout, per-layer texture density, optional 2× / 4× upscaling |
@@ -156,7 +156,7 @@ Get the latest version from [Releases](https://github.com/tsunehimatoi/psd2live/
 4. **Save and export**: `Ctrl+S` saves a `.psd2live` project; `Ctrl+G` exports `.moc3` / `.cmo3`, and other formats are under **File → Export as**.
 
 > [!TIP]
-> **New to PSD2Live? Open Help → Tutorials… (`F1`).** The interactive tutorials highlight each control and use your current shortcuts, with a beginner path (18 lessons) and a path for Cubism users (13 lessons). The [user guide](guide/USER_GUIDE.md) is the text companion.
+> **New to PSD2Live? Open Help → Tutorials… (`F1`).** The interactive tutorials highlight each control and use your current shortcuts, with a beginner path (19 lessons) and a path for Cubism users (14 lessons). The [user guide](guide/USER_GUIDE.md) is the text companion.
 
 ### Preparing artwork
 

@@ -2,7 +2,7 @@
 
 [文档目录](../../README.md) · [English](../../en/spec/PSD_LAYER_SPEC.md) · [日本語](../../ja/spec/PSD_LAYER_SPEC.md) · [操作速查](../guide/USER_GUIDE.md)
 
-本页面向素材准备；自动识别只是预设入口，导入后仍可在图层面板改类型、部件与侧别。
+本页面向素材准备；自动识别只是预设入口，导入后仍可在图层表里修改标签与差分（见[语义标签](#语义标签)）。
 
 ## 准备素材
 
@@ -50,6 +50,27 @@
 | `TAIL` | `tail`, `尾巴`, `尾`, `しっぽ`, `꼬리` |
 | `WINGS` | `wings`, `翅膀`, `翼`, `つばさ`, `날개` |
 | `OBJECTS` | `objects`, `道具`, `物件`, `소품` |
+
+## 语义标签
+
+名称识别出的部件与侧别在编辑器里显示为一组标签，可以随时增删。生成器认识的组合如下，其余文字是用户自己的标签，不影响生成；`left` / `right` 表示侧别。词表与匹配规则见 [LayerTags.kt](../../../src/main/kotlin/io/github/psd2live/core/LayerTags.kt) 与[素材与 Layout](MATERIAL_LAYOUT_WORKSPACE.md#语义标签)。
+
+| Tag | 标签 | Tag | 标签 |
+| --- | --- | --- | --- |
+| `BACK_HAIR` | `hair` `back` | `MOUTH` | `mouth` |
+| `FRONT_HAIR` | `hair` `front` | `MOUTH_OPEN` | `mouth` `open` |
+| `HEADWEAR` | `headwear` | `MOUTH_CLOSE` | `mouth` `closed` |
+| `FACE` | `face` | `TOOTH_T` | `teeth` `upper` |
+| `FACE_DETAIL` | `face` `detail` | `TOOTH_B` | `teeth` `lower` |
+| `IRIDES` | `eye` `iris` | `TONGUE` | `tongue` |
+| `EYEBROW` | `brow` | `NECK` | `neck` |
+| `EYEWHITE` | `eye` `white` | `NECKWEAR` | `neck` `accessory` |
+| `EYELASH` | `eye` `lash` | `TOPWEAR` | `top` |
+| `EYE_CLOSE` | `eye` `closed` | `HANDWEAR` | `arm` |
+| `EYEWEAR` | `eyewear` | `BOTTOMWEAR` | `bottom` |
+| `EARS` | `ear` | `LEGWEAR` | `leg` |
+| `EARWEAR` | `ear` `accessory` | `FOOTWEAR` | `foot` |
+| `NOSE` | `nose` | `TAIL` / `WINGS` / `OBJECTS` | `tail` / `wings` / `object` |
 
 ## 左右与拆分
 

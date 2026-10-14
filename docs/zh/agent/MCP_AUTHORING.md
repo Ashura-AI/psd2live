@@ -51,8 +51,8 @@
 | `workspace_apply_edits` | `state`、`edits`（1–128 项），可选 `summary` | 后台有序编辑同一候选文档，全部成功后提交一个历史节点；返回任务句柄，成员支持情况见 `batchable` |
 | `workspace_preview_edits` | `state`、`edits`（1–128 项），共用请求上下文 | 后台试运行几何作者编辑，返回候选 revision 与诊断；不发布文档、姿态、历史或资源 |
 | `workspace_preview_regeneration` | `state`、`edits`（1–128 项，资源图层操作除外），共用请求上下文 | 后台试运行会再生成 Rig 的编辑（设置、分类、拆分、`rig_update_generation` 等），返回候选 revision、将写入的固化点及其合并问题、增删的对象；不发布任何东西 |
-| `workspace_inspect` | `request` 内 `scope` / `target` | scope 为 `project/settings/preview/objects/layers/parameters/physics/swings/paths/simulations/vertex_groups`；图层摘要包含有效网格配置；工程已加载时 `project` 带 `quality.overrides`：观察报告（版本 3），两项检查——未按记录生效的生成结果覆盖（冲突 / 孤立，均为 warning），以及因只引用后续版本 2 拆分所取代的网格而按空操作重放的日志条目（`SUPERSEDED_ENTRY_SKIPPED`，info，`target` 为 `journal:<序号>`）；另带 `quality.regeneration`：观察报告（版本 2，两项检查），先列出日志最后一个固化点的再生成合并未能干净迁移的内容（`REGENERATION_CONFLICT`、`REGENERATION_TOPOLOGY_KEPT` 为 warning，`REGENERATION_DROPPED` 为 warning / validity，改挂、随生成器的接替改挂（`REGENERATION_FOLLOWED`）、保留退役对象、改父级、顶点迁移、用户拓扑跟随生成（`REGENERATION_TOPOLOGY_FOLLOWED`）与按本程序重新合并的固化点（`REGENERATION_REMERGED`）为 info），再列出较早版本合并、本程序会合并成不同结构且影响到 Rig 的再生成固化点（`REGENERATION_REPAIR_AVAILABLE`，warning，`target` 为 `journal:<序号>`，`evidence.detail` 列出结构不同的对象；执行 `rig_update_generation` 即可修复；每个模型第一次检查要重新合并，可能需要数秒），`can_proceed` 恒为 true；另带 `quality.skeleton`：观察报告（版本 1），列出骨骼绑定却不受其肢体骨骼带动的网格（`SKELETON_BINDING_INEFFECTIVE`）、挂在呼吸 Warp 下却绕过骨架躯干 Warp 的网格（`SKELETON_TORSO_BYPASSED`），均为 warning，以及绑定了 Rig 中没有的网格（`SKELETON_BINDING_MISSING`，info / validity）；`target` 为 `mesh:<ID>`，`evidence.bone` 为绑定它的骨骼，`can_proceed` 恒为 true |
-| `layer_classify` | `request` 内 `state`、`layer_id` 及分类字段 | 后台更新既有源图层的类型、部件、侧别、参数关联和切换 ID；省略的字段保持捕获时的原值 |
+| `workspace_inspect` | `request` 内 `scope` / `target` | scope 为 `project/settings/preview/generation/objects/layers/parameters/physics/swings/paths/simulations/vertex_groups`；图层摘要包含有效网格配置、语义标签 `tags`，生成后放置或分类等待生成的图层带 `pending:true`，来自素材的带 `material_id`；`generation` 返回是否已生成、待生成图层、等待的分类与可刷新几何的图层；工程已加载时 `project` 带 `quality.overrides`：观察报告（版本 3），两项检查——未按记录生效的生成结果覆盖（冲突 / 孤立，均为 warning），以及因只引用后续版本 2 拆分所取代的网格而按空操作重放的日志条目（`SUPERSEDED_ENTRY_SKIPPED`，info，`target` 为 `journal:<序号>`）；另带 `quality.regeneration`：观察报告（版本 2，两项检查），先列出日志最后一个固化点的再生成合并未能干净迁移的内容（`REGENERATION_CONFLICT`、`REGENERATION_TOPOLOGY_KEPT` 为 warning，`REGENERATION_DROPPED` 为 warning / validity，改挂、随生成器的接替改挂（`REGENERATION_FOLLOWED`）、保留退役对象、改父级、顶点迁移、用户拓扑跟随生成（`REGENERATION_TOPOLOGY_FOLLOWED`）与按本程序重新合并的固化点（`REGENERATION_REMERGED`）为 info），再列出较早版本合并、本程序会合并成不同结构且影响到 Rig 的再生成固化点（`REGENERATION_REPAIR_AVAILABLE`，warning，`target` 为 `journal:<序号>`，`evidence.detail` 列出结构不同的对象；执行 `rig_update_generation` 即可修复；每个模型第一次检查要重新合并，可能需要数秒），`can_proceed` 恒为 true；另带 `quality.skeleton`：观察报告（版本 1），列出骨骼绑定却不受其肢体骨骼带动的网格（`SKELETON_BINDING_INEFFECTIVE`）、挂在呼吸 Warp 下却绕过骨架躯干 Warp 的网格（`SKELETON_TORSO_BYPASSED`），均为 warning，以及绑定了 Rig 中没有的网格（`SKELETON_BINDING_MISSING`，info / validity）；`target` 为 `mesh:<ID>`，`evidence.bone` 为绑定它的骨骼，`can_proceed` 恒为 true |
+| `layer_classify` | `request` 内 `state`、`layer_id` 及分类字段 | 后台更新既有源图层的类型、部件、侧别、参数关联和切换 ID；省略的字段保持捕获时的原值。已生成的图层不立即重新生成：结果带 `pending:true`，在下一次 `rig_generate` 时生效；需要立刻看到效果时在同一 `workspace_apply_edits` 批量末尾加 `rig_generate`。未生成的图层立即采用 |
 | `layer_mesh_update` | `request` 内 `state`、`layer_id`、`changes` 或 `reset` | 后台逐图层覆盖或重置自适应网格参数；用 `workspace_inspect scope=layers` 读取当前值 |
 | `source_sample_color` | `layer_id`、`x`、`y` | 读取源图层在画布整数坐标的 RGBA；不改变文档或历史 |
 | `source_paint_brush / source_paint_pencil / source_paint_eraser / source_paint_bucket / source_paint_shape / source_paint_clear` | `request` | `brush/pencil/eraser/bucket/shape/clear`；画布单位坐标，按图层栅格密度落笔，一次手势一个历史节点 |
@@ -63,6 +63,7 @@
 | `settings_update` | `request` 内 `state`、`changes` | 后台修改自动 Rig、网格、贴图、高清化、物理预设、动作和导出配置；`rigTuning` 按字段合并 Rig 数值（头部转向、眼睛、眉毛、嘴巴、鼻子与耳朵、头发，以及身体的转身、上下、前后倾、大小变、身体 Z 与呼吸、立体与透视；单位与模型预设「Rig 数值」一致，超出范围或未知的字段会被拒绝）；`meshOnly` 变化而未显式给出 `generateDeformers` 时联动为 `!meshOnly`（导入 CMO3 除外），生成动作子项变化而未显式给出 `exportMotions` 时联动为子项是否全开，显式字段优先；关闭来源时把其驱动的作者姿态逐工作区释放到参数默认值（跳过锁定参数），与设置同次提交；文档保存原始设置；先用 `workspace_inspect scope=settings` 读取 |
 | `project_import_psd` | `path`，可选 `discard_unsaved` | 从绝对 PSD 路径后台创建新工程；已加载时可切换，默认拒绝未保存修改 |
 | `project_create_artwork` | `width`、`height`、`layers`，可选 `discard_unsaved` | 从本地 PNG/WebP/TIFF/BMP 按位置创建新工程，图层自底向顶；后台任务，切换须保存或显式放弃 |
+| `project_create` | `width`、`height`，可选 `discard_unsaved` | 后台新建未生成的空工程，用于先导入素材、摆放再生成，见[素材与 Layout](#素材与-layout) |
 | `project_import_cmo3` | `path`、`mode`（`new/replace`），可选 `discard_unsaved` | 后台导入绝对路径的 CMO3；新建默认拒绝未保存切换；替换按对象 ID 更新、保留未出现对象，并作为一次历史编辑提交 |
 | `project_open` | `path`，可选 `discard_unsaved` | 后台打开绝对路径的工程归档；未保存默认拒绝，先保存或显式放弃；可从空工作区调用 |
 | `project_save` / `project_save_as` | 保存无需额外字段；另存为要求 `path` | 后台保存工程；首次保存用另存为指定绝对路径，后续保存使用当前路径；无变更不追加历史节点 |
@@ -112,7 +113,7 @@
 - `atlas_get`（查询）：可选 `page` 过滤图块；返回有效 `budget{page_size,max_pages,padding}`、`fit`、`notices`、`auto`（是否每次自动排布）、`pages[{index,width,height,tile_count,occupancy}]` 与 `tiles`。`occupancy` 对按网格排布的图块只计网格实际使用的单元格。`notices` 会指出页数超出预算，以及为放进页面而低于所设密度存放的图块：已保存的排布会保持 `fit`，所以换成更高分辨率的图像后，这两种情况都不会体现在 `fit` 里。纹理编辑与含纹理编辑的 `workspace_apply_edits` 结果也带 `atlas_fit` 与 `notices`；用 `atlas_set_budget` 加 `atlas_pack`（可与替换放在同一批中）即可收回预算内。
 - `atlas_render_page`（只读后台任务，要求 `request_id/project_id/state`）：`page`，可选 `max_size`（64–16384，默认 2048，按长边缩小）；终态含 `revision`、原尺寸与渲染尺寸、`sha256`、该页图层，PNG 以图片内容返回，`job_get/job_wait` 可重复取图。
 - `layer_set_canvas_rect`：`layer_id`、`rect{left,top,width,height}`；把图层移动、缩放到画布在该矩形处显示其像素，即一次从当前显示位置出发的 `layer_transform`（旋转过的图层拒绝，改用 `layer_transform`）。像素、纹理与生成输入不变，网格连同关键形移动；任何图层均可。`layer_get_texture` 的 `canvas_rect` 是图层当前显示的位置。相同矩形无变化。
-- `layer_replace_image`：`layer_id` 与 `path`（绝对路径，PNG/WebP/TIFF/BMP，仅单项）或 `png_base64` 二选一，可选 `fit`（`stretch` 默认铺满，`contain` 保持比例居中补透明）与 `rebuild_mesh`（默认 false）。画布矩形不变，生成输入冻结在首次替换前的像素，网格、关键形与绑定保留，仅图块和 UV 改变；`rebuild_mesh=true` 改由新像素重新生成该层网格，带作者编辑或物化几何时拒绝。单项先核对状态再读取文件；批量成员只接受 `png_base64`，给出 `path` 时整批以 `invalid_edit` 失败。最多 16MP，像素相同为无变化。
+- `layer_replace_image`：`layer_id` 与 `path`（绝对路径，PNG/WebP/TIFF/BMP，仅单项）或 `png_base64`、`material_id`（素材库中的素材，图层随之关联该素材）三选一，可选 `fit`（`stretch` 默认铺满，`contain` 保持比例居中补透明）与 `rebuild_mesh`（默认 false）。画布矩形不变，生成输入冻结在首次替换前的像素，网格、关键形与绑定保留，仅图块和 UV 改变；`rebuild_mesh=true` 改由新像素重新生成该层网格，带作者编辑或物化几何时拒绝。单项先核对状态再读取文件；批量成员只接受 `png_base64`，给出 `path` 时整批以 `invalid_edit` 失败。最多 16MP，像素相同为无变化。
 - `atlas_check_placement`（查询）：`placements` 为 1–128 项 `{layer_id, page?, x?, y?, rotation?, density?}`，省略字段沿用已提交值；返回 `clear` 与每个图块的目标 `page/x/y/width/height/rotation`、`outside_page`（旋转后的外接框是否超出页面或页号超出预算）和 `overlaps`（网格会与之相交的图块）。与其他已提交图块及本次一并检查的图块比较，规则与提交时完全相同：两图块按间距外扩后的外接框相交时，才按网格实际使用的单元格（外扩间距）判断，两个都无网格且未旋转时按矩形判断。纹理集视图拖动、缩放、旋转时用的也是这一规则，`clear` 的放置一定原样落地，有冲突的放置会被下面的命令拒绝。
 - `layer_set_pixel_density`：1–128 个唯一 `layer_ids`、必需的 `density`（1/64–16 连续取值，`null` 恢复为 1），可选 `lock`（省略保持原值）。已有排布时各图块保持左上角，若变大后会超出页面或与其他图块的网格相交，以 `tile_collides` 拒绝且不做任何修改。
 - `atlas_set_tile`：`layer_id` 与 `pin{page,x,y,rotation?}`（纹理像素；`x`、`y` 为未旋转矩形的左上角，`rotation` 为绕图块中心旋转的任意度数，缺省 0）或 `null` 放入空闲区域；页号须在预算内。位置保存在排布（`atlasArrangement` 设置）中；自动排布的纹理集先按当前布局保存（`auto` 变为 false），已有排布时先按当前位置保存各图块并补上网格覆盖区域，因此其他图块不动，也不会挤进移走后空出的位置。旋转后会超出页面或与其他图块的网格相交的位置以 `tile_collides` 拒绝，不做任何修改；先用 `atlas_check_placement` 检查。要同时移动和缩放（例如保持对角不动的缩放，或互换两个图块的位置），把 `layer_set_pixel_density` 与 `atlas_set_tile` 放进同一个 `workspace_apply_edits`：只检查整批之后的布局，与纹理集视图“应用”调整会话完全相同。
@@ -190,6 +191,7 @@ CMO3 导入共用独立应用层导入器，GUI 入口确认后携带可信用�
 | `request_id_reused` | 同一 ID 被用于不同操作、参数或作者；使用新的请求 ID |
 | `unsaved_changes` | 先保存，或明确传入支持的放弃标志 |
 | `workspace_busy` | 等待正在进行的工作完成，再读取当前状态 |
+| `not_generated` | 操作需要已生成的 Rig：工程尚未生成，或目标是上次生成后放置的图层。先执行 `rig_generate`；批量成员失败时另带 `edit_index` 和 `edit_operation` |
 | `io_error` / `permission_denied` | 根据 `message` 检查文件路径、访问权限或磁盘问题 |
 | `invalid_state` / `operation_failed` | 根据 `message` 和当前工程状态诊断业务前提或执行问题 |
 
@@ -491,7 +493,34 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 
 用 `job_get/job_wait` 读取终态诊断与 PNG，重复读取返回同一图片；完成结果含 `project_id/state/revision`，已有拼图 `revisionId` 也指向同一捕获版本。原生采样使用临时模型，不更改 GUI 的实时动画和物理状态；取消排队任务不会执行，帧循环取消后释放模型与临时文件。该只读操作不支持文档批量。历史对比仍是即时查询，但也使用同一次捕获的历史树，工程重开不替换它的对比依据。
 
-## 素材工作流
+## 素材与 Layout
+
+工程内素材库与"先摆放、再生成"流程，设计与边界见 [MATERIAL_LAYOUT_WORKSPACE.md](../spec/MATERIAL_LAYOUT_WORKSPACE.md)。文档操作都可作为 `workspace_apply_edits` 成员；单独调用时返回进程任务句柄，`job_wait/job_get` 的 `data.result` 与批量结果相同（`state/history_node_id/edit_count/changed`），新素材以 `material:<id>`、新图层以 `layer:<id>` 出现在 `changed` 中。
+
+| 工具 | 主要参数 | 说明 |
+| --- | --- | --- |
+| `project_create` | `width`、`height`，可选 `discard_unsaved` | 新建未生成的空工程 |
+| `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的分层图片（没有时取纹理页）、SVG（按自身尺寸栅格化）或文件夹，作为一个历史节点加入素材库；每张图不超过 16MP |
+| `material_add` | `state`、`staging`，可选 `folder_id` | `material_import` 读取后实际提交的成员；`staging` 为进程内暂存的内容摘要，一般不直接调用 |
+| `material_list` | 可选 `folder_id`、`recursive`、`query`、`kind`、`unused`、`offset`、`limit`（≤256） | 列出文件夹与条目；`query` 匹配名称和标签（含文件夹标签），`references` 为使用它的图层数 |
+| `material_get` | `id` | 条目或文件夹详情；条目返回使用它的 `layers`，SVG 另有 `vector_size` |
+| `material_preview` | `id`，可选 `size`（16–4096，默认 512） | 返回条目或文件夹合成的 PNG 图像 |
+| `material_folder_create` | `state`、`name`，可选 `parent_id`、`id` | 新建文件夹；`id` 供同批后项引用 |
+| `material_move` / `material_rename` | `ids` + `folder_id`（null 为顶层）/ `id` + `name` | 整理；文件夹不能移入自身 |
+| `material_delete` | `ids` | 删除条目与文件夹（含其中全部内容）；仍被未删除图层使用时拒绝并列出图层 |
+| `material_tag` | `ids`，`set` 或 `add`/`remove` | 条目与文件夹的标签；放置时并入图层标签 |
+| `material_set_resolution` | `id`、`width`、`height`（单边 ≤4096） | SVG 的纹理分辨率；使用它的图层画布矩形不变、像素随之替换 |
+| `material_export_psd` | `state`、`folder_id`、`path`（绝对 `.psd`） | 后台把文件夹写成 PSD：条目按默认位置（无则自左上排开），子文件夹为图层组 |
+| `layer_place` | `state`、`material_id`，可选 `rect`（单个条目）、`at`（[x, y] 中心）、`layer_id`（单个条目的新图层 ID） | 放置条目或整个文件夹为新源图层，画在已有图层之上；默认 PSD 位置，否则 1 素材像素 = 1 画布单位并缩入画布；像素不重采样 |
+| `layer_tag` | `state`、`layer_ids`（1–128），`set` 或 `add`/`remove` | 语义标签：部位词与 `left/right` 决定分类（如 `{hair, front}`、`{eye, iris, left}`），其余为用户标签；已生成图层的分类变化等待 `rig_generate` |
+| `layer_set_variant` | `state`、`layer_id`、`variant`（`none/toggle/switch`），可选 `parameter`、`switch_id` | 差分属性，保留标签 |
+| `rig_generate` | `state`，可选 `refresh_geometry` | 生成或重新生成：未生成工程按当前全部图层构建；已生成工程并入上次生成后放置的图层与等待的分类，按三方合并保留用户编辑，未能干净迁移的内容见 `quality.regeneration`。`refresh_geometry` 列出按当前像素重建网格的已生成图层，省略为全部替换过图片的图层，`[]` 全部保留 |
+
+未生成工程与待生成图层只接受素材、放置、移动缩放镜像（`layer_set_canvas_rect`、`layer_transform`，旋转需生成后）、替换、删除、标签与生成设置；其余 Rig 编辑返回 `not_generated`，导出只包含已生成部分（未生成工程拒绝导出）。导入 PSD 的新工程同样把每个图层登记为素材并关联。
+
+一个典型流程：`project_create` → `material_import` → `material_list` → 若干 `layer_place`（或放置整个 PSD 文件夹）→ `layer_tag` → `rig_generate` → 作者编辑 → 再 `layer_place` → `rig_generate`。
+
+## 素材工作流（asset_*）
 
 `asset_prepare_reference / asset_import_png / asset_register / asset_reprocess` 返回进程任务句柄，均要求 `request_id/project_id/state`。从 `job_wait/job_get` 的 `data.result` 读取业务结果及提交后的 `state/project_id/history_node_id`；参考图、配准预览及重处理图片可重复获取。断线或取消等待不停止任务，原请求重试取得同一任务。准备失败、提交前取消或状态冲突不发布素材；CAS 后的迟到取消保留 completed 和实际结果。
 

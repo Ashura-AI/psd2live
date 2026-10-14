@@ -2,7 +2,7 @@
 
 [Documentation](../../README.md) · [中文](../../zh/spec/PSD_LAYER_SPEC.md) · [日本語](../../ja/spec/PSD_LAYER_SPEC.md) · [User guide](../guide/USER_GUIDE.md)
 
-This page covers source preparation. Automatic classification selects presets; you can correct layer type, part and side after import.
+This page covers source preparation. Automatic classification is a starting point; after import you can change each layer's tags and variant in the Layers table (see [semantic tags](#semantic-tags)).
 
 ## Prepare artwork
 
@@ -50,6 +50,27 @@ The table lists known classifier tags and selected aliases, excluding UNKNOWN. T
 | `TAIL` | `tail`, `尾巴`, `尾`, `しっぽ`, `꼬리` |
 | `WINGS` | `wings`, `翅膀`, `翼`, `つばさ`, `날개` |
 | `OBJECTS` | `objects`, `道具`, `物件`, `소품` |
+
+## Semantic tags
+
+The recognised part and side show in the editor as a set of tags you can change at any time. The generators read the combinations below; any other word is your own tag and does not affect generation; `left` / `right` give the side. Vocabulary and matching rules: [LayerTags.kt](../../../src/main/kotlin/io/github/psd2live/core/LayerTags.kt) and the Chinese [materials and Layout](../../zh/spec/MATERIAL_LAYOUT_WORKSPACE.md) reference.
+
+| Tag | Tags | Tag | Tags |
+| --- | --- | --- | --- |
+| `BACK_HAIR` | `hair` `back` | `MOUTH` | `mouth` |
+| `FRONT_HAIR` | `hair` `front` | `MOUTH_OPEN` | `mouth` `open` |
+| `HEADWEAR` | `headwear` | `MOUTH_CLOSE` | `mouth` `closed` |
+| `FACE` | `face` | `TOOTH_T` | `teeth` `upper` |
+| `FACE_DETAIL` | `face` `detail` | `TOOTH_B` | `teeth` `lower` |
+| `IRIDES` | `eye` `iris` | `TONGUE` | `tongue` |
+| `EYEBROW` | `brow` | `NECK` | `neck` |
+| `EYEWHITE` | `eye` `white` | `NECKWEAR` | `neck` `accessory` |
+| `EYELASH` | `eye` `lash` | `TOPWEAR` | `top` |
+| `EYE_CLOSE` | `eye` `closed` | `HANDWEAR` | `arm` |
+| `EYEWEAR` | `eyewear` | `BOTTOMWEAR` | `bottom` |
+| `EARS` | `ear` | `LEGWEAR` | `leg` |
+| `EARWEAR` | `ear` `accessory` | `FOOTWEAR` | `foot` |
+| `NOSE` | `nose` | `TAIL` / `WINGS` / `OBJECTS` | `tail` / `wings` / `object` |
 
 ## Sides and splitting
 

@@ -2,7 +2,7 @@
 
 [中文首页](../README.md) · [English](en/README.md) · [日本語](ja/README.md) · [한국어](ko/README.md) · [更新日志](zh/CHANGELOG.md)
 
-学习操作请先用程序内的 **帮助 → 教程…**（`F1`）：零基础路线 18 课，Cubism 经验者路线 13 课。下列文档用于回看操作和查阅技术细节。中文为主要语言；尚无译文的页面在英文、日文列中标注为中文参考。
+学习操作请先用程序内的 **帮助 → 教程…**（`F1`）：零基础路线 19 课，Cubism 经验者路线 14 课。下列文档用于回看操作和查阅技术细节。中文为主要语言；尚无译文的页面在英文、日文列中标注为中文参考。
 
 For hands-on learning, open **Help → Tutorials…** (`F1`). Chinese is the primary documentation language; pages without a translation link to the Chinese reference.
 
@@ -14,7 +14,8 @@ For hands-on learning, open **Help → Tutorials…** (`F1`). Chinese is the pri
 | --- | --- | --- | --- | --- |
 | 更新日志 | 各版本中使用者能感知到的变化 | [打开](zh/CHANGELOG.md) | [中文参考](zh/CHANGELOG.md) | [中国語参考](zh/CHANGELOG.md) |
 | 操作速查 | 与程序内教程对应的文字版、常用快捷键、工作区与纹理工作区 | [打开](zh/guide/USER_GUIDE.md) | [Open](en/guide/USER_GUIDE.md) | [開く](ja/guide/USER_GUIDE.md) |
-| 画布编辑 | 模式菜单（选择 / 变形 / 编辑 / 模拟 / 骨骼 / 绘画 / 预览）、形变、网格拓扑、Glue、权重、绘画会话 | [打开](zh/guide/CANVAS_EDITOR.md) | [中文参考](zh/guide/CANVAS_EDITOR.md) | [中国語参考](zh/guide/CANVAS_EDITOR.md) |
+| 画布编辑 | 模式菜单（物体 / 变形 / 编辑 / 模拟 / 骨骼 / 绘画 / 预览）、形变、网格拓扑、Glue、权重、绘画会话 | [打开](zh/guide/CANVAS_EDITOR.md) | [中文参考](zh/guide/CANVAS_EDITOR.md) | [中国語参考](zh/guide/CANVAS_EDITOR.md) |
+| 素材与 Layout | 素材库、先摆放再生成、重新生成、语义标签 | [打开](zh/guide/LAYOUT.md) | [中文参考](zh/guide/LAYOUT.md) | [中国語参考](zh/guide/LAYOUT.md) |
 | 前后分层图文教程 | 衣领与脖子、头发与肩部装饰的前后遮挡，复制、黏合与橡皮擦修边 | [打开](zh/guide/DEPTH_SPLIT.md) | [中文参考](zh/guide/DEPTH_SPLIT.md) | [中国語参考](zh/guide/DEPTH_SPLIT.md) |
 | 骨骼与姿态 | 骨架推断、绑定、IK、预设动作与烘焙结构 | [打开](zh/guide/SKELETON.md) | [中文参考](zh/guide/SKELETON.md) | [中国語参考](zh/guide/SKELETON.md) |
 | 摇摆生成 | 左右 / 上下摇摆、画布手柄、摆锤与烘焙 | [打开](zh/guide/SWING.md) | [中文参考](zh/guide/SWING.md) | [中国語参考](zh/guide/SWING.md) |
@@ -43,6 +44,8 @@ For hands-on learning, open **Help → Tutorials…** (`F1`). Chinese is the pri
 | 导出目标 | 中立绑定 IR、各导出格式与损失报告、模块许可证 | [打开](zh/spec/EXPORT_TARGETS.md) | [中文参考](zh/spec/EXPORT_TARGETS.md) | [中国語参考](zh/spec/EXPORT_TARGETS.md) |
 | 运行时 | Rust 运行时、`.p2lrt` 格式、网页播放器与 Godot 节点 | [打开](zh/spec/RUNTIME.md) | [中文参考](zh/spec/RUNTIME.md) | [中国語参考](zh/spec/RUNTIME.md) |
 | `.p2lrt` 2.0 格式 | 分块容器、核心层与扩展层、演进规则 | [打开](zh/spec/P2LRT_V2.md) | [中文参考](zh/spec/P2LRT_V2.md) | [中国語参考](zh/spec/P2LRT_V2.md) |
+| 素材与 Layout 实现 | 生成视图与待生成图层、素材库存储、语义标签映射、操作表 | [打开](zh/spec/MATERIAL_LAYOUT_WORKSPACE.md) | [中文参考](zh/spec/MATERIAL_LAYOUT_WORKSPACE.md) | [中国語参考](zh/spec/MATERIAL_LAYOUT_WORKSPACE.md) |
+| Layout 的 AI 辅助（设计中） | 对齐、抠图、补全 | [打开](zh/spec/LAYOUT_AI_ASSIST.md) | [中文参考](zh/spec/LAYOUT_AI_ASSIST.md) | [中国語参考](zh/spec/LAYOUT_AI_ASSIST.md) |
 | 文档层 | 生成器依赖图、生成结果覆盖、缓存、逐层尺寸与拆分物化 | [打开](zh/spec/DOCUMENT_LAYER.md) | [中文参考](zh/spec/DOCUMENT_LAYER.md) | [中国語参考](zh/spec/DOCUMENT_LAYER.md) |
 | 固化 Rig | 按修订保存的固化 Rig、检查点、再生成合并与实现进度 | [打开](zh/spec/MATERIALIZED_RIG.md) | [中文参考](zh/spec/MATERIALIZED_RIG.md) | [中国語参考](zh/spec/MATERIALIZED_RIG.md) |
 | 运行时与导出边界 | 数据流、格式支持范围、交付检查 | [打开](zh/spec/RUNTIME_EXPORT_ARCHITECTURE_AND_GAPS.md) | [中文参考](zh/spec/RUNTIME_EXPORT_ARCHITECTURE_AND_GAPS.md) | [中国語参考](zh/spec/RUNTIME_EXPORT_ARCHITECTURE_AND_GAPS.md) |

@@ -85,7 +85,8 @@
 - [ ] 【远期】**运行时写入纹理**（p2lrt）：涂鸦、脏污、贴纸、签名；Cubism 纹理运行时只读。
 - [ ] 【远期】**粒子**（p2lrt）：固定轨迹可部分烘焙。
 - [ ] 【远期】**AOV 渲染通道导出**（p2lrt）：深度、法线、UV、部件 ID、运动矢量，用于合成或 AI 重绘。
-- [ ] 【下一步】**素材与 Layout 工作区**（p2ledior）：工程内素材库（位图、PSD / CMO3 分层图、SVG，文件夹整理与导出 PSD）；先摆放、再生成，可反复加图与重新生成并保留编辑；图层分类改为语义标签；见[设计稿](spec/MATERIAL_LAYOUT_WORKSPACE.md)。AI 辅助（对齐、抠图、补全）在其后，见[设计稿](spec/LAYOUT_AI_ASSIST.md)。
+- [ ] 【下一步】**Layout 的 AI 辅助**（p2ledior）：在已实现的[素材与 Layout](spec/MATERIAL_LAYOUT_WORKSPACE.md)之上做对齐、抠图、补全，见[设计稿](spec/LAYOUT_AI_ASSIST.md)。
+- [ ] 【后续】**Layout 补充**（p2ledior）：素材拖到层级树指定位置、多选图层批量编辑标签、旧工程从当前源图生成素材、新素材库与 `asset_*` 素材合并、待生成图层参与预览动画。
 - [ ] 【持续】可独立保存的参数模板与稳定语义接口。
 - [ ] 【持续】Agent：跨工具事务、结构化历史差异和可恢复任务执行。
 

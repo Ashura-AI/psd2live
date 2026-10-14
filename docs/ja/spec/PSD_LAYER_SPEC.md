@@ -2,7 +2,7 @@
 
 [ドキュメント一覧](../../README.md) · [中文](../../zh/spec/PSD_LAYER_SPEC.md) · [English](../../en/spec/PSD_LAYER_SPEC.md) · [操作早見表](../guide/USER_GUIDE.md)
 
-自動分類はプリセットを選ぶための入口です。読み込み後にレイヤーパネルで種別・パーツ・左右を修正できます。
+自動分類は入口にすぎず、読み込み後にレイヤー表で各レイヤーのタグと差分を変更できます（[セマンティックタグ](#セマンティックタグ)）。
 
 ## 素材準備
 
@@ -50,6 +50,27 @@ RGB・8 ビット・透過背景のレイヤー付き PSD を使います。必�
 | `TAIL` | `tail`, `尾巴`, `尾`, `しっぽ`, `꼬리` |
 | `WINGS` | `wings`, `翅膀`, `翼`, `つばさ`, `날개` |
 | `OBJECTS` | `objects`, `道具`, `物件`, `소품` |
+
+## セマンティックタグ
+
+認識された部位と左右は、エディタでいつでも変更できるタグとして表示されます。生成器が読む組み合わせは次の通りで、それ以外の語はユーザー用のタグとして生成に影響しません。`left` / `right` は左右を表します。語彙と照合規則は [LayerTags.kt](../../../src/main/kotlin/io/github/psd2live/core/LayerTags.kt) と中国語の[素材とレイアウト](../../zh/spec/MATERIAL_LAYOUT_WORKSPACE.md)を参照してください。
+
+| Tag | タグ | Tag | タグ |
+| --- | --- | --- | --- |
+| `BACK_HAIR` | `hair` `back` | `MOUTH` | `mouth` |
+| `FRONT_HAIR` | `hair` `front` | `MOUTH_OPEN` | `mouth` `open` |
+| `HEADWEAR` | `headwear` | `MOUTH_CLOSE` | `mouth` `closed` |
+| `FACE` | `face` | `TOOTH_T` | `teeth` `upper` |
+| `FACE_DETAIL` | `face` `detail` | `TOOTH_B` | `teeth` `lower` |
+| `IRIDES` | `eye` `iris` | `TONGUE` | `tongue` |
+| `EYEBROW` | `brow` | `NECK` | `neck` |
+| `EYEWHITE` | `eye` `white` | `NECKWEAR` | `neck` `accessory` |
+| `EYELASH` | `eye` `lash` | `TOPWEAR` | `top` |
+| `EYE_CLOSE` | `eye` `closed` | `HANDWEAR` | `arm` |
+| `EYEWEAR` | `eyewear` | `BOTTOMWEAR` | `bottom` |
+| `EARS` | `ear` | `LEGWEAR` | `leg` |
+| `EARWEAR` | `ear` `accessory` | `FOOTWEAR` | `foot` |
+| `NOSE` | `nose` | `TAIL` / `WINGS` / `OBJECTS` | `tail` / `wings` / `object` |
 
 ## 左右と分離
 

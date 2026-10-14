@@ -42,28 +42,29 @@ Moving the canvas rectangle, or replacing an image with a mesh rebuild, is refus
 
 ## Tutorial paths
 
-The catalog has 19 topics. The beginner path contains the 18 lessons below; the experienced path starts with a Cubism-to-PSD2Live terminology bridge and skips selected introductory lessons. Every chapter except Basic workflow first asks you to import a PSD or open a project when no model is open.
+The catalog has 20 topics. The beginner path contains the 19 lessons below; the experienced path starts with a Cubism-to-PSD2Live terminology bridge and skips selected introductory lessons. Every chapter except Basic workflow first asks you to import a PSD or open a project when no model is open.
 
 | Lesson | Topic | Remember |
 | --- | --- | --- |
 | 1 | Basic workflow | Import layered artwork, inspect parts and model presets, then choose export formats; texture atlas settings are in the export dialog. |
 | 2 | Workspace | Edit changes the model; Preview shows it; History restores versions. Each canvas tab has its own camera and overlays. |
 | 3 | Hierarchy and mode bar | Select, search and reparent objects. Drop transparent artwork on the tree and confirm placement. Drawing order and parent deformation are different. |
-| 4 | Layer types and variants | Presets apply part algorithms; toggle variants show/hide; exclusive variants share a parameter with different association IDs. |
-| 5 | Parameters and keyforms | Drag sliders or XY controls; right-click a key mark to snap. Move to the target key before editing its keyform. |
-| 6 | Select mode | Select objects with the canvas tools or hierarchy; selection alone changes no geometry. |
-| 7 | Create deformers | Select a target, use the toolbar's Create group or the tree context menu, adjust the placement preview and confirm. |
-| 8 | Deform mode | Edit points or use brushes at the current parameter pose; on a warp deformer switch between the Vertices and Bezier levels (keys 1 / 2); meshes pick points by vertex, edge or face. |
-| 9 | Edit mode | Subdivide, connect, cut or remove mesh elements; inspect existing poses afterward. |
-| 10 | Paint mode | Select a layer, paint pixels and use session-local undo. Apply or discard the session. |
-| 11 | Inspector | Edit properties for the selected object: name, ownership, masks, drawing order, opacity and colors. |
-| 12 | Tool options | The options bar at the canvas's bottom left sets the current tool's radius, hardness, strength and so on; the context menu shows the same values plus the tool's actions; the Tool Details panel keeps advanced settings. |
-| 13 | Skeleton rigging and editing | Create, extrude, duplicate and mirror bones in Skeleton mode, batch-bind ArtMeshes, pose with FK/IK, paint and clean skin weights and save poses; configure parameter sampling limits in the panel. Export bakes this into Cubism parameters, deformers and keyforms. |
-| 14 | Animation editor | Tune generated motions with each preset's knobs; edit parameter tracks and keyframes on the timeline with auto-keying, default Bezier easing, track key marks, and shared poses across canvases. |
-| 15 | Physics canvas | Configure inputs, pendulums and outputs, then calibrate output scale against the observed range. |
-| 16 | Cloth and hair simulation | Generate hair and clothing simulation in the model presets' Physics & Simulation group (first if there is none) and learn the hair modes and clothing options; then inspect bodies in the Simulation panel, paint and understand pin, stiffness, shape, mass and damping weights in Simulate mode, set glue, material presets and values, inputs and outputs and bake options, and bake into parameters, keyforms and a Cubism pendulum; only the bake exports. |
-| 17 | Project and history | Save the project, search nodes in the compact history tree, highlight branch paths, or double-click to check out; includes a dedicated History workspace preset; File > Open Recent reopens recent projects and PSDs; Tools > Update Generated Rig merges your edits onto what this version generates. |
-| 18 | Texture upscaling | Configure the local backend, choose 2× / 4× and check edges, transparency and exports. |
+| 4 | Variants | None rigs the part its tags name; toggle variants show/hide; switch variants share a parameter with different IDs. |
+| 5 | Materials and layout | Start a Layout project or import a PSD, import and organise materials, drag them onto the canvas, tag the parts and Generate; place more, retag and Regenerate later while your edits stay. See [materials and Layout](../../zh/guide/LAYOUT.md) (Chinese). |
+| 6 | Parameters and keyforms | Drag sliders or XY controls; right-click a key mark to snap. Move to the target key before editing its keyform. |
+| 7 | Object mode | Select objects with the canvas tools or hierarchy; selection alone changes no geometry. |
+| 8 | Create deformers | Select a target, use the toolbar's Create group or the tree context menu, adjust the placement preview and confirm. |
+| 9 | Deform mode | Edit points or use brushes at the current parameter pose; on a warp deformer switch between the Vertices and Bezier levels (keys 1 / 2); meshes pick points by vertex, edge or face. |
+| 10 | Edit mode | Subdivide, connect, cut or remove mesh elements; inspect existing poses afterward. |
+| 11 | Paint mode | Select a layer, paint pixels and use session-local undo. Apply or discard the session. |
+| 12 | Inspector | Edit properties for the selected object: name, ownership, masks, drawing order, opacity and colors. |
+| 13 | Tool options | The options bar at the canvas's bottom left sets the current tool's radius, hardness, strength and so on; the context menu shows the same values plus the tool's actions; the Tool Details panel keeps advanced settings. |
+| 14 | Skeleton rigging and editing | Create, extrude, duplicate and mirror bones in Skeleton mode, batch-bind ArtMeshes, pose with FK/IK, paint and clean skin weights and save poses; configure parameter sampling limits in the panel. Export bakes this into Cubism parameters, deformers and keyforms. |
+| 15 | Animation editor | Tune generated motions with each preset's knobs; edit parameter tracks and keyframes on the timeline with auto-keying, default Bezier easing, track key marks, and shared poses across canvases. |
+| 16 | Physics canvas | Configure inputs, pendulums and outputs, then calibrate output scale against the observed range. |
+| 17 | Cloth and hair simulation | Generate hair and clothing simulation in the model presets' Physics & Simulation group (first if there is none) and learn the hair modes and clothing options; then inspect bodies in the Simulation panel, paint and understand pin, stiffness, shape, mass and damping weights in Simulate mode, set glue, material presets and values, inputs and outputs and bake options, and bake into parameters, keyforms and a Cubism pendulum; only the bake exports. |
+| 18 | Project and history | Save the project, search nodes in the compact history tree, highlight branch paths, or double-click to check out; includes a dedicated History workspace preset; File > Open Recent reopens recent projects and PSDs; Tools > Update Generated Rig merges your edits onto what this version generates. |
+| 19 | Texture upscaling | Configure the local backend, choose 2× / 4× and check edges, transparency and exports. |
 
 ## Important distinctions
 
@@ -121,7 +122,7 @@ These are the default (Photoshop-style) bindings. **Settings** can switch to Ble
 
 When reporting a problem, include the version, operating system, steps to reproduce and the relevant files.
 
-Further reading: [SDK setup](CUBISM_SDK_SETUP.md), [development and CLI](DEVELOPMENT.md), [project format](../spec/PROJECT_FORMAT.md), and the Chinese references for [canvas editing](../../zh/guide/CANVAS_EDITOR.md), [paths](../../zh/guide/DEFORM_PATHS.md), [skeleton and poses](../../zh/guide/SKELETON.md), [physics](../../zh/guide/PHYSICS.md), [simulation and baking](../../zh/guide/SIMULATION.md), [upscaling](../../zh/guide/TEXTURE_UPSCALE.md) and [MCP](../../zh/agent/MCP_AUTHORING.md).
+Further reading: [SDK setup](CUBISM_SDK_SETUP.md), [development and CLI](DEVELOPMENT.md), [project format](../spec/PROJECT_FORMAT.md), and the Chinese references for [canvas editing](../../zh/guide/CANVAS_EDITOR.md), [materials and Layout](../../zh/guide/LAYOUT.md), [paths](../../zh/guide/DEFORM_PATHS.md), [skeleton and poses](../../zh/guide/SKELETON.md), [physics](../../zh/guide/PHYSICS.md), [simulation and baking](../../zh/guide/SIMULATION.md), [upscaling](../../zh/guide/TEXTURE_UPSCALE.md) and [MCP](../../zh/agent/MCP_AUTHORING.md).
 
 For Cubism terms and workflows, see Live2D's official [Cubism tutorials](https://docs.live2d.com/en/cubism-editor-tutorials/top/), [parameters](https://docs.live2d.com/en/cubism-editor-manual/parameter/), [blend shapes](https://docs.live2d.com/en/cubism-editor-manual/blend-shape/) and [embedded-data export](https://docs.live2d.com/en/cubism-editor-manual/export-moc3-motion3-files/). PSD2Live's interface and modeling aids are not Cubism Editor; the in-app tutorials remain the reference for its operation.
 
