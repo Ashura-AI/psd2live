@@ -296,14 +296,16 @@ class SaveAndCloseTest {
         assertFalse(vm.state.value.projectSaving)
     }
 
-    @Test fun closingReleasesSavedAndAbandonedArchiveDirectories() = editor { vm, workspace ->
+    @Test fun openingReleasesTheReplacedArchiveDirectoryAndClosingTheLast() = editor { vm, workspace ->
         val archive = temp.resolve("cleanup.psd2live")
         vm.saveProjectNow(archive)
         ProjectController(vm).open(workspace, archive)
         val first = Path.of(vm.state.value.loadedInputPath!!).parent.parent
+        assertTrue(Files.isDirectory(first))
         ProjectController(vm).open(workspace, archive)
         val second = Path.of(vm.state.value.loadedInputPath!!).parent.parent
-        assertTrue(Files.isDirectory(first))
+        workspace.flushProjectPersistence()
+        assertFalse(Files.exists(first))
         assertTrue(Files.isDirectory(second))
         workspace.close()
         assertFalse(Files.exists(first))
