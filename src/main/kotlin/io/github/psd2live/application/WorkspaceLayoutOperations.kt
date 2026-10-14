@@ -67,6 +67,7 @@ internal object WorkspaceLayoutOperations {
             put("type", "array"); put("minItems", 1); put("maxItems", WorkspaceMaterialPixels.MAX_GESTURES)
             put("items", schema(gesture, listOf("mode")))
         }), listOf("state", "id")),
+        WorkspaceMaterialPixels.SET_PIXELS to schema(state + mapOf("id" to string(), "staging" to string()), listOf("state", "id", "staging")),
         WorkspaceMaterialPixels.ADJUST to schema(state + mapOf("id" to string(), "flip" to choices(*WorkspaceMaterialPixels.flips.toTypedArray()),
             "hue" to range(-180, 180), "saturation" to range(-100, 100), "lightness" to range(-100, 100), "contrast" to range(-100, 100)),
             listOf("state", "id")),
@@ -87,6 +88,7 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialPixels.PAINT to "Paint on a material item's own pixels, in its pixel coordinates (origin at the top left), with the raster engine the paint operation uses: one gesture given by mode and its fields, or gestures, a list of up to ${WorkspaceMaterialPixels.MAX_GESTURES} applied in order (a painting session's strokes as one edit). " +
             "brush, pencil and eraser take points, radius and hardness; bucket a point and tolerance; shape from, to, shape, stroke_width and filled; clear erases everything. color is RGBA bytes (default opaque black), opacity 0..1. " +
             "Every layer showing the item takes the new pixels over its unchanged canvas rectangle, as layer_replace_image does; a vector item becomes a bitmap of its current raster. One history edit.",
+        WorkspaceMaterialPixels.SET_PIXELS to "Write the pixels a material paint session committed (staging names them; paint_session_commit stages and runs this). The item keeps its size; every layer showing it takes the new pixels over its unchanged canvas rectangle; a vector item becomes a bitmap. One history edit.",
         WorkspaceMaterialPixels.ADJUST to "Adjust a material item's pixels: flip (horizontal or vertical), then hue (-180..180 degrees), saturation, lightness and contrast (-100..100 each, 0 unchanged). " +
             "The item keeps its size; every layer showing it takes the new pixels over its unchanged canvas rectangle; a vector item becomes a bitmap of its current raster. One history edit.",
     )
@@ -104,6 +106,7 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialEdits.RESOLUTION -> "Set vector resolution"
         WorkspaceMaterialEdits.PLACE -> "Placed material ${request.getValue("material_id").jsonPrimitive.content}"
         WorkspaceMaterialPixels.PAINT -> "Painted material ${request.getValue("id").jsonPrimitive.content}"
+        WorkspaceMaterialPixels.SET_PIXELS -> "Painted material ${request.getValue("id").jsonPrimitive.content}"
         WorkspaceMaterialPixels.ADJUST -> "Adjusted material ${request.getValue("id").jsonPrimitive.content}"
         else -> id
     }

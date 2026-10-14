@@ -1177,7 +1177,8 @@ class PSD2LiveViewModel : AutoCloseable {
     internal fun beginPaintSession(layerId: String): io.github.psd2live.application.WorkspacePaintSession? {
         val backend = workspaceBackend ?: return null
         val expected = backend.snapshot().takeIf { it.loaded } ?: return null
-        return try { backend.beginPaintSession(expected.state, layerId) }
+        val material = layerId.removePrefix(io.github.psd2live.application.WorkspacePaintSession.MATERIAL_PREFIX).takeIf { it != layerId }
+        return try { if (material != null) backend.beginMaterialPaintSession(material) else backend.beginPaintSession(expected.state, layerId) }
         catch (failure: Exception) { setErrorMessage(failure.message ?: "Could not begin paint session"); null }
     }
 
@@ -1188,12 +1189,14 @@ class PSD2LiveViewModel : AutoCloseable {
         }
         val backend = workspaceBackend ?: run { setErrorMessage("Project workspace unavailable"); return }
         val sessionState = session.sessionState
+        // A material session outlives the edits made while it was open: it commits against the state now current.
+        val state = if (session.materialId != null) backend.snapshot().state ?: session.workspaceState else session.workspaceState
         updateState { it.copy(canvasEditBusy = true) }
         scope.launch {
             try {
                 withContext(Dispatchers.Default + io.github.psd2live.application.WorkspaceExecution(
-                    session.projectId, session.workspaceState, MutationAuthor.USER)) {
-                    backend.commitPaintSession(session.workspaceState, session.id, sessionState, rebuildMesh, preserveSourceRaster, MutationAuthor.USER)
+                    session.projectId, state, MutationAuthor.USER)) {
+                    backend.commitPaintSession(state, session.id, sessionState, rebuildMesh, preserveSourceRaster, MutationAuthor.USER)
                 }
                 updateState { it.withLog(tr("editor.paint.applied", summary), level = LogLevel.INFO, tag = "Paint") }
                 onCommitted()

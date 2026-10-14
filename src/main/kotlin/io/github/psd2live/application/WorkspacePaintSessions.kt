@@ -26,6 +26,11 @@ class WorkspacePaintSession internal constructor(
     /** The document canvas, in canvas units. */
     val canvasWidth: Int = image.width, val canvasHeight: Int = image.height,
     private val validateWorkspace: () -> Unit,
+    /**
+     * The material item painted, when the session paints a material of the library rather than a layer: its raster at
+     * one pixel per canvas unit, [layerId] [MATERIAL_PREFIX] and the id. Its commit is `material_set_pixels`.
+     */
+    val materialId: String? = null,
 ) {
     private val lock = Any()
     private val buffer = PaintRasterSession(layerId, layerName, image, copy(image))
@@ -153,6 +158,7 @@ class WorkspacePaintSession internal constructor(
     fun snapshot(): JsonObject = synchronized(lock) { buildJsonObject {
         put("session_id", id); put("session_state", token()); put("project_id", projectId)
         put("workspace_state", workspaceState); put("layer_id", layerId); put("layer_name", layerName)
+        materialId?.let { put("material_id", it) }
         put("width", width); put("height", height)
         put("canvas_rect", JsonArray(listOf(space.originX, space.originY, space.canvasWidth, space.canvasHeight).map(::JsonPrimitive)))
         put("index", buffer.currentStrokeIndex)
@@ -161,7 +167,14 @@ class WorkspacePaintSession internal constructor(
             add(buildJsonObject { put("id", record.id); put("name", record.name) })
         } }
     } }
+    /** The session's pixels for the commit, every write refused meanwhile; [retry] or [finish] ends that. */
+    internal fun freezeImage(expected: String): BufferedImage = synchronized(lock) {
+        writable(expected); committing = true
+        copy(buffer.workingImage)
+    }
     companion object {
+        /** The [layerId] of a session painting material item `<id>`. */
+        const val MATERIAL_PREFIX = "material:"
         private fun copy(image: BufferedImage) = BufferedImage(image.width, image.height, BufferedImage.TYPE_INT_ARGB).also {
             it.setRGB(0, 0, image.width, image.height, image.getRGB(0, 0, image.width, image.height, null, 0, image.width), 0, image.width)
         }
@@ -182,13 +195,70 @@ internal class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigP
         sessions.entries.removeIf { it.value.finished }
         val session = WorkspacePaintSession(UUID.randomUUID().toString(), captured.projectId, state,
             layerId, layer.name, painting.image, painting.space,
-            captured.document.source.widthPx, captured.document.source.heightPx) {
+            captured.document.source.widthPx, captured.document.source.heightPx, validateWorkspace = {
             val now = runtime.capture()
             if (now.projectId != captured.projectId || now.state != state) throw WorkspaceConflict(state, now.state)
-        }
+        })
         sessions[session.id] = session
         session
     }
+    /**
+     * A session painting material item [materialId] at its own pixels. It stays open while other edits commit: only a
+     * change to the material's own pixels, or another project, ends it.
+     */
+    fun beginMaterial(materialId: String): WorkspacePaintSession = synchronized(sessions) {
+        val captured = runtime.capture()
+        val item = captured.document.layout.materials.item(materialId) ?: throw IllegalArgumentException("Material not found: $materialId")
+        val image = BufferedImage(item.raster.width, item.raster.height, BufferedImage.TYPE_INT_ARGB)
+        val rgba = item.raster.rgba
+        image.setRGB(0, 0, item.raster.width, item.raster.height, IntArray(item.raster.width * item.raster.height) { i ->
+            val o = i * 4
+            ((rgba[o + 3].toInt() and 255) shl 24) or ((rgba[o].toInt() and 255) shl 16) or ((rgba[o + 1].toInt() and 255) shl 8) or (rgba[o + 2].toInt() and 255)
+        }, 0, item.raster.width)
+        require(sessions.values.count { !it.finished } < 32) { "Close a paint session before opening another" }
+        sessions.entries.removeIf { it.value.finished }
+        var pixels = item.raster
+        val session = WorkspacePaintSession(UUID.randomUUID().toString(), captured.projectId, captured.state,
+            WorkspacePaintSession.MATERIAL_PREFIX + materialId, item.name, image, validateWorkspace = {
+                val now = runtime.capture()
+                val current = now.document.layout.materials.item(materialId)?.raster
+                if (now.projectId != captured.projectId || current == null) throw WorkspaceConflict(captured.state, now.state)
+                // The same pixels under a new object (an undo back to them) still match.
+                if (current !== pixels) {
+                    if (current.width != pixels.width || current.height != pixels.height || !current.rgba.contentEquals(pixels.rgba))
+                        throw WorkspaceConflict(captured.state, now.state)
+                    pixels = current
+                }
+            }, materialId = materialId)
+        sessions[session.id] = session
+        session
+    }
+
+    /**
+     * Commits material session [id] through [apply], which writes the frozen pixels to the document (as
+     * `material_set_pixels`) and returns the result; the session then closes, or opens again for writing on failure.
+     */
+    suspend fun commitMaterial(id: String, sessionState: String, apply: suspend (String, org.umamo.format.art.LayerRaster) -> WorkspaceMutationResult): WorkspaceMutationResult {
+        val session = get(id)
+        val materialId = requireNotNull(session.materialId) { "Not a material paint session: $id" }
+        session.completed()?.let { return it }
+        currentCoroutineContext().ensureActive()
+        val image = session.freezeImage(sessionState)
+        try {
+            val argb = image.getRGB(0, 0, image.width, image.height, null, 0, image.width)
+            val rgba = ByteArray(argb.size * 4)
+            for (i in argb.indices) {
+                val p = argb[i]; val a = p ushr 24
+                if (a == 0) continue
+                rgba[i * 4] = (p shr 16).toByte(); rgba[i * 4 + 1] = (p shr 8).toByte(); rgba[i * 4 + 2] = p.toByte(); rgba[i * 4 + 3] = a.toByte()
+            }
+            val result = apply(materialId, org.umamo.format.art.LayerRaster(image.width, image.height, rgba))
+            session.finish(result)
+            currentCoroutineContext()[WorkspacePaintJobExecution]?.committed(result.compact())
+            return result
+        } catch (failure: Throwable) { session.retry(); throw failure }
+    }
+
     fun get(id: String): WorkspacePaintSession = sessions[id] ?: throw IllegalArgumentException("Paint session not found: $id")
     fun list(): List<JsonObject> = sessions.values.map { it.snapshot() }.sortedBy { it.getValue("session_id").jsonPrimitive.content }
     fun clear() { sessions.values.forEach { runCatching { it.cancel() } }; sessions.clear() }

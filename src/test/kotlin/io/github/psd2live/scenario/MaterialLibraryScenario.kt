@@ -84,6 +84,29 @@ class MaterialLibraryScenario {
 			session.rgba[(2 * session.width + session.width / 2) * 4 + 3].toInt() == 0) { "the session's strokes did not land in order" }
 		refused("a paint takes one gesture or a list, not both", "material_paint", req("id" to discItem.id, "mode" to "clear",
 			"gestures" to listOf(mapOf("mode" to "clear"))))
+
+		// A paint session on the material, as the material window runs one: strokes and undo stay in the session, other
+		// edits commit meanwhile, and its pixels land with material_set_pixels.
+		val sessions = io.github.psd2live.application.WorkspacePaintSessions(runtime)
+		val painting = sessions.beginMaterial(discItem.id)
+		painting.gesture(req("mode" to "brush", "points" to listOf(listOf(3, 3), listOf(9, 3)), "radius" to 1, "color" to listOf(0, 0, 255, 255)))
+		painting.gesture(req("mode" to "clear"))
+		painting.undo()
+		edit("tag the props while painting", "material_tag", req("ids" to listOf("props"), "add" to listOf("paint")))
+		painting.gesture(req("mode" to "bucket", "point" to listOf(0, 0), "tolerance" to 0, "color" to listOf(255, 255, 0, 255)))
+		val image = painting.image()
+		val argb = image.getRGB(0, 0, image.width, image.height, null, 0, image.width)
+		val pixels = org.umamo.format.art.LayerRaster(image.width, image.height, ByteArray(argb.size * 4).also { out ->
+			argb.forEachIndexed { i, p -> if (p ushr 24 != 0) { out[i * 4] = (p shr 16).toByte(); out[i * 4 + 1] = (p shr 8).toByte(); out[i * 4 + 2] = p.toByte(); out[i * 4 + 3] = (p ushr 24).toByte() } }
+		})
+		expect("session", painting.strokes.size == 3 && pixels.rgba[(3 * pixels.width + 5) * 4 + 2].toInt() and 255 == 255) { "the session lost a stroke or kept the undone one" }
+		edit("apply the session", "material_set_pixels", req("id" to discItem.id, "staging" to io.github.psd2live.application.WorkspaceMaterialPixels.stage(pixels)))
+		expect("session", now.document.layout.materials.item(discItem.id)!!.raster.rgba.contentEquals(pixels.rgba) && shown().raster.rgba.contentEquals(pixels.rgba) &&
+			shown().canvasRect() == badgeLayer.canvasRect()) { "the session's pixels did not reach the material and the layer showing it" }
+		val stale = sessions.beginMaterial(discItem.id)
+		edit("paint the material elsewhere", "material_paint", req("id" to discItem.id, "mode" to "pencil", "points" to listOf(listOf(4, 4)), "radius" to 1))
+		expect("session", runCatching { stale.gesture(req("mode" to "clear")) }.exceptionOrNull() is io.github.psd2live.application.WorkspaceConflict) {
+			"a session went on painting after the material's pixels changed" }
 			edit("paint over the vector", "material_paint", req("id" to vector.id, "mode" to "clear"))
 			expect("painted", now.document.layout.materials.item(vector.id)?.kind == MaterialKind.BITMAP) { "a painted vector stayed a vector" }
 

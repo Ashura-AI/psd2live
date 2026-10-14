@@ -1972,7 +1972,8 @@ internal class CanvasEditor(
     fun promptCommitPaintSession() {
         val session = paintSession ?: return
         if (!session.isDirty) return
-        if (DepthSplit.isFrontLayer(state.previewModel, session.layerId)) {
+        // A material has no mesh of its own to rebuild: the layers showing it keep theirs.
+        if (session.handle.materialId != null || DepthSplit.isFrontLayer(state.previewModel, session.layerId)) {
             commitPaintSession(rebuildMesh = false)
             return
         }

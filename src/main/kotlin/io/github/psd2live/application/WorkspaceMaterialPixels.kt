@@ -16,7 +16,23 @@ import java.awt.image.BufferedImage
 internal object WorkspaceMaterialPixels {
     const val PAINT = "material_paint"
     const val ADJUST = "material_adjust"
-    val supported = setOf(PAINT, ADJUST)
+    const val SET_PIXELS = "material_set_pixels"
+    val supported = setOf(PAINT, ADJUST, SET_PIXELS)
+
+    /** Pixels a material paint session commits, held in this process until the edit that writes them is prepared. */
+    private val staged = object : LinkedHashMap<String, LayerRaster>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, LayerRaster>?) = size > 8
+    }
+
+    /** Stages [raster] for `material_set_pixels`; the token names its pixels. */
+    fun stage(raster: LayerRaster): String {
+        val token = "pixels_" + io.github.psd2live.project.WorkspaceRevisions.rasterDigest(raster.rgba).take(24) + "_${raster.width}x${raster.height}"
+        synchronized(staged) { staged[token] = raster }
+        return token
+    }
+
+    private fun staged(token: String): LayerRaster = synchronized(staged) { staged[token] }
+        ?: throw IllegalArgumentException("The staged pixels $token are no longer held; commit the paint session again")
     val flips = listOf("horizontal", "vertical")
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
@@ -25,6 +41,9 @@ internal object WorkspaceMaterialPixels {
         val id = request.getValue("id").jsonPrimitive.content
         val item = document.layout.materials.item(id) ?: throw IllegalArgumentException("Material not found: $id")
         val raster = when (operation.operation) {
+            SET_PIXELS -> staged(request.getValue("staging").jsonPrimitive.content).also {
+                require(it.width == item.raster.width && it.height == item.raster.height) { "The pixels must keep the material's size" }
+            }
             PAINT -> paint(item.raster, request, work)
             ADJUST -> adjust(item.raster, Adjustment.of(request), work::checkpoint)
             else -> throw IllegalArgumentException("Not a material pixel edit: ${operation.operation}")

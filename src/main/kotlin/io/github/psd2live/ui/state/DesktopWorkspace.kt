@@ -1243,6 +1243,8 @@ class DesktopWorkspace(
     override fun beginPaintSession(state: String, layerId: String): WorkspacePaintSession =
         paintSessions.begin(state, layerId)
 
+    override fun beginMaterialPaintSession(materialId: String): WorkspacePaintSession = paintSessions.beginMaterial(materialId)
+
     override fun listPaintSessions(): List<kotlinx.serialization.json.JsonObject> = paintSessions.list()
 
     override suspend fun controlPaintSession(request: kotlinx.serialization.json.JsonObject): WorkspaceWorkflowResult =
@@ -1251,6 +1253,18 @@ class DesktopWorkspace(
         }
 
     override suspend fun commitPaintSession(state: String, sessionId: String, sessionState: String,
+        rebuildMesh: Boolean, preserveSourceRaster: Boolean, author: MutationAuthor): WorkspaceMutationResult {
+        // A material session commits as a document edit of the library, against the state now current.
+        if (paintSessions.get(sessionId).materialId != null) return paintSessions.commitMaterial(sessionId, sessionState) { materialId, raster ->
+            applyDocumentEdits(state, "Painted material $materialId", listOf(WorkspaceDocumentOperation(
+                io.github.psd2live.application.WorkspaceMaterialPixels.SET_PIXELS, kotlinx.serialization.json.buildJsonObject {
+                    put("id", materialId); put("staging", io.github.psd2live.application.WorkspaceMaterialPixels.stage(raster))
+                })), author)
+        }
+        return commitLayerPaintSession(state, sessionId, sessionState, rebuildMesh, preserveSourceRaster, author)
+    }
+
+    private suspend fun commitLayerPaintSession(state: String, sessionId: String, sessionState: String,
         rebuildMesh: Boolean, preserveSourceRaster: Boolean, author: MutationAuthor): WorkspaceMutationResult = editMutex.withLock {
         val before = captureForMutation()
         requireExpected(state, before)

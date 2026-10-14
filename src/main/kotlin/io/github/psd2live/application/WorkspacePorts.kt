@@ -152,6 +152,8 @@ interface WorkspaceTexturePort {
 interface WorkspacePaintPort {
     fun listPaintSessions(): List<JsonObject>
     fun beginPaintSession(state: String, layerId: String): WorkspacePaintSession
+    /** A session painting material item [materialId] of the library; its commit writes `material_set_pixels`. */
+    fun beginMaterialPaintSession(materialId: String): WorkspacePaintSession
     suspend fun controlPaintSession(request: JsonObject): WorkspaceWorkflowResult
     suspend fun commitPaintSession(state: String, sessionId: String, sessionState: String,
         rebuildMesh: Boolean, preserveSourceRaster: Boolean, author: MutationAuthor): WorkspaceMutationResult

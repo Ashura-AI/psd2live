@@ -621,164 +621,8 @@ internal fun BoxScope.CanvasEditorOverlay(
             }
         }
 
-        // 3c. Paint mode: live stroke & shape preview while dragging
-        if (editor.hierarchyMode == EditHierarchyMode.PAINT && editor.isPainting) {
-            val col = editor.paintColor.copy(alpha = editor.paintOpacity)
-            // The width the shape lands with, in the layer's frame, as the canvas shows it.
-            val strokeWidth = ((editor.paintSize / editor.paintPixelsPerUnit).coerceIn(1f, 512f) * editor.paintShownScale * viewport.scale.toFloat()).coerceAtLeast(1f)
-
-            // The tips draw nothing of their own: the pixels are already on the layer, with exactly the
-            // hardness and opacity that were asked for, and anything laid over them would misreport
-            // both. Only a shape - which lands when its second corner does - is previewed here.
-            if (editor.tool == CanvasTool.PAINT_SHAPE && editor.paintStrokeStart != null && editor.paintStrokeCurrent != null) {
-                val s = editor.paintStrokeStart!!
-                val c = editor.paintStrokeCurrent!!
-                val fill = editor.paintShapeFilled && editor.paintShape.canFill
-                val frame = editor.paintSession?.frame ?: io.github.psd2live.project.LayerTransform.IDENTITY
-                if (editor.paintShape != PaintShape.LINE && !frame.isIdentity && !frame.isAxisAligned) {
-                    // A turned layer takes the shape in its own frame, so the box turns with the layer: drawn there,
-                    // through the layer's transform and the viewport.
-                    val scale = viewport.scale.toFloat()
-                    val inverse = frame.inverse()
-                    fun inFrame(p: Offset): Offset {
-                        val x = viewport.canvasX(p.x); val y = viewport.canvasY(p.y)
-                        return Offset(inverse.x(x, y), inverse.y(x, y))
-                    }
-                    val p0 = inFrame(s); val p1 = inFrame(c)
-                    val matrix = androidx.compose.ui.graphics.Matrix().apply {
-                        this[0, 0] = frame.a * scale; this[0, 1] = frame.b * scale
-                        this[1, 0] = frame.c * scale; this[1, 1] = frame.d * scale
-                        this[3, 0] = viewport.offsetX.toFloat() + frame.e * scale; this[3, 1] = viewport.offsetY.toFloat() + frame.f * scale
-                    }
-                    val unit = scale * kotlin.math.sqrt(kotlin.math.abs(frame.a * frame.d - frame.b * frame.c))
-                    val topLeft = Offset(minOf(p0.x, p1.x), minOf(p0.y, p1.y))
-                    val size = Size(maxOf(1f / unit, kotlin.math.abs(p1.x - p0.x)), maxOf(1f / unit, kotlin.math.abs(p1.y - p0.y)))
-                    val style = if (fill) androidx.compose.ui.graphics.drawscope.Fill else Stroke(strokeWidth / unit)
-                    withTransform({ transform(matrix) }) {
-                        if (editor.paintShape == PaintShape.RECTANGLE) drawRect(col, topLeft, size, style = style)
-                        else drawOval(col, topLeft, size, style = style)
-                    }
-                } else when (editor.paintShape) {
-                    PaintShape.LINE -> {
-                        drawLine(col, s, c, strokeWidth = strokeWidth, cap = StrokeCap.Round)
-                    }
-                    PaintShape.RECTANGLE -> {
-                        val l = minOf(s.x, c.x)
-                        val t = minOf(s.y, c.y)
-                        val w = maxOf(1f, kotlin.math.abs(c.x - s.x))
-                        val h = maxOf(1f, kotlin.math.abs(c.y - s.y))
-                        if (fill) drawRect(col, Offset(l, t), Size(w, h))
-                        else drawRect(col, Offset(l, t), Size(w, h), style = Stroke(strokeWidth))
-                    }
-                    PaintShape.ELLIPSE -> {
-                        val l = minOf(s.x, c.x)
-                        val t = minOf(s.y, c.y)
-                        val w = maxOf(1f, kotlin.math.abs(c.x - s.x))
-                        val h = maxOf(1f, kotlin.math.abs(c.y - s.y))
-                        if (fill) drawOval(col, Offset(l, t), Size(w, h))
-                        else drawOval(col, Offset(l, t), Size(w, h), style = Stroke(strokeWidth))
-                    }
-                }
-            }
-        }
-
-        // 3d. Paint mode: the tip under the cursor, Photoshop style - the outer ring is the brush, the
-        // inner one the part of it that stays solid, and while the tip is being retuned the falloff
-        // between them is painted out in the stroke's own colour and opacity.
-        // While the pointer is the eyedropper, the pipette is the cursor, and the tip ring would only
-        // argue with it about what a click will do.
-        editor.cursor?.takeIf { editor.paintBrushActive && !editor.eyedropperArmed }?.let { cur ->
-            // The tip is the one description of the mark: the ring is its radius, the inner circle its
-            // core, and the falloff between them is the profile the stroke is rasterized with - so what
-            // the cursor promises is what the pixels do. The eraser draws no colour of its own, so its
-            // falloff is shown in the neutral ring colour instead.
-            val tip = editor.paintTip()
-            // The tip is sized in the layer's frame; the canvas shows that frame through the layer's transform.
-            val scale = viewport.scale.toFloat() * editor.paintShownScale
-            val r = (tip.radius * scale).coerceAtLeast(1f)
-            val tint = if (editor.tool == CanvasTool.PAINT_ERASER) colors.textPrimary else editor.paintColor
-            if (editor.adjustingBrush) {
-                val samples = 24
-                val stops = Array(samples + 1) { i ->
-                    val t = i / samples.toFloat()
-                    t to tint.copy(alpha = tip.alphaAt(t * tip.radius) * editor.paintOpacity * 0.55f)
-                }
-                drawCircle(
-                    brush = Brush.radialGradient(colorStops = stops, center = cur, radius = r),
-                    radius = r,
-                    center = cur,
-                )
-            }
-            drawCircle(color = Color.Black.copy(alpha = 0.7f), radius = r, center = cur, style = Stroke(3f))
-            drawCircle(color = tint.copy(alpha = 0.85f), radius = r, center = cur, style = Stroke(1.2f))
-            val core = tip.core * scale
-            if (tip.hardness < 1f && core > 1.5f) {
-                drawCircle(color = colors.accent.copy(alpha = 0.6f), radius = core, center = cur, style = Stroke(1f))
-            }
-        }
-
-        // 3d-bis. Picking a colour: the sampling ring, Photoshop's - the top half is what is under the
-        // pointer, the bottom half the colour in hand, so a pick can be judged before it is taken. The
-        // ring follows the pointer for the whole gesture, which is what makes an eyedropper usable at
-        // all on art whose every pixel is a slightly different shade.
-        editor.pickCursor()?.let { cur ->
-            val sampled = editor.sampleColorAt(cur, viewport)
-            // A ring, not a disc: the middle stays empty so the pixel being read is the one thing the
-            // cursor never covers, and the two colours ride around it - what is under the pointer on the
-            // top half, what is in hand on the bottom. Sized in dp, because the ring reads a pixel and is
-            // sized for the eye rather than for the zoom (or for the display's density).
-            val inner = 17.dp.toPx()
-            val band = 5.dp.toPx()
-            val middle = inner + band / 2f
-            val box = Rect(cur - Offset(middle, middle), Size(middle * 2f, middle * 2f))
-            fun halfRing(color: Color, startAngle: Float) = drawArc(
-                color = color,
-                startAngle = startAngle,
-                sweepAngle = 180f,
-                useCenter = false,
-                topLeft = box.topLeft,
-                size = box.size,
-                style = Stroke(band),
-            )
-            // The dark band underneath is the ring's own edging: half of what it reports can be the same
-            // colour as the artwork it is lying on.
-            drawCircle(color = Color.Black.copy(alpha = 0.8f), radius = middle, center = cur, style = Stroke(band + 2.5.dp.toPx()))
-            if (sampled != null) halfRing(sampled, 180f)
-            halfRing(editor.paintColor, 0f)
-
-            val label = sampled?.let { it.toHex() } ?: tr("editor.paint.nothingToPick")
-            val layout = textMeasurer.measure(
-                text = label,
-                style = TextStyle(color = colors.textPrimary, fontSize = 11.sp, fontFamily = FontFamily.Monospace),
-            )
-            val origin = Offset(cur.x + middle + 6.dp.toPx(), cur.y - 12.dp.toPx())
-            val extent = Size(layout.size.width + 12f, layout.size.height + 6f)
-            drawRect(colors.panelElevated.copy(alpha = 0.94f), origin, extent)
-            drawRect(colors.divider, origin, extent, style = Stroke(1f))
-            drawText(layout, topLeft = Offset(origin.x + 6f, origin.y + 3f))
-        }
-
-        // 3e. The number the Alt + right-drag gesture is moving, next to the tip it is moving
-        if (editor.adjustingBrush && editor.paintBrushActive && editor.cursor != null) {
-            val cur = editor.cursor!!
-            val readout = when (editor.brushAxis) {
-                BrushAdjustAxis.RADIUS -> tr("editor.radius") to "${editor.paintSize.roundToInt()} px"
-                BrushAdjustAxis.HARDNESS -> tr("editor.hardness") to "${(editor.paintHardness * 100f).roundToInt()} %"
-                BrushAdjustAxis.OPACITY -> tr("editor.opacity") to "${(editor.paintOpacity * 100f).roundToInt()} %"
-                else -> null
-            }
-            if (readout != null) {
-                val layout = textMeasurer.measure(
-                    text = "${readout.first}  ${readout.second}",
-                    style = TextStyle(color = colors.textPrimary, fontSize = 11.sp),
-                )
-                val origin = Offset(cur.x + 16f, cur.y - 12f)
-                val extent = Size(layout.size.width + 12f, layout.size.height + 6f)
-                drawRect(colors.panelElevated.copy(alpha = 0.94f), origin, extent)
-                drawRect(colors.divider, origin, extent, style = Stroke(1f))
-                drawText(layout, topLeft = Offset(origin.x + 6f, origin.y + 3f))
-            }
-        }
+        // 3c-3e. Paint mode: the shape being drawn, the tip, the colour pick and the tip being retuned.
+        drawPaintOverlays(editor, viewport, colors, textMeasurer)
 
         // Place-then-confirm ghost (Blender-style)
         editor.placement?.let { place ->
@@ -1596,7 +1440,7 @@ internal fun BoxScope.CanvasEditorOverlay(
  * undo, redo, discard and apply - the atlas session's bar, so both sessions read and work alike.
  */
 @Composable
-private fun BoxScope.PaintSessionBar(editor: CanvasEditor, modeBarWidth: Int, focus: () -> Unit) {
+internal fun BoxScope.PaintSessionBar(editor: CanvasEditor, modeBarWidth: Int, focus: () -> Unit) {
     val session = editor.paintSession
     // Read for their state: the stroke list and the step in it are what undo and redo change.
     val strokes = session?.strokeRecords?.size ?: 0
@@ -2128,7 +1972,7 @@ private fun MiniStepper(
 }
 
 @Composable
-private fun BoxScope.CanvasToolBar(
+internal fun BoxScope.CanvasToolBar(
     editor: CanvasEditor,
     keymap: Keymap,
     focus: () -> Unit,
@@ -2986,3 +2830,170 @@ private val BezierCurveColor = Color(0xFF5CC8F0)
 
 /** The Bezier level's tangent handles and their stems. */
 private val BezierHandleColor = Color(0xFFF2B84B)
+
+/**
+ * What Paint mode draws over the canvas: the shape being dragged out, the tip under the pointer (ring, core and, while
+ * it is retuned, its falloff), the colour-pick ring and the value Alt + right drag is moving. The canvas and the
+ * material window both draw it, so a tip looks and reads the same in either.
+ */
+internal fun DrawScope.drawPaintOverlays(editor: CanvasEditor, viewport: CanvasViewport, colors: ToolColors,
+                                         textMeasurer: androidx.compose.ui.text.TextMeasurer) {
+    // 3c. Paint mode: live stroke & shape preview while dragging
+    if (editor.hierarchyMode == EditHierarchyMode.PAINT && editor.isPainting) {
+        val col = editor.paintColor.copy(alpha = editor.paintOpacity)
+        // The width the shape lands with, in the layer's frame, as the canvas shows it.
+        val strokeWidth = ((editor.paintSize / editor.paintPixelsPerUnit).coerceIn(1f, 512f) * editor.paintShownScale * viewport.scale.toFloat()).coerceAtLeast(1f)
+
+        // The tips draw nothing of their own: the pixels are already on the layer, with exactly the
+        // hardness and opacity that were asked for, and anything laid over them would misreport
+        // both. Only a shape - which lands when its second corner does - is previewed here.
+        if (editor.tool == CanvasTool.PAINT_SHAPE && editor.paintStrokeStart != null && editor.paintStrokeCurrent != null) {
+            val s = editor.paintStrokeStart!!
+            val c = editor.paintStrokeCurrent!!
+            val fill = editor.paintShapeFilled && editor.paintShape.canFill
+            val frame = editor.paintSession?.frame ?: io.github.psd2live.project.LayerTransform.IDENTITY
+            if (editor.paintShape != PaintShape.LINE && !frame.isIdentity && !frame.isAxisAligned) {
+                // A turned layer takes the shape in its own frame, so the box turns with the layer: drawn there,
+                // through the layer's transform and the viewport.
+                val scale = viewport.scale.toFloat()
+                val inverse = frame.inverse()
+                fun inFrame(p: Offset): Offset {
+                    val x = viewport.canvasX(p.x); val y = viewport.canvasY(p.y)
+                    return Offset(inverse.x(x, y), inverse.y(x, y))
+                }
+                val p0 = inFrame(s); val p1 = inFrame(c)
+                val matrix = androidx.compose.ui.graphics.Matrix().apply {
+                    this[0, 0] = frame.a * scale; this[0, 1] = frame.b * scale
+                    this[1, 0] = frame.c * scale; this[1, 1] = frame.d * scale
+                    this[3, 0] = viewport.offsetX.toFloat() + frame.e * scale; this[3, 1] = viewport.offsetY.toFloat() + frame.f * scale
+                }
+                val unit = scale * kotlin.math.sqrt(kotlin.math.abs(frame.a * frame.d - frame.b * frame.c))
+                val topLeft = Offset(minOf(p0.x, p1.x), minOf(p0.y, p1.y))
+                val size = Size(maxOf(1f / unit, kotlin.math.abs(p1.x - p0.x)), maxOf(1f / unit, kotlin.math.abs(p1.y - p0.y)))
+                val style = if (fill) androidx.compose.ui.graphics.drawscope.Fill else Stroke(strokeWidth / unit)
+                withTransform({ transform(matrix) }) {
+                    if (editor.paintShape == PaintShape.RECTANGLE) drawRect(col, topLeft, size, style = style)
+                    else drawOval(col, topLeft, size, style = style)
+                }
+            } else when (editor.paintShape) {
+                PaintShape.LINE -> {
+                    drawLine(col, s, c, strokeWidth = strokeWidth, cap = StrokeCap.Round)
+                }
+                PaintShape.RECTANGLE -> {
+                    val l = minOf(s.x, c.x)
+                    val t = minOf(s.y, c.y)
+                    val w = maxOf(1f, kotlin.math.abs(c.x - s.x))
+                    val h = maxOf(1f, kotlin.math.abs(c.y - s.y))
+                    if (fill) drawRect(col, Offset(l, t), Size(w, h))
+                    else drawRect(col, Offset(l, t), Size(w, h), style = Stroke(strokeWidth))
+                }
+                PaintShape.ELLIPSE -> {
+                    val l = minOf(s.x, c.x)
+                    val t = minOf(s.y, c.y)
+                    val w = maxOf(1f, kotlin.math.abs(c.x - s.x))
+                    val h = maxOf(1f, kotlin.math.abs(c.y - s.y))
+                    if (fill) drawOval(col, Offset(l, t), Size(w, h))
+                    else drawOval(col, Offset(l, t), Size(w, h), style = Stroke(strokeWidth))
+                }
+            }
+        }
+    }
+
+    // 3d. Paint mode: the tip under the cursor, Photoshop style - the outer ring is the brush, the
+    // inner one the part of it that stays solid, and while the tip is being retuned the falloff
+    // between them is painted out in the stroke's own colour and opacity.
+    // While the pointer is the eyedropper, the pipette is the cursor, and the tip ring would only
+    // argue with it about what a click will do.
+    editor.cursor?.takeIf { editor.paintBrushActive && !editor.eyedropperArmed }?.let { cur ->
+        // The tip is the one description of the mark: the ring is its radius, the inner circle its
+        // core, and the falloff between them is the profile the stroke is rasterized with - so what
+        // the cursor promises is what the pixels do. The eraser draws no colour of its own, so its
+        // falloff is shown in the neutral ring colour instead.
+        val tip = editor.paintTip()
+        // The tip is sized in the layer's frame; the canvas shows that frame through the layer's transform.
+        val scale = viewport.scale.toFloat() * editor.paintShownScale
+        val r = (tip.radius * scale).coerceAtLeast(1f)
+        val tint = if (editor.tool == CanvasTool.PAINT_ERASER) colors.textPrimary else editor.paintColor
+        if (editor.adjustingBrush) {
+            val samples = 24
+            val stops = Array(samples + 1) { i ->
+                val t = i / samples.toFloat()
+                t to tint.copy(alpha = tip.alphaAt(t * tip.radius) * editor.paintOpacity * 0.55f)
+            }
+            drawCircle(
+                brush = Brush.radialGradient(colorStops = stops, center = cur, radius = r),
+                radius = r,
+                center = cur,
+            )
+        }
+        drawCircle(color = Color.Black.copy(alpha = 0.7f), radius = r, center = cur, style = Stroke(3f))
+        drawCircle(color = tint.copy(alpha = 0.85f), radius = r, center = cur, style = Stroke(1.2f))
+        val core = tip.core * scale
+        if (tip.hardness < 1f && core > 1.5f) {
+            drawCircle(color = colors.accent.copy(alpha = 0.6f), radius = core, center = cur, style = Stroke(1f))
+        }
+    }
+
+    // 3d-bis. Picking a colour: the sampling ring, Photoshop's - the top half is what is under the
+    // pointer, the bottom half the colour in hand, so a pick can be judged before it is taken. The
+    // ring follows the pointer for the whole gesture, which is what makes an eyedropper usable at
+    // all on art whose every pixel is a slightly different shade.
+    editor.pickCursor()?.let { cur ->
+        val sampled = editor.sampleColorAt(cur, viewport)
+        // A ring, not a disc: the middle stays empty so the pixel being read is the one thing the
+        // cursor never covers, and the two colours ride around it - what is under the pointer on the
+        // top half, what is in hand on the bottom. Sized in dp, because the ring reads a pixel and is
+        // sized for the eye rather than for the zoom (or for the display's density).
+        val inner = 17.dp.toPx()
+        val band = 5.dp.toPx()
+        val middle = inner + band / 2f
+        val box = Rect(cur - Offset(middle, middle), Size(middle * 2f, middle * 2f))
+        fun halfRing(color: Color, startAngle: Float) = drawArc(
+            color = color,
+            startAngle = startAngle,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = box.topLeft,
+            size = box.size,
+            style = Stroke(band),
+        )
+        // The dark band underneath is the ring's own edging: half of what it reports can be the same
+        // colour as the artwork it is lying on.
+        drawCircle(color = Color.Black.copy(alpha = 0.8f), radius = middle, center = cur, style = Stroke(band + 2.5.dp.toPx()))
+        if (sampled != null) halfRing(sampled, 180f)
+        halfRing(editor.paintColor, 0f)
+
+        val label = sampled?.let { it.toHex() } ?: tr("editor.paint.nothingToPick")
+        val layout = textMeasurer.measure(
+            text = label,
+            style = TextStyle(color = colors.textPrimary, fontSize = 11.sp, fontFamily = FontFamily.Monospace),
+        )
+        val origin = Offset(cur.x + middle + 6.dp.toPx(), cur.y - 12.dp.toPx())
+        val extent = Size(layout.size.width + 12f, layout.size.height + 6f)
+        drawRect(colors.panelElevated.copy(alpha = 0.94f), origin, extent)
+        drawRect(colors.divider, origin, extent, style = Stroke(1f))
+        drawText(layout, topLeft = Offset(origin.x + 6f, origin.y + 3f))
+    }
+
+    // 3e. The number the Alt + right-drag gesture is moving, next to the tip it is moving
+    if (editor.adjustingBrush && editor.paintBrushActive && editor.cursor != null) {
+        val cur = editor.cursor!!
+        val readout = when (editor.brushAxis) {
+            BrushAdjustAxis.RADIUS -> tr("editor.radius") to "${editor.paintSize.roundToInt()} px"
+            BrushAdjustAxis.HARDNESS -> tr("editor.hardness") to "${(editor.paintHardness * 100f).roundToInt()} %"
+            BrushAdjustAxis.OPACITY -> tr("editor.opacity") to "${(editor.paintOpacity * 100f).roundToInt()} %"
+            else -> null
+        }
+        if (readout != null) {
+            val layout = textMeasurer.measure(
+                text = "${readout.first}  ${readout.second}",
+                style = TextStyle(color = colors.textPrimary, fontSize = 11.sp),
+            )
+            val origin = Offset(cur.x + 16f, cur.y - 12f)
+            val extent = Size(layout.size.width + 12f, layout.size.height + 6f)
+            drawRect(colors.panelElevated.copy(alpha = 0.94f), origin, extent)
+            drawRect(colors.divider, origin, extent, style = Stroke(1f))
+            drawText(layout, topLeft = Offset(origin.x + 6f, origin.y + 3f))
+        }
+    }
+}

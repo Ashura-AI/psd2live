@@ -32,10 +32,12 @@ internal object WorkspacePaintSessionSchemas {
         control("cancel"), control("inspect"), control("sample", mapOf("x" to s.integer(0), "y" to s.integer(0))),
         control("render", mapOf("max_edge" to s.integer(128, 2048)), emptySet())))
     val snapshot = s.obj(mapOf("session_id" to s.handle(), "session_state" to s.handle(), "project_id" to s.handle(),
-        "workspace_state" to s.handle(), "layer_id" to s.handle(), "layer_name" to s.string(),
+        "workspace_state" to s.handle(), "layer_id" to s.handle(), "layer_name" to s.string(), "material_id" to s.handle(),
         "width" to s.integer(1), "height" to s.integer(1), "canvas_rect" to s.vector(4), "index" to s.integer(0), "dirty" to s.boolean(),
         "active_stroke" to s.boolean(), "closed" to s.boolean(),
-        "strokes" to s.array(s.obj(mapOf("id" to s.handle(), "name" to s.string())), 1, Int.MAX_VALUE)))
+        "strokes" to s.array(s.obj(mapOf("id" to s.handle(), "name" to s.string())), 1, Int.MAX_VALUE)),
+        setOf("session_id", "session_state", "project_id", "workspace_state", "layer_id", "layer_name", "width", "height", "canvas_rect",
+            "index", "dirty", "active_stroke", "closed", "strokes"))
     val result = s.union(listOf(s.obj(mapOf("kind" to s.constant("state"), "session" to snapshot)),
         s.obj(mapOf("kind" to s.constant("sample"), "session" to snapshot, "rgba" to color)),
         s.obj(mapOf("kind" to s.constant("render"), "session" to snapshot, "width" to s.integer(1),
@@ -97,11 +99,15 @@ internal fun registerPaintSessionOperations(registry: WorkspaceOperationRegistry
         WorkspaceOperationOutput(buildJsonObject { put("sessions", JsonArray(port.listPaintSessions())) })
     }
     registry.register(WorkspaceOperationDefinition("paint_session_begin",
-        "Begin an isolated multi-stroke paint candidate from a committed layer, capturing its workspace state. Canvas X points right and Y down; gesture points, radii, widths and sample positions are canvas units. The candidate raster is the layer's own pixel grid (width x height pixels covering canvas_rect [left, top, width, height]), so strokes on a dense layer paint at its raster density. Edits, sampling and undo never alter project history until commit.",
-        s.obj(mapOf("state" to s.handle(), "layer_id" to s.handle())), WorkspaceOperationKind.SESSION,
+        "Begin an isolated multi-stroke paint candidate from a committed layer (layer_id), capturing its workspace state, or from a material item of the library (material_id). Canvas X points right and Y down; gesture points, radii, widths and sample positions are canvas units. The candidate raster is the layer's own pixel grid (width x height pixels covering canvas_rect [left, top, width, height]), so strokes on a dense layer paint at its raster density; a material's is its own pixels, one per unit. " +
+            "A material session stays open while other edits commit (only a change to the material's pixels ends it) and its commit writes the pixels with material_set_pixels, every layer showing the material following; rebuild_mesh does not apply. Edits, sampling and undo never alter project history until commit.",
+        s.obj(mapOf("state" to s.handle(), "layer_id" to s.handle(), "material_id" to s.handle()), setOf("state")), WorkspaceOperationKind.SESSION,
         resultSchema = WorkspacePaintSessionSchemas.result)) { request, _ ->
-        WorkspaceOperationOutput(buildJsonObject { put("kind", "state"); put("session",
-            port.beginPaintSession(request.getValue("state").jsonPrimitive.content, request.getValue("layer_id").jsonPrimitive.content).snapshot()) })
+        val layer = request["layer_id"]?.jsonPrimitive?.content; val material = request["material_id"]?.jsonPrimitive?.content
+        require((layer == null) != (material == null)) { "Give layer_id or material_id" }
+        val session = if (material != null) port.beginMaterialPaintSession(material)
+            else port.beginPaintSession(request.getValue("state").jsonPrimitive.content, requireNotNull(layer))
+        WorkspaceOperationOutput(buildJsonObject { put("kind", "state"); put("session", session.snapshot()) })
     }
     registry.register(WorkspaceOperationDefinition("paint_session_control",
         "Edit, undo, redo or jump within the private paint candidate; cancel discards the entire session, abandon discards only the active live stroke. Sample and render read candidate pixels. Pass the latest session_state to prevent concurrent stroke loss. Mutations reject a changed committed workspace; inspection and cancellation remain available.",
