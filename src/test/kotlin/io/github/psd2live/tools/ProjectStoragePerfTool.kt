@@ -56,6 +56,13 @@ class ProjectStoragePerfTool {
 					repository.open(target, stages).use { opened ->
 						val total = since(start)
 						lines += "open ${run + 1}: %.0f ms (${stages.report(total)}), heap %d MiB (revisions ${opened.history.selections().size})".format(total, heapMiB())
+						if (run == 0) {
+							val saveStart = System.nanoTime()
+							val saveStages = Stages(saveStart)
+							repository.save(ProjectSaveCapture(opened.projectId, opened.history.state(), JsonObject(emptyMap()), opened.source, opened.store),
+								directory.resolve("reopened.psd2live"), saveStages)
+							lines += "save after open: %.0f ms (${saveStages.report(since(saveStart))})".format(since(saveStart))
+						}
 					}
 				}
 			}
@@ -70,7 +77,12 @@ class ProjectStoragePerfTool {
 	private class Stages(private val start: Long) : ProjectProgress {
 		private val marks = LinkedHashMap<String, Double>()
 		override fun report(stage: ProjectStage, fraction: Double) {
-			val key = if (stage == ProjectStage.STAGING) "staging ${Math.round(fraction * 6)}" else stage.name.lowercase()
+			val key = when {
+				stage == ProjectStage.STAGING -> "staging ${Math.round(fraction * 6)}"
+				// The archive writer reports writing up to 0.8, then reading the archive back.
+				stage == ProjectStage.PACKING && fraction > 0.8 -> "verify"
+				else -> stage.name.lowercase()
+			}
 			synchronized(marks) { marks.putIfAbsent(key, since(start)) }
 		}
 		fun report(total: Double): String {

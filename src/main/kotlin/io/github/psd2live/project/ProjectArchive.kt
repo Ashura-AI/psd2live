@@ -40,6 +40,8 @@ internal object ProjectArchive {
     /** Entries always written without compression: their content is compressed already, so DEFLATE would only cost time. */
     fun isStored(name: String): Boolean = name.endsWith(".png", ignoreCase = true) || name.endsWith(".cmo3", ignoreCase = true)
 
+    private val CONTENT_ADDRESSED = Regex("document/.+/([0-9a-f]{64})\\.(json|bin)")
+
     /** Other files at least this long (other than JSON) are sampled ([compresses]) before they are DEFLATEd. */
     private const val SAMPLED_BYTES = 1L shl 20
     private const val SAMPLE_WINDOWS = 16
@@ -179,6 +181,10 @@ internal object ProjectArchive {
                         zip.putNextEntry(entry)
                         written[name] = Files.newInputStream(file).use { measure(it, zip, counted) }
                         zip.closeEntry()
+                    }
+                    // Document files are named by their hash; a save links them from the working store's mirror.
+                    CONTENT_ADDRESSED.matchEntire(name)?.let { match ->
+                        require(written.getValue(name).sha256 == match.groupValues[1]) { "Project entry does not match its name: $name" }
                     }
                 }
                 manifest = json.encodeToString(JsonElement.serializer(), buildJsonObject {

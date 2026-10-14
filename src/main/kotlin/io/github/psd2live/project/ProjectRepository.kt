@@ -30,7 +30,12 @@ internal class ProjectRepository(
                     staged(0)
                     // Rasters the live store holds are linked from it rather than encoded again.
                     val store = WorkspaceStore(root.resolve("workspace"), rasterSource = capture.store)
-                    store.persistHistory(capture.projectId, capture.history)
+                    // Revisions an earlier save or the open split already are linked in their archive layout.
+                    val live = capture.store.projectRoot(capture.projectId)
+                    val mirror = ArchiveMirror(live.resolve(ArchiveMirror.FOLDER))
+                    val mirrored = mirror.stage(capture.history.selections.map { WorkspaceStore.snapshotKey(it.node.snapshotHash) }.distinct(),
+                        root, live.resolve("blobs"), store.projectRoot(capture.projectId).resolve("blobs"))
+                    store.persistHistory(capture.projectId, capture.history, mirrored)
                     staged(1)
                     capture.store.copyAuxiliary(capture.projectId, root.resolve("workspace").resolve(capture.projectId),
                         capture.assetCatalog, viewImages = false)
@@ -70,7 +75,7 @@ internal class ProjectRepository(
                     })
                     ProjectArchive.writeJson(root.resolve("workspace.json"), JsonObject(ui))
                     staged(3)
-                    ProjectFormatV2.pack(root, capture.projectId)
+                    ProjectFormatV2.pack(root, capture.projectId).forEach { (key, packed) -> mirror.record(key, packed.index, root, packed.rasters) }
                     staged(4)
                     MaterializedRigStore.write(root, capture.history)
                     staged(5)

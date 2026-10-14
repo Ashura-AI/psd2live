@@ -267,8 +267,12 @@ internal class WorkspaceStore(
         }
     }
 
+	/**
+	 * Writes [state]'s history nodes, HEAD and the snapshot of each revision this store does not have, except the
+	 * revisions whose snapshot key ([snapshotKey]) is in [staged]: a save stages those in the archive layout already.
+	 */
 	@Synchronized
-	fun persistHistory(projectId: String, state: WorkspaceHistoryState<WorkspaceDocument>) {
+	fun persistHistory(projectId: String, state: WorkspaceHistoryState<WorkspaceDocument>, staged: Set<String> = emptySet()) {
 		val project = projectRoot(projectId)
 		// The rig objects checkpoints name are part of the document: on disk before the snapshot that names them.
 		val rigObjects = project.resolve(ProjectFormatV2.WORKING_RIG_OBJECTS)
@@ -279,7 +283,7 @@ internal class WorkspaceStore(
 			// A node is written after its snapshot, so a stored node has its snapshot too.
 			if (nodePath in stored) continue
 			val snapshotPath = project.resolve("history/snapshots/${fileKey(selection.node.snapshotHash)}.json")
-			if (!isStored(snapshotPath)) {
+			if (fileKey(selection.node.snapshotHash) !in staged && !isStored(snapshotPath)) {
 				io.github.psd2live.core.RigObjects.writeTo(rigObjects, io.github.psd2live.core.RigCheckpoint.hashes(selection.snapshot.rigEdits.authoringJournal))
 				val snapshotBytes = shareContent(encodeDocument(selection.snapshot, project), project).toString().encodeToByteArray()
 				writeAtomic(snapshotPath, snapshotBytes, replace = false, pretty = false)
@@ -1074,18 +1078,7 @@ internal class WorkspaceStore(
 	private fun loadRasters(project: Path, snapshots: Collection<JsonObject>): Map<String, ByteArray> {
 		class Blob(val hash: String, val width: Int, val height: Int)
 		val blobs = LinkedHashMap<String, Blob>()
-		for (snapshot in snapshots) {
-			val sources = listOf(snapshot) + listOf("generationSource", "meshSource", "placementSource").mapNotNull { snapshot[it] as? JsonObject }
-			for (source in sources) for (element in source.optionalArray("layers")) {
-				val layer = element as? JsonObject ?: continue
-				val hash = layer.optionalString("rgbaBlob") ?: continue
-				val width = layer["rasterWidth"]?.jsonPrimitive?.intOrNull ?: continue
-				val height = layer["rasterHeight"]?.jsonPrimitive?.intOrNull ?: continue
-				blobs.getOrPut(hash) { Blob(hash, width, height) }
-			}
-			for ((hash, width, height) in WorkspaceLayoutCodec.rasterRefs(snapshot[WorkspaceLayoutCodec.MATERIALS] as? JsonObject))
-				blobs.getOrPut(hash) { Blob(hash, width, height) }
-		}
+		for (snapshot in snapshots) for ((hash, width, height) in rasterRefs(snapshot)) blobs.getOrPut(hash) { Blob(hash, width, height) }
 		if (blobs.isEmpty()) return emptyMap()
 		val largest = blobs.values.maxOf { it.width.toLong() * it.height * 4 }
 		val threads = minOf(Runtime.getRuntime().availableProcessors().toLong(), 8L, blobs.size.toLong(),
@@ -1314,6 +1307,27 @@ internal class WorkspaceStore(
 		}
 
 		internal fun isBakeReference(value: JsonObject) = value.size == 1 && BAKE_REF in value
+
+		/** The name of the snapshot file of the revision with [snapshotHash], without `.json`. */
+		internal fun snapshotKey(snapshotHash: String): String = WorkspaceRevisions.sha256(snapshotHash.encodeToByteArray())
+
+		/** The rasters (digest, width, height) [snapshot]'s source art, extra sources and materials name. */
+		private fun rasterRefs(snapshot: JsonObject): List<Triple<String, Int, Int>> = buildList {
+			val sources = listOf(snapshot) + listOf("generationSource", "meshSource", "placementSource").mapNotNull { snapshot[it] as? JsonObject }
+			for (source in sources) for (element in source.optionalArray("layers")) {
+				val layer = element as? JsonObject ?: continue
+				val hash = layer.optionalString("rgbaBlob") ?: continue
+				val width = layer["rasterWidth"]?.jsonPrimitive?.intOrNull ?: continue
+				val height = layer["rasterHeight"]?.jsonPrimitive?.intOrNull ?: continue
+				add(Triple(hash, width, height))
+			}
+			addAll(WorkspaceLayoutCodec.rasterRefs(snapshot[WorkspaceLayoutCodec.MATERIALS] as? JsonObject))
+		}
+
+		/** The PNG files under `blobs/` holding the rasters [snapshot] names. */
+		internal fun rasterFiles(snapshot: JsonObject): Set<String> = rasterRefs(snapshot).mapTo(LinkedHashSet()) { (hash, width, height) ->
+			"${WorkspaceRevisions.sha256(hash.encodeToByteArray())}-${width}x${height}.png"
+		}
 
 		/**
 		 * Content-defined chunks of [journal]: a chunk closes after an entry chosen by its own digest, so appending

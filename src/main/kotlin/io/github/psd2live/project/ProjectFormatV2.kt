@@ -86,8 +86,15 @@ internal object ProjectFormatV2 {
 	private const val OVERRIDE = "generated_override"
 	private val auxiliaryFolders = listOf("assets", "views", "view-images", "workflow")
 
-	/** Moves the working-store layout under [root]/workspace/[projectId] into the v2 layout under [root]. */
-	fun pack(root: Path, projectId: String) {
+	/** A revision [pack] split: its index and the raster files its documents name. */
+	class Packed(val index: JsonObject, val rasters: Collection<String>)
+
+	/**
+	 * Moves the working-store layout under [root]/workspace/[projectId] into the v2 layout under [root]. Revisions
+	 * staged already (their index in `history/revisions/`) are left as they are. Returns the revisions it split, by
+	 * snapshot key.
+	 */
+	fun pack(root: Path, projectId: String): Map<String, Packed> {
 		val workspace = root.resolve("workspace")
 		val store = workspace.resolve(projectId)
 		require(Files.isRegularFile(store.resolve("HEAD.json"))) { "Project has no history" }
@@ -97,11 +104,14 @@ internal object ProjectFormatV2 {
 		val snapshots = store.resolve("history/snapshots")
 		val shared = WorkspaceStore.SharedContent()
 		val payloads = PayloadHashes()
+		val packed = LinkedHashMap<String, Packed>()
 		if (Files.isDirectory(snapshots)) Files.list(snapshots).use { paths -> paths.sorted().toList() }.forEach { file ->
 			val snapshot = WorkspaceStore.expandSnapshot(store, json.parseToJsonElement(Files.readString(file)).jsonObject, shared)
 			// Revisions shared chunks, so their entries are the same objects: each payload is written and hashed once.
 			val index = split(root, snapshot, PAYLOAD_MIN_CHARS.takeIf { needsNewerSchema(snapshot) }, payloads)
-			write(history.resolve("revisions").resolve(file.fileName.toString()), index.toString().encodeToByteArray())
+			val key = file.fileName.toString().removeSuffix(".json")
+			writeRevision(root, key, index)
+			packed[key] = Packed(index, WorkspaceStore.rasterFiles(snapshot))
 			Files.delete(file)
 		}
 		// Journal chunks and payloads shared by working snapshots are now inside the document nodes.
@@ -113,6 +123,42 @@ internal object ProjectFormatV2 {
 		val left = Files.walk(store).use { paths -> paths.filter(Files::isRegularFile).map { store.relativize(it).toString() }.toList() }
 		require(left.isEmpty()) { "Unknown project store entries: $left" }
 		deleteTree(workspace)
+		return packed
+	}
+
+	/** Writes revision [key]'s [index] into the archive layout under [root]. */
+	fun writeRevision(root: Path, key: String, index: JsonObject) =
+		write(root.resolve("history/revisions/$key.json"), index.toString().encodeToByteArray())
+
+	/** The archive paths of the document files [index] names (not the rig objects, which [MaterializedRigStore] writes). */
+	fun indexFiles(index: JsonObject): List<String> = buildList {
+		fun hashes(key: String) = index[key]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+		fun named(folder: String, hash: String, extension: String) {
+			require(hash.matches(HASH)) { "Invalid document node reference" }
+			add("$folder/$hash.$extension")
+		}
+		for ((kind, hash) in index.getValue("nodes").jsonObject) {
+			require(kind.matches(Regex("[a-z-]+"))) { "Invalid document node kind" }
+			named("document/nodes/$kind", hash.jsonPrimitive.content, "json")
+		}
+		index["overrides"]?.jsonPrimitive?.content?.let { named("document/overrides", it, "json") }
+		index["clips"]?.jsonPrimitive?.content?.let { named("document/clips", it, "json") }
+		for (hash in hashes("payloads")) named("document/nodes/$PAYLOAD", hash, "json")
+		for (hash in hashes("bakes")) named(BAKES, hash, "bin")
+	}
+
+	/**
+	 * Whether [index] is how [split] would store [snapshot] now, so a mirror ([ArchiveMirror]) can keep it: archives
+	 * from before bakes were stored apart, or before long journal entries became payloads, are split again on save.
+	 */
+	private fun isCurrent(index: JsonObject, snapshot: JsonObject): Boolean {
+		val rig = snapshot["rigEdits"] as? JsonObject ?: return true
+		val baked = (rig[SIMULATIONS] as? JsonArray).orEmpty().any { (it as? JsonObject)?.get("bake") is JsonObject }
+		if (baked && index["bakes"] == null) return false
+		if (!needsNewerSchema(snapshot) || index["payloads"] != null) return true
+		return (rig[JOURNAL] as? JsonArray).orEmpty().none { command ->
+			command is JsonObject && command["op"]?.jsonPrimitive?.contentOrNull != OVERRIDE && JournalEntryDigests.of(command).length >= PAYLOAD_MIN_CHARS
+		}
 	}
 
 	/** Rebuilds the working-store layout under [root]/workspace/[projectId] from an extracted v2 archive. */
@@ -127,8 +173,12 @@ internal object ProjectFormatV2 {
 		val revisions = history.resolve("revisions")
 		val cache = HashMap<String, JsonObject>()
 		val written = HashSet<String>()
+		val adopted = LinkedHashMap<String, Pair<JsonObject, Collection<String>>>()
 		if (Files.isDirectory(revisions)) Files.list(revisions).use { paths -> paths.sorted().toList() }.forEach { file ->
-			val snapshot = join(root, json.parseToJsonElement(Files.readString(file)).jsonObject, cache)
+			val index = json.parseToJsonElement(Files.readString(file)).jsonObject
+			val snapshot = join(root, index, cache)
+			val key = file.fileName.toString().removeSuffix(".json")
+			if (key.matches(HASH) && isCurrent(index, snapshot)) adopted[key] = index to WorkspaceStore.rasterFiles(snapshot)
 			// Written as the working store writes a commit: revisions share journal chunks, so opening reads each
 			// entry once and every revision holds the same entry objects instead of its own copy of the journal.
 			val stored = WorkspaceStore.shareContent(snapshot) { relative, bytes -> if (written.add(relative)) write(store.resolve(relative), bytes()) }
@@ -139,6 +189,8 @@ internal object ProjectFormatV2 {
 		moveTree(root.resolve("assets"), store.resolve("blobs"))
 		for (folder in auxiliaryFolders) moveTree(root.resolve("auxiliary").resolve(folder), store.resolve(folder))
 		if (Files.isRegularFile(root.resolve("auxiliary/tasks.json"))) move(root.resolve("auxiliary/tasks.json"), store.resolve("tasks.json"))
+		// The next save links these revisions' nodes instead of splitting them again.
+		ArchiveMirror(store.resolve(ArchiveMirror.FOLDER)).adopt(root, adopted)
 		deleteTree(history); deleteTree(root.resolve("document")); deleteTree(root.resolve("auxiliary"))
 	}
 
@@ -400,6 +452,8 @@ internal object ProjectFormatV2 {
 		if (!Files.exists(path)) return
 		Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
 	}
+
+	private val HASH = Regex("[0-9a-f]{64}")
 
 	private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it.toInt() and 255) }
 }
