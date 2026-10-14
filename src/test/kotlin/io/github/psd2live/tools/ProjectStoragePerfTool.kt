@@ -65,6 +65,17 @@ class ProjectStoragePerfTool {
 						}
 					}
 				}
+				// Reading the archive back as the save's check does, on a file written a moment ago and on the same file again.
+				repeat(2) { run ->
+					val copy = directory.resolve("copy-$run.psd2live")
+					Files.copy(target, copy)
+					val expected = ZipFile(copy.toFile()).use { zip -> zip.entries().toList().filter { it.name != "manifest.json" }
+						.associate { it.name to io.github.psd2live.project.ProjectArchive.Digest("", it.crc, it.size) } }
+					val manifest = ZipFile(copy.toFile()).use { zip -> zip.getInputStream(zip.getEntry("manifest.json")).readBytes() }
+					val (_, first) = timed { io.github.psd2live.project.ProjectArchive.verify(copy, expected, manifest) }
+					val (_, again) = timed { io.github.psd2live.project.ProjectArchive.verify(copy, expected, manifest) }
+					lines += "read back a fresh copy: %.0f ms, the same file again: %.0f ms".format(first, again)
+				}
 				// The open's reading stage, step by step.
 				val (root, extract) = timed { io.github.psd2live.project.ProjectArchive.extract(target) }
 				try {
