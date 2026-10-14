@@ -5878,6 +5878,32 @@ class PSD2LiveViewModel : AutoCloseable {
 	fun replaceLayerWithMaterial(layerId: String, materialId: String) = layoutEdit(tr("materials.replaced"), "layer_replace_image",
 		kotlinx.serialization.json.buildJsonObject { put("layer_id", layerId); put("material_id", materialId) })
 
+	private val _materialEditor = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+	/** The material item the material window shows, or null while the window is closed. */
+	val materialEditor: kotlinx.coroutines.flow.StateFlow<String?> = _materialEditor
+
+	fun openMaterialEditor(id: String) { _materialEditor.value = id }
+	fun closeMaterialEditor() { _materialEditor.value = null }
+
+	/** The material window follows the panel's selection while it is open. */
+	fun showInMaterialEditor(id: String) { if (_materialEditor.value != null) _materialEditor.value = id }
+
+	/** One paint gesture ([request] as `material_paint` takes it, without the id) on material [id]'s pixels. */
+	fun paintMaterial(id: String, request: kotlinx.serialization.json.JsonObject) = layoutEdit(tr("materials.painted"),
+		io.github.psd2live.application.WorkspaceMaterialPixels.PAINT, kotlinx.serialization.json.JsonObject(request + ("id" to kotlinx.serialization.json.JsonPrimitive(id))))
+
+	/** Material [id]'s pixels flipped and recoloured, as `material_adjust` does. */
+	internal fun adjustMaterial(id: String, adjustment: io.github.psd2live.application.WorkspaceMaterialPixels.Adjustment) = layoutEdit(tr("materials.adjusted"),
+		io.github.psd2live.application.WorkspaceMaterialPixels.ADJUST, kotlinx.serialization.json.buildJsonObject {
+			put("id", id)
+			adjustment.flip?.let { put("flip", it) }
+			if (adjustment.hue != 0f) put("hue", adjustment.hue)
+			if (adjustment.saturation != 0f) put("saturation", adjustment.saturation)
+			if (adjustment.lightness != 0f) put("lightness", adjustment.lightness)
+			if (adjustment.contrast != 0f) put("contrast", adjustment.contrast)
+		})
+
 	/** Generates the rig, or generates it again: what waits joins it, the user's edits stay. [refresh]: mesh replaced images from their new pixels. */
 	fun generateLayout(refresh: Boolean = true) = layoutEdit(tr("layout.generate.summary"), io.github.psd2live.application.WorkspaceGenerationEdits.GENERATE,
 		kotlinx.serialization.json.buildJsonObject { if (!refresh) put("refresh_geometry", kotlinx.serialization.json.JsonArray(emptyList())) })

@@ -510,6 +510,8 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `material_delete` | `ids` | 删除条目与文件夹（含其中全部内容）；仍被未删除图层使用时拒绝并列出图层 |
 | `material_tag` | `ids`，`set` 或 `add`/`remove` | 条目与文件夹的标签；放置时并入图层标签 |
 | `material_set_resolution` | `id`、`width`、`height`（单边 ≤4096） | SVG 的纹理分辨率；使用它的图层画布矩形不变、像素随之替换 |
+| `material_paint` | `state`、`id`、`mode`（`brush/pencil/eraser/bucket/shape/clear`）及该模式的参数：`points`+`radius`+`hardness`、`point`+`tolerance`、`from`+`to`+`shape`+`stroke_width`+`filled`；可选 `color`（RGBA 字节）、`opacity` | 在条目自身像素坐标（左上为原点）上画一笔，算法与 `paint` 相同；使用它的图层画布矩形不变、像素随之替换，SVG 变为位图 |
+| `material_adjust` | `state`、`id`，至少一项：`flip`（`horizontal/vertical`）、`hue`（±180）、`saturation`/`lightness`/`contrast`（±100） | 先翻转再调色，尺寸不变；同步图层与 SVG 规则同上 |
 | `material_export_psd` | `state`、`folder_id`、`path`（绝对 `.psd`） | 后台把文件夹写成 PSD：条目按默认位置（无则自左上排开），子文件夹为图层组 |
 | `layer_place` | `state`、`material_id`，可选 `rect`（单个条目）、`at`（[x, y] 中心）、`layer_id`（单个条目的新图层 ID） | 放置条目或整个文件夹为新源图层，画在已有图层之上；默认 PSD 位置，否则 1 素材像素 = 1 画布单位并缩入画布；像素不重采样 |
 | `layer_tag` | `state`、`layer_ids`（1–128），`set` 或 `add`/`remove` | 语义标签：部位词与 `left/right` 决定分类（如 `{hair, front}`、`{eye, iris, left}`），其余为用户标签；已生成图层的分类变化等待 `rig_generate` |

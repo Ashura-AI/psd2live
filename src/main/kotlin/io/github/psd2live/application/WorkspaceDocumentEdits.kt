@@ -79,7 +79,7 @@ internal object WorkspaceDocumentEdits {
             WorkspaceRasterEdits.REBUILD_MESH -> WorkspaceRasterEdits.rebuildMesh(document, model, request.text("layer_id"), rasterWork)
             in WorkspaceTextureEdits.supported -> WorkspaceTextureEdits.apply(operation, document, model, rasterWork::checkpoint)
             in WorkspaceLayoutEdits.supported -> WorkspaceLayoutEdits.apply(operation, document, model)
-            in WorkspaceMaterialEdits.supported -> WorkspaceMaterialEdits.apply(operation, document, model)
+            in WorkspaceMaterialEdits.supported -> WorkspaceMaterialEdits.apply(operation, document, model, rasterWork)
             in WorkspaceCanvasWeightEdits.supported -> WorkspaceCanvasWeightEdits.apply(operation, document, model)
             in WorkspaceCanvasDeformEdits.supported -> WorkspaceCanvasDeformEdits.apply(operation, document, model)
             in WorkspaceWarpEdits.supported -> WorkspaceWarpEdits.apply(document, model, request)

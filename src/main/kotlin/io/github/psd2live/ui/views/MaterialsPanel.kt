@@ -65,7 +65,7 @@ import org.umamo.format.art.LayerRaster
 
 /**
  * Thumbnails of materials, made on demand off the UI thread and kept by pixel identity: a library of thousands
- * scrolls without decoding anything twice. Three sizes, by the longest side asked for.
+ * scrolls without decoding anything twice. Three sizes, by the longest side asked for; a wide clear margin is cut away.
  */
 internal object MaterialThumbnails {
 	private val tiers = intArrayOf(128, 512, 2048)
@@ -81,6 +81,10 @@ internal object MaterialThumbnails {
 		val tier = tier(px)
 		val key = System.identityHashCode(raster.rgba) to tier
 		synchronized(cache) { cache[key] }?.let { return it }
+		return scaled(trimmed(raster) ?: raster, tier).also { synchronized(cache) { cache[key] = it } }
+	}
+
+	private fun scaled(raster: LayerRaster, tier: Int): ImageBitmap {
 		val scale = minOf(1.0, tier.toDouble() / maxOf(raster.width, raster.height))
 		val width = (raster.width * scale).toInt().coerceAtLeast(1); val height = (raster.height * scale).toInt().coerceAtLeast(1)
 		val rgba = if (scale == 1.0) raster.rgba else ByteArray(width * height * 4).also { out ->
@@ -102,7 +106,24 @@ internal object MaterialThumbnails {
 				}
 			}
 		}
-		return rgbaImageBitmap(width, height, rgba).also { synchronized(cache) { cache[key] = it } }
+		return rgbaImageBitmap(width, height, rgba)
+	}
+
+	/**
+	 * [raster] cut to its visible pixels when a clear margin takes much of it - a PSD layer kept at the size of its
+	 * canvas - so the thumbnail shows the drawing rather than empty space; null when there is little to cut.
+	 */
+	private fun trimmed(raster: LayerRaster): LayerRaster? {
+		var left = raster.width; var top = raster.height; var right = -1; var bottom = -1
+		for (y in 0 until raster.height) for (x in 0 until raster.width) if (raster.rgba[(y * raster.width + x) * 4 + 3].toInt() != 0) {
+			if (x < left) left = x; if (x > right) right = x; if (y < top) top = y; if (y > bottom) bottom = y
+		}
+		if (right < 0) return null
+		val width = right - left + 1; val height = bottom - top + 1
+		if (width.toLong() * height * 10 > raster.width.toLong() * raster.height * 8) return null
+		val rgba = ByteArray(width * height * 4)
+		for (y in 0 until height) System.arraycopy(raster.rgba, ((top + y) * raster.width + left) * 4, rgba, y * width * 4, width * 4)
+		return LayerRaster(width, height, rgba)
 	}
 }
 
@@ -153,9 +174,10 @@ private sealed interface MaterialEntry {
 }
 
 /**
- * The material browser: the folder tree on the left, the open folder's contents as a grid or a list, and the selected
- * item at full size. Files dropped from the system import into the folder under the pointer; an item or folder
- * dragged onto an edit canvas is placed where it lands. Every change is one undoable document edit.
+ * The material browser: one view of the open folder - its folders, then its items, as a grid or a list - under a path
+ * bar that walks back up. Double-click opens a folder, or an item in the material window to look at and paint; an item
+ * or folder dragged onto an edit canvas is placed where it lands, onto a folder tile or a path segment it moves there.
+ * Files dropped from the system import into the folder under the pointer. Every change is one undoable document edit.
  */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
 @Composable
@@ -171,29 +193,50 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 	var folderId by remember { mutableStateOf<String?>(null) }
 	if (folderId != null && library.folder(folderId!!) == null) folderId = null
 	var view by remember { mutableStateOf(MaterialView.GRID) }
-	var showPreview by remember { mutableStateOf(true) }
 	var query by remember { mutableStateOf("") }
 	var thumb by remember { mutableStateOf(88f) }
 	var selected by remember { mutableStateOf<String?>(null) }
 	var menu by remember { mutableStateOf<String?>(null) }
 	var renaming by remember { mutableStateOf<String?>(null) }
 	var resolution by remember { mutableStateOf<String?>(null) }
-	val expanded = remember { mutableStateMapOf<String, Boolean>() }
 	val loaded = state.analysis != null
 
-	// Files dropped from the system: into the folder row under the pointer, else the open folder.
+	// Where each folder target sits in the window: folder tiles and rows, and the path segments (ROOT for the top).
+	val targets = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
+	fun targetAt(at: Offset): String? = targets.entries.firstOrNull { at in it.value }?.key
 	var panelCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
-	val folderRows = remember { mutableStateMapOf<String, ClosedFloatingPointRange<Float>>() }
 	DisposableEffect(panelCoordinates) {
 		vm.materialsImportHitTest = hit@{ windowX, windowY ->
 			val panel = panelCoordinates?.takeIf { it.isAttached } ?: return@hit null
 			val origin = panel.positionInWindow()
 			val x = windowX - origin.x; val y = windowY - origin.y
 			if (x < 0 || y < 0 || x > panel.size.width || y > panel.size.height) return@hit null
-			val row = folderRows.entries.firstOrNull { y in it.value }?.key
-			PSD2LiveViewModel.MaterialsDropTarget(row?.takeUnless { it == ROOT } ?: folderId)
+			val folder = targetAt(Offset(windowX.toFloat(), windowY.toFloat()))
+			PSD2LiveViewModel.MaterialsDropTarget(if (folder == null) folderId else folder.takeUnless { it == ROOT })
 		}
 		onDispose { if (vm.materialsImportHitTest != null) vm.materialsImportHitTest = null }
+	}
+	// A folder cannot move into itself or below itself.
+	fun accepts(carried: String, target: String): Boolean {
+		if (target == ROOT) return true
+		if (target == carried) return false
+		return library.folder(carried) == null || library.ancestry(target).none { it.id == carried }
+	}
+	// The folder a carried material would move into, lit while the pointer is over it.
+	val drag by vm.materialDrag.collectAsState()
+	val dropFolder = drag?.let { carried -> targetAt(carried.position)?.takeIf { accepts(carried.id, it) } }
+	fun drop(): Boolean {
+		val carried = vm.materialDrag.value ?: return false
+		val target = targetAt(carried.position) ?: return false
+		vm.cancelMaterialDrag()
+		val into = target.takeUnless { it == ROOT }
+		val from = library.item(carried.id)?.folderId ?: library.folder(carried.id)?.parentId
+		if (accepts(carried.id, target) && into != from) vm.moveMaterials(listOf(carried.id), into)
+		return true
+	}
+	fun track(id: String) = Modifier.onGloballyPositioned { c ->
+		if (c.isAttached) targets[id] = androidx.compose.ui.geometry.Rect(c.positionInWindow(),
+			androidx.compose.ui.geometry.Size(c.size.width.toFloat(), c.size.height.toFloat()))
 	}
 
 	fun entries(): List<MaterialEntry> {
@@ -206,10 +249,13 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 		return folders.map { MaterialEntry.Folder(it) } + items.map { MaterialEntry.Item(it) }
 	}
 	val shown = entries()
+	// Targets of another folder's tiles do not linger.
+	val live = remember(shown, folderId) { shown.mapTo(HashSet()) { it.id } + ROOT + library.ancestry(folderId).map { it.id } }
+	SideEffect { targets.keys.retainAll { it in live } }
 
 	Column(Modifier.fillMaxSize().onGloballyPositioned { panelCoordinates = it }) {
 		val labels = listOf(tr("materials.import"), tr("materials.folder.new"))
-		PanelToolbar(labels = labels, iconCount = 4, search = PanelSearch(query, { query = it }, tr("materials.search")), reservedWidth = 60.dp) { labelsShown ->
+		PanelToolbar(labels = labels, iconCount = 3, search = PanelSearch(query, { query = it }, tr("materials.search")), reservedWidth = 40.dp) { labelsShown ->
 			PanelToolButton(labels[0], showLabel = labelsShown > 0, enabled = loaded, tooltip = tr("materials.import.tip"), onClick = {
 				val files = NativeFilePicker.chooseMaterialFiles(window)
 				if (files.isNotEmpty()) vm.importMaterials(files.map { it.toPath() }, folderId)
@@ -222,16 +268,23 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				onClick = { view = MaterialView.GRID }) { GridGlyph(colors.textPrimary) }
 			PanelToolButton(tr("materials.view.list"), showLabel = false, enabled = true, tooltip = tr("materials.view.list"), active = view == MaterialView.LIST,
 				onClick = { view = MaterialView.LIST }) { ListGlyph(colors.textPrimary) }
-			PanelToolButton(tr("materials.view.preview"), showLabel = false, enabled = true, tooltip = tr("materials.view.preview"), active = showPreview,
-				onClick = { showPreview = !showPreview }) { PreviewGlyph(colors.textPrimary) }
 		}
-		// Where the open folder sits.
-		Row(Modifier.fillMaxWidth().height(22.dp).background(colors.windowBackground).padding(horizontal = 6.dp),
-			verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-			Crumb(tr("materials.root"), folderId == null) { folderId = null }
-			for (folder in library.ancestry(folderId).reversed()) {
-				Text("›", color = colors.textMuted, fontSize = 10.sp)
-				Crumb(folder.name, folder.id == folderId) { folderId = folder.id }
+		// The path to the open folder: back up a level, or to any folder above; each segment takes a dragged material.
+		Row(Modifier.fillMaxWidth().height(24.dp).background(colors.windowBackground).padding(horizontal = 4.dp),
+			verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+			val parent = folderId?.let { library.folder(it)?.parentId }
+			val up = folderId != null && query.isBlank()
+			Box(Modifier.size(20.dp).clip(RoundedCornerShape(3.dp)).clickable(enabled = up) { folderId = parent }, contentAlignment = Alignment.Center) {
+				Text("↑", color = if (up) colors.textPrimary else colors.textMuted.copy(alpha = 0.4f), fontSize = 12.sp)
+			}
+			if (query.isNotBlank()) Text(tr("materials.searching", query.trim()), color = colors.textMuted, fontSize = 10.5.sp, maxLines = 1,
+				overflow = TextOverflow.Ellipsis)
+			else {
+				Crumb(tr("materials.root"), folderId == null, dropFolder == ROOT, track(ROOT)) { folderId = null }
+				for (folder in library.ancestry(folderId).reversed()) {
+					Text("›", color = colors.textMuted, fontSize = 10.sp)
+					Crumb(folder.name, folder.id == folderId, dropFolder == folder.id, track(folder.id)) { folderId = folder.id }
+				}
 			}
 		}
 		Divider(color = colors.divider)
@@ -241,80 +294,64 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 			}
 			return@Column
 		}
-		Row(Modifier.weight(1f).fillMaxWidth()) {
-			// Folder tree.
-			LazyColumn(Modifier.width(132.dp).fillMaxHeight().background(colors.panelElevated.copy(alpha = 0.4f))) {
-				val rows = flattenFolders(library, expanded)
-				item(key = ROOT) {
-					FolderRow(tr("materials.root"), 0, folderId == null, false, null, Modifier.onGloballyPositioned { c ->
-						val y = c.positionInWindow().y - (panelCoordinates?.positionInWindow()?.y ?: 0f); folderRows[ROOT] = y..(y + c.size.height)
-					}, { folderId = null }, {}, {})
+		Box(Modifier.weight(1f).fillMaxWidth()) {
+			if (shown.isEmpty()) Text(if (query.isBlank()) tr("materials.empty") else tr("materials.noMatch"), style = typography.caption.copy(fontSize = 11.sp),
+				color = colors.textMuted, modifier = Modifier.align(Alignment.Center).padding(12.dp))
+			val select: (MaterialEntry) -> Unit = { entry -> selected = entry.id; if (entry is MaterialEntry.Item) vm.showInMaterialEditor(entry.id) }
+			val open: (MaterialEntry) -> Unit = { entry -> if (entry is MaterialEntry.Folder) { folderId = entry.id; query = "" } else vm.openMaterialEditor(entry.id) }
+			when (view) {
+				MaterialView.GRID -> LazyVerticalGrid(GridCells.Adaptive(thumb.dp + 14.dp), Modifier.fillMaxSize().padding(4.dp)) {
+					items(shown, key = { it.id }) { entry ->
+						MaterialTile(entry, thumb.dp, entry.id == selected, entry.id == dropFolder, references[entry.id].orEmpty().size, vm,
+							if (entry is MaterialEntry.Folder) track(entry.id) else Modifier,
+							{ select(entry) }, { open(entry) }, { select(entry); menu = entry.id }, ::drop, first = entry == shown.first())
+					}
 				}
-				items(rows, key = { it.first.id }) { (folder, depth) ->
-					val hasChildren = library.folders.any { it.parentId == folder.id }
-					FolderRow(folder.name, depth + 1, folder.id == folderId, hasChildren, expanded[folder.id] == true,
-						Modifier.onGloballyPositioned { c ->
-							val y = c.positionInWindow().y - (panelCoordinates?.positionInWindow()?.y ?: 0f); folderRows[folder.id] = y..(y + c.size.height)
-						},
-						{ folderId = folder.id }, { expanded[folder.id] = expanded[folder.id] != true }, { menu = folder.id })
+				MaterialView.LIST -> LazyColumn(Modifier.fillMaxSize()) {
+					items(shown, key = { it.id }) { entry ->
+						MaterialRow(entry, entry.id == selected, entry.id == dropFolder, references[entry.id].orEmpty().size, vm,
+							if (entry is MaterialEntry.Folder) track(entry.id) else Modifier,
+							{ select(entry) }, { open(entry) }, { select(entry); menu = entry.id }, ::drop)
+					}
 				}
 			}
-			Box(Modifier.width(1.dp).fillMaxHeight().background(colors.divider))
-			Box(Modifier.weight(1f).fillMaxHeight()) {
-				if (shown.isEmpty()) Text(tr("materials.empty"), style = typography.caption.copy(fontSize = 11.sp), color = colors.textMuted,
-					modifier = Modifier.align(Alignment.Center).padding(12.dp))
-				val open: (MaterialEntry) -> Unit = { entry -> if (entry is MaterialEntry.Folder) { folderId = entry.id; query = "" } else vm.placeMaterial(entry.id) }
-				when (view) {
-					MaterialView.GRID -> LazyVerticalGrid(GridCells.Adaptive(thumb.dp + 8.dp), Modifier.fillMaxSize().padding(4.dp)) {
-						items(shown, key = { it.id }) { entry ->
-							MaterialTile(entry, thumb.dp, entry.id == selected, references[entry.id].orEmpty().size, vm,
-								{ selected = entry.id }, { open(entry) }, { selected = entry.id; menu = entry.id }, first = entry == shown.first())
-						}
-					}
-					MaterialView.LIST -> LazyColumn(Modifier.fillMaxSize()) {
-						items(shown, key = { it.id }) { entry ->
-							MaterialRow(entry, entry.id == selected, references[entry.id].orEmpty().size, vm,
-								{ selected = entry.id }, { open(entry) }, { selected = entry.id; menu = entry.id })
-						}
-					}
+			// The context menu of the entry right-clicked, dropping from the panel's top right.
+			val target = menu
+			FloatingMenu(expanded = target != null, onDismiss = { menu = null }, width = 230.dp, alignment = Alignment.TopEnd) {
+				val item = target?.let(library::item); val folder = target?.let(library::folder)
+				if (item != null || folder != null) FloatingMenuSection(item?.name ?: folder!!.name)
+				if (item != null) FloatingMenuRow(tr("materials.menu.edit"), { menu = null; vm.openMaterialEditor(item.id) }, hint = tr("materials.menu.edit.hint"))
+				if (folder != null) FloatingMenuRow(tr("materials.menu.open"), { menu = null; folderId = folder.id; query = "" })
+				FloatingMenuRow(tr("materials.menu.place"), { menu = null; target?.let { vm.placeMaterial(it) } }, hint = tr("materials.menu.place.hint"))
+				val layer = state.selectedLayerId
+				if (item != null && layer != null) FloatingMenuRow(tr("materials.menu.replace"), { menu = null; vm.replaceLayerWithMaterial(layer, item.id) },
+					hint = tr("materials.menu.replace.hint"))
+				if (item?.kind == MaterialKind.VECTOR) FloatingMenuRow(tr("materials.menu.resolution"), { menu = null; resolution = item.id },
+					trailing = "${item.raster.width}×${item.raster.height}")
+				val users = target?.let { references[it] }.orEmpty()
+				if (users.isNotEmpty()) FloatingMenuRow(tr("materials.menu.locate", users.size), { menu = null; vm.selectLayer(users.first()) })
+				FloatingMenuDivider()
+				FloatingMenuRow(tr("materials.menu.rename"), { menu = null; renaming = target })
+				if (folder != null) {
+					FloatingMenuRow(tr("materials.folder.new"), { menu = null; vm.createMaterialFolder(uniqueName(library, folder.id, tr("materials.folder.default")), folder.id) })
+					FloatingMenuRow(tr("materials.menu.exportPsd"), {
+						menu = null
+						NativeFilePicker.chooseSavePsdFile(window, folder.name)?.let { vm.exportMaterialFolder(folder.id, java.nio.file.Path.of(it)) }
+					})
 				}
-				// The context menu of the entry right-clicked, dropping from the panel's top right.
-				val target = menu
-				FloatingMenu(expanded = target != null, onDismiss = { menu = null }, width = 230.dp, alignment = Alignment.TopEnd) {
-					val item = target?.let(library::item); val folder = target?.let(library::folder)
-					if (item != null || folder != null) FloatingMenuSection(item?.name ?: folder!!.name)
-					FloatingMenuRow(tr("materials.menu.place"), { menu = null; target?.let { vm.placeMaterial(it) } }, hint = tr("materials.menu.place.hint"))
-					val layer = state.selectedLayerId
-					if (item != null && layer != null) FloatingMenuRow(tr("materials.menu.replace"), { menu = null; vm.replaceLayerWithMaterial(layer, item.id) },
-						hint = tr("materials.menu.replace.hint"))
-					if (item?.kind == MaterialKind.VECTOR) FloatingMenuRow(tr("materials.menu.resolution"), { menu = null; resolution = item.id },
-						trailing = "${item.raster.width}×${item.raster.height}")
-					val users = target?.let { references[it] }.orEmpty()
-					if (users.isNotEmpty()) FloatingMenuRow(tr("materials.menu.locate", users.size), { menu = null; vm.selectLayer(users.first()) })
-					FloatingMenuDivider()
-					FloatingMenuRow(tr("materials.menu.rename"), { menu = null; renaming = target })
-					if (folder != null) {
-						FloatingMenuRow(tr("materials.folder.new"), { menu = null; vm.createMaterialFolder(uniqueName(library, folder.id, tr("materials.folder.default")), folder.id) })
-						FloatingMenuRow(tr("materials.menu.exportPsd"), {
-							menu = null
-							NativeFilePicker.chooseSavePsdFile(window, folder.name)?.let { vm.exportMaterialFolder(folder.id, java.nio.file.Path.of(it)) }
-						})
-					}
-					if (folderId != null) FloatingMenuRow(tr("materials.menu.moveUp"), { menu = null; target?.let { vm.moveMaterials(listOf(it), library.folder(folderId!!)?.parentId) } })
-					FloatingMenuRow(tr("materials.menu.delete"), { menu = null; target?.let { vm.deleteMaterials(listOf(it)) } },
-						enabled = users.isEmpty(), hint = if (users.isEmpty()) null else tr("materials.menu.delete.used", users.size))
-				}
-			}
-			if (showPreview) {
-				Box(Modifier.width(1.dp).fillMaxHeight().background(colors.divider))
-				MaterialPreview(selected?.let(library::item), Modifier.weight(0.8f).fillMaxHeight())
+				if (folderId != null) FloatingMenuRow(tr("materials.menu.moveUp"), { menu = null; target?.let { vm.moveMaterials(listOf(it), library.folder(folderId!!)?.parentId) } })
+				FloatingMenuRow(tr("materials.menu.delete"), { menu = null; target?.let { vm.deleteMaterials(listOf(it)) } },
+					enabled = users.isEmpty(), hint = if (users.isEmpty()) null else tr("materials.menu.delete.used", users.size))
 			}
 		}
 		Divider(color = colors.divider)
-		Row(Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-			Text(tr("materials.count", library.items.size, library.folders.size), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted,
+		Row(Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			val chosen = selected?.let(library::item)
+			Text(chosen?.let { "${it.name} · ${it.raster.width}×${it.raster.height}" } ?: tr("materials.count", library.items.size, library.folders.size),
+				style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted,
 				modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-			if (view == MaterialView.GRID) CompactSlider(thumb, { thumb = it }, valueRange = 48f..176f, modifier = Modifier.width(90.dp), height = 12.dp)
+			if (view == MaterialView.GRID) CompactSlider(thumb, { thumb = it }, valueRange = 48f..200f, modifier = Modifier.width(90.dp), height = 12.dp)
 		}
 	}
 
@@ -340,78 +377,53 @@ private fun uniqueName(library: MaterialLibrary, parent: String?, base: String):
 	return generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base $it" }.first { it !in names }
 }
 
-/** The folder tree in display order, with depth, below expanded folders only. */
-private fun flattenFolders(library: MaterialLibrary, expanded: Map<String, Boolean>): List<Pair<MaterialFolder, Int>> {
-	val children = library.folders.groupBy { it.parentId }
-	val out = ArrayList<Pair<MaterialFolder, Int>>()
-	fun visit(parent: String?, depth: Int) {
-		for (folder in children[parent].orEmpty()) {
-			out += folder to depth
-			if (expanded[folder.id] == true) visit(folder.id, depth + 1)
-		}
-	}
-	visit(null, 0)
-	return out
-}
-
 @Composable
-private fun Crumb(label: String, current: Boolean, onClick: () -> Unit) {
+private fun Crumb(label: String, current: Boolean, dropping: Boolean, modifier: Modifier, onClick: () -> Unit) {
 	val colors = LocalToolColors.current
 	Text(label, color = if (current) colors.textPrimary else colors.textMuted, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-		modifier = Modifier.clip(RoundedCornerShape(3.dp)).clickable(onClick = onClick).padding(horizontal = 3.dp, vertical = 1.dp))
+		modifier = modifier.widthIn(max = 140.dp).clip(RoundedCornerShape(3.dp)).background(if (dropping) colors.accent.copy(alpha = 0.25f) else Color.Transparent)
+			.clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 2.dp))
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
-@Composable
-private fun FolderRow(name: String, depth: Int, selected: Boolean, hasChildren: Boolean, open: Boolean?, modifier: Modifier,
-                      onSelect: () -> Unit, onToggle: () -> Unit, onMenu: () -> Unit) {
-	val colors = LocalToolColors.current
-	Row(modifier.fillMaxWidth().height(22.dp).background(if (selected) colors.selection else Color.Transparent)
-		.onPointerEvent(PointerEventType.Press) { event -> if (event.button == PointerButton.Secondary) onMenu() }
-		.clickable(onClick = onSelect).padding(start = (4 + depth * 10).dp, end = 4.dp),
-		verticalAlignment = Alignment.CenterVertically) {
-		Box(Modifier.size(12.dp).clickable(enabled = hasChildren, onClick = onToggle), contentAlignment = Alignment.Center) {
-			if (hasChildren) IconChevron(open == true, Modifier.size(10.dp))
-		}
-		IconFolder(Modifier.size(12.dp), if (selected) colors.selectionText else colors.textMuted)
-		Spacer(Modifier.width(4.dp))
-		Text(name, color = if (selected) colors.selectionText else colors.textPrimary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-	}
-}
-
-/** Press, drag to an edit canvas to place, click to select, double-click to open or place, right-click for the menu. */
+/**
+ * Press, drag to an edit canvas to place or onto a folder to move, click to select, double-click to open, right-click
+ * for the menu. [onDrop] takes a drop the panel handles itself (onto a folder) and says so.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 private fun Modifier.materialGestures(entry: MaterialEntry, vm: PSD2LiveViewModel, onSelect: () -> Unit, onOpen: () -> Unit,
-                                      onMenu: () -> Unit, origin: () -> Offset): Modifier = this
+                                      onMenu: () -> Unit, onDrop: () -> Boolean, origin: () -> Offset): Modifier = this
 	.onPointerEvent(PointerEventType.Press) { event -> if (event.button == PointerButton.Secondary) onMenu() }
 	.pointerInput(entry.id) { detectTapGestures(onTap = { onSelect() }, onDoubleTap = { onOpen() }) }
 	.pointerInput(entry.id) {
 		detectDragGestures(
 			onDragStart = { at -> onSelect(); vm.startMaterialDrag(entry.id, entry.name, origin() + at) },
 			onDrag = { change, _ -> change.consume(); vm.moveMaterialDrag(origin() + change.position) },
-			onDragEnd = { vm.endMaterialDrag() },
+			onDragEnd = { if (!onDrop()) vm.endMaterialDrag() },
 			onDragCancel = { vm.cancelMaterialDrag() },
 		)
 	}
 
 @Composable
-private fun MaterialTile(entry: MaterialEntry, size: Dp, selected: Boolean, references: Int, vm: PSD2LiveViewModel,
-                         onSelect: () -> Unit, onOpen: () -> Unit, onMenu: () -> Unit, first: Boolean = false) {
+private fun MaterialTile(entry: MaterialEntry, size: Dp, selected: Boolean, dropping: Boolean, references: Int, vm: PSD2LiveViewModel, target: Modifier,
+                         onSelect: () -> Unit, onOpen: () -> Unit, onMenu: () -> Unit, onDrop: () -> Boolean, first: Boolean = false) {
 	val colors = LocalToolColors.current
 	var origin by remember { mutableStateOf(Offset.Zero) }
 	val px = with(androidx.compose.ui.platform.LocalDensity.current) { size.roundToPx() }
-	Column(Modifier.padding(3.dp).clip(RoundedCornerShape(4.dp)).background(if (selected) colors.selection else Color.Transparent)
-		.border(0.5.dp, if (selected) colors.accent.copy(alpha = 0.6f) else Color.Transparent, RoundedCornerShape(4.dp))
+	val shape = RoundedCornerShape(5.dp)
+	Column(target.padding(3.dp).clip(shape)
+		.background(when { dropping -> colors.accent.copy(alpha = 0.25f); selected -> colors.selection; else -> Color.Transparent })
+		.border(if (dropping) 1.dp else 0.5.dp, if (dropping || selected) colors.accent.copy(alpha = 0.7f) else Color.Transparent, shape)
 		.onGloballyPositioned {
 			origin = it.positionInRoot()
 			if (first) MaterialsPanelProbe.firstEntry = androidx.compose.ui.geometry.Rect(origin, androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat()))
 		}
-		.materialGestures(entry, vm, onSelect, onOpen, onMenu) { origin }
-		.padding(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+		.materialGestures(entry, vm, onSelect, onOpen, onMenu, onDrop) { origin }
+		.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
 		Box(Modifier.size(size)) {
 			when (entry) {
 				is MaterialEntry.Item -> MaterialThumbnail(entry.item.raster, px, Modifier.fillMaxSize().clip(RoundedCornerShape(3.dp)))
-				is MaterialEntry.Folder -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { IconFolder(Modifier.size(size * 0.5f), colors.textMuted) }
+				is MaterialEntry.Folder -> Box(Modifier.fillMaxSize().clip(RoundedCornerShape(3.dp)).background(colors.panelElevated.copy(alpha = 0.5f)),
+					contentAlignment = Alignment.Center) { IconFolder(Modifier.size(size * 0.45f), if (dropping) colors.accent else colors.textMuted) }
 			}
 			if (references > 0) Text("$references", color = colors.selectionText, fontSize = 9.sp,
 				modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).clip(RoundedCornerShape(6.dp)).background(colors.accent).padding(horizontal = 4.dp))
@@ -419,75 +431,34 @@ private fun MaterialTile(entry: MaterialEntry, size: Dp, selected: Boolean, refe
 				modifier = Modifier.align(Alignment.BottomStart).padding(2.dp).background(colors.panelElevated.copy(alpha = 0.8f)).padding(horizontal = 2.dp))
 		}
 		Text(entry.name, color = if (selected) colors.selectionText else colors.textPrimary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-			modifier = Modifier.width(size).padding(top = 2.dp))
+			textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.width(size).padding(top = 3.dp))
 	}
 }
 
 @Composable
-private fun MaterialRow(entry: MaterialEntry, selected: Boolean, references: Int, vm: PSD2LiveViewModel,
-                        onSelect: () -> Unit, onOpen: () -> Unit, onMenu: () -> Unit) {
+private fun MaterialRow(entry: MaterialEntry, selected: Boolean, dropping: Boolean, references: Int, vm: PSD2LiveViewModel, target: Modifier,
+                        onSelect: () -> Unit, onOpen: () -> Unit, onMenu: () -> Unit, onDrop: () -> Boolean) {
 	val colors = LocalToolColors.current
 	var origin by remember { mutableStateOf(Offset.Zero) }
-	Row(Modifier.fillMaxWidth().height(28.dp).background(if (selected) colors.selection else Color.Transparent)
+	Row(target.fillMaxWidth().height(30.dp)
+		.background(when { dropping -> colors.accent.copy(alpha = 0.25f); selected -> colors.selection; else -> Color.Transparent })
 		.onGloballyPositioned { origin = it.positionInRoot() }
-		.materialGestures(entry, vm, onSelect, onOpen, onMenu) { origin }
+		.materialGestures(entry, vm, onSelect, onOpen, onMenu, onDrop) { origin }
 		.padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 		when (entry) {
-			is MaterialEntry.Item -> MaterialThumbnail(entry.item.raster, 48, Modifier.size(22.dp).clip(RoundedCornerShape(2.dp)))
-			is MaterialEntry.Folder -> IconFolder(Modifier.size(16.dp), colors.textMuted)
+			is MaterialEntry.Item -> MaterialThumbnail(entry.item.raster, 48, Modifier.size(24.dp).clip(RoundedCornerShape(2.dp)))
+			is MaterialEntry.Folder -> Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { IconFolder(Modifier.size(16.dp), colors.textMuted) }
 		}
 		val text = if (selected) colors.selectionText else colors.textPrimary
 		Text(entry.name, color = text, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-		if (entry is MaterialEntry.Item) {
-			Text(if (entry.item.kind == MaterialKind.VECTOR) "SVG" else tr("materials.kind.bitmap"), color = colors.textMuted, fontSize = 10.sp)
-			Text("${entry.item.raster.width}×${entry.item.raster.height}", color = colors.textMuted, fontSize = 10.sp)
-			Text(if (references > 0) tr("materials.references", references) else tr("materials.unused"), color = colors.textMuted, fontSize = 10.sp)
-		}
-	}
-}
-
-/** The selected item at full size over a choice of backdrop; the wheel zooms to look at pixels one to one. */
-@Composable
-private fun MaterialPreview(item: MaterialItem?, modifier: Modifier) {
-	val colors = LocalToolColors.current
-	var backdrop by remember { mutableStateOf(0) }
-	var zoom by remember(item?.id) { mutableStateOf(1f) }
-	Column(modifier) {
-		Row(Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-			listOf(tr("materials.backdrop.checker"), tr("materials.backdrop.white"), tr("materials.backdrop.black")).forEachIndexed { index, label ->
-				Text(label, color = if (backdrop == index) colors.accent else colors.textMuted, fontSize = 10.sp,
-					modifier = Modifier.clip(RoundedCornerShape(3.dp)).clickable { backdrop = index }.padding(horizontal = 3.dp, vertical = 1.dp))
+		when (entry) {
+			is MaterialEntry.Item -> {
+				Text(if (entry.item.kind == MaterialKind.VECTOR) "SVG" else tr("materials.kind.bitmap"), color = colors.textMuted, fontSize = 10.sp)
+				Text("${entry.item.raster.width}×${entry.item.raster.height}", color = colors.textMuted, fontSize = 10.sp)
+				Text(if (references > 0) tr("materials.references", references) else tr("materials.unused"), color = colors.textMuted, fontSize = 10.sp)
 			}
-			Spacer(Modifier.weight(1f))
-			if (item != null) Text("${(zoom * 100).toInt()}%", color = colors.textMuted, fontSize = 10.sp)
+			is MaterialEntry.Folder -> Text("›", color = colors.textMuted, fontSize = 12.sp)
 		}
-		Box(Modifier.weight(1f).fillMaxWidth().background(when (backdrop) { 1 -> Color.White; 2 -> Color.Black; else -> colors.inputBackground })
-			.then(if (backdrop == 0) Modifier.checkerboard(8.dp) else Modifier)
-			.pointerInput(item?.id) {
-				awaitPointerEventScope {
-					while (true) {
-						val event = awaitPointerEvent()
-						if (event.type == PointerEventType.Scroll) {
-							val delta = event.changes.first().scrollDelta.y
-							zoom = (zoom * if (delta < 0) 1.25f else 0.8f).coerceIn(0.1f, 16f)
-							event.changes.forEach { it.consume() }
-						}
-					}
-				}
-			}, contentAlignment = Alignment.Center) {
-			if (item == null) Text(tr("materials.preview.none"), color = colors.textMuted, fontSize = 10.5.sp)
-			else {
-				val image = remember(item.raster) { rgbaImageBitmap(item.raster.width, item.raster.height, item.raster.rgba) }
-				val density = androidx.compose.ui.platform.LocalDensity.current
-				val width = with(density) { (item.raster.width * zoom).toDp() }; val height = with(density) { (item.raster.height * zoom).toDp() }
-				Image(image, contentDescription = item.name, contentScale = ContentScale.FillBounds,
-					filterQuality = if (zoom >= 2f) androidx.compose.ui.graphics.FilterQuality.None else androidx.compose.ui.graphics.FilterQuality.Medium,
-					modifier = Modifier.requiredSize(width, height))
-			}
-		}
-		if (item != null) Text("${item.name} · ${item.raster.width}×${item.raster.height}" + if (item.origin.isNotEmpty()) " · ${item.origin}" else "",
-			color = colors.textMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(4.dp))
 	}
 }
 
@@ -530,8 +501,4 @@ internal fun MaterialDragGhost(vm: PSD2LiveViewModel) {
 }
 @Composable private fun ListGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
 	listOf(4f, 9f, 14f).forEach { y -> line(2.5f, y, 4f, y); line(6.5f, y, 15.5f, y) }
-}
-@Composable private fun PreviewGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
-	box(2f, 3f, 14f, 12f, 1.2f)
-	line(11f, 3f, 11f, 15f)
 }

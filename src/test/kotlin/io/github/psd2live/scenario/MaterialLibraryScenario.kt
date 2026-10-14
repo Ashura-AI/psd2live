@@ -61,6 +61,20 @@ class MaterialLibraryScenario {
 		expect("replaced", replaced.raster.width == discItem.raster.width && replaced.canvasRect() == badgeLayer.canvasRect() &&
 			now.document.layout.layerMaterials["badge"] == discItem.id) { "the replacement moved the layer or kept the old link" }
 
+			// Painting and adjusting the material reach the layer that shows it, in place.
+			fun shown() = now.document.source.layers.single { it.id.raw == "badge" }
+			edit("paint a stroke across the disc", "material_paint", req("id" to discItem.id, "mode" to "brush",
+				"points" to listOf(listOf(1, discItem.raster.height / 2), listOf(discItem.raster.width - 2, discItem.raster.height / 2)), "radius" to 2, "color" to listOf(255, 0, 0, 255)))
+			val painted = requireNotNull(now.document.layout.materials.item(discItem.id))
+			expect("painted", !painted.raster.rgba.contentEquals(discItem.raster.rgba) && painted.raster.width == discItem.raster.width) { "the stroke did not land on the material" }
+			expect("painted", shown().raster.rgba.contentEquals(painted.raster.rgba) && shown().canvasRect() == badgeLayer.canvasRect()) { "the layer showing the disc did not take the stroke in place" }
+			edit("flip and warm the disc", "material_adjust", req("id" to discItem.id, "flip" to "horizontal", "hue" to 20, "contrast" to 10))
+			val adjusted = requireNotNull(now.document.layout.materials.item(discItem.id))
+			expect("adjusted", !adjusted.raster.rgba.contentEquals(painted.raster.rgba) && shown().raster.rgba.contentEquals(adjusted.raster.rgba)) { "the adjustment did not reach the layer" }
+			refused("an adjustment needs something to change", "material_adjust", req("id" to discItem.id))
+			edit("paint over the vector", "material_paint", req("id" to vector.id, "mode" to "clear"))
+			expect("painted", now.document.layout.materials.item(vector.id)?.kind == MaterialKind.BITMAP) { "a painted vector stayed a vector" }
+
 		allow("REGENERATION_CONFLICT")
 		edit("generate", "rig_generate", req())
 		expect("generated", !WorkspaceLayoutPreview.isPendingMesh(mesh("badge"))) { "the badge did not generate" }

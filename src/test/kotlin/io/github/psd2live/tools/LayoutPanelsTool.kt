@@ -25,6 +25,7 @@ import io.github.psd2live.ui.theme.ToolColors
 import io.github.psd2live.ui.views.LayersTableView
 import io.github.psd2live.ui.views.LayoutGenerationBar
 import io.github.psd2live.ui.views.MaterialsPanel
+import io.github.psd2live.ui.views.MaterialsPanelProbe
 import java.io.File
 import java.nio.file.Path
 import kotlin.test.Test
@@ -94,24 +95,26 @@ class LayoutPanelsTool {
 					scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, at, timeMillis = time + 40,
 						button = androidx.compose.ui.input.pointer.PointerButton.Primary)
 				}
+				val tile = requireNotNull(MaterialsPanelProbe.firstEntry) { "the panel shows no entry" }.center
 				val now = System.currentTimeMillis()
-				clickAt(200f, 110f, now); clock += 16_000_000L; scene.render(clock).close(); clickAt(200f, 110f, now + 120)
+				clickAt(tile.x, tile.y, now); clock += 16_000_000L; scene.render(clock).close(); clickAt(tile.x, tile.y, now + 120)
 				shot("folder")
-				click(200f, 110f)
+				val first = requireNotNull(MaterialsPanelProbe.firstEntry).center
+				click(first.x, first.y)
 				shot("selected")
 				println("LAYOUT PANELS selected: canvasEditBusy=${vm.state.value.canvasEditBusy} workspaceEditBusy=${vm.state.value.workspaceEditBusy}")
 				// Drag the selected tile out of the panel onto a canvas: a stand-in drop target maps root (900, 500) and
 				// around it to canvas units as an edit canvas does; the release places the material centred there.
 				vm.materialDropTargets["probe"] = { root -> if (root.x > 640f) androidx.compose.ui.geometry.Offset(root.x - 700f, root.y - 300f) else null }
 				val before = vm.state.value.analysis!!.source.layers.size
-				val start = androidx.compose.ui.geometry.Offset(200f, 110f)
+				val start = first
 				val primary = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true)
 				scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, start)
 				scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, start, buttons = primary,
 					button = androidx.compose.ui.input.pointer.PointerButton.Primary)
 				for (step in 1..20) {
 					scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move,
-						androidx.compose.ui.geometry.Offset(200f + 35f * step, 110f + 19.5f * step), buttons = primary)
+						start + (androidx.compose.ui.geometry.Offset(900f, 500f) - start) * (step / 20f), buttons = primary)
 					clock += 16_000_000L; scene.render(clock).close()
 				}
 				check(vm.materialDrag.value != null) { "dragging a tile did not start a material drag" }
@@ -141,7 +144,7 @@ class LayoutPanelsTool {
 					button = androidx.compose.ui.input.pointer.PointerButton.Primary)
 				for (step in 1..20) {
 					scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move,
-						androidx.compose.ui.geometry.Offset(200f + 35f * step, 110f + 19.5f * step), buttons = primary)
+						start + (androidx.compose.ui.geometry.Offset(900f, 500f) - start) * (step / 20f), buttons = primary)
 					clock += 16_000_000L; scene.render(clock).close()
 				}
 				println("LAYOUT PANELS drag after menu: started=${vm.materialDrag.value != null}")
@@ -150,8 +153,43 @@ class LayoutPanelsTool {
 				val againDeadline = System.currentTimeMillis() + 60_000
 				while (vm.state.value.analysis!!.source.layers.size == again && System.currentTimeMillis() < againDeadline) Thread.sleep(100)
 				check(vm.state.value.analysis!!.source.layers.size > again) { "a drag after closing a menu did not place" }
-				println("LAYOUT PANELS written to $out; pending ${vm.state.value.layout.generation.pendingLayerIds}")
 				scene.close()
+
+				// The material window's view: a brush stroke across the material lands on it and on the layers showing it.
+				val materialId = requireNotNull(vm.state.value.layout.layerMaterials[dropped.id.raw])
+				val unpainted = requireNotNull(vm.state.value.layout.materials.item(materialId)).raster
+				val editor = ImageComposeScene(900, 640, density = Density(1f)) {
+					CompactToolTheme(colors = ToolColors.Dark) {
+						val state by vm.state.collectAsState()
+						state.layout.materials.item(materialId)?.let { io.github.psd2live.ui.views.MaterialEditor(it, state, vm) }
+					}
+				}
+				fun frame(name: String? = null) {
+					repeat(20) { clock += 16_000_000L; editor.render(clock).close() }
+					if (name != null) { clock += 16_000_000L; editor.render(clock).use { File(out, "$name.png").writeBytes(requireNotNull(it.encodeToData()).bytes) } }
+				}
+				frame("editor")
+				editor.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, androidx.compose.ui.geometry.Offset(300f, 320f))
+				editor.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, androidx.compose.ui.geometry.Offset(300f, 320f), buttons = primary,
+					button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+				for (step in 1..20) {
+					editor.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, androidx.compose.ui.geometry.Offset(300f + 15f * step, 320f + 4f * step), buttons = primary)
+					clock += 16_000_000L; editor.render(clock).close()
+				}
+				editor.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, androidx.compose.ui.geometry.Offset(600f, 400f),
+					button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+				val paintDeadline = System.currentTimeMillis() + 60_000
+				while (vm.state.value.layout.materials.item(materialId)?.raster === unpainted) {
+					check(System.currentTimeMillis() < paintDeadline) { "the stroke did not reach the material: ${vm.state.value.errorMessage}" }
+					Thread.sleep(100)
+				}
+				val painted = requireNotNull(vm.state.value.layout.materials.item(materialId)).raster
+				val shown = vm.state.value.analysis!!.source.layers.single { it.id.raw == dropped.id.raw }.raster
+				check(shown.rgba.contentEquals(painted.rgba)) { "the layer showing the material did not take the stroke" }
+				frame("editor-painted")
+				println("LAYOUT PANELS painted material $materialId (${painted.width}x${painted.height}); the layer follows")
+				editor.close()
+				println("LAYOUT PANELS written to $out; pending ${vm.state.value.layout.generation.pendingLayerIds}")
 			}
 		}
 	}

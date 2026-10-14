@@ -48,11 +48,13 @@ internal object WorkspaceMaterialEdits {
     const val TAG = "material_tag"
     const val RESOLUTION = "material_set_resolution"
     const val PLACE = "layer_place"
-    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE)
+    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE) + WorkspaceMaterialPixels.supported
     private const val MAX_NAME = 128
 
-    fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel): WorkspaceDocument {
+    fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
+              work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): WorkspaceDocument {
         val request = operation.request
+        if (operation.operation in WorkspaceMaterialPixels.supported) return WorkspaceMaterialPixels.apply(operation, document, model, work)
         fun text(key: String) = request.getValue(key).jsonPrimitive.content
         fun optional(key: String) = request[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
         fun strings(key: String) = request[key]?.jsonArray?.map { it.jsonPrimitive.content }

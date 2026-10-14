@@ -675,6 +675,8 @@ fun FrameWindowScope.PSD2LiveApp(
 
 			// A material carried from the materials panel follows the pointer until it lands on a canvas.
 			MaterialDragGhost(viewModel)
+			// The material window: a material to look at and paint, in a window of its own.
+			MaterialEditorWindow(state, viewModel)
 			if (newLayoutDialog) CanvasSizeDialog(onDismiss = { newLayoutDialog = false }) { width, height ->
 				newLayoutDialog = false
 				viewModel.createLayoutProject(width, height)
