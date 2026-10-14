@@ -85,7 +85,7 @@ internal class WorkspaceLayerCommands(private val runtime: WorkspaceRuntime<RigP
         context.ensureActive()
         context[WorkspaceJobContext]?.progress(0.1f, "Preparing layer membership")
         val result = commands.executeCandidate(projectId, state, summary, author, taskId, mutation = { document, model ->
-            WorkspaceLayerEdits.apply(document, model, operation).also {
+            WorkspaceDocumentEdits.apply(operation, document, model).also {
                 context.ensureActive(); context[WorkspaceJobContext]?.progress(0.3f, "Rebuilding layer membership")
             }
         }, beforeCommit = { captured, document, model ->

@@ -1145,6 +1145,16 @@ class DesktopWorkspace(
         result.mutation("Created source artwork")
     }
 
+    override suspend fun createLayoutProject(width: Int, height: Int, discardUnsaved: Boolean): WorkspaceMutationResult = editMutex.withLock {
+        val (state, current) = captureSourceImport(discardUnsaved)
+        val result = sourceImporter.createLayout(width, height, state.capture?.projectId, state.state, discardUnsaved,
+            state.capture?.document?.rawConfig() ?: current.rawConfig()) { document, preview, id ->
+            viewModel.applySourceImport(current, document, preview, null, id)
+        }
+        finishSourceImport(result)
+        result.mutation("Created layout project")
+    }
+
     override fun captureObservation(): WorkspaceObservation {
         val (read, store, visible) = synchronized(historyLock) {
             val read = runtime.read()

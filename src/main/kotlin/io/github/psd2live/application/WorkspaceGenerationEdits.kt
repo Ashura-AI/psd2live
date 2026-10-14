@@ -26,8 +26,7 @@ internal object WorkspaceGenerationEdits {
     const val GENERATE = "rig_generate"
 
     /** Operations on a pending layer, each with its own edit here or a document-level one. */
-    val pendingLayerOperations = setOf(WorkspaceLayerEdits.DELETE, "layer_set_canvas_rect", WorkspaceLayerTransform.OP,
-        "layer_replace_image", "layer_set_pixel_density", "layer_mesh_update", "layer_classify")
+    val pendingLayerOperations = setOf(WorkspaceLayerEdits.DELETE, WorkspaceLayerTransform.OP, "layer_mesh_update")
 
     /** Operations a project not generated yet accepts besides those on its (pending) layers. */
     val ungeneratedOperations = setOf("settings_update")
@@ -73,18 +72,8 @@ internal object WorkspaceGenerationEdits {
         val request = operation.request
         return when (operation.operation) {
             WorkspaceLayerEdits.DELETE -> delete(document, request.getValue("layer_id").jsonPrimitive.content)
-            "layer_set_canvas_rect" -> {
-                val rect = request.getValue("rect").jsonObject
-                fun value(key: String) = rect.getValue(key).jsonPrimitive.float
-                place(document, request.getValue("layer_id").jsonPrimitive.content, LayerCanvasRect(value("left"), value("top"), value("width"), value("height")))
-            }
             WorkspaceLayerTransform.OP -> transform(document, request.getValue("layer_id").jsonPrimitive.content, WorkspaceLayerTransform.transform(request))
-            "layer_replace_image" -> {
-                val edit = WorkspaceTextureEdits.parse(operation) as WorkspaceTextureEdit.ReplaceImage
-                replace(document, edit.layerId, WorkspaceTextureEdits.raster(edit.image), edit.fit)
-            }
-            // Texture and mesh settings and classification are document data the pending layer's preview reads.
-            "layer_set_pixel_density" -> WorkspaceTextureEdits.apply(operation, document, model)
+            // Mesh settings are document data the pending layer's preview reads.
             "layer_mesh_update" -> WorkspaceDocumentEdits.mesh(document, model, request.getValue("layer_id").jsonPrimitive.content,
                 request["changes"]?.jsonObject, request["reset"]?.jsonPrimitive?.boolean ?: false)
             else -> throw WorkspaceNotGenerated("${operation.operation} needs the layer's rig; generate the rig first (rig_generate)")

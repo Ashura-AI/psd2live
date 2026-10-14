@@ -27,7 +27,7 @@ internal object WorkspaceDocumentEdits {
         setOf("warp", "rotation", "glue", "topology").map { "canvas_$it" } +
         setOf("put", "delete", "deform").map { "path_$it" } +
         setOf("swing_put", "swing_delete") + WorkspacePhysicsEdits.batchable + WorkspaceSimulationEdits.supported + WorkspaceCanvasWeightEdits.supported + WorkspaceCanvasDeformEdits.supported + WorkspaceTextureEdits.supported +
-        WorkspaceLayoutEdits.supported
+        WorkspaceLayoutEdits.supported + WorkspaceMaterialEdits.supported
 
     /**
      * [operation] on [document]. Layout edits (tags, classification, placement, generation) read the whole document;
@@ -41,7 +41,9 @@ internal object WorkspaceDocumentEdits {
               rasterWork: WorkspaceRasterWork = WorkspaceRasterWork.Direct,
               assetResources: WorkspaceAssetWorkflow? = null): WorkspaceDocument {
         val id = operation.operation
-        if (id in WorkspaceLayoutEdits.supported || id == "layer_classify") return applyGenerated(operation, document, model,
+        // Layout edits read the whole document; texture edits route pending layers themselves.
+        if (id in WorkspaceLayoutEdits.supported || id in WorkspaceMaterialEdits.supported || id == "layer_classify" ||
+            id in WorkspaceTextureEdits.supported) return applyGenerated(operation, document, model,
             simulationWork, physicsWork, rasterWork, assetResources)
         val pending = WorkspaceLayoutPreview.pendingIds(document)
         val targets = WorkspaceGenerationEdits.targets(operation)
@@ -58,9 +60,13 @@ internal object WorkspaceDocumentEdits {
         val edited = if (pending.isEmpty()) applyGenerated(operation, document, model, simulationWork, physicsWork, rasterWork, assetResources)
             else WorkspaceLayoutPreview.restore(document, applyGenerated(operation, WorkspaceLayoutPreview.base(document), model.generated,
                 simulationWork, physicsWork, rasterWork, assetResources))
-        // A replaced image keeps the rig's geometry; the next generation may read the new pixels.
-        return if (id == "layer_replace_image" && edited !== document) WorkspaceGenerationEdits.replacedGenerated(edited, targets.single()) else edited
+        return edited
     }
+
+    /** [layerId] showing [raster] over its unchanged rectangle, as `layer_replace_image` does. */
+    fun replaceImage(document: WorkspaceDocument, model: RigPreviewModel, layerId: String, raster: org.umamo.format.art.LayerRaster,
+                     fit: WorkspaceImageFit = WorkspaceImageFit.STRETCH): WorkspaceDocument =
+        WorkspaceTextureEdits.apply(document, model, WorkspaceTextureEdit.ReplaceImage(layerId, WorkspaceTextureImage.Raster(raster), fit, false))
 
     private fun applyGenerated(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
               simulationWork: WorkspaceSimulationWork, physicsWork: WorkspacePhysicsWork, rasterWork: WorkspaceRasterWork,
@@ -73,6 +79,7 @@ internal object WorkspaceDocumentEdits {
             WorkspaceRasterEdits.REBUILD_MESH -> WorkspaceRasterEdits.rebuildMesh(document, model, request.text("layer_id"), rasterWork)
             in WorkspaceTextureEdits.supported -> WorkspaceTextureEdits.apply(operation, document, model, rasterWork::checkpoint)
             in WorkspaceLayoutEdits.supported -> WorkspaceLayoutEdits.apply(operation, document, model)
+            in WorkspaceMaterialEdits.supported -> WorkspaceMaterialEdits.apply(operation, document, model)
             in WorkspaceCanvasWeightEdits.supported -> WorkspaceCanvasWeightEdits.apply(operation, document, model)
             in WorkspaceCanvasDeformEdits.supported -> WorkspaceCanvasDeformEdits.apply(operation, document, model)
             in WorkspaceWarpEdits.supported -> WorkspaceWarpEdits.apply(document, model, request)

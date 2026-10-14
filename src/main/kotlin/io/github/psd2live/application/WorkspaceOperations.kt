@@ -39,6 +39,16 @@ internal class WorkspaceOperations(private val workspace: WorkspaceBackend,
                 start(id, allowUnloaded = true) { commands.invoke(commandId, request).data }
             }
         }
+        register("project_create", "Create a new empty project of width x height canvas units that is not generated yet: import materials (material_import), " +
+            "place them (layer_place), tag them, then generate the rig with rig_generate - and place more and generate again later. Unsaved changes are rejected " +
+            "unless discard_unsaved=true. Returns a process-owned job handle.",
+            schema(mapOf("width" to integer(1, 8192), "height" to integer(1, 8192), "discard_unsaved" to buildJsonObject { put("type", "boolean") }),
+                listOf("width", "height")), WorkspaceOperationKind.PROJECT, jobBacked = true) { request ->
+            start("project_create", allowUnloaded = true) {
+                workspace.createLayoutProject(request.getValue("width").jsonPrimitive.int, request.getValue("height").jsonPrimitive.int,
+                    request["discard_unsaved"]?.jsonPrimitive?.boolean ?: false).lifecycleResult()
+            }
+        }
         register("project_import_cmo3", "Import an authored CMO3 file from an absolute local path. mode=new creates a new project and rejects unsaved changes unless discard_unsaved=true; mode=replace updates matching object IDs and retains absent objects in the current project as one history step. Imported content does not run PSD rig or motion presets. Returns a process-owned job handle.",
             schema(mapOf("path" to string(), "mode" to buildJsonObject {
                 put("type", "string"); put("enum", JsonArray(listOf("new", "replace").map(::JsonPrimitive)))

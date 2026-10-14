@@ -41,10 +41,19 @@ internal class WorkspaceSourceImporter(
                               project: (WorkspaceDocument, RigPreviewModel, String) -> Unit = { _, _, _ -> }): WorkspaceCommit<RigPreviewModel> =
         install(projectId, state, discardUnsaved, initialConfig, "Created source artwork", { readArtwork(arguments) }, project)
 
+    /** A new empty canvas of [width] x [height], not generated: materials are placed first and the rig generated later. */
+    suspend fun createLayout(width: Int, height: Int, projectId: String?, state: String, discardUnsaved: Boolean = false,
+                             initialConfig: PipelineConfig = PipelineConfig(),
+                             project: (WorkspaceDocument, RigPreviewModel, String) -> Unit = { _, _, _ -> }): WorkspaceCommit<RigPreviewModel> {
+        require(width in 1..8192 && height in 1..8192 && width.toLong() * height <= 16_777_216) { "Canvas must be 1..8192 per side and at most 16 megapixels" }
+        return install(projectId, state, discardUnsaved, initialConfig, "Created layout project",
+            { WorkspaceSourceArt(width, height, emptyList(), emptyList()) to emptyMap() }, project, layout = true)
+    }
+
     private suspend fun install(projectId: String?, state: String, discardUnsaved: Boolean, initialConfig: PipelineConfig,
                                 summary: String, prepare: suspend () -> Pair<SourceArt, Map<String, LayerClassificationOverride>>,
                                 project: (WorkspaceDocument, RigPreviewModel, String) -> Unit,
-                                sourceAuxiliary: JsonObject = JsonObject(emptyMap())): WorkspaceCommit<RigPreviewModel> {
+                                sourceAuxiliary: JsonObject = JsonObject(emptyMap()), layout: Boolean = false): WorkspaceCommit<RigPreviewModel> {
         val before = runtime.state.value
         currentCoroutineContext().ensureActive()
         // Capture before source I/O. Another edit or reload cannot be hidden by taking a newer token.
@@ -61,9 +70,23 @@ internal class WorkspaceSourceImporter(
             layerOverrides = overrides, parentOverrides = emptyMap(), drawOrderOverrides = emptyMap(), meshOverrides = emptyMap(),
             rigEdits = RigEditOverlay.Empty, generationSource = null, meshSource = null, hairSimulationFront = false, hairSimulationBack = false)
         val document = WorkspaceDocument(source, emptyMap(), emptySet(), overrides, emptyMap(), RigEditOverlay.Empty,
-            WorkspaceSettingsCodec.encode(config))
+            WorkspaceSettingsCodec.encode(config),
+            layout = if (layout) WorkspaceLayout(generation = WorkspaceGeneration.NotGenerated) else WorkspaceLayout.Empty)
         progress(0.6f, "Rebuilding new source project")
         val built = build(document)
+        if (layout) {
+            progress(0.9f, "Installing new layout project")
+            val id = newProjectId()
+            val installed = runtime.install(state, id, document, built,
+                auxiliary = JsonObject(sourceAuxiliary + WorkspaceAuxiliaryCodec.encode(WorkspaceAuxiliaryData()) +
+                    PreviewSessions.initial(built.rig.puppet.parameters, initialWorkspaceIds()) +
+                    ("assetCatalog" to WorkspaceAssetCatalog().encode())), discardUnsaved = discardUnsaved, dirty = true) {
+                project(document, built, id)
+            }
+            val result = WorkspaceCommit(installed, true)
+            currentCoroutineContext()[WorkspaceJobCompletion]?.committed(WorkspaceOperationOutput(result.mutation(summary).lifecycleResult()))
+            return result
+        }
         // A new project keeps its first layout: the atlas is arranged on request, not on every edit. The stored
         // arrangement is that layout exactly, so the model it builds is this one.
         val arrangement = AtlasLayout.frozen(built.atlas)

@@ -38,6 +38,8 @@ internal object WorkspaceJobResultSchemas {
         "workspace_preview_regeneration" to regenerationPreview,
     ).apply {
         for (id in WorkspaceIntentOperations.batches + WorkspaceLayoutOperations.batches) put(id, batch)
+        put(WorkspaceLayoutOperations.EXPORT_PSD, psdExport)
+        put("project_create", lifecycle)
         put("preview_pose", requireNotNull(WorkspaceAuthoringResultSchemas.forOperation("preview_pose")))
         put("paint_session_commit", WorkspacePaintSessionSchemas.commit)
         put("swing_preview", WorkspaceSwingSessionSchemas.result)

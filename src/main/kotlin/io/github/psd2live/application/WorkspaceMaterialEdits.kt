@@ -1,0 +1,299 @@
+package io.github.psd2live.application
+
+import io.github.psd2live.core.*
+import io.github.psd2live.project.*
+import kotlinx.serialization.json.*
+import org.umamo.format.art.*
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.roundToInt
+
+/**
+ * Files read for import, held in this process until the edit that adds them to the document is prepared. Staged
+ * content is immutable and named by its digest, so the same import stages under the same token.
+ */
+internal object WorkspaceMaterialStaging {
+    private val staged = object : LinkedHashMap<String, List<WorkspaceMaterialFiles.Entry>>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<WorkspaceMaterialFiles.Entry>>?) = size > 16
+    }
+
+    fun stage(entries: List<WorkspaceMaterialFiles.Entry>): String {
+        require(entries.isNotEmpty()) { "Nothing to import: no supported image in the given paths" }
+        val token = StableIds.stem("staged_", JsonArray(entries.map { entry -> buildJsonObject {
+            put("name", entry.name); put("folder", JsonArray(entry.folder.map(::JsonPrimitive))); put("kind", entry.kind.name)
+            put("raster", WorkspaceRevisions.rasterDigest(entry.raster.rgba)); put("w", entry.raster.width); put("h", entry.raster.height)
+            entry.placement?.let { put("placement", "${it.left},${it.top},${it.width},${it.height}") }
+            entry.svg?.let { put("svg", WorkspaceRevisions.sha256(it.encodeToByteArray())) }
+            put("origin", entry.origin); put("opacity", entry.opacity); put("visible", entry.visible)
+        } }))
+        synchronized(staged) { staged[token] = entries }
+        return token
+    }
+
+    fun get(token: String): List<WorkspaceMaterialFiles.Entry> = synchronized(staged) { staged[token] }
+        ?: throw IllegalArgumentException("The staged import $token is no longer held; import the files again")
+}
+
+/**
+ * The material library and placing materials on the canvas, as pure candidate edits. The library is document data
+ * ([MaterialLibrary]): every edit of it is one history node like any other. A placed layer is a source layer showing a
+ * material's pixels ([WorkspaceLayout.layerMaterials]); after the first generation it waits for the next one.
+ */
+internal object WorkspaceMaterialEdits {
+    const val ADD = "material_add"
+    const val FOLDER = "material_folder_create"
+    const val MOVE = "material_move"
+    const val RENAME = "material_rename"
+    const val DELETE = "material_delete"
+    const val TAG = "material_tag"
+    const val RESOLUTION = "material_set_resolution"
+    const val PLACE = "layer_place"
+    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE)
+    private const val MAX_NAME = 128
+
+    fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel): WorkspaceDocument {
+        val request = operation.request
+        fun text(key: String) = request.getValue(key).jsonPrimitive.content
+        fun optional(key: String) = request[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
+        fun strings(key: String) = request[key]?.jsonArray?.map { it.jsonPrimitive.content }
+        return when (operation.operation) {
+            ADD -> add(document, WorkspaceMaterialStaging.get(text("staging")), optional("folder_id"))
+            FOLDER -> createFolder(document, text("name"), optional("parent_id"), optional("id"))
+            MOVE -> move(document, strings("ids").orEmpty(), optional("folder_id"))
+            RENAME -> rename(document, text("id"), text("name"))
+            DELETE -> delete(document, strings("ids").orEmpty())
+            TAG -> tag(document, strings("ids").orEmpty(), strings("set"), strings("add").orEmpty(), strings("remove").orEmpty())
+            RESOLUTION -> resolution(document, model, text("id"), request.getValue("width").jsonPrimitive.int, request.getValue("height").jsonPrimitive.int)
+            PLACE -> place(document, model, text("material_id"), request["rect"]?.jsonObject?.let(::rect),
+                request["at"]?.jsonArray?.map { it.jsonPrimitive.float }?.also { require(it.size == 2) { "at takes [x, y]" } },
+                optional("layer_id"))
+            else -> throw IllegalArgumentException("Not a material edit: ${operation.operation}")
+        }
+    }
+
+    private fun rect(value: JsonObject) = LayerCanvasRect(value.getValue("left").jsonPrimitive.float, value.getValue("top").jsonPrimitive.float,
+        value.getValue("width").jsonPrimitive.float, value.getValue("height").jsonPrimitive.float)
+
+    private fun WorkspaceDocument.withLibrary(library: MaterialLibrary): WorkspaceDocument =
+        if (library == layout.materials) this else copy(layout = layout.copy(materials = library))
+
+    private fun requireName(name: String): String = name.trim().also {
+        require(it.isNotEmpty() && it.length <= MAX_NAME && it.none(Char::isISOControl)) { "A name must be 1-$MAX_NAME printable characters" }
+    }
+
+    private fun requireFolder(library: MaterialLibrary, id: String?) {
+        if (id != null) requireNotNull(library.folder(id)) { "Material folder not found: $id" }
+    }
+
+    private fun taken(library: MaterialLibrary): (String) -> Boolean {
+        val ids = library.folders.mapTo(HashSet()) { it.id } + library.items.map { it.id }
+        return { it in ids }
+    }
+
+    /** [entries] added under [folderId], each under its folder path, the folders made as needed. */
+    fun add(document: WorkspaceDocument, entries: List<WorkspaceMaterialFiles.Entry>, folderId: String?): WorkspaceDocument {
+        var library = document.layout.materials
+        requireFolder(library, folderId)
+        val folders = ArrayList(library.folders); val items = ArrayList(library.items)
+        val ids = HashSet<String>().apply { folders.mapTo(this) { it.id }; items.mapTo(this) { it.id } }
+        fun folderFor(path: List<String>): String? {
+            var parent = folderId
+            for (name in path) {
+                val existing = folders.firstOrNull { it.parentId == parent && it.name == name }
+                parent = existing?.id ?: StableIds.fresh(StableIds.stem("folder_", parent, name)) { it in ids }.also { id ->
+                    ids += id; folders += MaterialFolder(id, requireName(name), parent)
+                }
+            }
+            return parent
+        }
+        for (entry in entries) {
+            val folder = folderFor(entry.folder)
+            val id = StableIds.fresh(StableIds.stem("mat_", folder, entry.name, WorkspaceRevisions.rasterDigest(entry.raster.rgba), entry.origin)) { it in ids }
+            ids += id
+            items += MaterialItem(id, requireName(entry.name), folder, entry.kind, entry.raster, entry.placement, entry.svg,
+                origin = entry.origin, opacity = entry.opacity, visible = entry.visible)
+        }
+        library = MaterialLibrary(folders, items)
+        return document.withLibrary(library)
+    }
+
+    fun createFolder(document: WorkspaceDocument, name: String, parentId: String?, id: String?): WorkspaceDocument {
+        val library = document.layout.materials
+        requireFolder(library, parentId)
+        val folderId = id?.also { require(!taken(library)(it) && it.matches(Regex("[A-Za-z0-9_.:-]{1,64}"))) { "Folder id is taken or invalid: $it" } }
+            ?: StableIds.fresh(StableIds.stem("folder_", parentId, name)) { taken(library)(it) }
+        return document.withLibrary(library.copy(folders = library.folders + MaterialFolder(folderId, requireName(name), parentId)))
+    }
+
+    fun move(document: WorkspaceDocument, ids: List<String>, folderId: String?): WorkspaceDocument {
+        require(ids.size in 1..1024 && ids.distinct().size == ids.size) { "Give 1..1024 distinct ids" }
+        val library = document.layout.materials
+        requireFolder(library, folderId)
+        ids.forEach { id ->
+            require(library.item(id) != null || library.folder(id) != null) { "Material not found: $id" }
+            if (library.folder(id) != null) require(folderId == null || folderId !in library.subtree(id)) { "A folder cannot move into itself" }
+        }
+        val moving = ids.toSet()
+        return document.withLibrary(MaterialLibrary(
+            library.folders.map { if (it.id in moving) it.copy(parentId = folderId) else it },
+            library.items.map { if (it.id in moving) it.copy(folderId = folderId) else it }))
+    }
+
+    fun rename(document: WorkspaceDocument, id: String, name: String): WorkspaceDocument {
+        val library = document.layout.materials
+        val trimmed = requireName(name)
+        return when {
+            library.item(id) != null -> document.withLibrary(library.copy(items = library.items.map { if (it.id == id) it.copy(name = trimmed) else it }))
+            library.folder(id) != null -> document.withLibrary(library.copy(folders = library.folders.map { if (it.id == id) it.copy(name = trimmed) else it }))
+            else -> throw IllegalArgumentException("Material not found: $id")
+        }
+    }
+
+    /** The layers showing [itemIds], by item. */
+    fun references(document: WorkspaceDocument, itemIds: Set<String>): Map<String, List<String>> {
+        val present = document.source.layers.mapTo(HashSet()) { it.id.raw } - document.deletedLayerIds
+        return document.layout.layerMaterials.filter { (layer, item) -> item in itemIds && layer in present }.entries
+            .groupBy({ it.value }, { it.key }).mapValues { it.value.sorted() }
+    }
+
+    /** [ids] - items and folders with everything in them - removed; refused while a layer shows one of the items. */
+    fun delete(document: WorkspaceDocument, ids: List<String>): WorkspaceDocument {
+        require(ids.size in 1..1024 && ids.distinct().size == ids.size) { "Give 1..1024 distinct ids" }
+        val library = document.layout.materials
+        val folders = HashSet<String>(); val items = HashSet<String>()
+        for (id in ids) when {
+            library.folder(id) != null -> folders += library.subtree(id)
+            library.item(id) != null -> items += id
+            else -> throw IllegalArgumentException("Material not found: $id")
+        }
+        library.items.filter { it.folderId in folders }.mapTo(items) { it.id }
+        val used = references(document, items)
+        require(used.isEmpty()) {
+            "Materials in use cannot be deleted; delete these layers first: " + used.entries.joinToString("; ") { (item, layers) -> "$item by ${layers.joinToString()}" }
+        }
+        // A deleted layer's link goes with the material; undoing the deletion brings both back.
+        val links = document.layout.layerMaterials.filterValues { it !in items }
+        return document.copy(layout = document.layout.copy(layerMaterials = links,
+            materials = MaterialLibrary(library.folders.filter { it.id !in folders }, library.items.filter { it.id !in items })))
+    }
+
+    fun tag(document: WorkspaceDocument, ids: List<String>, set: List<String>?, add: List<String>, remove: List<String>): WorkspaceDocument {
+        require(ids.size in 1..1024 && ids.distinct().size == ids.size) { "Give 1..1024 distinct ids" }
+        require(set != null || add.isNotEmpty() || remove.isNotEmpty()) { "Give set, add or remove" }
+        require(set == null || (add.isEmpty() && remove.isEmpty())) { "set replaces the tags; do not combine it with add or remove" }
+        fun normalized(values: List<String>) = values.map { LayerTags.normalize(it).also(LayerTags::requireValid) }.toSet()
+        val replacing = set?.let(::normalized); val adding = normalized(add); val removing = normalized(remove)
+        fun next(tags: Set<String>): Set<String> = (replacing ?: (tags - removing + adding)).also {
+            require(!(LayerTags.LEFT in it && LayerTags.RIGHT in it)) { "Tags hold left or right, not both" }
+        }
+        val library = document.layout.materials
+        ids.forEach { require(library.item(it) != null || library.folder(it) != null) { "Material not found: $it" } }
+        val targets = ids.toSet()
+        return document.withLibrary(MaterialLibrary(
+            library.folders.map { if (it.id in targets) it.copy(tags = next(it.tags)) else it },
+            library.items.map { if (it.id in targets) it.copy(tags = next(it.tags)) else it }))
+    }
+
+    /**
+     * Vector item [id] rendered at [width] x [height] pixels; every layer showing it takes the new raster over its
+     * unchanged rectangle, as an image replacement does.
+     */
+    fun resolution(document: WorkspaceDocument, model: RigPreviewModel, id: String, width: Int, height: Int): WorkspaceDocument {
+        val library = document.layout.materials
+        val item = library.item(id) ?: throw IllegalArgumentException("Material not found: $id")
+        require(item.kind == MaterialKind.VECTOR) { "Only a vector material has a resolution: $id" }
+        if (item.raster.width == width && item.raster.height == height) return document
+        val raster = WorkspaceMaterialFiles.rasterize(requireNotNull(item.svg), width, height)
+        var next = document.withLibrary(library.copy(items = library.items.map { if (it.id == id) it.copy(raster = raster) else it }))
+        for (layer in references(document, setOf(id))[id].orEmpty()) next = WorkspaceDocumentEdits.replaceImage(next, model, layer, raster)
+        return next
+    }
+
+    /**
+     * Material [materialId] placed on the canvas as new source layers: an item as one layer, a folder as one layer per
+     * item in it, each folder becoming a source group. The default size is the item's own placement (a PSD layer's
+     * place), else one material pixel per canvas unit fitted into the canvas; [rect] gives an item's rectangle, [at]
+     * centres the placement there. The tags of the item and of the folders above it become the layer's tags.
+     */
+    fun place(document: WorkspaceDocument, model: RigPreviewModel, materialId: String, rect: LayerCanvasRect?, at: List<Float>?,
+              layerId: String?): WorkspaceDocument {
+        val library = document.layout.materials
+        val single = library.item(materialId)
+        val folder = library.folder(materialId)
+        require(single != null || folder != null) { "Material not found: $materialId" }
+        require(rect == null || single != null) { "rect places a single item; place a folder at a point" }
+        require(layerId == null || single != null) { "layer_id names the layer of a single item" }
+        val items = single?.let(::listOf) ?: run {
+            val folders = library.subtree(materialId)
+            library.items.filter { it.folderId in folders }
+        }
+        require(items.isNotEmpty()) { "The folder holds no material: $materialId" }
+        val width = document.source.widthPx.toFloat(); val height = document.source.heightPx.toFloat()
+        fun natural(item: MaterialItem): LayerCanvasRect = item.placement ?: run {
+            val scale = minOf(1f, width / item.raster.width, height / item.raster.height)
+            val w = item.raster.width * scale; val h = item.raster.height * scale
+            LayerCanvasRect((width - w) / 2f, (height - h) / 2f, w, h)
+        }
+        val placements = items.associateWith { if (rect != null) rect else natural(it) }.toMutableMap()
+        if (at != null && rect == null) {
+            val left = placements.values.minOf { it.left }; val top = placements.values.minOf { it.top }
+            val right = placements.values.maxOf { it.right }; val bottom = placements.values.maxOf { it.bottom }
+            val dx = at[0] - (left + right) / 2f; val dy = at[1] - (top + bottom) / 2f
+            placements.replaceAll { _, r -> LayerCanvasRect(r.left + dx, r.top + dy, r.width, r.height) }
+        }
+        val source = document.source
+        val existing = HashSet<String>().apply { source.layers.mapTo(this) { it.id.raw }; addAll(document.deletedLayerIds) }
+        var minOrder = source.layers.minOfOrNull { it.order } ?: 0
+        val groups = source.groups.toMutableList()
+        val root = folder?.let { library.path(it.parentId) }.orEmpty()
+        val added = ArrayList<SourceLayer>()
+        val links = LinkedHashMap<String, String>()
+        val tags = LinkedHashMap<String, Set<String>>()
+        for (item in items) {
+            val id = (if (single != null) layerId else null)?.also {
+                require(it !in existing && it.matches(Regex("[A-Za-z0-9_.:#-]{1,96}"))) { "layer_id is taken or invalid: $it" }
+            } ?: StableIds.fresh(StableIds.stem("placed_", item.id)) { it in existing }
+            existing += id
+            val place = placements.getValue(item)
+            require(place.width > 0f && place.height > 0f && listOf(place.left, place.top, place.width, place.height).all(Float::isFinite)) {
+                "A placement needs a finite positive size" }
+            // A folder placed whole keeps its folders as source groups, under the canvas root.
+            val path = if (folder != null) library.path(item.folderId).drop(root.size).joinToString("/") else ""
+            if (path.isNotEmpty()) {
+                val parts = path.split('/')
+                for (depth in 1..parts.size) {
+                    val prefix = parts.take(depth).joinToString("/")
+                    if (groups.none { it.path == prefix }) groups += WorkspaceSourceGroup(prefix, parts[depth - 1], true, 1f, false, LayerBlend.Normal, true)
+                }
+            }
+            val bounds = enclosing(place)
+            added += WorkspaceSourceLayer(LayerId(id), item.name, path, SourceLayerKind.Raster, item.visible, --minOrder, bounds,
+                item.opacity, false, LayerBlend.Normal, ChannelMask.ALL, item.raster, null, null, false,
+                rect = place.takeUnless { it == LayerCanvasRect.of(bounds) })
+            links[id] = item.id
+            tags[id] = library.ancestry(item.folderId).flatMapTo(LinkedHashSet()) { it.tags } + item.tags
+        }
+        // Placed last, they paint over every layer already there.
+        val art = WorkspaceSourceArt(source.widthPx, source.heightPx, source.layers + added, groups)
+        val generation = document.layout.generation
+        var next = document.copy(source = art, layerVisibility = document.layerVisibility,
+            layout = document.layout.copy(layerMaterials = document.layout.layerMaterials + links,
+                generation = if (generation.generated) generation.copy(pendingLayerIds = generation.pendingLayerIds + links.keys) else generation))
+        // The tags the item and its folders carry: semantic words classify the layer, the rest stay as the user's tags.
+        for ((id, set) in tags) {
+            if (set.isEmpty()) continue
+            val resolution = LayerTags.resolve(set)
+            if (resolution.tag != SemanticTag.UNKNOWN || resolution.side != Side.NONE)
+                next = next.copy(layerOverrides = next.layerOverrides + (id to LayerClassificationOverride(LayerType.PRESET, resolution.tag, resolution.side)))
+            if (resolution.user.isNotEmpty()) next = next.copy(layout = next.layout.copy(layerTags = next.layout.layerTags + (id to resolution.user)))
+        }
+        return next
+    }
+
+    /** The integer bounds enclosing [rect]. */
+    fun enclosing(rect: LayerCanvasRect): LayerBounds {
+        val left = floor(rect.left.toDouble()).toInt(); val top = floor(rect.top.toDouble()).toInt()
+        val right = maxOf(left + 1, ceil(rect.right.toDouble() - 1e-4).toInt()); val bottom = maxOf(top + 1, ceil(rect.bottom.toDouble() - 1e-4).toInt())
+        return LayerBounds(left, top, right - left, bottom - top)
+    }
+}

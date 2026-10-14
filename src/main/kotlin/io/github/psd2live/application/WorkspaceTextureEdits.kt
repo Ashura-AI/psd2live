@@ -27,6 +27,8 @@ sealed interface WorkspaceTextureImage {
     class Png(val bytes: ByteArray) : WorkspaceTextureImage
     /** Already decoded straight RGBA pixels. */
     class Raster(val raster: LayerRaster) : WorkspaceTextureImage
+    /** The pixels of a material of the document's library; the layer then shows that material. */
+    data class Material(val id: String) : WorkspaceTextureImage
 }
 
 /** One texture edit. Each is a pure document candidate; single commands and atomic batches share it. */
@@ -353,10 +355,12 @@ internal object WorkspaceTextureEdits {
             "layer_replace_image" -> {
                 val path = request["path"]?.jsonPrimitive?.content
                 val png = request["png_base64"]?.jsonPrimitive?.content
-                require((path == null) != (png == null)) { "Give exactly one of path or png_base64" }
+                val material = request["material_id"]?.jsonPrimitive?.content
+                require(listOfNotNull(path, png, material).size == 1) { "Give exactly one of path, png_base64 or material_id" }
                 val image = if (path != null) WorkspaceTextureImage.File(Path.of(path).also {
                     require(it.isAbsolute) { "Provide an absolute local path" }
-                }) else WorkspaceTextureImage.Png(decodePngBase64(requireNotNull(png)))
+                }) else if (material != null) WorkspaceTextureImage.Material(material)
+                else WorkspaceTextureImage.Png(decodePngBase64(requireNotNull(png)))
                 WorkspaceTextureEdit.ReplaceImage(text("layer_id"), image,
                     request["fit"]?.jsonPrimitive?.content?.let { WorkspaceImageFit.valueOf(it.uppercase()) } ?: WorkspaceImageFit.STRETCH,
                     request["rebuild_mesh"]?.jsonPrimitive?.boolean ?: false)
@@ -378,8 +382,44 @@ internal object WorkspaceTextureEdits {
         }
     }
 
+    /** The layers [edit] names. */
+    private fun targets(edit: WorkspaceTextureEdit): List<String> = when (edit) {
+        is WorkspaceTextureEdit.SetCanvasRect -> listOf(edit.layerId)
+        is WorkspaceTextureEdit.ReplaceImage -> listOf(edit.layerId)
+        is WorkspaceTextureEdit.SetPixelDensity -> edit.layerIds
+        is WorkspaceTextureEdit.SetTile -> listOf(edit.layerId)
+        is WorkspaceTextureEdit.Pack -> edit.layerIds.orEmpty()
+        is WorkspaceTextureEdit.SetBudget -> emptyList()
+    }
+
+    /**
+     * [edit] on [document]. A layer placed since the last generation ([WorkspaceLayoutPreview]) has no rig and no tile
+     * the arrangement holds: it is moved, scaled and given new pixels by its own edits ([WorkspaceGenerationEdits]).
+     * The rest reads the document as the generators do, and its pending layers come back unchanged.
+     */
     fun apply(document: WorkspaceDocument, model: RigPreviewModel, edit: WorkspaceTextureEdit, checkCancelled: () -> Unit = {}): WorkspaceDocument {
         checkCancelled()
+        if (edit is WorkspaceTextureEdit.ReplaceImage && edit.image is WorkspaceTextureImage.Material) {
+            val item = document.layout.materials.item(edit.image.id) ?: throw IllegalArgumentException("Material not found: ${edit.image.id}")
+            val replaced = apply(document, model, edit.copy(image = WorkspaceTextureImage.Raster(item.raster)), checkCancelled)
+            return replaced.copy(layout = replaced.layout.copy(layerMaterials = replaced.layout.layerMaterials + (edit.layerId to item.id)))
+        }
+        val pending = WorkspaceLayoutPreview.pendingIds(document)
+        val targets = targets(edit)
+        if (targets.isNotEmpty() && targets.all { it in pending }) return when (edit) {
+            is WorkspaceTextureEdit.SetCanvasRect -> WorkspaceGenerationEdits.place(document, edit.layerId, edit.rect)
+            is WorkspaceTextureEdit.ReplaceImage -> WorkspaceGenerationEdits.replace(document, edit.layerId, raster(edit.image, checkCancelled), edit.fit)
+            is WorkspaceTextureEdit.SetPixelDensity -> density(document, model, edit)
+            else -> throw WorkspaceNotGenerated("${edit.operation} needs the layer's tile in the generated atlas; generate the rig first (rig_generate)")
+        }
+        if (!document.layout.generation.generated) throw WorkspaceNotGenerated()
+        targets.firstOrNull { it in pending }?.let { throw WorkspaceNotGenerated("Layer $it was placed since the last generation; generate the rig first (rig_generate)") }
+        val edited = if (pending.isEmpty()) applyGenerated(document, model, edit, checkCancelled)
+            else WorkspaceLayoutPreview.restore(document, applyGenerated(WorkspaceLayoutPreview.base(document), model.generated, edit, checkCancelled))
+        return if (edit is WorkspaceTextureEdit.ReplaceImage && edited !== document) WorkspaceGenerationEdits.replacedGenerated(edited, edit.layerId) else edited
+    }
+
+    private fun applyGenerated(document: WorkspaceDocument, model: RigPreviewModel, edit: WorkspaceTextureEdit, checkCancelled: () -> Unit): WorkspaceDocument {
         return when (edit) {
             is WorkspaceTextureEdit.SetCanvasRect -> canvasRect(document, model, edit)
             is WorkspaceTextureEdit.ReplaceImage -> replace(document, model, edit, checkCancelled)
@@ -486,6 +526,7 @@ internal object WorkspaceTextureEdits {
         is WorkspaceTextureImage.Png -> decodePng(image.bytes, checkCancelled)
         is WorkspaceTextureImage.File -> throw IllegalArgumentException(
             "A file path is read only by a single layer_replace_image; in a batch give png_base64")
+        is WorkspaceTextureImage.Material -> throw IllegalArgumentException("A material is read with the document")
     }
 
     private fun density(document: WorkspaceDocument, model: RigPreviewModel, edit: WorkspaceTextureEdit.SetPixelDensity): WorkspaceDocument {

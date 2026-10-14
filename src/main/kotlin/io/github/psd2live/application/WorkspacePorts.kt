@@ -113,6 +113,8 @@ interface WorkspaceSourcePort {
     suspend fun importCmo3(path: java.nio.file.Path, mode: Cmo3ImportMode,
                            discardUnsaved: Boolean = false): WorkspaceMutationResult
     suspend fun createArtwork(arguments: JsonObject): WorkspaceMutationResult
+    /** A new empty project of [width] x [height] not generated yet, for placing materials first ([io.github.psd2live.project.WorkspaceGeneration]). */
+    suspend fun createLayoutProject(width: Int, height: Int, discardUnsaved: Boolean = false): WorkspaceMutationResult
     suspend fun splitArtwork(arguments: JsonObject, author: MutationAuthor = MutationAuthor.AGENT): WorkspaceMutationResult
     /** Split one or several layers by their current mesh islands as one document commit. */
     suspend fun splitMeshComponents(state: String, splits: List<JsonObject>): WorkspaceMutationResult
