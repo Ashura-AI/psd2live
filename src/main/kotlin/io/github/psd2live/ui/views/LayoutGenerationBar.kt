@@ -118,9 +118,9 @@ internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: (
 				FloatingMenu(expanded = menu, onDismiss = { menu = false }, width = 250.dp, alignment = Alignment.TopEnd) {
 					FloatingMenuSection(tr("layout.generate.options"))
 					FloatingMenuRow(tr("layout.generate.refresh"), { menu = false; viewModel.generateLayout(refresh = true); focus() },
-						hint = tr("layout.generate.refresh.hint", generation.refreshLayerIds.size), enabled = !busy && layers > 0)
+						trailing = generation.refreshLayerIds.size.takeIf { it > 0 }?.toString(), enabled = !busy && layers > 0)
 					FloatingMenuRow(tr("layout.generate.keep"), { menu = false; viewModel.generateLayout(refresh = false); focus() },
-						hint = tr("layout.generate.keep.hint"), enabled = !busy && layers > 0 && generation != WorkspaceGeneration.Generated)
+						enabled = !busy && layers > 0 && generation != WorkspaceGeneration.Generated)
 				}
 			}
 		}

@@ -183,7 +183,7 @@ private fun fileKind(folder: MaterialFolder): String? = folder.origin.substringA
 private sealed interface MenuLine {
 	data class Section(val text: String) : MenuLine
 	data object Rule : MenuLine
-	data class Action(val label: String, val run: () -> Unit, val enabled: Boolean = true, val hint: String? = null, val trailing: String? = null) : MenuLine
+	data class Action(val label: String, val run: () -> Unit, val enabled: Boolean = true, val trailing: String? = null) : MenuLine
 }
 
 /**
@@ -277,12 +277,12 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 		return folders.map { MaterialEntry.Folder(it) } + items.map { MaterialEntry.Item(it) }
 	}
 	val shown = entries()
-	val treeRows = flattenFolders(library, expanded)
+	val treeRows = flattenTree(library, expanded)
 	// Targets that no longer show do not linger.
 	val live = remember(shown, treeRows, folderId, showTree) {
 		buildSet {
 			shown.forEach { add("tile:${it.id}") }
-			if (showTree) { add("tree:$ROOT"); treeRows.forEach { add("tree:${it.first.id}") } }
+			if (showTree) { add("tree:$ROOT"); treeRows.forEach { if (it is TreeLine.Folder) add("tree:${it.folder.id}") } }
 			add("crumb:$ROOT"); library.ancestry(folderId).forEach { add("crumb:${it.id}") }
 		}
 	}
@@ -342,14 +342,23 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 						item(key = ROOT) {
 							var origin by remember { mutableStateOf(Offset.Zero) }
 							FolderRow(tr("materials.root"), null, 0, folderId == null, dropFolder == ROOT, false, null,
-								track("tree:$ROOT").onGloballyPositioned { origin = it.positionInRoot() }, { folderId = null; query = "" }, {}, {})
+								track("tree:$ROOT").onGloballyPositioned { origin = it.positionInRoot() }, { folderId = null; query = "" }, {},
+								{ at -> openMenu(ROOT, origin + at) })
 						}
-						items(treeRows, key = { it.first.id }) { (folder, depth) ->
-							var origin by remember { mutableStateOf(Offset.Zero) }
-							FolderRow(folder.name, fileKind(folder), depth + 1, folder.id == folderId, dropFolder == folder.id,
-								library.folders.any { it.parentId == folder.id }, expanded[folder.id] != false,
-								track("tree:${folder.id}").onGloballyPositioned { origin = it.positionInRoot() },
-								{ folderId = folder.id; query = "" }, { expanded[folder.id] = expanded[folder.id] == false }, { at -> openMenu(folder.id, origin + at) })
+						items(treeRows, key = { it.key }) { line ->
+							when (line) {
+								is TreeLine.Folder -> {
+									val folder = line.folder
+									var origin by remember { mutableStateOf(Offset.Zero) }
+									FolderRow(folder.name, fileKind(folder), line.depth + 1, folder.id == folderId, dropFolder == folder.id,
+										counts(folder.id) > 0, expanded[folder.id] != false,
+										track("tree:${folder.id}").onGloballyPositioned { origin = it.positionInRoot() },
+										{ folderId = folder.id; query = "" }, { expanded[folder.id] = expanded[folder.id] == false }, { at -> openMenu(folder.id, origin + at) })
+								}
+								is TreeLine.Item -> TreeItemRow(line.item, line.depth + 1, line.item.id == selected, vm,
+									{ selected = line.item.id; vm.showInMaterialEditor(line.item.id) }, { vm.openMaterialEditor(line.item.id) },
+									{ at -> openMenu(line.item.id, at) }, ::drop)
+							}
 						}
 					}
 					// The divider drags to share the width between the tree and the contents.
@@ -406,17 +415,27 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 		val target = menuTarget
 		val lines = remember(target, library, references, state.selectedLayerId, folderId) {
 			buildList {
+				val close = { menuShown = false }
+				fun importInto(into: String?) {
+					close()
+					val files = NativeFilePicker.chooseMaterialFiles(window)
+					if (files.isNotEmpty()) vm.importMaterials(files.map { it.toPath() }, into)
+				}
+				if (target == ROOT) {
+					add(MenuLine.Section(tr("materials.root")))
+					add(MenuLine.Action(tr("materials.folder.new"), { close(); vm.createMaterialFolder(uniqueName(library, null, tr("materials.folder.default")), null) }))
+					add(MenuLine.Action(tr("materials.import"), { importInto(null) }))
+					return@buildList
+				}
 				val item = target?.let(library::item); val folder = target?.let(library::folder)
 				if (item == null && folder == null) return@buildList
-				val close = { menuShown = false }
 				add(MenuLine.Section(item?.name ?: folder!!.name))
-				if (item != null) add(MenuLine.Action(tr("materials.menu.edit"), { close(); vm.openMaterialEditor(item.id) }, hint = tr("materials.menu.edit.hint")))
+				if (item != null) add(MenuLine.Action(tr("materials.menu.edit"), { close(); vm.openMaterialEditor(item.id) }))
 				if (folder != null) add(MenuLine.Action(tr("materials.menu.open"), { close(); folderId = folder.id; query = "" },
 					trailing = fileKind(folder)))
-				add(MenuLine.Action(tr("materials.menu.place"), { close(); vm.placeMaterial(target) }, hint = tr("materials.menu.place.hint")))
+				add(MenuLine.Action(tr("materials.menu.place"), { close(); vm.placeMaterial(target) }))
 				val layer = state.selectedLayerId
-				if (item != null && layer != null) add(MenuLine.Action(tr("materials.menu.replace"), { close(); vm.replaceLayerWithMaterial(layer, item.id) },
-					hint = tr("materials.menu.replace.hint")))
+				if (item != null && layer != null) add(MenuLine.Action(tr("materials.menu.replace"), { close(); vm.replaceLayerWithMaterial(layer, item.id) }))
 				if (item?.kind == MaterialKind.VECTOR) add(MenuLine.Action(tr("materials.menu.resolution"), { close(); resolution = item.id },
 					trailing = "${item.raster.width}×${item.raster.height}"))
 				val users = references[target].orEmpty()
@@ -425,6 +444,7 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				add(MenuLine.Action(tr("materials.menu.rename"), { close(); renaming = target }))
 				if (folder != null) {
 					add(MenuLine.Action(tr("materials.folder.new"), { close(); vm.createMaterialFolder(uniqueName(library, folder.id, tr("materials.folder.default")), folder.id) }))
+					add(MenuLine.Action(tr("materials.menu.importHere"), { importInto(folder.id) }))
 					add(MenuLine.Action(tr("materials.menu.exportPsd"), {
 						close()
 						NativeFilePicker.chooseSavePsdFile(window, folder.name)?.let { vm.exportMaterialFolder(folder.id, java.nio.file.Path.of(it)) }
@@ -432,8 +452,9 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				}
 				val parent = item?.folderId ?: folder?.parentId
 				if (parent != null) add(MenuLine.Action(tr("materials.menu.moveUp"), { close(); vm.moveMaterials(listOf(target), library.folder(parent)?.parentId) }))
+				// A material a layer shows cannot go; the row says how many layers keep it.
 				add(MenuLine.Action(tr("materials.menu.delete"), { close(); vm.deleteMaterials(listOf(target)) },
-					enabled = users.isEmpty(), hint = if (users.isEmpty()) null else tr("materials.menu.delete.used", users.size)))
+					enabled = users.isEmpty(), trailing = if (users.isEmpty()) null else tr("materials.references", users.size)))
 			}
 		}
 		PressMenu(menuShown && lines.isNotEmpty(), menuAt, onDismissRequest = { menuShown = false }) {
@@ -442,7 +463,7 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				when (val line = lines[i]) {
 					is MenuLine.Section -> FloatingMenuSection(line.text)
 					MenuLine.Rule -> FloatingMenuDivider()
-					is MenuLine.Action -> FloatingMenuRow(line.label, line.run, enabled = line.enabled, hint = line.hint, trailing = line.trailing)
+					is MenuLine.Action -> FloatingMenuRow(line.label, line.run, enabled = line.enabled, trailing = line.trailing)
 				}
 			}
 		}
@@ -470,18 +491,47 @@ private fun uniqueName(library: MaterialLibrary, parent: String?, base: String):
 	return generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base $it" }.first { it !in names }
 }
 
-/** The folder tree in display order, with depth, below unfolded folders only (all but those folded by hand). */
-private fun flattenFolders(library: MaterialLibrary, expanded: Map<String, Boolean>): List<Pair<MaterialFolder, Int>> {
-	val children = library.folders.groupBy { it.parentId }
-	val out = ArrayList<Pair<MaterialFolder, Int>>()
+/** A line of the folder tree: a folder, or an item in one. */
+private sealed interface TreeLine {
+	val key: String
+	val depth: Int
+	data class Folder(val folder: MaterialFolder, override val depth: Int) : TreeLine { override val key get() = "f:" + folder.id }
+	data class Item(val item: MaterialItem, override val depth: Int) : TreeLine { override val key get() = "i:" + item.id }
+}
+
+/**
+ * The tree in display order with depth: in each folder its folders, then its items, below unfolded folders only (all
+ * but those folded by hand).
+ */
+private fun flattenTree(library: MaterialLibrary, expanded: Map<String, Boolean>): List<TreeLine> {
+	val folders = library.folders.groupBy { it.parentId }
+	val items = library.items.groupBy { it.folderId }
+	val out = ArrayList<TreeLine>()
 	fun visit(parent: String?, depth: Int) {
-		for (folder in children[parent].orEmpty()) {
-			out += folder to depth
+		for (folder in folders[parent].orEmpty()) {
+			out += TreeLine.Folder(folder, depth)
 			if (expanded[folder.id] != false) visit(folder.id, depth + 1)
 		}
+		for (item in items[parent].orEmpty()) out += TreeLine.Item(item, depth)
 	}
 	visit(null, 0)
 	return out
+}
+
+/** An item of the tree: its thumbnail and name; it drags, opens and has its menu as a tile does. */
+@Composable
+private fun TreeItemRow(item: MaterialItem, depth: Int, selected: Boolean, vm: PSD2LiveViewModel, onSelect: () -> Unit, onOpen: () -> Unit,
+                        onMenu: (Offset) -> Unit, onDrop: () -> Boolean) {
+	val colors = LocalToolColors.current
+	var origin by remember { mutableStateOf(Offset.Zero) }
+	Row(Modifier.fillMaxWidth().height(22.dp).background(if (selected) colors.selection else Color.Transparent)
+		.onGloballyPositioned { origin = it.positionInRoot() }
+		.materialGestures(MaterialEntry.Item(item), vm, onSelect, onOpen, onMenu, onDrop) { origin }
+		.padding(start = (2 + depth * 9 + 12).dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+		MaterialThumbnail(item.raster, 32, Modifier.size(14.dp).clip(RoundedCornerShape(2.dp)))
+		Spacer(Modifier.width(4.dp))
+		Text(item.name, color = if (selected) colors.selectionText else colors.textPrimary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+	}
 }
 
 @Composable
@@ -522,7 +572,7 @@ private fun FolderRow(name: String, kind: String?, depth: Int, selected: Boolean
 private fun Modifier.materialGestures(entry: MaterialEntry, vm: PSD2LiveViewModel, onSelect: () -> Unit, onOpen: () -> Unit,
                                       onMenu: (Offset) -> Unit, onDrop: () -> Boolean, origin: () -> Offset): Modifier = this
 	.onPointerEvent(PointerEventType.Press) { event -> if (event.button == PointerButton.Secondary) onMenu(origin() + event.changes.first().position) }
-	.pointerInput(entry.id) { detectTapGestures(onTap = { onSelect() }, onDoubleTap = { onOpen() }) }
+	.pointerInput(entry.id) { detectTapGestures(onPress = { onSelect() }, onDoubleTap = { onOpen() }) }
 	.pointerInput(entry.id) {
 		detectDragGestures(
 			onDragStart = { at -> onSelect(); vm.startMaterialDrag(entry.id, entry.name, origin() + at) },
