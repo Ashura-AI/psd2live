@@ -351,7 +351,7 @@ internal fun FloatingMenu(
 			val lift by transition.animateFloat({
 				if (false isTransitioningTo true) tween(100, easing = FastOutSlowInEasing) else tween(80, easing = FastOutLinearInEasing)
 			}, "lift") { if (it) 0f else if (rise) 6f else -6f }
-			Column(
+			Box(
 				Modifier
 					.graphicsLayer {
 						this.alpha = alpha; scaleX = scale; scaleY = scale
@@ -362,9 +362,7 @@ internal fun FloatingMenu(
 					.frostedGlass(RoundedCornerShape(7.dp), isHovered = true, elevation = 12.dp, baseColor = colors.panelElevated, alpha = 0.9f)
 					.border(0.5.dp, colors.borderHover.copy(alpha = 0.45f), RoundedCornerShape(7.dp))
 					.padding(4.dp),
-				verticalArrangement = Arrangement.spacedBy(1.dp),
-				content = content,
-			)
+			) { MenuGlide { Column(verticalArrangement = Arrangement.spacedBy(1.dp), content = content) } }
 		}
 	}
 	Popup(
@@ -381,6 +379,79 @@ internal fun FloatingMenu(
  * then leave the hover fill to it.
  */
 internal val LocalMenuGlide = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+/**
+ * The rows of one menu column and the one highlight that glides between them: each [glideRow] reports where it sits
+ * and takes the highlight when the pointer enters it, and arrives a few milliseconds after the row above it.
+ */
+internal class MenuGlideHost {
+	var coordinates: androidx.compose.ui.layout.LayoutCoordinates? = null
+	var target by mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+	private var rows = 0
+	fun nextRow(): Int = rows++
+}
+
+internal val LocalMenuGlideHost = androidx.compose.runtime.staticCompositionLocalOf<MenuGlideHost?> { null }
+
+/**
+ * Gives [content] the mode menu's motion: its rows (those marked with [glideRow]) arrive one after another and one
+ * highlight glides to the row under the pointer instead of each row lighting up on its own.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun MenuGlide(content: @Composable () -> Unit) {
+	val colors = LocalToolColors.current
+	val density = LocalDensity.current
+	val host = remember { MenuGlideHost() }
+	val target = host.target
+	val glow by animateFloatAsState(if (target != null) 1f else 0f, tween(100, easing = FastOutSlowInEasing))
+	val top = remember { androidx.compose.animation.core.Animatable(0f) }
+	val height = remember { androidx.compose.animation.core.Animatable(0f) }
+	LaunchedEffect(target) {
+		val rect = target ?: return@LaunchedEffect
+		// Appearing, it starts on its row; moving, it glides there.
+		if (glow < 0.05f) { top.snapTo(rect.top); height.snapTo(rect.height) }
+		else kotlinx.coroutines.coroutineScope {
+			launch { top.animateTo(rect.top, tween(80, easing = FastOutSlowInEasing)) }
+			launch { height.animateTo(rect.height, tween(80, easing = FastOutSlowInEasing)) }
+		}
+	}
+	Box(Modifier.onGloballyPositioned { host.coordinates = it }.onPointerEvent(PointerEventType.Exit) { host.target = null }) {
+		Box(
+			Modifier
+				.offset { IntOffset(0, top.value.roundToInt()) }
+				.fillMaxWidth()
+				.height(with(density) { height.value.toDp() })
+				.alpha(glow)
+				.clip(RoundedCornerShape(5.dp))
+				.background(colors.controlHover.copy(alpha = 0.75f)),
+		)
+		CompositionLocalProvider(LocalMenuGlide provides true, LocalMenuGlideHost provides host) { content() }
+	}
+}
+
+/**
+ * A row of a [MenuGlide] column: it arrives in turn, sliding in from its side, and takes the gliding highlight when
+ * [enabled] and the pointer enters it. Outside a [MenuGlide] it changes nothing.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun Modifier.glideRow(enabled: Boolean): Modifier {
+	val host = LocalMenuGlideHost.current ?: return this
+	val index = remember { host.nextRow() }
+	val arrival = remember { androidx.compose.animation.core.Animatable(0f) }
+	// Staggered on the frame clock, so it keeps time with the frames that draw it.
+	LaunchedEffect(Unit) { arrival.animateTo(1f, tween(90, delayMillis = index * 5, easing = FastOutSlowInEasing)) }
+	var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+	val density = LocalDensity.current
+	return this
+		.onGloballyPositioned { c -> host.coordinates?.takeIf { it.isAttached }?.let { bounds = it.localBoundingBoxOf(c, clipBounds = false) } }
+		.onPointerEvent(PointerEventType.Enter) { host.target = if (enabled) bounds else null }
+		.graphicsLayer {
+			alpha = arrival.value
+			translationX = (1f - arrival.value) * -8f * density.density
+		}
+}
 
 /** A caption over a group of [FloatingMenu] rows. */
 @Composable
@@ -425,6 +496,7 @@ internal fun FloatingMenuRow(
 	val edge by animateFloatAsState(if (selected && bar) 1f else 0f, tween(80, easing = FastOutSlowInEasing))
 	Row(
 		Modifier
+			.glideRow(enabled)
 			.fillMaxWidth()
 			.defaultMinSize(minHeight = 28.dp)
 			.clip(RoundedCornerShape(5.dp))
