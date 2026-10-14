@@ -45,9 +45,9 @@ object CharacterAnalyzer {
 		if (RigBuildProfile.recording) RigBuildProfile.add("analyze: classify layers", System.nanoTime() - classifyStart)
 		val warnings = source.warnings.toMutableList()
 		val nonEmpty = layers.filter { it.opaquePixels > 0 }
-		require(nonEmpty.isNotEmpty()) { tr("error.psdNoVisibleLayers") }
+		require(nonEmpty.isNotEmpty() || config.allowEmptyArt) { tr("error.psdNoVisibleLayers") }
 
-		val anchors = anchorsFor(nonEmpty)
+		val anchors = if (nonEmpty.isEmpty()) canvasAnchors(source) else anchorsFor(nonEmpty)
 
 		val recognized = layers.count { it.semantic.tag != SemanticTag.UNKNOWN }
 		if (recognized < 4) warnings += tr("warning.fewSemanticLayers", recognized)
@@ -110,6 +110,15 @@ object CharacterAnalyzer {
 	}
 
 	private fun union(bounds: List<Bounds>): Bounds = bounds.reduce(Bounds::union)
+
+	/** Anchors of an empty canvas, for art without a visible pixel: the face above, the body below its middle. */
+	private fun canvasAnchors(source: SourceArt): RigAnchors {
+		val w = source.widthPx.toFloat().coerceAtLeast(1f); val h = source.heightPx.toFloat().coerceAtLeast(1f)
+		val character = Bounds(0f, 0f, w, h)
+		val face = Bounds(w * 0.3f, 0f, w * 0.7f, h * 0.42f)
+		return RigAnchors(character, face, Bounds(0f, h * 0.35f, w, h), face.centerX, face.centerY, face.centerX, face.bottom,
+			h * 0.45f, h * 0.62f)
+	}
 
 	private fun preserveLegacySplit(sourceId: String, config: PipelineConfig): Boolean {
 		val ids = setOf("$sourceId:r", "$sourceId:l")

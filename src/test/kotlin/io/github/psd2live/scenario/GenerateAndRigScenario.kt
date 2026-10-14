@@ -25,7 +25,7 @@ class GenerateAndRigScenario {
 		val ids = now.document.source.layers.associate { it.name to it.id.raw }
 		edits("classify every part", *parts.map { (name, role) ->
 			"layer_classify" to req("layer_id" to ids.getValue(name), "type" to "preset", "role" to role.first, "side" to role.second)
-		}.toTypedArray())
+		}.toTypedArray(), "rig_generate" to req())
 		edit("turn on features and hair physics", "settings_update", req("changes" to mapOf(
 			"featureDisplacementEnabled" to true, "generatePhysics" to true, "physicsBackHair" to true)))
 		edit("apply the proposed skeleton", "skeleton_auto", req())

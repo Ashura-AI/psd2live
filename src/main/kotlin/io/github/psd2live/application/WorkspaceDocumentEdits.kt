@@ -29,11 +29,42 @@ internal object WorkspaceDocumentEdits {
         setOf("swing_put", "swing_delete") + WorkspacePhysicsEdits.batchable + WorkspaceSimulationEdits.supported + WorkspaceCanvasWeightEdits.supported + WorkspaceCanvasDeformEdits.supported + WorkspaceTextureEdits.supported +
         WorkspaceLayoutEdits.supported
 
+    /**
+     * [operation] on [document]. Layout edits (tags, classification, placement, generation) read the whole document;
+     * an edit of the rig reads it as the generators do, without the layers placed since the last generation
+     * ([WorkspaceLayoutPreview.base]), and those layers come back unchanged. An edit naming a pending layer takes the
+     * pending layer's own edit ([WorkspaceGenerationEdits.pendingEdit]); a project not generated yet has no rig to edit.
+     */
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
               simulationWork: WorkspaceSimulationWork = WorkspaceSimulationWork.Direct,
               physicsWork: WorkspacePhysicsWork = WorkspacePhysicsWork.Direct,
               rasterWork: WorkspaceRasterWork = WorkspaceRasterWork.Direct,
               assetResources: WorkspaceAssetWorkflow? = null): WorkspaceDocument {
+        val id = operation.operation
+        if (id in WorkspaceLayoutEdits.supported || id == "layer_classify") return applyGenerated(operation, document, model,
+            simulationWork, physicsWork, rasterWork, assetResources)
+        val pending = WorkspaceLayoutPreview.pendingIds(document)
+        val targets = WorkspaceGenerationEdits.targets(operation)
+        if (targets.isNotEmpty() && targets.all { it in pending } && id in WorkspaceGenerationEdits.pendingLayerOperations)
+            return WorkspaceGenerationEdits.pendingEdit(operation, document, model)
+        if (!document.layout.generation.generated) {
+            if (id in WorkspaceGenerationEdits.ungeneratedOperations) return applyGenerated(operation, document, model,
+                simulationWork, physicsWork, rasterWork, assetResources)
+            throw WorkspaceNotGenerated()
+        }
+        targets.firstOrNull { it in pending }?.let { throw WorkspaceNotGenerated("Layer $it was placed since the last generation; generate the rig first (rig_generate)") }
+        if (pending.isNotEmpty() && WorkspaceLayoutPreview.MESH_PREFIX in operation.request.toString())
+            throw WorkspaceNotGenerated("A layer placed since the last generation has no rig to edit yet; generate the rig first (rig_generate)")
+        val edited = if (pending.isEmpty()) applyGenerated(operation, document, model, simulationWork, physicsWork, rasterWork, assetResources)
+            else WorkspaceLayoutPreview.restore(document, applyGenerated(operation, WorkspaceLayoutPreview.base(document), model.generated,
+                simulationWork, physicsWork, rasterWork, assetResources))
+        // A replaced image keeps the rig's geometry; the next generation may read the new pixels.
+        return if (id == "layer_replace_image" && edited !== document) WorkspaceGenerationEdits.replacedGenerated(edited, targets.single()) else edited
+    }
+
+    private fun applyGenerated(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
+              simulationWork: WorkspaceSimulationWork, physicsWork: WorkspacePhysicsWork, rasterWork: WorkspaceRasterWork,
+              assetResources: WorkspaceAssetWorkflow?): WorkspaceDocument {
         val request = operation.request
         WorkspaceArtPrimitives.requireCurrentReferences(document.rigEdits, request)
         return when (operation.operation) {
@@ -119,14 +150,25 @@ internal object WorkspaceDocumentEdits {
     fun settings(document: WorkspaceDocument, model: RigPreviewModel, changes: JsonObject): WorkspaceDocument =
         document.copy(settings = WorkspaceSettingsIntent.parse(document, model, changes).settings)
 
+    /**
+     * [document] with layer [id] classified as [classification]. A generated layer keeps the classification the rig was
+     * generated with until the next generation: the new one waits in [WorkspaceGeneration.pendingClassifications]. A
+     * layer the generators have not read yet takes it at once.
+     */
     fun classify(document: WorkspaceDocument, model: RigPreviewModel, id: String, classification: LayerClassificationOverride): WorkspaceDocument {
         require(classification.switchId >= 0) { "switch_id must be nonnegative" }
         val layer = model.analysis.layers.firstOrNull { it.source.id.raw == id } ?: throw IllegalArgumentException("Layer not found: $id")
         require(id !in document.deletedLayerIds) { "Layer is deleted: $id" }
-        val current = layer.semantic
-        return if (current.type == classification.type && current.tag == classification.tag && current.side == classification.side &&
-            current.parameter == classification.parameter && current.switchId == classification.switchId) document
-            else document.copy(layerOverrides = document.layerOverrides + (id to classification))
+        fun matches(current: LayerSemantic) = current.type == classification.type && current.tag == classification.tag &&
+            current.side == classification.side && current.parameter == classification.parameter && current.switchId == classification.switchId
+        val generation = document.layout.generation
+        if (!generation.generated || id in WorkspaceLayoutPreview.pendingIds(document)) {
+            return if (matches(layer.semantic) && id !in generation.pendingClassifications) document
+                else document.copy(layerOverrides = document.layerOverrides + (id to classification))
+        }
+        val waiting = if (matches(layer.semantic)) generation.pendingClassifications - id else generation.pendingClassifications + (id to classification)
+        return if (waiting == generation.pendingClassifications) document
+            else document.copy(layout = document.layout.copy(generation = generation.copy(pendingClassifications = waiting)))
     }
 
     fun mesh(document: WorkspaceDocument, model: RigPreviewModel, id: String, changes: JsonObject?, reset: Boolean): WorkspaceDocument {

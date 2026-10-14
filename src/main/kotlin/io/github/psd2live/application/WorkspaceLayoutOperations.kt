@@ -23,6 +23,7 @@ internal fun registerLayoutOperations(registry: WorkspaceOperationRegistry, port
             val state = request.getValue("state").jsonPrimitive.content
             val summary = when (id) {
                 WorkspaceLayoutEdits.TAG -> "Tagged ${request.getValue("layer_ids").jsonArray.size} layer(s)"
+                WorkspaceGenerationEdits.GENERATE -> "Generated the rig"
                 else -> "Set variant of ${request.getValue("layer_id").jsonPrimitive.content}"
             }
             startDocumentBatch(port, reads, jobs, id, state, summary,

@@ -276,6 +276,7 @@ class EditorAndAgentScenario {
 				for ((name, role) in listOf("sleeve_l" to "left", "sleeve_r" to "right")) add(buildJsonObject {
 					put("operation", "layer_classify"); put("request", req("layer_id" to layers.getValue(name), "role" to "handwear", "side" to role))
 				})
+				add(buildJsonObject { put("operation", "rig_generate"); put("request", buildJsonObject {}) })
 			}
 		}).data()
 		assertEquals(1, workspace.history().nodes.size - history.nodes.size, "a batch is one history node: $classified")

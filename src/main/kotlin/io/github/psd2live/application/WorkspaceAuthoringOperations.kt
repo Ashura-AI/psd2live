@@ -128,8 +128,8 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         WorkspaceOperationOutput(workspace.updateGeneration(request.text("state")))
     }
 
-    registerJsonOperation("inspect", "Read project context, find objects/layers/parameters, or inspect one kind:id's direct axes, channels and parent. No point arrays. Query and page before expanding.",
-        buildJsonObject { put("scope", choices("project", "settings", "preview", "objects", "layers", "parameters", "physics", "swings", "paths", "simulations", "vertex_groups")); put("query", string()); put("target", string()); put("offset", integer(0)); put("limit", integer(1, 64)) }) { a ->
+    registerJsonOperation("inspect", "Read project context, find objects/layers/parameters, or inspect one kind:id's direct axes, channels and parent. scope=generation lists what waits for rig_generate. No point arrays. Query and page before expanding.",
+        buildJsonObject { put("scope", choices("project", "settings", "preview", "generation", "objects", "layers", "parameters", "physics", "swings", "paths", "simulations", "vertex_groups")); put("query", string()); put("target", string()); put("offset", integer(0)); put("limit", integer(1, 64)) }) { a ->
         workspace.captureQueries().inspect(a)
     }
 
@@ -138,7 +138,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         WorkspaceOperationOutput(workspace.captureQueries().sourceMeshComponents(request.text("layer_id")))
     }
 
-    registerJsonOperation("layer", "Classify an existing source layer using the same fields as the UI Layers table. Omitted fields retain their current values. This rebuilds the generated rig and commits a recoverable history edit.",
+    registerJsonOperation("layer", "Classify an existing source layer using the same fields as the UI Layers table. Omitted fields retain their current values. A generated layer keeps the rig it has until rig_generate: the classification waits (pending: true); put rig_generate after it in one workspace_apply_edits batch to see it at once. A layer not generated yet takes it at once. Commits a recoverable history edit.",
         buildJsonObject {
             put("state", string()); put("layer_id", string())
             put("type", choices(*LayerType.entries.map { it.name.lowercase() }.toTypedArray()))
@@ -153,6 +153,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
             put("state", requireNotNull(result.state)); put("history_node_id", result.historyNodeId); put("project_id", requireNotNull(result.projectId))
             put("layer_id", id)
             if (!result.applied) put("applied", false)
+            if (workspace.captureQueries().layoutState()?.layout?.generation?.pendingClassifications?.containsKey(id) == true) put("pending", true)
         }
     }
 

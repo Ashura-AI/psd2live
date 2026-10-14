@@ -87,7 +87,19 @@ interface WorkspaceQueries : WorkspaceStatePort {
     fun staleRegenerations(): List<io.github.psd2live.core.RigRegeneration.Issue>
     /** Where the captured model's skeleton does not reach what it should ([io.github.psd2live.core.quality.SkeletonBindingQuality]). */
     fun skeletonBindingIssues(): List<io.github.psd2live.core.quality.SkeletonBindingIssue>
+    /** The captured document's Layout state with its source layers and those waiting for generation; null when nothing is loaded. */
+    fun layoutState(): WorkspaceLayoutState?
 }
+
+/** A captured document's Layout state ([io.github.psd2live.project.WorkspaceLayout]) and the layers it applies to. */
+data class WorkspaceLayoutState(
+    val layout: io.github.psd2live.project.WorkspaceLayout,
+    val layers: List<org.umamo.format.art.SourceLayer>,
+    val pendingLayerIds: Set<String>,
+    val deletedLayerIds: Set<String>,
+    val canvasWidth: Int,
+    val canvasHeight: Int,
+)
 
 /** Capture once before composing a response; the returned queries never revisit live state. */
 interface WorkspaceReadPort : WorkspaceQueries {

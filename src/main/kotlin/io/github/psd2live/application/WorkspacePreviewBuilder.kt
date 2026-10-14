@@ -63,8 +63,19 @@ internal class WorkspacePreviewBuilder {
         return document.copy(rigEdits = document.rigEdits.copy(splitDrawableIds = pins + added))
     }
 
-    /** Persist the generation baseline and ordered topology migration together with the settings. */
+    /**
+     * Persist the generation baseline and ordered topology migration together with the settings. Generation reads the
+     * document without its pending layers ([WorkspaceLayoutPreview.base]) against the generated model; a project not
+     * generated yet has nothing to normalize, and its first generation builds from scratch.
+     */
     suspend fun normalizeMeshEdits(input: WorkspaceDocument, current: RigPreviewModel): WorkspaceDocument {
+        if (!input.layout.generation.generated || current.layoutPreview) return input
+        WorkspaceLayoutPreview.requireNoPendingMeshEdits(current.config.rigEdits, input.rigEdits)
+        if (!WorkspaceLayoutPreview.active(input)) return normalizeGenerated(input, current.generated)
+        return WorkspaceLayoutPreview.restore(input, normalizeGenerated(WorkspaceLayoutPreview.base(input), current.generated))
+    }
+
+    private suspend fun normalizeGenerated(input: WorkspaceDocument, current: RigPreviewModel): WorkspaceDocument {
         val progress = progress(0.3f, 0.6f)
         return runInterruptible(Dispatchers.Default) {
             val document = pinnedIdentities(input, current, input.config())
@@ -211,8 +222,24 @@ internal class WorkspacePreviewBuilder {
         return before.keys.all { it in after || it in created }
     }
 
+    /**
+     * The model of [document]. Its generated layers build as always, against [current]'s generated model; layers the
+     * generators do not read yet show over them as plain meshes ([WorkspaceLayoutPreview]).
+     */
     suspend fun build(document: WorkspaceDocument, current: RigPreviewModel? = null,
-                      legacyDrawOrders: Map<String, Float> = current?.config?.drawOrderOverrides.orEmpty()): RigPreviewModel =
+                      legacyDrawOrders: Map<String, Float> = current?.config?.drawOrderOverrides.orEmpty()): RigPreviewModel {
+        val context = currentCoroutineContext()
+        if (!document.layout.generation.generated) return runInterruptible(Dispatchers.Default) {
+            WorkspaceLayoutPreview.ungenerated(document) { context.ensureActive() }
+        }
+        val previous = current?.takeUnless { it.layoutPreview }?.generated
+        if (!WorkspaceLayoutPreview.active(document)) return buildGenerated(document, previous, legacyDrawOrders)
+        val base = buildGenerated(WorkspaceLayoutPreview.base(document), previous, legacyDrawOrders)
+        return runInterruptible(Dispatchers.Default) { WorkspaceLayoutPreview.augment(base, document) { context.ensureActive() } }
+    }
+
+    private suspend fun buildGenerated(document: WorkspaceDocument, current: RigPreviewModel?,
+                                       legacyDrawOrders: Map<String, Float>): RigPreviewModel =
         importedRecordsCheckpointed(buildModel(document, current, legacyDrawOrders), current).let { model ->
             // A model reused across a layer move carries the moved layers, so the canvas and paint read where they now are.
             if (model.analysis.source !== document.source && model.analysis.source != document.source &&

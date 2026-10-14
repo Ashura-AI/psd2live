@@ -591,7 +591,7 @@ object RigBuilder {
 		val calibration = analysis.calibration?.let { meshFramedAnalysis(it, config, meshCache) }
 		return analysis.copy(
 			layers = layers,
-			anchors = calibration?.anchors ?: CharacterAnalyzer.anchorsFor(layers),
+			anchors = calibration?.anchors ?: if (layers.none { it.opaquePixels > 0 }) analysis.anchors else CharacterAnalyzer.anchorsFor(layers),
 			calibration = calibration,
 		)
 	}

@@ -12,7 +12,7 @@ import kotlinx.serialization.json.*
 internal object WorkspaceLayoutEdits {
     const val TAG = "layer_tag"
     const val VARIANT = "layer_set_variant"
-    val supported = setOf(TAG, VARIANT)
+    val supported = setOf(TAG, VARIANT, WorkspaceGenerationEdits.GENERATE)
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel): WorkspaceDocument {
         val request = operation.request
@@ -26,6 +26,8 @@ internal object WorkspaceLayoutEdits {
                 },
                 request["parameter"]?.jsonPrimitive?.content?.trim().orEmpty(),
                 request["switch_id"]?.jsonPrimitive?.int ?: 0))
+            WorkspaceGenerationEdits.GENERATE -> WorkspaceGenerationEdits.generate(document, model,
+                request["refresh_geometry"]?.jsonArray?.mapTo(LinkedHashSet()) { it.jsonPrimitive.content })
             else -> throw IllegalArgumentException("Not a layout edit: ${operation.operation}")
         }
     }
@@ -47,7 +49,7 @@ internal object WorkspaceLayoutEdits {
 
     /** Whether [id] waits for the next generation: placed since, or reclassified or reparented since. */
     fun isPending(document: WorkspaceDocument, id: String): Boolean = document.layout.generation.let { generation ->
-        !generation.generated || id in generation.pendingLayerIds || id in generation.pendingClassifications || id in generation.pendingParents
+        !generation.generated || id in generation.pendingLayerIds || id in generation.pendingClassifications
     }
 
     /** A layer's whole tag set: its classification's words and the user's own. */
@@ -114,6 +116,7 @@ internal object WorkspaceLayoutEdits {
                 "variant" to buildJsonObject { put("type", "string"); put("enum", JsonArray(listOf("none", "toggle", "switch").map(::JsonPrimitive))) },
                 "parameter" to buildJsonObject { put("type", "string") },
                 "switch_id" to buildJsonObject { put("type", "integer"); put("minimum", 0) }), listOf("state", "layer_id", "variant")),
+            WorkspaceGenerationEdits.GENERATE to WorkspaceGenerationEdits.schema,
         )
     }
 
@@ -122,8 +125,10 @@ internal object WorkspaceLayoutEdits {
             "(${LayerTags.vocabulary.filter { it != LayerTags.LEFT && it != LayerTags.RIGHT }.joinToString(", ")}) and the sides left/right - " +
             "become the layer's classification: {hair, front} is front hair, {eye, iris, left} the left iris, {mouth, open} the open mouth; a set matching " +
             "no part leaves the layer unrecognised. Any other word is the user's own tag, kept for filtering and never read by the generators. " +
-            "The variant (toggle/switch) is separate: layer_set_variant. One history edit for all layers.",
+            "The variant (toggle/switch) is separate: layer_set_variant. A generated layer keeps the classification the rig was generated with " +
+            "until rig_generate runs; the new one waits (pending in workspace_inspect). One history edit for all layers.",
         VARIANT to "Set a source layer's variant: none, toggle (shown or hidden by parameter) or switch (choice switch_id of parameter). " +
             "Keeps the layer's semantic tags. One history edit.",
+        WorkspaceGenerationEdits.GENERATE to WorkspaceGenerationEdits.DESCRIPTION,
     )
 }

@@ -119,7 +119,8 @@ internal class WorkspaceGenerationCommands(private val runtime: WorkspaceRuntime
                 result.capture.model.rig.puppet) else emptyList(), applied = result.applied,
             state = result.capture.state, projectId = result.capture.projectId)
         // Retain the CAS result before host projection refresh or late cancellation can intervene.
-        job?.committed(operation.operation, mutation.generationResult(operation))
+        job?.committed(operation.operation, mutation.generationResult(operation,
+            pending = operation.request["layer_id"]?.jsonPrimitive?.contentOrNull in result.capture.document.layout.generation.pendingClassifications))
         return WorkspaceGenerationCommit(result, mutation)
     }
 
@@ -136,11 +137,13 @@ internal class WorkspaceGenerationCommands(private val runtime: WorkspaceRuntime
     }
 }
 
-internal fun WorkspaceMutationResult.generationResult(operation: WorkspaceDocumentOperation): JsonObject =
+/** [pending]: the classification waits for the next generation ([WorkspaceGeneration.pendingClassifications]). */
+internal fun WorkspaceMutationResult.generationResult(operation: WorkspaceDocumentOperation, pending: Boolean = false): JsonObject =
     if (operation.operation != "layer_classify") compact() else buildJsonObject {
         put("state", requireNotNull(state)); put("project_id", requireNotNull(projectId)); put("history_node_id", historyNodeId)
         put("layer_id", operation.request.getValue("layer_id"))
         if (!applied) put("applied", false)
+        if (pending) put("pending", true)
     }
 
 internal class WorkspaceGenerationJobExecution(private val operation: String, private val completion: WorkspaceJobCompletion) :

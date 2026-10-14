@@ -465,12 +465,7 @@ internal object WorkspaceTextureEdits {
                         checkCancelled: () -> Unit): WorkspaceDocument {
         val layer = sourceLayer(document, edit.layerId)
         require(document.rigEdits.importedCmo3 == null) { "Replacing the image of an imported CMO3 layer is not supported" }
-        val raster = when (val image = edit.image) {
-            is WorkspaceTextureImage.Raster -> image.raster
-            is WorkspaceTextureImage.Png -> decodePng(image.bytes, checkCancelled)
-            is WorkspaceTextureImage.File -> throw IllegalArgumentException(
-                "A file path is read only by a single layer_replace_image; in a batch give png_base64")
-        }
+        val raster = raster(edit.image, checkCancelled)
         checkCancelled()
         val fit = if (edit.fit == WorkspaceImageFit.CONTAIN) LayerImageReplace.Fit.CONTAIN else LayerImageReplace.Fit.STRETCH
         val replaced = LayerImageReplace.replace(document, edit.layerId, raster, fit)
@@ -483,6 +478,14 @@ internal object WorkspaceTextureEdits {
         val generation = document.generationSource?.let { swap(it, edit.layerId) { laid } }
         val mesh = swap(document.meshSource, edit.layerId) { laid }
         return replaced.copy(generationSource = generation, meshSource = mesh)
+    }
+
+    /** The pixels of a replacement image already read into the request. */
+    fun raster(image: WorkspaceTextureImage, checkCancelled: () -> Unit = {}): org.umamo.format.art.LayerRaster = when (image) {
+        is WorkspaceTextureImage.Raster -> image.raster
+        is WorkspaceTextureImage.Png -> decodePng(image.bytes, checkCancelled)
+        is WorkspaceTextureImage.File -> throw IllegalArgumentException(
+            "A file path is read only by a single layer_replace_image; in a batch give png_base64")
     }
 
     private fun density(document: WorkspaceDocument, model: RigPreviewModel, edit: WorkspaceTextureEdit.SetPixelDensity): WorkspaceDocument {

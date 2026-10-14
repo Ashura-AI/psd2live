@@ -155,6 +155,10 @@ internal class WorkspaceReadSession(
         return WorkspaceSettingsCodec.encode(WorkspaceSettingsCodec.decode(document.settings).copy(meshOverrides = document.meshOverrides))
     }
     override fun listSwings(): List<RigSwingEdit> = capture().document.rigEdits.swingEdits
+    override fun layoutState(): WorkspaceLayoutState? = read.runtime.capture?.document?.let { document ->
+        WorkspaceLayoutState(document.layout, document.source.layers, WorkspaceLayoutPreview.pendingIds(document), document.deletedLayerIds,
+            document.source.widthPx, document.source.heightPx)
+    }
     override fun generatedOverrideIssues(): List<GeneratedOverrideIssue> = read.runtime.capture?.model?.rig?.overrideIssues.orEmpty()
     override fun supersededEntryNotes(): List<SupersededEntryNote> = read.runtime.capture?.model?.rig?.supersededEntryNotes.orEmpty()
     override fun regenerationIssues(): List<io.github.psd2live.core.RigRegeneration.Issue> =

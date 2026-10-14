@@ -7,6 +7,8 @@ import java.nio.file.AccessDeniedException
 
 internal class WorkspaceUnsavedChanges : IllegalStateException("Current workspace has unsaved changes; save first or explicitly discard them")
 internal class WorkspaceBusy : IllegalStateException("Workspace is busy")
+/** An edit of the rig, or an export, on a project whose rig is not generated yet, or on a layer waiting for generation. */
+internal class WorkspaceNotGenerated(message: String = "The project is not generated yet; generate the rig first (rig_generate)") : IllegalStateException(message)
 internal class WorkspaceCheckTimeout : IllegalStateException("Disconnected mesh check timed out")
 internal class WorkspaceOutputContractFailure(val operation: String, val validation: WorkspaceValidationException) :
     IllegalStateException("Operation $operation returned an invalid result: ${validation.message}", validation)
@@ -40,6 +42,11 @@ internal data class WorkspaceFailure private constructor(
                 else "The operation exceeded the stack limit. Reduce the model hierarchy depth, then retry.",
                 buildJsonObject { put("exception_type", resourceFailure.javaClass.name) },
             )
+            // A batch member's refusal keeps its own category.
+            val notGenerated = generateSequence(failure) { it.cause }.take(8).firstOrNull { it is WorkspaceNotGenerated }
+            if (notGenerated != null) return WorkspaceFailure("not_generated", notGenerated.message ?: "Not generated",
+                if (failure is WorkspaceBatchEditException) buildJsonObject { put("edit_index", failure.index); put("edit_operation", failure.editOperation) }
+                else JsonObject(emptyMap()))
             val code = when (failure) {
                 is io.github.psd2live.core.GeometrySafetyRejectedException -> "geometry_unsafe"
                 is WorkspaceBatchEditException -> "invalid_edit"

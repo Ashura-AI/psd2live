@@ -55,6 +55,13 @@ internal object WorkspaceInspectionResultSchemas {
             "glues" to s.array(s.obj(mapOf("key" to s.handle(), "pairs" to s.integer(0)))))),
         scoped("settings", mapOf("settings" to WorkspaceSettingsResultTypes.settings)),
         scoped("preview", mapOf("preview" to preview)),
+        scoped("generation", mapOf("generated" to s.boolean(), "pending_layers" to s.array(s.handle()),
+            "pending_classifications" to s.array(s.obj(mapOf("layer_id" to s.handle(),
+                "role" to s.choices(*SemanticTag.entries.map { it.name.lowercase() }.toTypedArray()),
+                "side" to s.choices(*Side.entries.map { it.name.lowercase() }.toTypedArray()),
+                "type" to s.choices(*LayerType.entries.map { it.name.lowercase() }.toTypedArray()),
+                "parameter" to s.string(), "switch_id" to s.integer(0)))),
+            "refreshable" to s.array(s.handle())), setOf("generated")),
         page("objects", s.obj(objectRowFields, objectRowFields.keys - "layerId")), page("layers", layer), page("parameters", parameter),
         page("paths", s.obj(pathFields + ("target" to s.handle()))), page("vertex_groups", group),
     ))

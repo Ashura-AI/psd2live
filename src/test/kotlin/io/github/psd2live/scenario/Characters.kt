@@ -113,6 +113,18 @@ internal object Characters {
 		return directory.resolve(name).also { Files.write(it, PngCodec.write(RasterImage(size, size, rgba))) }
 	}
 
+	/**
+	 * [figure] with a hat placed over the hair since the rig was generated ([WorkspaceGeneration.pendingLayerIds]): the
+	 * generators have not read it yet.
+	 */
+	fun withPlacedHat(): WorkspaceDocument {
+		val figure = figure()
+		val hat = Part("hat", 9, SemanticTag.HEADWEAR, Side.NONE, box(170, 2, 250, 30))
+		val source = WorkspaceSourceArt(420, 420, figure.source.layers + layer(hat, 420, 420), figure.source.groups)
+		return figure.copy(source = source, layerOverrides = figure.layerOverrides + ("hat" to LayerClassificationOverride(tag = hat.tag, side = hat.side)),
+			layout = WorkspaceLayout(generation = WorkspaceGeneration(pendingLayerIds = setOf("hat"))))
+	}
+
 	private class Part(val id: String, val order: Int, val tag: SemanticTag, val side: Side, val inside: (Int, Int) -> Boolean)
 
 	private fun box(x0: Int, y0: Int, x1: Int, y1: Int): (Int, Int) -> Boolean = { x, y -> x in x0 until x1 && y in y0 until y1 }
@@ -122,16 +134,18 @@ internal object Characters {
 		dx * dx + dy * dy <= 1f
 	}
 
-	private fun document(width: Int, height: Int, parts: List<Part>, config: PipelineConfig): WorkspaceDocument {
-		val layers = parts.map { part ->
-			val rgba = ByteArray(width * height * 4)
-			for (y in 0 until height) for (x in 0 until width) if (part.inside(x, y)) {
-				val o = (y * width + x) * 4
-				rgba[o] = (40 + part.order * 20 + x % 32).toByte(); rgba[o + 1] = (60 + y % 64).toByte(); rgba[o + 2] = 120; rgba[o + 3] = -1
-			}
-			WorkspaceSourceLayer(LayerId(part.id), part.id, "", SourceLayerKind.Raster, true, part.order, LayerBounds(0, 0, width, height), 1f,
-				false, LayerBlend.Normal, ChannelMask.ALL, LayerRaster(width, height, rgba), null, null, false)
+	private fun layer(part: Part, width: Int, height: Int): WorkspaceSourceLayer {
+		val rgba = ByteArray(width * height * 4)
+		for (y in 0 until height) for (x in 0 until width) if (part.inside(x, y)) {
+			val o = (y * width + x) * 4
+			rgba[o] = (40 + part.order * 20 + x % 32).toByte(); rgba[o + 1] = (60 + y % 64).toByte(); rgba[o + 2] = 120; rgba[o + 3] = -1
 		}
+		return WorkspaceSourceLayer(LayerId(part.id), part.id, "", SourceLayerKind.Raster, true, part.order, LayerBounds(0, 0, width, height), 1f,
+			false, LayerBlend.Normal, ChannelMask.ALL, LayerRaster(width, height, rgba), null, null, false)
+	}
+
+	private fun document(width: Int, height: Int, parts: List<Part>, config: PipelineConfig): WorkspaceDocument {
+		val layers = parts.map { layer(it, width, height) }
 		val overrides = parts.associate { it.id to LayerClassificationOverride(type = LayerType.PRESET, tag = it.tag, side = it.side) }
 		return WorkspaceDocument(WorkspaceSourceArt(width, height, layers, emptyList()), emptyMap(), emptySet(), overrides, emptyMap(),
 			RigEditOverlay.Empty, WorkspaceSettingsCodec.encode(config))

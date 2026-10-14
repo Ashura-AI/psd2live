@@ -15,9 +15,18 @@ internal class WorkspaceExportSession(
     private val pipeline: PSD2LivePipeline = PSD2LivePipeline(),
     private val publish: (List<Pair<Path, Path>>) -> Unit = { WorkspaceExportFiles.publish(it) },
 ) {
+    /**
+     * The model exports read: the generated layers alone. Layers placed since the last generation have no rig yet and
+     * stay out; a project not generated yet has nothing to export.
+     */
+    private val generated: RigPreviewModel get() {
+        if (captured.model.layoutPreview) throw WorkspaceNotGenerated("The project is not generated yet; generate the rig before exporting (rig_generate)")
+        return captured.model.generated
+    }
+
     suspend fun model(outputDirectory: Path): JsonObject {
         require(outputDirectory.isAbsolute && !Files.isRegularFile(outputDirectory)) { "Provide an absolute output directory" }
-        val config = captured.model.config
+        val config = generated.config
         require(config.exportCmo3 || config.exportMoc3) { "Enable at least one model export format in settings" }
         val context = currentCoroutineContext()
         context.ensureActive()
@@ -25,7 +34,7 @@ internal class WorkspaceExportSession(
         val stage = staging(target.parent ?: target)
         try {
             val result = runInterruptible(Dispatchers.Default) {
-                pipeline.export(captured.model, sourceName, stage, progress(context, 0f, 0.9f))
+                pipeline.export(generated, sourceName, stage, progress(context, 0f, 0.9f))
             }
             val files = result.exportedFiles.map { file ->
                 val relative = stage.relativize(file.path.toAbsolutePath().normalize())
@@ -47,7 +56,7 @@ internal class WorkspaceExportSession(
     /** Exports the captured rig through [targetId]; the files and the loss report land in [outputDirectory]. */
     suspend fun target(targetId: String, outputDirectory: Path, settings: Map<String, String>): JsonObject {
         require(outputDirectory.isAbsolute && !Files.isRegularFile(outputDirectory)) { "Provide an absolute output directory" }
-        val config = captured.model.config
+        val config = generated.config
         val target = ExportService.registry(config)[targetId]
         val baseName = sourceName.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9._-]+"), "_").trim('_', '.').ifEmpty { "model" }
         val context = currentCoroutineContext()
@@ -57,7 +66,7 @@ internal class WorkspaceExportSession(
         try {
             val options = ExportService.options(target, baseName, config, settings)
             val report = runInterruptible(Dispatchers.Default) {
-                ExportService.writeStaged(captured.model, target, options, stage)
+                ExportService.writeStaged(generated, target, options, stage)
             }
             val output = buildJsonObject {
                 put("state", captured.state); put("revision", captured.revision); put("target", report.target); put("compiler", report.compiler)

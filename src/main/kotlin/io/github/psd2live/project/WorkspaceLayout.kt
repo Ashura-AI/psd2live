@@ -37,26 +37,22 @@ data class WorkspaceLayout(
 /**
  * Where generation stands. A document is generated unless it was created empty for Layout and never generated
  * ([generated] false): its rig then is only the placement preview. After generation, layers placed since
- * ([pendingLayerIds]) and classification or parent changes ([pendingClassifications], [pendingParents]) wait for the
- * next generation; the rig keeps reading the values the last one used ([WorkspaceDocument.layerOverrides],
- * [WorkspaceDocument.parentOverrides]). [refreshLayerIds] are layers whose image was replaced, which the next
- * generation may mesh again from their new pixels.
+ * ([pendingLayerIds]) and classification changes ([pendingClassifications]) wait for the next generation; the rig keeps
+ * reading the classification the last one used ([WorkspaceDocument.layerOverrides]). [refreshLayerIds] are layers whose
+ * image was replaced since, which the next generation may mesh again from their new pixels.
  */
 data class WorkspaceGeneration(
 	val generated: Boolean = true,
 	val pendingLayerIds: Set<String> = emptySet(),
 	val pendingClassifications: Map<String, LayerClassificationOverride> = emptyMap(),
-	/** A parent each layer waits for; a null value returns the layer to its generated parent. */
-	val pendingParents: Map<String, String?> = emptyMap(),
 	val refreshLayerIds: Set<String> = emptySet(),
 ) {
 	/** Nothing waits for the next generation. */
-	val settled: Boolean get() = generated && pendingLayerIds.isEmpty() && pendingClassifications.isEmpty() && pendingParents.isEmpty()
+	val settled: Boolean get() = generated && pendingLayerIds.isEmpty() && pendingClassifications.isEmpty()
 
 	fun retaining(layerIds: Set<String>) = copy(
 		pendingLayerIds = pendingLayerIds.filterTo(LinkedHashSet()) { it in layerIds },
 		pendingClassifications = pendingClassifications.filterKeys { it in layerIds },
-		pendingParents = pendingParents.filterKeys { it in layerIds },
 		refreshLayerIds = refreshLayerIds.filterTo(LinkedHashSet()) { it in layerIds },
 	)
 
@@ -148,9 +144,6 @@ internal object WorkspaceLayoutCodec {
 				if (generation.pendingClassifications.isNotEmpty()) putJsonObject("pendingClassifications") {
 					generation.pendingClassifications.toSortedMap().forEach { (id, value) -> put(id, encodeClassification(value)) }
 				}
-				if (generation.pendingParents.isNotEmpty()) putJsonObject("pendingParents") {
-					generation.pendingParents.toSortedMap().forEach { (id, parent) -> if (parent == null) put(id, JsonNull) else put(id, parent) }
-				}
 				if (generation.refreshLayerIds.isNotEmpty()) putJsonArray("refreshLayerIds") { generation.refreshLayerIds.sorted().forEach { add(JsonPrimitive(it)) } }
 			}
 		}
@@ -192,7 +185,6 @@ internal object WorkspaceLayoutCodec {
 				generated = value.getValue("generated").jsonPrimitive.boolean,
 				pendingLayerIds = strings(value["pendingLayerIds"]),
 				pendingClassifications = value["pendingClassifications"]?.jsonObject?.mapValues { decodeClassification(it.value.jsonObject) }.orEmpty(),
-				pendingParents = value["pendingParents"]?.jsonObject?.mapValues { it.value.jsonPrimitive.contentOrNull }.orEmpty(),
 				refreshLayerIds = strings(value["refreshLayerIds"]),
 			)
 		} ?: WorkspaceGeneration.Generated

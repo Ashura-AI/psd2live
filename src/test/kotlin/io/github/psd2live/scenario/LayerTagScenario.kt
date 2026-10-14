@@ -19,14 +19,16 @@ class LayerTagScenario {
 	@Test fun tagsClassifyAsLayerClassifyDoesAndKeepTheUsersWords() = Studio.run(temp, Characters.figure()) {
 		val sleeve = mesh("sleeve_r")
 		allow("REGENERATION_CONFLICT")
-		edit("tag the right sleeve an object", "layer_tag", req("layer_ids" to listOf("sleeve_r"), "set" to listOf("object", "外套")))
+		edits("tag the right sleeve an object", "layer_tag" to req("layer_ids" to listOf("sleeve_r"), "set" to listOf("object", "外套")),
+			"rig_generate" to req())
 		expect("tagged", now.document.layerOverrides["sleeve_r"] == LayerClassificationOverride(LayerType.PRESET, SemanticTag.OBJECTS, Side.NONE)) {
 			"the tags did not become the classification: ${now.document.layerOverrides["sleeve_r"]}"
 		}
 		expect("tagged", now.document.layout.layerTags["sleeve_r"] == setOf("外套")) { "the user's tag is not kept: ${now.document.layout.layerTags}" }
 		val tagged = hash()
 		undo("take the tags back")
-		edit("classify the sleeve instead", "layer_classify", req("layer_id" to "sleeve_r", "role" to "objects", "side" to "none"))
+		edits("classify the sleeve instead", "layer_classify" to req("layer_id" to "sleeve_r", "role" to "objects", "side" to "none"),
+			"rig_generate" to req())
 		expect("classified", hash() == tagged) { "layer_tag and layer_classify made different rigs" }
 		expect("classified", mesh("sleeve_r") == sleeve) { "the sleeve's mesh was renamed" }
 
@@ -39,8 +41,8 @@ class LayerTagScenario {
 		expect("inspected", tags == setOf("arm", "left", "可换色")) { "inspect shows tags $tags" }
 
 		edit("make the left leg a toggle", "layer_set_variant", req("layer_id" to "leg_l", "variant" to "toggle", "parameter" to "ParamLegs"))
-		expect("variant", now.document.layerOverrides["leg_l"] == LayerClassificationOverride(LayerType.TOGGLE, SemanticTag.LEGWEAR, Side.LEFT, "ParamLegs", 0)) {
-			"the variant did not keep the tags: ${now.document.layerOverrides["leg_l"]}"
+		expect("variant", now.document.layout.generation.pendingClassifications["leg_l"] == LayerClassificationOverride(LayerType.TOGGLE, SemanticTag.LEGWEAR, Side.LEFT, "ParamLegs", 0)) {
+			"the variant did not keep the tags: ${now.document.layout.generation.pendingClassifications["leg_l"]}"
 		}
 		reopen()
 		expect("reopened", now.document.layout.layerTags == mapOf("sleeve_l" to setOf("可换色"), "leg_l" to setOf("可换色"))) {

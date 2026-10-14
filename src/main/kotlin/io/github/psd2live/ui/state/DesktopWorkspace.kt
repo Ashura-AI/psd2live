@@ -1297,6 +1297,7 @@ class DesktopWorkspace(
     override fun listPhysics(): List<io.github.psd2live.core.PhysicsGroup> = captureQueries().listPhysics()
 
     override fun listSwings() = captureQueries().listSwings()
+    override fun layoutState() = captureQueries().layoutState()
 
     override fun generatedOverrideIssues() = captureQueries().generatedOverrideIssues()
     override fun supersededEntryNotes() = captureQueries().supersededEntryNotes()
