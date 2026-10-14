@@ -163,12 +163,14 @@ private const val MIN_FOLDED_GROUP = 3
 /**
  * The ids of the groups of [options] the context menu folds into a second level. Folding hides what it folds, so a
  * group stays open unless the menu needs the room: while every row fits [MENU_ROW_BUDGET] nothing folds; otherwise
- * the largest groups fold first (the later of two the same size), only until the rest fits. A group is a submenu
+ * the largest groups fold first (the later of two the same size), only until the rest fits; a group that
+ * [SectionOption.alwaysFolds] (the create actions) folds whatever the room. A group is a submenu
  * section with the options up to the next section, or a choice too long to lay out on one row; open, it takes a
  * caption and a row per entry, folded a single row.
  */
 internal fun foldedGroups(editor: CanvasEditor, options: List<ToolOption>): Set<String> {
     val groups = mutableListOf<Pair<String, Int>>()
+    val always = mutableSetOf<String>()
     var rows = 0
     var i = 0
     while (i < options.size) {
@@ -178,7 +180,11 @@ internal fun foldedGroups(editor: CanvasEditor, options: List<ToolOption>): Set<
             option is ChoiceOption<*> && !option.inline && !option.variant -> option.choices(editor).size
             else -> -1
         }
-        if (members >= 0) {
+        if (members >= 0 && option is SectionOption && option.alwaysFolds) {
+            always += option.id
+            rows++
+            i += 1 + members
+        } else if (members >= 0) {
             rows += 1 + members
             if (members >= MIN_FOLDED_GROUP) groups += option.id to members
             i += 1 + if (option is SectionOption) members else 0
@@ -187,7 +193,7 @@ internal fun foldedGroups(editor: CanvasEditor, options: List<ToolOption>): Set<
             i++
         }
     }
-    val folded = mutableSetOf<String>()
+    val folded = always
     for ((id, members) in groups.withIndex().sortedWith(compareByDescending<IndexedValue<Pair<String, Int>>> { it.value.second }
         .thenByDescending { it.index }).map { it.value }) {
         if (rows <= MENU_ROW_BUDGET) break
@@ -271,9 +277,11 @@ private fun MutableList<ToolOption>.addGlue(editor: CanvasEditor) {
         OptionIcon.REMERGE, place = OptionPlace.MENU))
 }
 
-/** Object mode: the selection, and what can be built on the part in hand. */
+/**
+ * Object mode: what acts on the part in hand at the top, then everything that can be built on it in one Create
+ * submenu, then the selection.
+ */
 private fun MutableList<ToolOption>.addObjectMode(editor: CanvasEditor) {
-    addSelectionActions(objectMode = true)
     val target = editor.target()
     val split = target?.takeIf { it.kind == "mesh" }?.let { mesh ->
         editor.model.drawables.firstOrNull { it.id.raw == mesh.id }?.takeIf { editor.viewModel.depthSplitMiddleIds(mesh.id).isNotEmpty() }
@@ -282,19 +290,20 @@ private fun MutableList<ToolOption>.addObjectMode(editor: CanvasEditor) {
         add(ActionOption("object.depthSplit", "editor.depthSplit.quick", { it.editable }, { it.viewModel.requestDepthSplit(split.id.raw) },
             OptionIcon.DEPTH_SPLIT, labelArgs = { listOf(split.name) }, place = OptionPlace.MENU))
     }
-    if (target?.kind == "mesh") {
-        add(SectionOption("object.create", "editor.toolbar.create", OptionPlace.MENU, submenu = true, icon = OptionIcon.CREATE))
-        add(createAction("object.createWarp", "editor.createWarp", OptionIcon.WARP, CreatePlacementKind.WARP, CreateRelation.AS_PARENT))
-        add(createAction("object.createRotation", "editor.createRotation", OptionIcon.ROTATION, CreatePlacementKind.ROTATION, CreateRelation.AS_PARENT))
-        add(createAction("object.createPath", "editor.treeAddPath", OptionIcon.PATH, CreatePlacementKind.PATH, CreateRelation.AS_CHILD))
-        add(ActionOption("object.skeleton", if (editor.committedSkeleton == null) "skeleton.tree.create" else "skeleton.tree.edit",
-            { it.editable }, { if (it.committedSkeleton == null) it.createSkeleton() else it.beginSkeletonEdit() },
-            OptionIcon.SKELETON, place = OptionPlace.MENU))
-    }
     if (target?.kind == "mesh" || target?.kind == "warp") {
+        add(SectionOption("object.create", "editor.toolbar.create", OptionPlace.MENU, submenu = true, icon = OptionIcon.CREATE, alwaysFolds = true))
+        if (target.kind == "mesh") {
+            add(createAction("object.createWarp", "editor.createWarp", OptionIcon.WARP, CreatePlacementKind.WARP, CreateRelation.AS_PARENT))
+            add(createAction("object.createRotation", "editor.createRotation", OptionIcon.ROTATION, CreatePlacementKind.ROTATION, CreateRelation.AS_PARENT))
+            add(createAction("object.createPath", "editor.treeAddPath", OptionIcon.PATH, CreatePlacementKind.PATH, CreateRelation.AS_CHILD))
+            add(ActionOption("object.skeleton", if (editor.committedSkeleton == null) "skeleton.tree.create" else "skeleton.tree.edit",
+                { it.editable }, { if (it.committedSkeleton == null) it.createSkeleton() else it.beginSkeletonEdit() },
+                OptionIcon.SKELETON, place = OptionPlace.MENU))
+        }
         add(ActionOption("object.swing", "swing.menu", { it.editable }, { it.viewModel.beginSwing(it.swingTargets()) },
             OptionIcon.SWING, place = OptionPlace.MENU))
     }
+    addSelectionActions(objectMode = true)
 }
 
 /** The tree's place-then-confirm create on the mesh in hand, the same entry as the hierarchy tree's Add menu. */

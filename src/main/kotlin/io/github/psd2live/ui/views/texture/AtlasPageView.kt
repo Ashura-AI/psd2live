@@ -974,7 +974,7 @@ private fun AtlasContextMenu(
 	val texture = state.textureWorkspace
 	// Commands that commit at once wait for an open edit session to be applied or discarded.
 	val sessionOpen = texture.session.isNotEmpty()
-	TreeContextMenu(menu != null, onDismiss, clickOffset = menu?.at ?: Offset.Zero, frosted = true) {
+	TreeContextMenu(menu != null, onDismiss, clickOffset = menu?.at ?: Offset.Zero) {
 		fun run(action: () -> Unit) { onDismiss(); action() }
 		if (sessionOpen) {
 			Text(tr("texture.session.pending"), style = typography.caption.copy(fontSize = 10.sp), color = colors.warning,

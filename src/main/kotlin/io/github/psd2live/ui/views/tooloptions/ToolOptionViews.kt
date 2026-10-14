@@ -372,7 +372,7 @@ private fun rowHighlights(option: ToolOption?): Boolean = when (option) {
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun GlidingColumn(
+internal fun GlidingColumn(
     modifier: Modifier,
     count: Int,
     highlights: (Int) -> Boolean,

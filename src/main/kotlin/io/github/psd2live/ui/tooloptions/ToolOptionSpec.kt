@@ -49,6 +49,8 @@ internal class SectionOption(
     override val place: OptionPlace = OptionPlace.BOTH,
     val submenu: Boolean = false,
     val icon: OptionIcon? = null,
+    /** A [submenu] group the context menu always folds, however few rows it takes: the create actions. */
+    val alwaysFolds: Boolean = false,
 ) : ToolOption
 
 /**

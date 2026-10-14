@@ -709,10 +709,10 @@ fun CompactMenuDivider() {
 }
 
 /**
- * Desktop context menu designed for layer tree / hierarchy tree.
- * Positioned smartly at the mouse click location with automatic window edge flipping and clamping.
- * Features ultra-smooth snappy entrance and exit transitions, elevated panel styling,
- * and high-density desktop typography.
+ * The panels' context menu, opened at the click ([clickOffset] in the holding layout; under its left edge when zero),
+ * flipping to the left of it or above it where the window runs out. It looks and moves as the canvas's context menu
+ * does - frosted, fading in, scaling up from the corner at the click and rising the last few pixels into place - so
+ * every right-click menu in the editor feels the same.
  */
 @Composable
 fun TreeContextMenu(
@@ -722,135 +722,67 @@ fun TreeContextMenu(
 	modifier: Modifier = Modifier,
 	minWidth: Dp = 200.dp,
 	maxWidth: Dp = 270.dp,
-	/** Match overlay toolbars: translucent acrylic instead of an opaque elevated panel. */
-	frosted: Boolean = false,
 	content: @Composable ColumnScope.() -> Unit,
 ) {
 	val expandedStates = remember { MutableTransitionState(false) }
 	expandedStates.targetState = expanded
+	if (!expandedStates.currentState && !expandedStates.targetState) return
 
-	if (expandedStates.currentState || expandedStates.targetState) {
-		val colors = LocalToolColors.current
-		val typography = LocalToolTypography.current
-		val density = LocalDensity.current
-
-		val positionProvider = remember(clickOffset, density) {
-			object : PopupPositionProvider {
-				override fun calculatePosition(
-					anchorBounds: IntRect,
-					windowSize: IntSize,
-					layoutDirection: LayoutDirection,
-					popupContentSize: IntSize,
-				): IntOffset {
-					val marginPx = with(density) { 8.dp.roundToPx() }
-					val cursorPaddingPx = with(density) { 2.dp.roundToPx() }
-
-					val mouseX = if (clickOffset != Offset.Zero) {
-						anchorBounds.left + clickOffset.x.roundToInt()
-					} else {
-						anchorBounds.left + with(density) { 24.dp.roundToPx() }
-					}
-
-					val mouseY = if (clickOffset != Offset.Zero) {
-						anchorBounds.top + clickOffset.y.roundToInt()
-					} else {
-						anchorBounds.bottom
-					}
-
-					// Horizontal placement: right of cursor, or flip to left if overflows window
-					var x = mouseX + cursorPaddingPx
-					if (x + popupContentSize.width > windowSize.width - marginPx) {
-						x = mouseX - popupContentSize.width - cursorPaddingPx
-					}
-					x = x.coerceIn(marginPx, max(marginPx, windowSize.width - popupContentSize.width - marginPx))
-
-					// Vertical placement: below cursor, or flip upward if overflows window
-					var y = mouseY + cursorPaddingPx
-					if (y + popupContentSize.height > windowSize.height - marginPx) {
-						val upY = mouseY - popupContentSize.height - cursorPaddingPx
-						y = if (upY >= marginPx) upY else (windowSize.height - popupContentSize.height - marginPx)
-					}
-					y = y.coerceIn(marginPx, max(marginPx, windowSize.height - popupContentSize.height - marginPx))
-
-					return IntOffset(x, y)
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val density = LocalDensity.current
+	// The corner of the menu at the click, which it grows from.
+	var corner by remember { mutableStateOf(TransformOrigin(0f, 0f)) }
+	val positionProvider = remember(clickOffset, density) {
+		object : PopupPositionProvider {
+			override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+				val marginPx = with(density) { 8.dp.roundToPx() }
+				val cursorPaddingPx = with(density) { 2.dp.roundToPx() }
+				val mouseX = anchorBounds.left + if (clickOffset != Offset.Zero) clickOffset.x.roundToInt() else with(density) { 24.dp.roundToPx() }
+				val mouseY = if (clickOffset != Offset.Zero) anchorBounds.top + clickOffset.y.roundToInt() else anchorBounds.bottom
+				var x = mouseX + cursorPaddingPx
+				val left = x + popupContentSize.width > windowSize.width - marginPx
+				if (left) x = mouseX - popupContentSize.width - cursorPaddingPx
+				x = x.coerceIn(marginPx, max(marginPx, windowSize.width - popupContentSize.width - marginPx))
+				var y = mouseY + cursorPaddingPx
+				val up = y + popupContentSize.height > windowSize.height - marginPx
+				if (up) {
+					val upY = mouseY - popupContentSize.height - cursorPaddingPx
+					y = if (upY >= marginPx) upY else (windowSize.height - popupContentSize.height - marginPx)
 				}
+				y = y.coerceIn(marginPx, max(marginPx, windowSize.height - popupContentSize.height - marginPx))
+				corner = TransformOrigin(if (left) 1f else 0f, if (up) 1f else 0f)
+				return IntOffset(x, y)
 			}
 		}
+	}
 
-		Popup(
-			popupPositionProvider = positionProvider,
-			onDismissRequest = onDismissRequest,
-			properties = PopupProperties(focusable = true),
-		) {
-			androidx.compose.runtime.CompositionLocalProvider(
-				LocalDensity provides density,
-				LocalToolColors provides colors,
-				LocalToolTypography provides typography,
-			) {
-				val transition = rememberTransition(expandedStates, "TreeContextMenuTransition")
-				val alpha by transition.animateFloat(
-					transitionSpec = {
-						if (false isTransitioningTo true) tween(durationMillis = 110, easing = LinearOutSlowInEasing)
-						else tween(durationMillis = 75, easing = FastOutLinearInEasing)
-					},
-					label = "alpha",
-				) { if (it) 1f else 0f }
-
-				val scale by transition.animateFloat(
-					transitionSpec = {
-						if (false isTransitioningTo true) tween(durationMillis = 130, easing = FastOutSlowInEasing)
-						else tween(durationMillis = 75, easing = FastOutLinearInEasing)
-					},
-					label = "scale",
-				) { if (it) 1f else 0.96f }
-
-				val translateY by transition.animateFloat(
-					transitionSpec = {
-						if (false isTransitioningTo true) tween(durationMillis = 130, easing = FastOutSlowInEasing)
-						else tween(durationMillis = 75, easing = FastOutLinearInEasing)
-					},
-					label = "translateY",
-				) { if (it) 0f else -4f }
-
-				val shape = RoundedCornerShape(6.dp)
-				val shellModifier = modifier
+	Popup(popupPositionProvider = positionProvider, onDismissRequest = onDismissRequest, properties = PopupProperties(focusable = true)) {
+		androidx.compose.runtime.CompositionLocalProvider(LocalDensity provides density, LocalToolColors provides colors, LocalToolTypography provides typography) {
+			val transition = rememberTransition(expandedStates, "TreeContextMenuTransition")
+			val alpha by transition.animateFloat({
+				if (false isTransitioningTo true) tween(120, easing = LinearOutSlowInEasing) else tween(80, easing = FastOutLinearInEasing)
+			}, "alpha") { if (it) 1f else 0f }
+			val scale by transition.animateFloat({
+				if (false isTransitioningTo true) tween(100, easing = LinearOutSlowInEasing) else tween(80, easing = FastOutLinearInEasing)
+			}, "scale") { if (it) 1f else 0.92f }
+			val lift by transition.animateFloat({
+				if (false isTransitioningTo true) tween(100, easing = FastOutSlowInEasing) else tween(80, easing = FastOutLinearInEasing)
+			}, "lift") { if (it) 0f else -6f }
+			val shape = RoundedCornerShape(7.dp)
+			Column(
+				modifier
 					.graphicsLayer {
-						this.alpha = alpha
-						this.scaleX = scale
-						this.scaleY = scale
-						this.translationY = translateY * density.density
-						this.transformOrigin = TransformOrigin(0f, 0f)
+						this.alpha = alpha; scaleX = scale; scaleY = scale
+						translationY = (if (corner.pivotFractionY == 1f) -lift else lift) * density.density
+						transformOrigin = corner
 					}
 					.widthIn(min = minWidth, max = maxWidth)
-				val contentPad = if (frosted) 3.dp else 4.dp
-				if (frosted) {
-					Box(
-						modifier = shellModifier.frostedGlass(
-							shape = shape,
-							isHovered = true,
-							elevation = 12.dp,
-							baseColor = colors.panelElevated,
-							alpha = 0.88f,
-						),
-					) {
-						Column(modifier = Modifier.padding(all = contentPad)) {
-							content()
-						}
-					}
-				} else {
-					Surface(
-						color = colors.panelElevated,
-						shape = shape,
-						border = BorderStroke(1.dp, colors.borderHover.copy(alpha = 0.5f)),
-						elevation = 10.dp,
-						modifier = shellModifier,
-					) {
-						Column(modifier = Modifier.padding(all = contentPad)) {
-							content()
-						}
-					}
-				}
-			}
+					.frostedGlass(shape, isHovered = true, elevation = 12.dp, baseColor = colors.panelElevated, alpha = 0.9f)
+					.border(0.5.dp, colors.borderHover.copy(alpha = 0.45f), shape)
+					.padding(4.dp),
+				content = content,
+			)
 		}
 	}
 }
