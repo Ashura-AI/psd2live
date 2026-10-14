@@ -73,6 +73,17 @@ class MaterialLibraryScenario {
 			val adjusted = requireNotNull(now.document.layout.materials.item(discItem.id))
 			expect("adjusted", !adjusted.raster.rgba.contentEquals(painted.raster.rgba) && shown().raster.rgba.contentEquals(adjusted.raster.rgba)) { "the adjustment did not reach the layer" }
 			refused("an adjustment needs something to change", "material_adjust", req("id" to discItem.id))
+		// A painting session's strokes land as one edit, in order: the second stroke erases what the first drew.
+		val beforeSession = requireNotNull(now.document.layout.materials.item(discItem.id)).raster
+		val row = listOf(listOf(1, 2), listOf(discItem.raster.width - 2, 2))
+		edit("paint a session of two strokes", "material_paint", req("id" to discItem.id, "gestures" to listOf(
+			mapOf("mode" to "brush", "points" to row, "radius" to 1, "color" to listOf(0, 255, 0, 255)),
+			mapOf("mode" to "eraser", "points" to row, "radius" to 1))))
+		val session = requireNotNull(now.document.layout.materials.item(discItem.id)).raster
+		expect("painted", !session.rgba.contentEquals(beforeSession.rgba) && shown().raster.rgba.contentEquals(session.rgba) &&
+			session.rgba[(2 * session.width + session.width / 2) * 4 + 3].toInt() == 0) { "the session's strokes did not land in order" }
+		refused("a paint takes one gesture or a list, not both", "material_paint", req("id" to discItem.id, "mode" to "clear",
+			"gestures" to listOf(mapOf("mode" to "clear"))))
 			edit("paint over the vector", "material_paint", req("id" to vector.id, "mode" to "clear"))
 			expect("painted", now.document.layout.materials.item(vector.id)?.kind == MaterialKind.BITMAP) { "a painted vector stayed a vector" }
 

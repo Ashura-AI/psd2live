@@ -178,17 +178,21 @@ class LayoutPanelsTool {
 				}
 				editor.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, androidx.compose.ui.geometry.Offset(600f, 400f),
 					button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+				// The stroke waits in the window's session: the material is unchanged until the session is applied,
+				// which leaving the window does.
+				frame("editor-painted")
+				Thread.sleep(500)
+				check(vm.state.value.layout.materials.item(materialId)?.raster === unpainted) { "a stroke reached the material before it was applied" }
+				editor.close()
 				val paintDeadline = System.currentTimeMillis() + 60_000
 				while (vm.state.value.layout.materials.item(materialId)?.raster === unpainted) {
-					check(System.currentTimeMillis() < paintDeadline) { "the stroke did not reach the material: ${vm.state.value.errorMessage}" }
+					check(System.currentTimeMillis() < paintDeadline) { "closing the window did not apply the stroke: ${vm.state.value.errorMessage}" }
 					Thread.sleep(100)
 				}
 				val painted = requireNotNull(vm.state.value.layout.materials.item(materialId)).raster
 				val shown = vm.state.value.analysis!!.source.layers.single { it.id.raw == dropped.id.raw }.raster
-				check(shown.rgba.contentEquals(painted.rgba)) { "the layer showing the material did not take the stroke" }
-				frame("editor-painted")
-				println("LAYOUT PANELS painted material $materialId (${painted.width}x${painted.height}); the layer follows")
-				editor.close()
+				check(!painted.rgba.contentEquals(unpainted.rgba) && shown.rgba.contentEquals(painted.rgba)) { "the layer showing the material did not take the stroke" }
+				println("LAYOUT PANELS painted material $materialId (${painted.width}x${painted.height}); applied on leaving, the layer follows")
 				println("LAYOUT PANELS written to $out; pending ${vm.state.value.layout.generation.pendingLayerIds}")
 			}
 		}

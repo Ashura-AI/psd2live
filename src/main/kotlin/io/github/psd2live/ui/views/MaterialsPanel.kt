@@ -214,9 +214,9 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 	var selected by remember { mutableStateOf<String?>(null) }
 	var showTree by remember { mutableStateOf(true) }
 	var treeWidth by remember { mutableStateOf(140f) }
+	// Every folder starts unfolded; a folder folded by hand stays folded, unless the open folder is inside it.
 	val expanded = remember { mutableStateMapOf<String, Boolean>() }
-	// The open folder's ancestors stay unfolded in the tree.
-	LaunchedEffect(folderId) { library.ancestry(folderId).drop(1).forEach { expanded[it.id] = true } }
+	LaunchedEffect(folderId) { library.ancestry(folderId).drop(1).forEach { expanded.remove(it.id) } }
 	var menuShown by remember { mutableStateOf(false) }
 	var menuTarget by remember { mutableStateOf<String?>(null) }
 	var menuAt by remember { mutableStateOf(Offset.Zero) }
@@ -347,9 +347,9 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 						items(treeRows, key = { it.first.id }) { (folder, depth) ->
 							var origin by remember { mutableStateOf(Offset.Zero) }
 							FolderRow(folder.name, fileKind(folder), depth + 1, folder.id == folderId, dropFolder == folder.id,
-								library.folders.any { it.parentId == folder.id }, expanded[folder.id] == true,
+								library.folders.any { it.parentId == folder.id }, expanded[folder.id] != false,
 								track("tree:${folder.id}").onGloballyPositioned { origin = it.positionInRoot() },
-								{ folderId = folder.id; query = "" }, { expanded[folder.id] = expanded[folder.id] != true }, { at -> openMenu(folder.id, origin + at) })
+								{ folderId = folder.id; query = "" }, { expanded[folder.id] = expanded[folder.id] == false }, { at -> openMenu(folder.id, origin + at) })
 						}
 					}
 					// The divider drags to share the width between the tree and the contents.
@@ -470,14 +470,14 @@ private fun uniqueName(library: MaterialLibrary, parent: String?, base: String):
 	return generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base $it" }.first { it !in names }
 }
 
-/** The folder tree in display order, with depth, below expanded folders only. */
+/** The folder tree in display order, with depth, below unfolded folders only (all but those folded by hand). */
 private fun flattenFolders(library: MaterialLibrary, expanded: Map<String, Boolean>): List<Pair<MaterialFolder, Int>> {
 	val children = library.folders.groupBy { it.parentId }
 	val out = ArrayList<Pair<MaterialFolder, Int>>()
 	fun visit(parent: String?, depth: Int) {
 		for (folder in children[parent].orEmpty()) {
 			out += folder to depth
-			if (expanded[folder.id] == true) visit(folder.id, depth + 1)
+			if (expanded[folder.id] != false) visit(folder.id, depth + 1)
 		}
 	}
 	visit(null, 0)

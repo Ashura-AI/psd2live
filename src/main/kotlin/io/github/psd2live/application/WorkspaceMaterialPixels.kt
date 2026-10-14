@@ -43,10 +43,23 @@ internal object WorkspaceMaterialPixels {
         return next
     }
 
-    /** One paint gesture ([paintRasterGesture]'s arguments) in the item's pixel coordinates. */
+    /** Most gestures one `material_paint` carries: a painting session's strokes, applied as one edit. */
+    const val MAX_GESTURES = 512
+
+    /**
+     * The paint gestures of a `material_paint` request in the item's pixel coordinates, in order: its `gestures`, or
+     * the request itself as one gesture ([paintRasterGesture]'s arguments).
+     */
+    fun gestures(request: JsonObject): List<JsonObject> {
+        val list = request["gestures"]?.jsonArray?.map { it.jsonObject }
+        require((list == null) != ("mode" !in request)) { "Give either mode (one gesture) or gestures" }
+        return (list ?: listOf(request)).also { require(it.size in 1..MAX_GESTURES) { "Give 1..$MAX_GESTURES gestures" } }
+    }
+
+    /** [request]'s gestures ([gestures]) painted on [raster] in turn. */
     fun paint(raster: LayerRaster, request: JsonObject, work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): LayerRaster {
         val image = image(raster)
-        paintRasterGesture(image, request, work)
+        for (gesture in gestures(request)) paintRasterGesture(image, gesture, work)
         return raster(image)
     }
 

@@ -41,6 +41,13 @@ internal object WorkspaceLayoutOperations {
     private fun choices(vararg values: String) = buildJsonObject { put("type", "string"); put("enum", JsonArray(values.map(::JsonPrimitive))) }
     private fun range(min: Int, max: Int) = buildJsonObject { put("type", "number"); put("minimum", min); put("maximum", max) }
     private val point = buildJsonObject { put("type", "array"); put("items", number()); put("minItems", 2); put("maxItems", 2) }
+    /** The fields of one paint gesture, as `paint` takes them. */
+    private val gesture = mapOf("mode" to choices("brush", "pencil", "eraser", "bucket", "shape", "clear"),
+        "points" to buildJsonObject { put("type", "array"); put("items", point); put("minItems", 1); put("maxItems", 512) },
+        "radius" to range(0, 512), "hardness" to range(0, 1), "point" to point, "tolerance" to integer(0, 255),
+        "from" to point, "to" to point, "shape" to choices("line", "rectangle", "ellipse"), "stroke_width" to range(1, 512), "filled" to boolean(),
+        "color" to buildJsonObject { put("type", "array"); put("items", integer(0, 255)); put("minItems", 4); put("maxItems", 4) },
+        "opacity" to range(0, 1))
 
     /** Request schemas and descriptions of the material edits. */
     val materialSchemas: Map<String, JsonObject> = mapOf(
@@ -56,12 +63,10 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialEdits.PLACE to schema(state + mapOf("material_id" to string(), "rect" to rect,
             "at" to buildJsonObject { put("type", "array"); put("items", number()); put("minItems", 2); put("maxItems", 2) },
             "layer_id" to string()), listOf("state", "material_id")),
-        WorkspaceMaterialPixels.PAINT to schema(state + mapOf("id" to string(), "mode" to choices("brush", "pencil", "eraser", "bucket", "shape", "clear"),
-            "points" to buildJsonObject { put("type", "array"); put("items", point); put("minItems", 1); put("maxItems", 512) },
-            "radius" to range(0, 512), "hardness" to range(0, 1), "point" to point, "tolerance" to integer(0, 255),
-            "from" to point, "to" to point, "shape" to choices("line", "rectangle", "ellipse"), "stroke_width" to range(1, 512), "filled" to boolean(),
-            "color" to buildJsonObject { put("type", "array"); put("items", integer(0, 255)); put("minItems", 4); put("maxItems", 4) },
-            "opacity" to range(0, 1)), listOf("state", "id", "mode")),
+        WorkspaceMaterialPixels.PAINT to schema(state + mapOf("id" to string()) + gesture + mapOf("gestures" to buildJsonObject {
+            put("type", "array"); put("minItems", 1); put("maxItems", WorkspaceMaterialPixels.MAX_GESTURES)
+            put("items", schema(gesture, listOf("mode")))
+        }), listOf("state", "id")),
         WorkspaceMaterialPixels.ADJUST to schema(state + mapOf("id" to string(), "flip" to choices(*WorkspaceMaterialPixels.flips.toTypedArray()),
             "hue" to range(-180, 180), "saturation" to range(-100, 100), "lightness" to range(-100, 100), "contrast" to range(-100, 100)),
             listOf("state", "id")),
@@ -79,8 +84,8 @@ internal object WorkspaceLayoutOperations {
             "Default size: the item's own place (a PSD layer's position), else one material pixel per canvas unit fitted into the canvas; rect sets an item's canvas rectangle (the pixels are not resampled, so a smaller rectangle is a denser texture); at [x, y] centres the placement there. " +
             "The material's tags and its folders' tags become the layer's tags. Placed layers paint over the others. In a generated project they wait for rig_generate and show as plain meshes until then; " +
             "move them with layer_set_canvas_rect or layer_transform (move, scale, mirror), replace their pixels with layer_replace_image. layer_id names a single item's new layer. The changed list names the new layers (layer:<id>). One history edit.",
-        WorkspaceMaterialPixels.PAINT to "Paint one gesture on a material item's own pixels, in its pixel coordinates (origin at the top left), with the raster engine the paint operation uses: brush, pencil and eraser take points, radius and hardness; " +
-            "bucket a point and tolerance; shape from, to, shape, stroke_width and filled; clear erases everything. color is RGBA bytes (default opaque black), opacity 0..1. " +
+        WorkspaceMaterialPixels.PAINT to "Paint on a material item's own pixels, in its pixel coordinates (origin at the top left), with the raster engine the paint operation uses: one gesture given by mode and its fields, or gestures, a list of up to ${WorkspaceMaterialPixels.MAX_GESTURES} applied in order (a painting session's strokes as one edit). " +
+            "brush, pencil and eraser take points, radius and hardness; bucket a point and tolerance; shape from, to, shape, stroke_width and filled; clear erases everything. color is RGBA bytes (default opaque black), opacity 0..1. " +
             "Every layer showing the item takes the new pixels over its unchanged canvas rectangle, as layer_replace_image does; a vector item becomes a bitmap of its current raster. One history edit.",
         WorkspaceMaterialPixels.ADJUST to "Adjust a material item's pixels: flip (horizontal or vertical), then hue (-180..180 degrees), saturation, lightness and contrast (-100..100 each, 0 unchanged). " +
             "The item keeps its size; every layer showing it takes the new pixels over its unchanged canvas rectangle; a vector item becomes a bitmap of its current raster. One history edit.",
