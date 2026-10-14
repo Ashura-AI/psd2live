@@ -23,10 +23,11 @@ internal class ArchiveMirror(private val directory: Path) {
 
 	/**
 	 * Links into the staging [root] the index and node files of each revision in [keys] the mirror holds, and the
-	 * raster files those revisions name from the working store's [blobs] into [stagedBlobs]. Returns the keys staged.
+	 * raster files those revisions name from the working store's [blobs] into [stagedBlobs]. Returns the revisions
+	 * staged: key to index.
 	 */
-	fun stage(keys: Collection<String>, root: Path, blobs: Path, stagedBlobs: Path): Set<String> {
-		val staged = LinkedHashSet<String>()
+	fun stage(keys: Collection<String>, root: Path, blobs: Path, stagedBlobs: Path): Map<String, JsonObject> {
+		val staged = LinkedHashMap<String, JsonObject>()
 		// Revisions share most of their files: each is looked at and linked once.
 		val present = HashSet<Path>()
 		fun present(path: Path) = path in present || Files.isRegularFile(path).also { if (it) present.add(path) }
@@ -41,7 +42,7 @@ internal class ArchiveMirror(private val directory: Path) {
 			for (file in files) linkOnce(directory.resolve(file), root.resolve(file))
 			for (raster in rasters) linkOnce(blobs.resolve(raster), stagedBlobs.resolve(raster))
 			ProjectFormatV2.writeRevision(root, key, index)
-			staged.add(key)
+			staged[key] = index
 		}
 		return staged
 	}
@@ -59,20 +60,35 @@ internal class ArchiveMirror(private val directory: Path) {
 
 	/**
 	 * Takes the node files of an unpacked archive under [root] into the mirror, with a record for each of
-	 * [revisions] (key to index and rasters), instead of deleting them.
+	 * [revisions] (key to index and rasters), instead of deleting them. The working store reads these revisions
+	 * from the mirror alone, so a failure fails the open.
 	 */
 	fun adopt(root: Path, revisions: Map<String, Pair<JsonObject, Collection<String>>>) {
-		try {
-			val document = root.resolve("document")
-			if (Files.isDirectory(document)) Files.walk(document).use { paths -> paths.filter(Files::isRegularFile).toList() }.forEach { file ->
-				val target = directory.resolve(root.relativize(file).toString())
-				Files.createDirectories(target.parent)
-				if (!Files.exists(target)) Files.move(file, target)
-			}
-			for ((key, revision) in revisions) if (read(key) == null) write(key, revision.first, revision.second)
-		} catch (failure: Exception) {
-			logger.log(System.Logger.Level.WARNING, "Opened revisions not mirrored", failure)
+		val document = root.resolve("document")
+		val target = directory.resolve("document")
+		require(!Files.exists(directory)) { "The archive mirror exists already" }
+		Files.createDirectories(directory)
+		if (Files.isDirectory(document)) Files.move(document, target) else Files.createDirectories(target)
+		// A new folder nothing else reads yet: the records need no atomic replace.
+		Files.createDirectories(directory.resolve("revisions"))
+		for ((key, revision) in revisions) {
+			require(key.matches(KEY)) { "Invalid revision key" }
+			Files.write(directory.resolve("revisions/$key.json"), record(revision.first, revision.second))
 		}
+	}
+
+	/**
+	 * The self-contained snapshot of revision [key], joined from its nodes; revisions read with one [shared] share
+	 * their nodes, bakes and journal entries.
+	 */
+	fun snapshot(key: String, shared: WorkspaceStore.SharedContent): JsonObject {
+		val record = requireNotNull(read(key)) { "History snapshot is missing: $key" }
+		// Opening checked the rig objects when it joined the revision; a build reads them from wherever they are.
+		val snapshot = ProjectFormatV2.join(directory, record.getValue("index").jsonObject, shared.nodes) { true }
+		val rig = snapshot["rigEdits"] as? JsonObject ?: return snapshot
+		val journal = rig["authoringJournal"] as? JsonArray ?: return snapshot
+		val entries = JsonArray(journal.map { entry -> if (entry is JsonObject) shared.entries.getOrPut(entry) { entry } else entry })
+		return JsonObject(snapshot + ("rigEdits" to JsonObject(rig + ("authoringJournal" to entries))))
 	}
 
 	private fun read(key: String): JsonObject? {
@@ -83,12 +99,14 @@ internal class ArchiveMirror(private val directory: Path) {
 			?.takeIf { it["version"]?.jsonPrimitive?.intOrNull == VERSION && it["index"] is JsonObject && it["rasters"] is JsonArray }
 	}
 
+	private fun record(index: JsonObject, rasters: Collection<String>): ByteArray = buildJsonObject {
+		put("version", VERSION); put("index", index)
+		putJsonArray("rasters") { rasters.forEach { add(it) } }
+	}.toString().encodeToByteArray()
+
 	private fun write(key: String, index: JsonObject, rasters: Collection<String>) {
 		require(key.matches(KEY)) { "Invalid revision key" }
-		val bytes = buildJsonObject {
-			put("version", VERSION); put("index", index)
-			putJsonArray("rasters") { rasters.forEach { add(it) } }
-		}.toString().encodeToByteArray()
+		val bytes = record(index, rasters)
 		val file = directory.resolve("revisions/$key.json")
 		Files.createDirectories(file.parent)
 		val temporary = file.resolveSibling(".${file.fileName}.${UUID.randomUUID()}.tmp")

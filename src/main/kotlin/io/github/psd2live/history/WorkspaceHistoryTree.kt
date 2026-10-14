@@ -15,11 +15,35 @@ data class WorkspaceHistoryNode(
 	val createdAt: Instant,
 )
 
-/** The state selected by a history operation; the history node itself is never modified. */
-data class WorkspaceHistorySelection<T>(
-	val node: WorkspaceHistoryNode,
-	val snapshot: T,
-)
+/**
+ * The state selected by a history operation; the history node itself is never modified.
+ *
+ * A reopened history reads each snapshot when first used ([lazy]): opening decodes the head, not every revision.
+ * Reading it gives the same value every time.
+ */
+class WorkspaceHistorySelection<T> private constructor(val node: WorkspaceHistoryNode, private val value: Lazy<T>) {
+	constructor(node: WorkspaceHistoryNode, snapshot: T) : this(node, lazyOf(snapshot))
+
+	val snapshot: T get() = value.value
+
+	/** Whether [snapshot] has been read; a selection made with its snapshot always has. */
+	val isLoaded: Boolean get() = value.isInitialized()
+
+	/** This selection under another [node], its snapshot still read when first used. */
+	fun copy(node: WorkspaceHistoryNode = this.node): WorkspaceHistorySelection<T> = WorkspaceHistorySelection(node, value)
+
+	fun copy(node: WorkspaceHistoryNode = this.node, snapshot: T): WorkspaceHistorySelection<T> = WorkspaceHistorySelection(node, snapshot)
+
+	override fun equals(other: Any?): Boolean = other is WorkspaceHistorySelection<*> && other.node == node && other.snapshot == snapshot
+	override fun hashCode(): Int = 31 * node.hashCode() + (snapshot?.hashCode() ?: 0)
+	override fun toString(): String = "WorkspaceHistorySelection(node=$node, snapshot=${if (isLoaded) snapshot.toString() else "<not read>"})"
+
+	companion object {
+		/** A selection whose snapshot [load] reads when first used, once. */
+		fun <T> lazy(node: WorkspaceHistoryNode, load: () -> T): WorkspaceHistorySelection<T> =
+			WorkspaceHistorySelection(node, kotlin.lazy(LazyThreadSafetyMode.SYNCHRONIZED, load))
+	}
+}
 
 data class WorkspaceHistoryState<T>(
 	val headNodeId: String,
@@ -41,16 +65,22 @@ class StaleWorkspaceHeadException(expected: String, actual: String) :
  * same time as UI commands. The expected-HEAD precondition turns that race into an explicit retry rather
  * than a lost update.
  */
-class WorkspaceHistoryTree<T>(
-	initialSnapshot: T,
+class WorkspaceHistoryTree<T> private constructor(
+	rootSelection: (WorkspaceHistoryNode) -> WorkspaceHistorySelection<T>,
 	initialRevisionId: String,
 	initialSnapshotHash: String,
-	private val clock: () -> Instant = Instant::now,
-	private var newId: () -> String = { "history-${UUID.randomUUID()}" },
+	private val clock: () -> Instant,
+	private var newId: () -> String,
 ) {
-	private data class Stored<T>(val node: WorkspaceHistoryNode, val snapshot: T)
+	constructor(
+		initialSnapshot: T,
+		initialRevisionId: String,
+		initialSnapshotHash: String,
+		clock: () -> Instant = Instant::now,
+		newId: () -> String = { "history-${UUID.randomUUID()}" },
+	) : this({ node -> WorkspaceHistorySelection(node, initialSnapshot) }, initialRevisionId, initialSnapshotHash, clock, newId)
 
-	private val storedById = linkedMapOf<String, Stored<T>>()
+	private val storedById = linkedMapOf<String, WorkspaceHistorySelection<T>>()
 	private var headId: String
     private var capturedSelections = WorkspaceHistorySelections.empty<T>()
 
@@ -67,16 +97,17 @@ class WorkspaceHistoryTree<T>(
 			taskId = null,
 			createdAt = clock(),
 		)
-		storedById[root.id] = Stored(root, initialSnapshot)
-        capturedSelections = capturedSelections.append(WorkspaceHistorySelection(root, initialSnapshot))
+		val selection = rootSelection(root)
+		storedById[root.id] = selection
+        capturedSelections = capturedSelections.append(selection)
 		headId = root.id
 	}
 
 	@Synchronized
-	fun head(): WorkspaceHistorySelection<T> = storedById.getValue(headId).selection()
+	fun head(): WorkspaceHistorySelection<T> = storedById.getValue(headId)
 
 	@Synchronized
-	fun nodes(): List<WorkspaceHistoryNode> = storedById.values.map(Stored<T>::node)
+	fun nodes(): List<WorkspaceHistoryNode> = storedById.values.map { it.node }
 
 	@Synchronized
 	fun selections(): List<WorkspaceHistorySelection<T>> = capturedSelections
@@ -87,12 +118,12 @@ class WorkspaceHistoryTree<T>(
 	@Synchronized
 	fun childrenOf(nodeId: String): List<WorkspaceHistoryNode> {
 		requireNode(nodeId)
-		return storedById.values.map(Stored<T>::node).filter { node -> node.parentId == nodeId }
+		return storedById.values.map { it.node }.filter { node -> node.parentId == nodeId }
 	}
 
 	/** Read an immutable historical snapshot without moving HEAD. */
 	@Synchronized
-	fun selectionAt(nodeId: String): WorkspaceHistorySelection<T> = requireNode(nodeId).selection()
+	fun selectionAt(nodeId: String): WorkspaceHistorySelection<T> = requireNode(nodeId)
 
 	/** Append a child of the current HEAD and atomically advance HEAD to it. */
 	@Synchronized
@@ -121,10 +152,11 @@ class WorkspaceHistoryTree<T>(
 			taskId = taskId,
 			createdAt = clock(),
 		)
-		storedById[node.id] = Stored(node, snapshot)
-        capturedSelections = capturedSelections.append(WorkspaceHistorySelection(node, snapshot))
+		val selection = WorkspaceHistorySelection(node, snapshot)
+		storedById[node.id] = selection
+        capturedSelections = capturedSelections.append(selection)
 		headId = node.id
-		return WorkspaceHistorySelection(node, snapshot)
+		return selection
 	}
 
 	/** Move HEAD to an existing snapshot without changing the tree. */
@@ -132,10 +164,10 @@ class WorkspaceHistoryTree<T>(
 	fun checkout(nodeId: String): WorkspaceHistorySelection<T> {
 		val stored = requireNode(nodeId)
 		headId = nodeId
-		return stored.selection()
+		return stored
 	}
 
-	private fun requireNode(nodeId: String): Stored<T> =
+	private fun requireNode(nodeId: String): WorkspaceHistorySelection<T> =
 		storedById[nodeId] ?: throw IllegalArgumentException("History node not found: $nodeId")
 
 	private fun uniqueId(): String {
@@ -144,8 +176,6 @@ class WorkspaceHistoryTree<T>(
 		while (candidate in storedById) candidate = newId()
 		return candidate
 	}
-
-	private fun Stored<T>.selection(): WorkspaceHistorySelection<T> = WorkspaceHistorySelection(node, snapshot)
 
 	companion object {
 		/** Rehydrate a previously validated append-only tree without creating a synthetic new root. */
@@ -175,17 +205,12 @@ class WorkspaceHistoryTree<T>(
                 validated.addAll(visited)
 			}
 			val root = selections.single { it.node.parentId == null }
-			val tree = WorkspaceHistoryTree(
-				initialSnapshot = root.snapshot,
-				initialRevisionId = root.node.revisionId,
-				initialSnapshotHash = root.node.snapshotHash,
-				clock = clock,
-				newId = { root.node.id },
-			)
+			// Snapshots not read yet stay unread.
+			val tree = WorkspaceHistoryTree({ root }, root.node.revisionId, root.node.snapshotHash, clock, newId = { root.node.id })
 			tree.storedById.clear()
             tree.capturedSelections = WorkspaceHistorySelections.empty()
 			selections.forEach { selection ->
-				tree.storedById[selection.node.id] = Stored(selection.node, selection.snapshot)
+				tree.storedById[selection.node.id] = selection
                 tree.capturedSelections = tree.capturedSelections.append(selection)
 			}
 			tree.headId = headNodeId

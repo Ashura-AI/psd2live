@@ -145,22 +145,41 @@ internal class WorkspaceStore(
 				createdAt = Instant.parse(nodeJson.requiredString("createdAt")),
 			)
 		}.sortedWith(compareBy<WorkspaceHistoryNode> { it.createdAt }.thenBy { it.id })
+		for (node in nodes) require(hasSnapshot(project, fileKey(node.snapshotHash))) { "History snapshot is missing for ${node.id}" }
+		// Each revision is read when first used: opening reads the head, not the whole history. Revisions read
+		// later share the journal entries, bakes and rasters read before them.
 		val shared = SharedContent()
-		val snapshots = LinkedHashMap<String, JsonObject>()
-		for (node in nodes) {
-			val snapshotFile = project.resolve("history/snapshots/${fileKey(node.snapshotHash)}.json")
-			require(Files.isRegularFile(snapshotFile)) { "History snapshot is missing for ${node.id}" }
-			if (node.snapshotHash !in snapshots) snapshots[node.snapshotHash] = expandSnapshot(project, readJson(snapshotFile), shared)
+		val rasters = HashMap<String, ByteArray>()
+		val documents = HashMap<String, Lazy<WorkspaceDocument>>()
+		val selections = nodes.map { node ->
+			val document = documents.getOrPut(node.snapshotHash) {
+				lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+					synchronized(shared) {
+						val snapshot = readSnapshot(project, fileKey(node.snapshotHash), shared)
+						rasters.putAll(loadRasters(project, listOf(snapshot), rasters.keys))
+						decodeDocument(snapshot, project, rasters, shared.bakeResults)
+					}
+				}
+			}
+			WorkspaceHistorySelection.lazy(node) { document.value }
 		}
-		val rasters = HashMap(loadRasters(project, snapshots.values))
-		val documents = snapshots.mapValues { (_, snapshot) -> decodeDocument(snapshot, project, rasters, shared.bakeResults) }
-		val selections = nodes.map { node -> WorkspaceHistorySelection(node, documents.getValue(node.snapshotHash)) }
 		val order = headDocument["nodeOrder"]?.jsonArray?.map { it.jsonPrimitive.content }
         val ordered = if (order != null) {
             require(order.size == selections.size && order.toSet() == selections.map { it.node.id }.toSet()) { "Invalid history node order" }
             val byId = selections.associateBy { it.node.id }; order.map { byId.getValue(it) }
         } else selections
-        return WorkspaceHistoryTree.restore(ordered, headId)
+        return WorkspaceHistoryTree.restore(ordered, headId).also { it.head().snapshot }
+	}
+
+	/** Whether revision [key]'s snapshot is stored: as a snapshot file, or split in the archive mirror ([ArchiveMirror]). */
+	private fun hasSnapshot(project: Path, key: String): Boolean =
+		isStored(project.resolve("history/snapshots/$key.json")) || isStored(project.resolve("${ArchiveMirror.FOLDER}/revisions/$key.json"))
+
+	/** Revision [key]'s self-contained snapshot, from its snapshot file or else joined from the archive mirror. */
+	private fun readSnapshot(project: Path, key: String, shared: SharedContent): JsonObject {
+		val file = project.resolve("history/snapshots/$key.json")
+		if (Files.isRegularFile(file)) return expandSnapshot(project, readJson(file), shared)
+		return ArchiveMirror(project.resolve(ArchiveMirror.FOLDER)).snapshot(key, shared)
 	}
 
     /** Legacy v1 projects have no index; capture their existing immutable IDs once. */
@@ -283,7 +302,8 @@ internal class WorkspaceStore(
 			// A node is written after its snapshot, so a stored node has its snapshot too.
 			if (nodePath in stored) continue
 			val snapshotPath = project.resolve("history/snapshots/${fileKey(selection.node.snapshotHash)}.json")
-			if (fileKey(selection.node.snapshotHash) !in staged && !isStored(snapshotPath)) {
+			val key = fileKey(selection.node.snapshotHash)
+			if (key !in staged && !hasSnapshot(project, key)) {
 				io.github.psd2live.core.RigObjects.writeTo(rigObjects, io.github.psd2live.core.RigCheckpoint.hashes(selection.snapshot.rigEdits.authoringJournal))
 				val snapshotBytes = shareContent(encodeDocument(selection.snapshot, project), project).toString().encodeToByteArray()
 				writeAtomic(snapshotPath, snapshotBytes, replace = false, pretty = false)
@@ -1075,10 +1095,10 @@ internal class WorkspaceStore(
 	 * independent immutable file. Threads are bounded by the cores and by the heap the decodes hold at once (a
 	 * file's bytes and its pixels). The first failure, in snapshot order, is thrown.
 	 */
-	private fun loadRasters(project: Path, snapshots: Collection<JsonObject>): Map<String, ByteArray> {
+	private fun loadRasters(project: Path, snapshots: Collection<JsonObject>, loaded: Set<String> = emptySet()): Map<String, ByteArray> {
 		class Blob(val hash: String, val width: Int, val height: Int)
 		val blobs = LinkedHashMap<String, Blob>()
-		for (snapshot in snapshots) for ((hash, width, height) in rasterRefs(snapshot)) blobs.getOrPut(hash) { Blob(hash, width, height) }
+		for (snapshot in snapshots) for ((hash, width, height) in rasterRefs(snapshot)) if (hash !in loaded) blobs.getOrPut(hash) { Blob(hash, width, height) }
 		if (blobs.isEmpty()) return emptyMap()
 		val largest = blobs.values.maxOf { it.width.toLong() * it.height * 4 }
 		val threads = minOf(Runtime.getRuntime().availableProcessors().toLong(), 8L, blobs.size.toLong(),
@@ -1219,6 +1239,8 @@ internal class WorkspaceStore(
 		val chunks = HashMap<String, List<JsonObject>>()
 		val payloads = HashMap<String, String>()
 		val bakes = HashMap<String, JsonObject>()
+		/** Document nodes read from the archive mirror, by path. */
+		val nodes = HashMap<String, JsonObject>()
 		/** One object per distinct bake written inline, as snapshots from before bakes were shared hold them. */
 		val inlineBakes = HashMap<JsonObject, JsonObject>()
 		/** Each bake object's decoded result, so revisions with one bake share it. */

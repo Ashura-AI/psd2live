@@ -65,6 +65,14 @@ class ProjectStoragePerfTool {
 						}
 					}
 				}
+				// The open's reading stage, step by step.
+				val (root, extract) = timed { io.github.psd2live.project.ProjectArchive.extract(target) }
+				try {
+					val (_, unpack) = timed { io.github.psd2live.project.ProjectFormatV2.unpack(root, id) }
+					val (tree, load) = timed { WorkspaceStore(root.resolve("workspace")).loadHistory(id)!! }
+					val (_, all) = timed { tree.selections().forEach { it.snapshot } }
+					lines += "open steps: extract %.0f ms, unpack %.0f ms, load history %.0f ms, then every revision %.0f ms".format(extract, unpack, load, all)
+				} finally { io.github.psd2live.project.ProjectArchive.deleteTemporaryDirectory(root) }
 			}
 		} finally {
 			lines.forEach(::println)

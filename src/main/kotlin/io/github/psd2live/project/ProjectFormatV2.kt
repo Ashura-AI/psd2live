@@ -174,11 +174,15 @@ internal object ProjectFormatV2 {
 		val cache = HashMap<String, JsonObject>()
 		val written = HashSet<String>()
 		val adopted = LinkedHashMap<String, Pair<JsonObject, Collection<String>>>()
+		val present = HashSet<String>()
 		if (Files.isDirectory(revisions)) Files.list(revisions).use { paths -> paths.sorted().toList() }.forEach { file ->
 			val index = json.parseToJsonElement(Files.readString(file)).jsonObject
-			val snapshot = join(root, index, cache)
+			// Revisions name mostly the same rig objects: each is looked for once.
+			val snapshot = join(root, index, cache) { hash -> hash in present || Files.isRegularFile(root.resolve(RIG_OBJECTS).resolve("$hash.bin")).also { if (it) present.add(hash) } }
 			val key = file.fileName.toString().removeSuffix(".json")
 			if (key.matches(HASH) && isCurrent(index, snapshot)) adopted[key] = index to WorkspaceStore.rasterFiles(snapshot)
+			// The working store reads an adopted revision from the mirror when it is first used.
+			if (key in adopted) return@forEach
 			// Written as the working store writes a commit: revisions share journal chunks, so opening reads each
 			// entry once and every revision holds the same entry objects instead of its own copy of the journal.
 			val stored = WorkspaceStore.shareContent(snapshot) { relative, bytes -> if (written.add(relative)) write(store.resolve(relative), bytes()) }
@@ -189,7 +193,7 @@ internal object ProjectFormatV2 {
 		moveTree(root.resolve("assets"), store.resolve("blobs"))
 		for (folder in auxiliaryFolders) moveTree(root.resolve("auxiliary").resolve(folder), store.resolve(folder))
 		if (Files.isRegularFile(root.resolve("auxiliary/tasks.json"))) move(root.resolve("auxiliary/tasks.json"), store.resolve("tasks.json"))
-		// The next save links these revisions' nodes instead of splitting them again.
+		// The working store reads these revisions from their nodes, and the next save links them.
 		ArchiveMirror(store.resolve(ArchiveMirror.FOLDER)).adopt(root, adopted)
 		deleteTree(history); deleteTree(root.resolve("document")); deleteTree(root.resolve("auxiliary"))
 	}
@@ -313,7 +317,8 @@ internal object ProjectFormatV2 {
 	}
 
 	/** The snapshot a revision [index] names, read from the nodes under [root]. */
-	internal fun join(root: Path, index: JsonObject, cache: MutableMap<String, JsonObject> = HashMap()): JsonObject {
+	internal fun join(root: Path, index: JsonObject, cache: MutableMap<String, JsonObject> = HashMap(),
+		hasRigObject: (String) -> Boolean = { Files.isRegularFile(root.resolve(RIG_OBJECTS).resolve("$it.bin")) }): JsonObject {
 		val schema = index["schema"]?.jsonPrimitive?.intOrNull
 		require(schema in REVISION_SCHEMA..REVISION_SCHEMA_BAKES) { "Unsupported revision schema" }
 		val nodes = index.getValue("nodes").jsonObject.mapValues { it.value.jsonPrimitive.content }
@@ -330,8 +335,8 @@ internal object ProjectFormatV2 {
 		val bakes = index["bakes"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty()
 		require((schema == REVISION_SCHEMA_BAKES) == bakes.isNotEmpty()) { "Bakes need revision schema $REVISION_SCHEMA_BAKES" }
 		for (hash in rigObjects) {
-			require(hash.matches(Regex("[0-9a-f]{64}"))) { "Invalid rig object name" }
-			require(Files.isRegularFile(root.resolve(RIG_OBJECTS).resolve("$hash.bin"))) { "The archive lacks rig object $hash" }
+			require(hash.matches(HASH)) { "Invalid rig object name" }
+			require(hasRigObject(hash)) { "The archive lacks rig object $hash" }
 		}
 		fun load(folder: String, kind: String, hash: String): JsonObject {
 			val value = cache.getOrPut("$folder/$hash") { read(root, folder, hash) }
