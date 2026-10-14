@@ -630,6 +630,20 @@ class DesktopWorkspace(
     internal fun rememberProjectDirectory(path: Path) = synchronized(historyLock) {
         resources.adopt(path)
         if (path !in projectDirectories) projectDirectories.add(path)
+        // Only the installed project's extraction backs the workspace now. Release the earlier ones behind the
+        // writes already queued into them, so opening project after project in one session (an agent's batch run)
+        // does not keep every extraction on disk until the app closes.
+        if (projectDirectories.size > 1) schedulePersistence(::releaseInactiveProjectDirectories)
+    }
+    private fun releaseInactiveProjectDirectories() {
+        val recoveryRoot = sessionRecovery.pending()?.storeRoot
+        synchronized(historyLock) {
+            val activeRoot = workspaceStore.root
+            projectDirectories.filterNot { directory ->
+                recoveryRoot?.startsWith(directory) == true || activeRoot.startsWith(directory)
+            }.forEach { directory -> runCatching { resources.release(directory) } }
+            projectDirectories.removeIf { directory -> !Files.exists(directory) }
+        }
     }
     internal suspend fun flushProjectPersistence() {
         persistence.flush { it is PersistenceDestination && (it.root == workspaceStore.root || it.kind == "session") && it.kind != "observation" }
