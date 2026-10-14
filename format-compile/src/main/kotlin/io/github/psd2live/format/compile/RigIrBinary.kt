@@ -15,9 +15,14 @@ import java.io.IOException
  * A field added to the IR must be added here in the same change, with [VERSION] raised. [RigIrObjects] stores rigs
  * in this encoding for good, so the reader must keep reading every version from [RigIrObjects.MIN_VERSION] on: a
  * new field is read only when [Reader.version] is at least the version that added it, and takes its default before.
+ *
+ * From version 5 a float array is written as four byte planes - every value's first byte, then every second byte,
+ * and so on - which DEFLATE compresses far better than interleaved floats; values and order are unchanged.
  */
 public object RigIrBinary {
-	public const val VERSION: Int = 4
+	public const val VERSION: Int = 5
+	/** The first version writing float arrays as byte planes. */
+	internal const val PLANAR_FLOATS: Int = 5
 	private const val MAGIC = 0x50524952 // "PRIR"
 
 	public fun encode(ir: RigIR): ByteArray {
@@ -51,7 +56,18 @@ public object RigIrBinary {
 		fun string(value: String) { val bytes = value.encodeToByteArray(); int(bytes.size); out.write(bytes) }
 		fun <T> nullable(value: T?, write: (T) -> Unit) { bool(value != null); if (value != null) write(value) }
 		fun <T> list(values: List<T>, write: (T) -> Unit) { int(values.size); values.forEach(write) }
-		fun floats(values: Floats) { val array = values.shared(); int(array.size); for (v in array) float(v) }
+		fun floats(values: Floats) {
+			val array = values.shared()
+			int(array.size)
+			val n = array.size
+			val planes = ByteArray(n * 4)
+			for (i in array.indices) {
+				val bits = java.lang.Float.floatToRawIntBits(array[i])
+				planes[i] = (bits ushr 24).toByte(); planes[n + i] = (bits ushr 16).toByte()
+				planes[2 * n + i] = (bits ushr 8).toByte(); planes[3 * n + i] = bits.toByte()
+			}
+			out.write(planes)
+		}
 		fun ints(values: Ints) { val array = values.shared(); int(array.size); for (v in array) int(v) }
 		fun bytes(values: Bytes) { val array = values.shared(); int(array.size); out.write(array) }
 		fun rgb(value: Rgb) { float(value.red); float(value.green); float(value.blue) }
@@ -288,7 +304,16 @@ public object RigIrBinary {
 			repeat(n) { map[string()] = value() }
 			return map
 		}
-		fun floats(): Floats { val n = count(); return Floats.wrap(FloatArray(n) { float() }) }
+		fun floats(): Floats {
+			val n = count()
+			if (version < PLANAR_FLOATS) return Floats.wrap(FloatArray(n) { float() })
+			if (n.toLong() * 4 > input.available()) throw IOException("Invalid length $n")
+			val planes = ByteArray(n * 4).also(input::readFully)
+			return Floats.wrap(FloatArray(n) { i ->
+				java.lang.Float.intBitsToFloat(((planes[i].toInt() and 255) shl 24) or ((planes[n + i].toInt() and 255) shl 16) or
+					((planes[2 * n + i].toInt() and 255) shl 8) or (planes[3 * n + i].toInt() and 255))
+			})
+		}
 		fun ints(): Ints { val n = count(); return Ints.wrap(IntArray(n) { int() }) }
 		fun bytes(): Bytes { val array = ByteArray(count()); input.readFully(array); return Bytes.wrap(array) }
 		fun rgb() = Rgb(float(), float(), float())
