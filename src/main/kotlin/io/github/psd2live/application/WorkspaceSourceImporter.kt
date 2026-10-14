@@ -28,12 +28,14 @@ internal class WorkspaceSourceImporter(
     suspend fun importPsd(path: Path, projectId: String?, state: String, discardUnsaved: Boolean = false,
                          initialConfig: PipelineConfig = PipelineConfig(),
                          sourceAuxiliary: JsonObject = JsonObject(emptyMap()),
+                         /** The file name the user chose, when [path] is a captured copy under another name. */
+                         displayName: String = path.fileName.toString(),
                          project: (WorkspaceDocument, RigPreviewModel, String) -> Unit = { _, _, _ -> }): WorkspaceCommit<RigPreviewModel> {
-        return install(projectId, state, discardUnsaved, initialConfig, "Imported PSD ${path.fileName}",
+        return install(projectId, state, discardUnsaved, initialConfig, "Imported PSD $displayName",
             prepare = {
                 require(path.isAbsolute && Files.isRegularFile(path) && path.fileName.toString().endsWith(".psd", true)) { "Provide an absolute local PSD path" }
                 readPsd(path) to emptyMap()
-            }, project = project, sourceAuxiliary = sourceAuxiliary, materialFolder = path.fileName.toString().substringBeforeLast('.'))
+            }, project = project, sourceAuxiliary = sourceAuxiliary, materialFolder = displayName.substringBeforeLast('.'))
     }
 
     suspend fun createArtwork(arguments: JsonObject, projectId: String?, state: String, discardUnsaved: Boolean = false,
