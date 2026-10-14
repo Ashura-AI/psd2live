@@ -85,14 +85,71 @@ class LayoutPanelsTool {
 						buttons = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true), button = androidx.compose.ui.input.pointer.PointerButton.Primary)
 					scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, at, button = androidx.compose.ui.input.pointer.PointerButton.Primary)
 				}
-				click(56f, 86f)
+				// Double-click the folder tile: it opens.
+				fun clickAt(x: Float, y: Float, time: Long) {
+					val at = androidx.compose.ui.geometry.Offset(x, y)
+					scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, at, timeMillis = time)
+					scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, at, timeMillis = time + 10,
+						buttons = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true), button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+					scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, at, timeMillis = time + 40,
+						button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+				}
+				val now = System.currentTimeMillis()
+				clickAt(200f, 110f, now); clock += 16_000_000L; scene.render(clock).close(); clickAt(200f, 110f, now + 120)
 				shot("folder")
 				click(200f, 110f)
 				shot("selected")
+				println("LAYOUT PANELS selected: canvasEditBusy=${vm.state.value.canvasEditBusy} workspaceEditBusy=${vm.state.value.workspaceEditBusy}")
+				// Drag the selected tile out of the panel onto a canvas: a stand-in drop target maps root (900, 500) and
+				// around it to canvas units as an edit canvas does; the release places the material centred there.
+				vm.materialDropTargets["probe"] = { root -> if (root.x > 640f) androidx.compose.ui.geometry.Offset(root.x - 700f, root.y - 300f) else null }
+				val before = vm.state.value.analysis!!.source.layers.size
+				val start = androidx.compose.ui.geometry.Offset(200f, 110f)
+				val primary = androidx.compose.ui.input.pointer.PointerButtons(isPrimaryPressed = true)
+				scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, start)
+				scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, start, buttons = primary,
+					button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+				for (step in 1..20) {
+					scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move,
+						androidx.compose.ui.geometry.Offset(200f + 35f * step, 110f + 19.5f * step), buttons = primary)
+					clock += 16_000_000L; scene.render(clock).close()
+				}
+				check(vm.materialDrag.value != null) { "dragging a tile did not start a material drag" }
+				scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, androidx.compose.ui.geometry.Offset(900f, 500f),
+					button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+				val dropDeadline = System.currentTimeMillis() + 60_000
+				while (vm.state.value.analysis!!.source.layers.size == before) {
+					check(System.currentTimeMillis() < dropDeadline) { "dropping on the canvas did not place: ${vm.state.value.errorMessage}" }
+					Thread.sleep(100)
+				}
+				val dropped = vm.state.value.analysis!!.source.layers.last()
+				val rect = io.github.psd2live.project.LayerCanvasRect.of(dropped.bounds)
+				println("LAYOUT PANELS drop placed ${dropped.id.raw} centred at (${rect.left + rect.width / 2}, ${rect.top + rect.height / 2}); expected (200, 200)")
+				check(kotlin.math.abs(rect.left + rect.width / 2 - 200f) <= 1f && kotlin.math.abs(rect.top + rect.height / 2 - 200f) <= 1f) { "the drop landed elsewhere" }
+				shot("dropped")
 				scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, androidx.compose.ui.geometry.Offset(1215f, 24f))
 				shot("hover-bar")
+				scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, androidx.compose.ui.geometry.Offset(300f, 650f))
+				shot("away")
 				click(970f, 154f)
 				shot("tags")
+				// After a menu closes, a drag works again: dismiss the tag menu, then drag the tile once more.
+				click(300f, 650f); repeat(40) { clock += 16_000_000L; scene.render(clock).close() }
+				val again = vm.state.value.analysis!!.source.layers.size
+				scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, start)
+				scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, start, buttons = primary,
+					button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+				for (step in 1..20) {
+					scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move,
+						androidx.compose.ui.geometry.Offset(200f + 35f * step, 110f + 19.5f * step), buttons = primary)
+					clock += 16_000_000L; scene.render(clock).close()
+				}
+				println("LAYOUT PANELS drag after menu: started=${vm.materialDrag.value != null}")
+				scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Release, androidx.compose.ui.geometry.Offset(900f, 500f),
+					button = androidx.compose.ui.input.pointer.PointerButton.Primary)
+				val againDeadline = System.currentTimeMillis() + 60_000
+				while (vm.state.value.analysis!!.source.layers.size == again && System.currentTimeMillis() < againDeadline) Thread.sleep(100)
+				check(vm.state.value.analysis!!.source.layers.size > again) { "a drag after closing a menu did not place" }
 				println("LAYOUT PANELS written to $out; pending ${vm.state.value.layout.generation.pendingLayerIds}")
 				scene.close()
 			}
