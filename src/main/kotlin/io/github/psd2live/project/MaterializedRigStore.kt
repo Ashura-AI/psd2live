@@ -98,21 +98,27 @@ internal object MaterializedRigStore {
 
 	/**
 	 * Writes into [root] the rig objects [history]'s checkpoints name - required: a missing one fails the save - and
-	 * the authored rig of every revision this store has. A revision not read yet whose index is among [staged] (by
-	 * snapshot key) is not read for this: its index lists its checkpoints' objects, and its node its revision.
+	 * the authored rig this store has of the head, of each branch tip and of each revision without a checkpoint. Any
+	 * other revision builds from its last checkpoint without generating its base, so its authored rig, whose changed
+	 * meshes would each be another object in the archive, is not worth keeping. A revision not read yet whose index is
+	 * among [staged] (by snapshot key) is not read for this: its index lists its checkpoints' objects, and its node
+	 * its revision.
 	 */
 	fun write(root: Path, history: WorkspaceHistoryState<WorkspaceDocument>, staged: Map<String, JsonObject> = emptyMap()) {
 		val objects = root.resolve(ProjectFormatV2.RIG_OBJECTS)
 		fun index(selection: io.github.psd2live.history.WorkspaceHistorySelection<WorkspaceDocument>) =
 			if (selection.isLoaded) null else staged[WorkspaceStore.snapshotKey(selection.node.snapshotHash)]
-		val required = history.selections.flatMap { selection ->
+		val checkpoints = history.selections.map { selection ->
 			index(selection)?.let { index -> index["rig"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty() }
 				?: RigCheckpoint.hashes(selection.snapshot.rigEdits.authoringJournal)
 		}
+		val required = checkpoints.flatten()
 		if (required.isNotEmpty()) RigObjects.writeTo(objects, required)
 		if (!enabled) return
+		val parents = history.selections.mapNotNullTo(HashSet()) { it.node.parentId }
 		val written = HashSet<String>()
-		for (selection in history.selections) {
+		for ((selection, named) in history.selections.zip(checkpoints)) {
+			if (selection.node.id != history.headNodeId && selection.node.id in parents && named.isNotEmpty()) continue
 			// The key builds look the rig up by: a history node of an older build may carry a revision id of another form.
 			// A revision not read since the open was not built either, so only an entry stored under its node's id,
 			// the key every current build gives it, can be there.

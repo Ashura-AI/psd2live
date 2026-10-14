@@ -2,9 +2,11 @@ package io.github.psd2live.scenario
 
 import io.github.psd2live.core.RigCheckpoint
 import io.github.psd2live.core.RigEditOverlay
+import io.github.psd2live.project.WorkspaceRevisions
 import org.junit.jupiter.api.io.TempDir
 import org.umamo.runtime.model.DrawableId
 import java.nio.file.Path
+import java.util.zip.ZipFile
 import kotlin.test.Test
 
 /**
@@ -16,6 +18,7 @@ class HistoryScenario {
 	@TempDir lateinit var temp: Path
 
 	@Test fun branchesPastCheckpointsUndoAndReopen() = Studio.run(temp, Characters.head(physics = false), checks = setOf(Studio.Check.REPLAY)) {
+		val rootRevision = WorkspaceRevisions.of(now.document)
 		repeat(RigEditOverlay.CHECKPOINT_INTERVAL + 3) { edit("axis $it", "parameter_create", req("parameter_id" to "P$it", "name" to "P$it")) }
 		val journal = now.document.rigEdits.authoringJournal
 		expect("checkpoints", journal.count(RigCheckpoint::isRecord) >= 2) { "a long journal was not checkpointed again" }
@@ -36,6 +39,12 @@ class HistoryScenario {
 		undo("undo the topology edit")
 		expect("topology undone", hash() == Oracles.hash(fork.model.rig.puppet)) { "undoing the topology edit did not restore the mesh" }
 		redo("redo it", child = branch.historyHead)
+		// Of the authored rigs built along the way, only the root's (it has no checkpoint) and the branch tips' are saved.
+		val tips = setOf(rootRevision, WorkspaceRevisions.of(tip.document), WorkspaceRevisions.of(branch.document))
+		val authored = ZipFile(save("save the branches").toFile()).use { zip ->
+			zip.entries().toList().map { it.name }.filter { it.startsWith("rig/revisions/") }.map { it.removePrefix("rig/revisions/").removeSuffix(".json") }
+		}
+		expect("authored rigs", authored.isNotEmpty() && authored.all { it in tips }) { "saved authored rigs of inner revisions: ${authored - tips}" }
 		reopen()
 		expect("reopened", hash() == branchHash) { "the reopened branch tip differs" }
 		checkout("first branch after reopening", tip.historyHead)
