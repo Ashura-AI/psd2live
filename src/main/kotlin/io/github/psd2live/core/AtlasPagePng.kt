@@ -123,22 +123,22 @@ internal object AtlasPagePng {
 			}
 		}
 		val adler = Adler32().apply { update(raw) }.value.toInt()
-		val deflater = Deflater(1, true)
-		try {
-			deflater.setInput(raw)
-			val output = ByteArrayOutputStream(raw.size / 8 + 64)
-			val buffer = ByteArray(64 * 1024)
-			while (true) {
-				val written = deflater.deflate(buffer, 0, buffer.size, Deflater.FULL_FLUSH)
-				output.write(buffer, 0, written)
-				// A full flush is complete once it no longer fills the buffer.
-				if (written < buffer.size) break
-			}
-			return Strip(chunk("IDAT", output.toByteArray()), adler, raw.size.toLong())
-		} finally {
-			deflater.end()
+		// A reset deflater writes what a new one would; making one per strip cost about a third of the strip.
+		val deflater = deflaters.get().apply { reset() }
+		deflater.setInput(raw)
+		val output = ByteArrayOutputStream(raw.size / 8 + 64)
+		val buffer = buffers.get()
+		while (true) {
+			val written = deflater.deflate(buffer, 0, buffer.size, Deflater.FULL_FLUSH)
+			output.write(buffer, 0, written)
+			// A full flush is complete once it no longer fills the buffer.
+			if (written < buffer.size) break
 		}
+		return Strip(chunk("IDAT", output.toByteArray()), adler, raw.size.toLong())
 	}
+
+	private val deflaters = ThreadLocal.withInitial { Deflater(1, true) }
+	private val buffers = ThreadLocal.withInitial { ByteArray(64 * 1024) }
 
 	private fun chunk(type: String, data: ByteArray): ByteArray {
 		val typeBytes = type.encodeToByteArray()

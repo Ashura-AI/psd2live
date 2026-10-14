@@ -12,8 +12,9 @@ object CharacterAnalyzer {
 		LayerClassifier.classify(CanvasDensity.canvasLayer(layer), config.alphaThreshold).withOverride(config.layerOverrides[layer.id.raw])
 
 	/** Recreate retained legacy component identities without building a model or discarding deleted pixels. */
-	internal fun expandLayer(original: ClassifiedLayer, config: PipelineConfig, unitScale: Float = 1f): List<ClassifiedLayer> {
-		if (!preserveLegacySplit(original.source.id.raw, config)) return listOf(original)
+	internal fun expandLayer(original: ClassifiedLayer, config: PipelineConfig, unitScale: Float = 1f,
+	                         references: LegacySplitReferences = LegacySplitReferences(config)): List<ClassifiedLayer> {
+		if (!references.preserves(original.source.id.raw)) return listOf(original)
 		return ComponentSplitter.split(original, config.meshSpacing.toFloat(), config.alphaThreshold, unitScale).map { component ->
 			val override = config.layerOverrides[component.source.id.raw] ?: config.layerOverrides[original.source.id.raw]
 			component.withOverride(override, preserveSide = component.source.id != original.source.id)
@@ -40,7 +41,8 @@ object CharacterAnalyzer {
 		// Fresh layers stay intact until the UI offers a named split. Old projects may still
 		// reference generated :r/:l IDs, so retain those identities when they carry edits.
 		val unitScale = MeshResolution.unitScale(config, source)
-		val layers = initiallyClassified.flatMap { expandLayer(it, config, unitScale) }
+		val references = LegacySplitReferences(config)
+		val layers = initiallyClassified.flatMap { expandLayer(it, config, unitScale, references) }
 			.filter { it.source.id.raw !in config.deletedLayerIds }
 		if (RigBuildProfile.recording) RigBuildProfile.add("analyze: classify layers", System.nanoTime() - classifyStart)
 		val warnings = source.warnings.toMutableList()
@@ -120,22 +122,6 @@ object CharacterAnalyzer {
 			h * 0.45f, h * 0.62f)
 	}
 
-	private fun preserveLegacySplit(sourceId: String, config: PipelineConfig): Boolean {
-		val ids = setOf("$sourceId:r", "$sourceId:l")
-		val edits = config.rigEdits
-		val tracked = config.layerOverrides.keys + config.parentOverrides.keys +
-			config.drawOrderOverrides.keys + config.meshOverrides.keys + config.deletedLayerIds +
-			config.layerVisibility.keys + edits.assetLayers.keys + edits.calibrationLayerIds
-		if (ids.any { it in tracked }) return true
-		if (edits.keyformSetEdits.any { it.target.id in ids } ||
-			edits.keyformDeleteEdits.any { it.target.id in ids } ||
-			edits.keyformCopyEdits.any { it.sourceTarget.id in ids || it.destinationTarget.id in ids } ||
-			edits.warpEdits.any { warp -> warp.meshIds.any { it in ids } }) return true
-		return (edits.structureEdits + edits.authoringJournal).any { command ->
-			ids.any { id -> command.toString().contains("\"$id\"") }
-		}
-	}
-
 	private fun ClassifiedLayer.withOverride(
 		override: LayerClassificationOverride?,
 		preserveSide: Boolean = false,
@@ -161,4 +147,50 @@ object CharacterAnalyzer {
 	)
 	val MOUTH_BASE_TAGS = setOf(SemanticTag.MOUTH, SemanticTag.MOUTH_OPEN, SemanticTag.MOUTH_CLOSE)
 	val MOUTH_TAGS = MOUTH_BASE_TAGS + MOUTH_COMPONENT_TAGS
+}
+
+/**
+ * Which generated `:r`/`:l` component IDs of old projects [config] still references, so their split is kept: as
+ * tracked overrides, as targets of static edits, or quoted (`"<id>"`) anywhere in the structure edits or the
+ * authoring journal. Built once per analysis; each journal entry's quoted strings are read once per entry object.
+ */
+internal class LegacySplitReferences(config: PipelineConfig) {
+	private val edits = config.rigEdits
+	private val tracked = config.layerOverrides.keys + config.parentOverrides.keys +
+		config.drawOrderOverrides.keys + config.meshOverrides.keys + config.deletedLayerIds +
+		config.layerVisibility.keys + edits.assetLayers.keys + edits.calibrationLayerIds
+	private val commands = edits.structureEdits + edits.authoringJournal
+	/** Every text between two adjacent quotes in the commands that names a component (ends in `:r` or `:l`). */
+	private val quoted: Set<String> by lazy { commands.flatMapTo(HashSet()) { quotedComponents(it) } }
+
+	fun preserves(sourceId: String): Boolean {
+		val ids = setOf("$sourceId:r", "$sourceId:l")
+		if (ids.any { it in tracked }) return true
+		if (edits.keyformSetEdits.any { it.target.id in ids } ||
+			edits.keyformDeleteEdits.any { it.target.id in ids } ||
+			edits.keyformCopyEdits.any { it.sourceTarget.id in ids || it.destinationTarget.id in ids } ||
+			edits.warpEdits.any { warp -> warp.meshIds.any { it in ids } }) return true
+		return ids.any { id ->
+			// A command's text holds "<id>" exactly when some quote is followed by the id and the next quote, so an id
+			// without quotes of its own is among the texts between adjacent quotes.
+			if ('"' !in id) id in quoted else commands.any { it.toString().contains("\"$id\"") }
+		}
+	}
+
+	private companion object {
+		private val cache = io.github.psd2live.project.IdentityWeakCache<kotlinx.serialization.json.JsonObject, Set<String>>()
+
+		fun quotedComponents(command: kotlinx.serialization.json.JsonObject): Set<String> = cache.getOrPut(command) {
+			val text = command.toString()
+			val found = HashSet<String>()
+			var open = text.indexOf('"')
+			while (open >= 0) {
+				val close = text.indexOf('"', open + 1)
+				if (close < 0) break
+				if (close - open > 2 && text[close - 2] == ':' && (text[close - 1] == 'r' || text[close - 1] == 'l')) found += text.substring(open + 1, close)
+				open = close
+			}
+			found
+		}
+	}
 }
