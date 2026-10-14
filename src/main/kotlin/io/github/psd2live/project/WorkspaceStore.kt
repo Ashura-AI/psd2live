@@ -37,6 +37,7 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import java.lang.ref.SoftReference
 import org.umamo.format.art.ChannelMask
 import org.umamo.format.art.LayerBlend
 import org.umamo.format.art.LayerBounds
@@ -152,7 +153,7 @@ internal class WorkspaceStore(
 			if (node.snapshotHash !in snapshots) snapshots[node.snapshotHash] = expandSnapshot(project, readJson(snapshotFile), shared)
 		}
 		val rasters = HashMap(loadRasters(project, snapshots.values))
-		val documents = snapshots.mapValues { (_, snapshot) -> decodeDocument(snapshot, project, rasters) }
+		val documents = snapshots.mapValues { (_, snapshot) -> decodeDocument(snapshot, project, rasters, shared.bakeResults) }
 		val selections = nodes.map { node -> WorkspaceHistorySelection(node, documents.getValue(node.snapshotHash)) }
 		val order = headDocument["nodeOrder"]?.jsonArray?.map { it.jsonPrimitive.content }
         val ordered = if (order != null) {
@@ -547,7 +548,7 @@ internal class WorkspaceStore(
             putJsonArray("swings") { document.rigEdits.swingEdits.forEach { add(it.toJson()) } }
             putJsonArray("motions") { document.rigEdits.motionClips.forEach { add(io.github.psd2live.core.MotionClips.toJson(it)) } }
             if (document.rigEdits.motionPresets.isNotEmpty()) put("motionPresets", io.github.psd2live.core.MotionPresets.toJson(document.rigEdits.motionPresets))
-            if (document.rigEdits.simEdits.isNotEmpty()) putJsonArray("simulations") { document.rigEdits.simEdits.forEach { add(it.toJson()) } }
+            if (document.rigEdits.simEdits.isNotEmpty()) putJsonArray("simulations") { document.rigEdits.simEdits.forEach { add(encodeSimulation(it)) } }
 			putJsonArray("parameters") {
 				document.rigEdits.parameterEdits.forEach { edit ->
 					add(buildJsonObject {
@@ -650,6 +651,7 @@ internal class WorkspaceStore(
 		value: JsonObject,
 		project: Path,
 		rasterCache: MutableMap<String, ByteArray> = mutableMapOf(),
+		bakes: MutableMap<JsonObject, io.github.psd2live.core.sim.SimBakeResult> = java.util.IdentityHashMap(),
 	): WorkspaceDocument {
 		val source = decodeSource(value, project, rasterCache)
 		val overrides = value.optionalObject("layerOverrides").mapValues { (_, element) ->
@@ -687,7 +689,7 @@ internal class WorkspaceStore(
             swingEdits = rigEditObject.optionalArray("swings").map { io.github.psd2live.core.RigSwingEdit.fromJson(it.jsonObject) },
             motionClips = rigEditObject.optionalArray("motions").map { io.github.psd2live.core.MotionClips.fromJson(it.jsonObject) },
             motionPresets = io.github.psd2live.core.MotionPresets.fromJson(rigEditObject["motionPresets"]?.jsonObject),
-            simEdits = rigEditObject.optionalArray("simulations").map { io.github.psd2live.core.sim.RigSimEdit.fromJson(it.jsonObject) },
+            simEdits = rigEditObject.optionalArray("simulations").map { decodeSimulation(it.jsonObject, bakes) },
 			parameterEdits = rigEditObject.optionalArray("parameters").map { element ->
 				val edit = element.jsonObject
 				RigParameterEdit(
@@ -1147,6 +1149,22 @@ internal class WorkspaceStore(
 		writeAtomic(path, bytes, replace = false)
 	}
 
+	/** [edit] as stored; a bake already written keeps its JSON object, so sharing it finds the file it made. */
+	private fun encodeSimulation(edit: io.github.psd2live.core.sim.RigSimEdit): JsonObject {
+		val bake = edit.bake ?: return edit.toJson()
+		// The bake is the edit's last field.
+		return JsonObject(edit.copy(bake = null).toJson() + ("bake" to storedBakeJson(bake)))
+	}
+
+	/** [value] as an edit; revisions loaded together hold one bake object per bake ([bakes], by JSON object). */
+	private fun decodeSimulation(value: JsonObject, bakes: MutableMap<JsonObject, io.github.psd2live.core.sim.SimBakeResult>): io.github.psd2live.core.sim.RigSimEdit {
+		val bake = value["bake"] as? JsonObject ?: return io.github.psd2live.core.sim.RigSimEdit.fromJson(value)
+		val edit = io.github.psd2live.core.sim.RigSimEdit.fromJson(JsonObject(value - "bake"))
+		// Saving the bake again writes the JSON it was read from.
+		val result = bakes.getOrPut(bake) { io.github.psd2live.core.sim.SimBakeResult.fromJson(bake).also { bakeJson.put(it, SoftReference(bake)) } }
+		return edit.copy(bake = result)
+	}
+
 	/** [WorkspaceStore.shareContent] into [project], writing each shared file this store does not have yet. */
 	private fun shareContent(value: JsonObject, project: Path): JsonObject = shareContent(value) { relative, bytes ->
 		val path = project.resolve(relative)
@@ -1207,6 +1225,11 @@ internal class WorkspaceStore(
 	internal class SharedContent {
 		val chunks = HashMap<String, List<JsonObject>>()
 		val payloads = HashMap<String, String>()
+		val bakes = HashMap<String, JsonObject>()
+		/** One object per distinct bake written inline, as snapshots from before bakes were shared hold them. */
+		val inlineBakes = HashMap<JsonObject, JsonObject>()
+		/** Each bake object's decoded result, so revisions with one bake share it. */
+		val bakeResults = java.util.IdentityHashMap<JsonObject, io.github.psd2live.core.sim.SimBakeResult>()
 		/**
 		 * One object per distinct entry: a journal's last chunk ends at its end, so a revision and the next one
 		 * hold the same trailing entries in different chunks.
@@ -1218,6 +1241,9 @@ internal class WorkspaceStore(
 		const val STORE_VERSION = 1
 		private const val JOURNAL = "authoringJournal"
 		private const val IMPORTED_CMO3 = "importedCmo3"
+		private const val SIMULATIONS = "simulations"
+		/** Key of a simulation's bake stored as a shared file: `{"$BAKE_REF": "<sha256>"}`. */
+		internal const val BAKE_REF = "\$bake"
 		private const val TEXTURE_OVERRIDES = "textureOverrides"
 		/** Embedded CMO3 baselines at least this long are stored once as a payload. */
 		private const val PAYLOAD_MIN_CHARS = 64 * 1024
@@ -1228,6 +1254,66 @@ internal class WorkspaceStore(
 		/** Replacing a file retries for about half a second in all before the refusal is reported. */
 		private const val REPLACE_ATTEMPTS = 10
 		private val payloadDigests = IdentityWeakCache<String, String>()
+		/** Each bake's packed bytes and their hash, by the identity of its JSON object. */
+		private val packedBakes = IdentityWeakCache<JsonObject, Pair<String, ByteArray>>()
+		/** Each bake's JSON as last stored, while memory allows, so encoding a commit does not write its numbers out again. */
+		private val bakeJson = IdentityWeakCache<io.github.psd2live.core.sim.SimBakeResult, SoftReference<JsonObject>>()
+
+		private fun storedBakeJson(bake: io.github.psd2live.core.sim.SimBakeResult): JsonObject =
+			bakeJson.getOrPut(bake) { SoftReference(bake.toJson()) }.get() ?: bake.toJson().also { bakeJson.put(bake, SoftReference(it)) }
+
+		/** [bake] packed ([PackedJson]) with the SHA-256 of those bytes, its file name. */
+		internal fun packedBake(bake: JsonObject): Pair<String, ByteArray> = packedBakes.getOrPut(bake) {
+			val bytes = PackedJson.encode(bake)
+			WorkspaceRevisions.sha256(bytes) to bytes
+		}
+
+		/** The bake a packed file holds, checked against its [hash]. */
+		internal fun unpackBake(hash: String, bytes: ByteArray): JsonObject {
+			require(WorkspaceRevisions.sha256(bytes) == hash) { "Bake checksum mismatch: $hash" }
+			return PackedJson.decode(bytes).jsonObject
+		}
+
+		/** [simulations] with each bake replaced by `{"$BAKE_REF": hash}`, [write] given each bake's hash and bytes. */
+		internal fun shareBakes(simulations: JsonArray, write: (String, ByteArray) -> Unit): JsonArray {
+			var changed = false
+			val shared = simulations.map { simulation ->
+				val bake = (simulation as? JsonObject)?.get("bake") as? JsonObject
+				if (bake == null || isBakeReference(bake)) simulation
+				else {
+					val (hash, bytes) = packedBake(bake)
+					write(hash, bytes)
+					changed = true
+					JsonObject(simulation.jsonObject + ("bake" to buildJsonObject { put(BAKE_REF, hash) }))
+				}
+			}
+			return if (changed) JsonArray(shared) else simulations
+		}
+
+		/**
+		 * [simulations] with each bake reference replaced by the bake [read] gives for its hash, and each bake written
+		 * inline by the one equal object [inline] holds.
+		 */
+		internal fun resolveBakes(simulations: JsonArray, inline: MutableMap<JsonObject, JsonObject>? = null, read: (String) -> JsonObject): JsonArray {
+			var changed = false
+			val resolved = simulations.map { simulation ->
+				val bake = (simulation as? JsonObject)?.get("bake") as? JsonObject
+				val reference = bake?.takeIf(::isBakeReference)
+				if (bake == null) simulation
+				else if (reference == null) {
+					val shared = inline?.getOrPut(bake) { bake } ?: bake
+					if (shared !== bake) { changed = true; JsonObject(simulation.jsonObject + ("bake" to shared)) } else simulation
+				} else {
+					val hash = reference.getValue(BAKE_REF).jsonPrimitive.content
+					require(hash.matches(Regex("[0-9a-f]{64}"))) { "Invalid bake reference" }
+					changed = true
+					JsonObject(simulation.jsonObject + ("bake" to read(hash)))
+				}
+			}
+			return if (changed) JsonArray(resolved) else simulations
+		}
+
+		internal fun isBakeReference(value: JsonObject) = value.size == 1 && BAKE_REF in value
 
 		/**
 		 * Content-defined chunks of [journal]: a chunk closes after an entry chosen by its own digest, so appending
@@ -1282,6 +1368,10 @@ internal class WorkspaceStore(
 				write("history/payloads/$hash.txt") { text.encodeToByteArray() }
 				changes[IMPORTED_CMO3] = buildJsonObject { put("payload", hash) }
 			}
+			(rig[SIMULATIONS] as? JsonArray)?.let { simulations ->
+				val shared = shareBakes(simulations) { hash, bytes -> write("history/bakes/$hash.bin") { bytes } }
+				if (shared !== simulations) changes[SIMULATIONS] = shared
+			}
 			if (changes.isEmpty()) return value
 			return JsonObject(value + ("rigEdits" to JsonObject(rig + changes)))
 		}
@@ -1315,6 +1405,16 @@ internal class WorkspaceStore(
 					require(WorkspaceRevisions.sha256(bytes) == hash) { "Payload checksum mismatch: $hash" }
 					bytes.decodeToString()
 				})
+			}
+			(rig[SIMULATIONS] as? JsonArray)?.let { simulations ->
+				val resolved = resolveBakes(simulations, shared.inlineBakes) { hash ->
+					shared.bakes.getOrPut(hash) {
+						val file = project.resolve("history/bakes/$hash.bin")
+						require(Files.isRegularFile(file)) { "Bake is missing: $hash" }
+						unpackBake(hash, Files.readAllBytes(file))
+					}
+				}
+				if (resolved !== simulations) changes[SIMULATIONS] = resolved
 			}
 			if (changes.isEmpty()) return snapshot
 			return JsonObject(snapshot + ("rigEdits" to JsonObject(rig + changes)))
@@ -1399,7 +1499,7 @@ internal class WorkspaceStore(
 		}
 
 		/** Working-store folders holding content shared by snapshots; [expandSnapshot] reads them. */
-		internal val sharedContentFolders = listOf("history/journal", "history/payloads")
+		internal val sharedContentFolders = listOf("history/journal", "history/payloads", "history/bakes")
 
 		fun defaultRoot(): Path {
 			System.getProperty("psd2live.agent.store")?.takeIf(String::isNotBlank)?.let { return Path.of(it) }

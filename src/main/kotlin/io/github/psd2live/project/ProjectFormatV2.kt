@@ -22,6 +22,7 @@ import java.security.MessageDigest
  * | `document/nodes/payload/<sha256>.json` | large journal entries a schema-2 revision lists under `payloads` |
  * | `document/overrides/<sha256>.json` | generator overrides with their place in the journal |
  * | `document/clips/<sha256>.json` | motion clips and generated-motion settings |
+ * | `document/bakes/<sha256>.bin` | simulation bakes ([PackedJson]) a schema-4 revision lists under `bakes` |
  * | `assets/` | deduplicated rasters (PNG) |
  * | `auxiliary/` | staged assets, views, workflow records and tasks |
  *
@@ -50,6 +51,12 @@ internal object ProjectFormatV2 {
 	 * the archive holds in `rig/objects/`. Readers of schema 1-2 cannot build it and must refuse it.
 	 */
 	const val REVISION_SCHEMA_RIG = 3
+	/**
+	 * A revision with baked simulations: each bake is a [PackedJson] file under [BAKES], the rig node names it as
+	 * `{"$bake": "<sha256>"}` and the index lists it under `bakes`. It may name payloads and rig objects too.
+	 */
+	const val REVISION_SCHEMA_BAKES = 4
+	const val BAKES = "document/bakes"
 	/** Where an archive keeps rig objects ([io.github.psd2live.core.RigObjects]); the working store keeps them in [WORKING_RIG_OBJECTS]. */
 	const val RIG_OBJECTS = "rig/objects"
 	const val WORKING_RIG_OBJECTS = "rig-objects"
@@ -75,6 +82,7 @@ internal object ProjectFormatV2 {
 	private val layoutParts = mapOf(WorkspaceLayoutCodec.LAYOUT to "layout", WorkspaceLayoutCodec.MATERIALS to "materials")
 	private val clipKeys = listOf("motions", "motionPresets")
 	private const val JOURNAL = "authoringJournal"
+	private const val SIMULATIONS = "simulations"
 	private const val OVERRIDE = "generated_override"
 	private val auxiliaryFolders = listOf("assets", "views", "view-images", "workflow")
 
@@ -147,8 +155,15 @@ internal object ProjectFormatV2 {
 		var clips: String? = null
 		val payloads = LinkedHashSet<String>()
 		for ((kind, value) in plainParts(snapshot)) nodes[kind] = node(root, kind, value)
+		val bakes = LinkedHashSet<String>()
 		snapshot["rigEdits"]?.jsonObject?.let { rig ->
-			nodes["rig"] = node(root, "rig", JsonObject(mapOf("rigEdits" to JsonObject(rig.filterKeys { it != JOURNAL && it !in clipKeys }))))
+			val definitions = LinkedHashMap(rig.filterKeys { it != JOURNAL && it !in clipKeys })
+			(definitions[SIMULATIONS] as? JsonArray)?.let { simulations ->
+				definitions[SIMULATIONS] = WorkspaceStore.shareBakes(simulations) { hash, bytes ->
+					if (bakes.add(hash)) root.resolve(BAKES).resolve("$hash.bin").let { if (!Files.exists(it)) write(it, bytes) }
+				}
+			}
+			nodes["rig"] = node(root, "rig", JsonObject(mapOf("rigEdits" to JsonObject(definitions))))
 			rig[JOURNAL]?.jsonArray?.let { journal ->
 				val (generated, authored) = journal.withIndex().partition { (_, command) ->
 					(command as? JsonObject)?.get("op")?.jsonPrimitive?.contentOrNull == OVERRIDE
@@ -172,12 +187,18 @@ internal object ProjectFormatV2 {
 		val rigObjects = io.github.psd2live.core.RigCheckpoint.hashes(snapshot["rigEdits"]?.jsonObject?.get(JOURNAL)?.jsonArray.orEmpty()
 			.mapNotNull { it as? JsonObject }).distinct()
 		return buildJsonObject {
-			put("schema", when { rigObjects.isNotEmpty() -> REVISION_SCHEMA_RIG; payloads.isEmpty() -> REVISION_SCHEMA; else -> REVISION_SCHEMA_PAYLOADS })
+			put("schema", when {
+				bakes.isNotEmpty() -> REVISION_SCHEMA_BAKES
+				rigObjects.isNotEmpty() -> REVISION_SCHEMA_RIG
+				payloads.isEmpty() -> REVISION_SCHEMA
+				else -> REVISION_SCHEMA_PAYLOADS
+			})
 			put("nodes", JsonObject(nodes.mapValues { JsonPrimitive(it.value) }))
 			overrides?.let { put("overrides", it) }
 			clips?.let { put("clips", it) }
 			if (payloads.isNotEmpty()) putJsonArray("payloads") { payloads.forEach { add(JsonPrimitive(it)) } }
 			if (rigObjects.isNotEmpty()) putJsonArray("rig") { rigObjects.forEach { add(JsonPrimitive(it)) } }
+			if (bakes.isNotEmpty()) putJsonArray("bakes") { bakes.forEach { add(JsonPrimitive(it)) } }
 		}
 	}
 
@@ -242,16 +263,20 @@ internal object ProjectFormatV2 {
 	/** The snapshot a revision [index] names, read from the nodes under [root]. */
 	internal fun join(root: Path, index: JsonObject, cache: MutableMap<String, JsonObject> = HashMap()): JsonObject {
 		val schema = index["schema"]?.jsonPrimitive?.intOrNull
-		require(schema in REVISION_SCHEMA..REVISION_SCHEMA_RIG) { "Unsupported revision schema" }
+		require(schema in REVISION_SCHEMA..REVISION_SCHEMA_BAKES) { "Unsupported revision schema" }
 		val nodes = index.getValue("nodes").jsonObject.mapValues { it.value.jsonPrimitive.content }
 		val unknown = nodes.keys - (listOf("source", "layers", "settings", "rig", "journal", "document") + sourceParts.values + layoutParts.values).toSet()
 		require(unknown.isEmpty()) { "Unsupported document nodes: $unknown" }
 		val payloads = index["payloads"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty()
-		require(if (schema == REVISION_SCHEMA_RIG) true else (schema == REVISION_SCHEMA_PAYLOADS) == payloads.isNotEmpty()) {
+		require(if (schema!! >= REVISION_SCHEMA_RIG) true else (schema == REVISION_SCHEMA_PAYLOADS) == payloads.isNotEmpty()) {
 			"Payloads need revision schema $REVISION_SCHEMA_PAYLOADS"
 		}
 		val rigObjects = index["rig"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
-		require((schema == REVISION_SCHEMA_RIG) == rigObjects.isNotEmpty()) { "Rig objects need revision schema $REVISION_SCHEMA_RIG" }
+		require(if (schema == REVISION_SCHEMA_BAKES) true else (schema == REVISION_SCHEMA_RIG) == rigObjects.isNotEmpty()) {
+			"Rig objects need revision schema $REVISION_SCHEMA_RIG"
+		}
+		val bakes = index["bakes"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty()
+		require((schema == REVISION_SCHEMA_BAKES) == bakes.isNotEmpty()) { "Bakes need revision schema $REVISION_SCHEMA_BAKES" }
 		for (hash in rigObjects) {
 			require(hash.matches(Regex("[0-9a-f]{64}"))) { "Invalid rig object name" }
 			require(Files.isRegularFile(root.resolve(RIG_OBJECTS).resolve("$hash.bin"))) { "The archive lacks rig object $hash" }
@@ -284,6 +309,16 @@ internal object ProjectFormatV2 {
 		val rig = value("rig")?.getValue("rigEdits")?.jsonObject
 		if (rig != null) {
 			val edits = LinkedHashMap<String, JsonElement>(rig)
+			(rig[SIMULATIONS] as? JsonArray)?.let { simulations ->
+				edits[SIMULATIONS] = WorkspaceStore.resolveBakes(simulations) { hash ->
+					require(hash in bakes) { "Rig names a bake its revision does not list: $hash" }
+					cache.getOrPut("$BAKES/$hash") {
+						val path = root.resolve(BAKES).resolve("$hash.bin")
+						require(Files.isRegularFile(path)) { "Bake is missing: $hash" }
+						WorkspaceStore.unpackBake(hash, Files.readAllBytes(path))
+					}
+				}
+			}
 			val authored = value("journal")?.getValue("entries")?.jsonArray?.let { entries ->
 				if (payloads.isEmpty()) entries else JsonArray(entries.map(::resolve))
 			}
