@@ -136,6 +136,12 @@ private fun DrawScope.checker(cell: Float) {
 	}
 }
 
+/** Where the panel's first entry and the generation button sit, in root pixels, for the window tools that drive them. */
+internal object MaterialsPanelProbe {
+	@Volatile var firstEntry: androidx.compose.ui.geometry.Rect? = null
+	@Volatile var generateButton: androidx.compose.ui.geometry.Rect? = null
+}
+
 private enum class MaterialView { GRID, LIST }
 
 /** What a material panel row or tile stands for. */
@@ -262,7 +268,7 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 					MaterialView.GRID -> LazyVerticalGrid(GridCells.Adaptive(thumb.dp + 8.dp), Modifier.fillMaxSize().padding(4.dp)) {
 						items(shown, key = { it.id }) { entry ->
 							MaterialTile(entry, thumb.dp, entry.id == selected, references[entry.id].orEmpty().size, vm,
-								{ selected = entry.id }, { open(entry) }, { selected = entry.id; menu = entry.id })
+								{ selected = entry.id }, { open(entry) }, { selected = entry.id; menu = entry.id }, first = entry == shown.first())
 						}
 					}
 					MaterialView.LIST -> LazyColumn(Modifier.fillMaxSize()) {
@@ -390,13 +396,16 @@ private fun Modifier.materialGestures(entry: MaterialEntry, vm: PSD2LiveViewMode
 
 @Composable
 private fun MaterialTile(entry: MaterialEntry, size: Dp, selected: Boolean, references: Int, vm: PSD2LiveViewModel,
-                         onSelect: () -> Unit, onOpen: () -> Unit, onMenu: () -> Unit) {
+                         onSelect: () -> Unit, onOpen: () -> Unit, onMenu: () -> Unit, first: Boolean = false) {
 	val colors = LocalToolColors.current
 	var origin by remember { mutableStateOf(Offset.Zero) }
 	val px = with(androidx.compose.ui.platform.LocalDensity.current) { size.roundToPx() }
 	Column(Modifier.padding(3.dp).clip(RoundedCornerShape(4.dp)).background(if (selected) colors.selection else Color.Transparent)
 		.border(0.5.dp, if (selected) colors.accent.copy(alpha = 0.6f) else Color.Transparent, RoundedCornerShape(4.dp))
-		.onGloballyPositioned { origin = it.positionInRoot() }
+		.onGloballyPositioned {
+			origin = it.positionInRoot()
+			if (first) MaterialsPanelProbe.firstEntry = androidx.compose.ui.geometry.Rect(origin, androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat()))
+		}
 		.materialGestures(entry, vm, onSelect, onOpen, onMenu) { origin }
 		.padding(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
 		Box(Modifier.size(size)) {

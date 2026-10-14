@@ -17,6 +17,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -102,7 +104,7 @@ internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: (
 			}
 			Text(status, color = colors.textMuted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 6.dp))
 			BarDivider()
-			Box {
+			Box(Modifier.onGloballyPositioned { MaterialsPanelProbe.generateButton = it.boundsInRoot() }) {
 				AccentSplitButton(
 					label = if (generation.generated) tr("layout.generate.again") else tr("layout.generate"),
 					icon = { tint -> io.github.psd2live.ui.components.IconPlay(androidx.compose.ui.Modifier.size(11.dp), tint) },
