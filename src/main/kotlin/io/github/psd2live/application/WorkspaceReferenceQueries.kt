@@ -145,7 +145,8 @@ internal object WorkspaceReferenceQueries {
     /**
      * The area of the reference around `seed` whose colours lie within `tolerance` (Lab distance) of the seed's - or,
      * with compare neighbor, of the neighbour it grew from, so it follows soft shading up to the lines - as its outer
-     * outline: the polygon simplified to `simplify` canvas units and a smooth closed SVG path through it.
+     * outline: the polygon simplified to `simplify` canvas units and a smooth closed SVG path through it. `holes` asks
+     * for the outlines of that many of the largest holes too - traced from the background, the figure's silhouette.
      */
     fun trace(state: WorkspaceLayoutState, request: JsonObject): JsonObject {
         val reference = reference(state)
@@ -154,6 +155,8 @@ internal object WorkspaceReferenceQueries {
         require(tolerance in 0.0..100.0) { "tolerance is a Lab distance 0..100" }
         val neighbor = request["compare"]?.jsonPrimitive?.content == "neighbor"
         val simplify = request["simplify"]?.jsonPrimitive?.double ?: 0.6
+        val wantHoles = request["holes"]?.jsonPrimitive?.int ?: 0
+        require(wantHoles in 0..16) { "holes is 0..16" }
         require(simplify in 0.0..64.0) { "simplify is 0..64 canvas units" }
         val w = reference.raster.width; val h = reference.raster.height
         val su = floor(reference.u(x)).toInt(); val sv = floor(reference.v(y)).toInt()
@@ -195,6 +198,16 @@ internal object WorkspaceReferenceQueries {
             put("touches_edge", outer.any { (u, v) -> u == 0 || v == 0 || u == w || v == h })
             putJsonArray("polygon") { polygon.forEach { p -> addJsonArray { add(round(p[0])); add(round(p[1])) } } }
             put("path", smoothPath(polygon))
+            if (wantHoles > 0) putJsonArray("hole_outlines") {
+                loops.filter { area(it) < 0 }.sortedBy { area(it) }.take(wantHoles).forEach { loop ->
+                    val hole = simplified(loop.map { (u, v) -> doubleArrayOf(reference.x(u.toDouble()), reference.y(v.toDouble())) }, simplify)
+                    addJsonObject {
+                        put("area", round(-area(loop) / (reference.sx * reference.sy)))
+                        putJsonArray("polygon") { hole.forEach { p -> addJsonArray { add(round(p[0])); add(round(p[1])) } } }
+                        put("path", smoothPath(hole))
+                    }
+                }
+            }
         }
     }
 

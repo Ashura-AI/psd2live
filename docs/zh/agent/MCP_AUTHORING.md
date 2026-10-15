@@ -503,7 +503,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的分层图片（没有时取纹理页）、SVG（按自身尺寸栅格化）或文件夹（保留嵌套结构，子文件夹成为素材文件夹，跳过隐藏项），作为一个历史节点加入素材库；每张图不超过 16MP |
 | `material_add` | `state`、`staging`，可选 `folder_id` | `material_import` 读取后实际提交的成员；`staging` 为进程内暂存的内容摘要，一般不直接调用 |
 | `material_list` | 可选 `folder_id`、`recursive`、`query`、`kind`、`unused`、`offset`、`limit`（≤256） | 列出文件夹与条目；`query` 匹配名称和标签（含文件夹标签），`references` 为使用它的图层数；读自 PSD / CMO3 的文件夹带 `origin` 文件名 |
-| `material_get` | `id` | 条目或文件夹详情；条目返回使用它的 `layers`，SVG 另有 `vector_size` |
+| `material_get` | `id`，可选 `include_svg` | 条目或文件夹详情；条目返回使用它的 `layers`，SVG 另有 `vector_size`，`include_svg` 时附存储的 SVG 原文 |
 | `material_preview` | `id`，可选 `size`（16–4096，默认 512） | 返回条目或文件夹合成的 PNG 图像 |
 | `material_folder_create` | `state`、`name`，可选 `parent_id`、`id` | 新建文件夹；`id` 供同批后项引用 |
 | `material_move` / `material_rename` | `ids` + `folder_id`（null 为顶层）/ `id` + `name` | 整理；文件夹不能移入自身 |
@@ -518,10 +518,10 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `material_export_png` | `state`、`id`、`path`（绝对 `.png`） | 后台把条目自身像素原样写成 PNG（不缩放），例如把参考图特写交给外部工具画成更清晰的部件 |
 | `layout_set_reference` | `state`，可选 `material_id`（null 清除）、`rect`、`opacity`（0–1，默认 0.5）、`visible` | 参考图：把条目叠在画布上用于摆放与对照。它不是图层，生成、导出与 Rig 都看不到它；新设时不给 `rect` 则等比放大或缩小到画布内并居中，省略的字段保持原值；`material_list` 返回当前参考图 |
 | `material_crop` | `state`、`id`，`rect`（条目像素）或 `canvas_rect`（画布单位，条目须为参考图或按本画布摆放），可选 `name`、`new_id`、`folder_id` | 无损裁出新条目，新条目记住这些像素在画布上的位置，`layer_place` 不给 `rect` 时正好落回参考图上；保留标签与文件夹 |
-| `material_draw` | `state`、`id`，可选 `svg`、`density`（0.05–16，每画布单位的纹理像素）、`name`、`folder_id` | 以矢量画一个部件或重画：`id` 空闲时新建。SVG 的 `viewBox` 就是部件在画布上的位置（画布单位），路径直接写画布坐标；按 `density` 渲染（省略时沿用条目当前密度，新条目为 1；单边 ≤4096 像素）。除 Skia 能渲染的内容（路径、渐变、裁剪、蒙版、`feGaussianBlur` 等滤镜、不透明度）外，还支持 `<style>` 中的元素、`#id`、`.class` 规则，`var(--name)` 取绘制套件的颜色，路径上的 `data-taper`（从头到尾均匀分布的宽度系数，如 `"0.1 1 0.2"`）把描边变成两头收细的填充线条；混合模式与自定义 CSS 变量不渲染。使用它的图层随之替换像素，原先摆在旧位置的移到新 `viewBox`；不给 `svg` 时按新 `density` 重新渲染 |
+| `material_draw` | `state`、`id`，可选 `svg`、`edits`、`density`（0.05–16，每画布单位的纹理像素）、`name`、`folder_id` | 以矢量画一个部件或重画：`id` 空闲时新建。SVG 的 `viewBox` 就是部件在画布上的位置（画布单位），路径直接写画布坐标；按 `density` 渲染（省略时沿用条目当前密度，新条目为 1；单边 ≤4096 像素）。除 Skia 能渲染的内容（路径、渐变、裁剪、蒙版、`feGaussianBlur` 等滤镜、不透明度）外，还支持 `<style>` 中的元素、`#id`、`.class` 规则，`var(--name)` 取绘制套件的颜色，路径上的 `data-taper`（从头到尾均匀分布的宽度系数，如 `"0.1 1 0.2"`）把描边变成两头收细的填充线条；混合模式与自定义 CSS 变量不渲染。使用它的图层随之替换像素，原先摆在旧位置的移到新 `viewBox`；`edits` 按元素 `id` 局部修改当前绘制（或同时给出的 `svg`）：`set` 设置属性，null 删除属性，`text` 替换 `<style>` 的文本，例如只改一条路径的 `d` 或一个颜色；不给 `svg` 和 `edits` 时按新 `density` 重新渲染 |
 | `layout_set_drawing_kit` | `state`，可选 `colors`（名称 → `#rgb`/`#rrggbb`，合并，null 删除）、`styles`（类规则样式表）、`defs`（SVG 定义：渐变、滤镜） | 所有绘制共用的颜色、类规则与定义；`styles`、`defs` 整体替换，绘制自身同名的规则与 id 优先。所有矢量条目按原分辨率重新渲染，变化的同步到图层；会让某个绘制缺少颜色时拒绝 |
 | `reference_sample` | `points`（≤256 个 [x, y]）、`radius`（画布单位，取均值）、`rect`、`colors`（1–16，默认 6）至少给一项 | 读参考图颜色：各点的颜色与 alpha；`rect` 内不透明像素的主色（按明度从暗到亮，附占比），用来定套件颜色 |
-| `reference_trace` | `seed`（[x, y]），可选 `tolerance`（Lab 距离，默认 12）、`compare`（`seed`/`neighbor`）、`simplify`（画布单位，默认 0.6） | 魔棒：从种子扩展到与种子颜色（`neighbor` 为与相邻像素，可越过柔和的阴影直到线条）相近的不透明像素，返回外轮廓的简化多边形 `polygon` 与经过它的平滑闭合路径 `path`（画布坐标，可直接作绘制的起稿），以及面积、包围盒、平均色、内部孔洞数；`touches_edge` 表示漫到了参考图边缘 |
+| `reference_trace` | `seed`（[x, y]），可选 `tolerance`（Lab 距离，默认 12）、`compare`（`seed`/`neighbor`）、`simplify`（画布单位，默认 0.6） | 魔棒：从种子扩展到与种子颜色（`neighbor` 为与相邻像素，可越过柔和的阴影直到线条）相近的不透明像素，返回外轮廓的简化多边形 `polygon` 与经过它的平滑闭合路径 `path`（画布坐标，可直接作绘制的起稿），以及面积、包围盒、平均色、内部孔洞数；`touches_edge` 表示漫到了参考图边缘；`holes`（0–16）另返回最大的若干个孔洞轮廓 `hole_outlines`——从背景取时即人物剪影（人物碰到图像边缘时剪影在外轮廓里） |
 | `reference_snap` | `points`（1–256），可选 `radius`（画布单位，默认 4） | 把点吸到 `radius` 内最近一条线的中心（取明显比周围暗的像素中最近的，再取其附近最暗处）；附近没有线条的点保持不动、`snapped` 为 false |
 | `layer_place` | `state`、`material_id`，可选 `rect`（单个条目）、`at`（[x, y] 中心）、`layer_id`（单个条目的新图层 ID） | 放置条目或整个文件夹为新源图层，画在已有图层之上；默认 PSD 位置（PSD 画布居中映射到工程画布，超出时等比缩小，尺寸相同时原位），否则 1 素材像素 = 1 画布单位并缩入画布；像素不重采样 |
 | `layer_tag` | `state`、`layer_ids`（1–128），`set` 或 `add`/`remove` | 语义标签：部位词与 `left/right` 决定分类（如 `{hair, front}`、`{eye, iris, left}`），其余为用户标签；已生成图层的分类变化等待 `rig_generate` |

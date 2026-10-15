@@ -77,7 +77,11 @@ internal object WorkspaceLayoutOperations {
         WorkspaceDrawingEdits.DRAW to schema(state + mapOf("id" to string(),
             "svg" to buildJsonObject { put("type", "string"); put("minLength", 1); put("maxLength", WorkspaceVectorDrawing.MAX_LENGTH) },
             "density" to buildJsonObject { put("type", "number"); put("minimum", WorkspaceDrawingEdits.MIN_DENSITY); put("maximum", WorkspaceDrawingEdits.MAX_DENSITY) },
-            "name" to string(), "folder_id" to nullableString()), listOf("state", "id")),
+            "name" to string(), "folder_id" to nullableString(),
+            "edits" to buildJsonObject { put("type", "array"); put("minItems", 1); put("maxItems", 256)
+                put("items", schema(mapOf("id" to string(), "set" to buildJsonObject { put("type", "object"); put("minProperties", 1)
+                    put("additionalProperties", buildJsonObject { put("oneOf", buildJsonArray {
+                        add(buildJsonObject { put("type", "string") }); add(buildJsonObject { put("type", "null") }) }) }) }), listOf("id", "set"))) }), listOf("state", "id")),
         WorkspaceDrawingEdits.KIT to schema(state + mapOf(
             "colors" to buildJsonObject { put("type", "object")
                 put("additionalProperties", buildJsonObject {
@@ -123,7 +127,8 @@ internal object WorkspaceLayoutOperations {
             "Besides what SVG renders (paths, gradients, clip paths, masks, feGaussianBlur and other filters, opacity), drawings take <style> rules with element, #id and .class selectors, " +
             "var(--name) for a colour of the drawing kit (layout_set_drawing_kit) and data-taper on a path: width factors spread from start to end (\"0.1 1 0.2\"), which turn its stroke into a filled line thinning in and out. " +
             "Blend modes and CSS custom properties of your own do not render. Layers showing the item take the new pixels, and those over its old place move to the new viewBox. " +
-            "Without svg the item renders again at density. name and folder_id name and file it. One history edit; the changed list names the item (material:<id>).",
+            "edits changes the current drawing (or the given svg) in place: each names an element by id and sets attributes, null removing one, text replacing a <style>'s text - a path's d, a colour. " +
+            "material_get with include_svg reads the drawing back. Without svg or edits the item renders again at density. name and folder_id name and file it. One history edit; the changed list names the item (material:<id>).",
         WorkspaceDrawingEdits.KIT to "Set what every drawing shares (material_draw): colors names #rgb or #rrggbb colours for var(--name) and merges into the kit (null removes one), styles is a style sheet of class rules " +
             "(.line { stroke: var(--line) }) and defs SVG definitions (gradients, filters with ids) every drawing can use; both replace the kit's. A drawing's own rules and ids win. " +
             "Every vector material renders again with the new kit at its resolution and layers showing one that changed take its pixels; refused when a drawing would use a colour the kit no longer has. One history edit.",
@@ -174,7 +179,7 @@ internal object WorkspaceLayoutOperations {
         s.obj(mapOf("type" to s.choices("item", "folder"), "id" to s.handle(), "name" to s.string(), "folder_id" to s.handle(),
             "parent_id" to s.handle(), "kind" to s.choices("bitmap", "vector"), "width" to s.integer(1), "height" to s.integer(1),
             "tags" to s.array(s.string()), "origin" to s.string(), "placement" to s.vector(4), "references" to s.integer(0),
-            "layers" to s.array(s.handle()), "folder_path" to s.array(s.string()), "vector_size" to s.array(s.integer(1), 2, 2),
+            "layers" to s.array(s.handle()), "folder_path" to s.array(s.string()), "vector_size" to s.array(s.integer(1), 2, 2), "svg" to s.string(),
             "folders" to s.integer(0), "items" to s.integer(0)), setOf("type", "id", "name", "tags", "folder_path"))
     }
     val previewSchema: JsonObject by lazy {
@@ -250,11 +255,12 @@ internal fun registerLayoutOperations(registry: WorkspaceOperationRegistry, port
         WorkspaceOperationOutput(WorkspaceMaterialQueries.list(state, request))
     }
     registry.register(WorkspaceOperationDefinition(WorkspaceLayoutOperations.GET,
-        "One material item or folder: its size, tags, origin, default placement, and the layers that show it.",
-        WorkspaceLayoutOperations.schema(mapOf("id" to buildJsonObject { put("type", "string"); put("minLength", 1) }), listOf("id")),
+        "One material item or folder: its size, tags, origin, default placement, and the layers that show it; include_svg returns a vector item's drawing as stored.",
+        WorkspaceLayoutOperations.schema(mapOf("id" to buildJsonObject { put("type", "string"); put("minLength", 1) },
+            "include_svg" to buildJsonObject { put("type", "boolean") }), listOf("id")),
         WorkspaceOperationKind.QUERY, resultSchema = WorkspaceLayoutOperations.getSchema)) { request, _ ->
         val state = reads.captureQueries().layoutState() ?: throw IllegalStateException("No workspace is loaded")
-        WorkspaceOperationOutput(WorkspaceMaterialQueries.get(state, request.getValue("id").jsonPrimitive.content))
+        WorkspaceOperationOutput(WorkspaceMaterialQueries.get(state, request.getValue("id").jsonPrimitive.content, request["include_svg"]?.jsonPrimitive?.boolean ?: false))
     }
     registry.register(WorkspaceOperationDefinition(WorkspaceLayoutOperations.PREVIEW,
         "A PNG of a material fitted into size pixels (default 512): an item's pixels, or a folder's items composited where they sit.",
@@ -288,12 +294,15 @@ internal fun registerLayoutOperations(registry: WorkspaceOperationRegistry, port
         "Trace an area of the reference image, like a magic wand: from seed (canvas units) over the opaque pixels within tolerance (Lab distance, default 12) of the seed's colour, " +
             "or with compare neighbor of the neighbouring pixel it grew from, which follows soft shading up to the lines. Returns its outer outline as a polygon simplified to simplify " +
             "canvas units (default 0.6) and path, smooth closed SVG path data through it in canvas coordinates - a start for a drawing's shape - with its area, bounds, mean colour, " +
-            "the holes inside it, and touches_edge when it ran to the reference's border (the tolerance leaked).",
+            "the holes inside it, and touches_edge when it ran to the reference's border (the tolerance leaked). holes returns the outlines of that many of the largest holes " +
+            "as well: traced from the background, the largest is the figure's silhouette.",
         WorkspaceLayoutOperations.schema(mapOf("seed" to canvasPoint, "tolerance" to number(0, 100),
             "compare" to buildJsonObject { put("type", "string"); put("enum", JsonArray(listOf(JsonPrimitive("seed"), JsonPrimitive("neighbor")))) },
-            "simplify" to number(0, 64)), listOf("seed")),
+            "simplify" to number(0, 64), "holes" to buildJsonObject { put("type", "integer"); put("minimum", 0); put("maximum", 16) }), listOf("seed")),
         r.obj(mapOf("pixels" to r.integer(1), "area" to r.number(), "bounds" to r.vector(4), "mean_color" to r.string(), "holes" to r.integer(0),
-            "touches_edge" to r.boolean(), "polygon" to r.array(r.vector(2)), "path" to r.string())),
+            "touches_edge" to r.boolean(), "polygon" to r.array(r.vector(2)), "path" to r.string(),
+            "hole_outlines" to r.array(r.obj(mapOf("area" to r.number(), "polygon" to r.array(r.vector(2)), "path" to r.string())))), setOf("pixels", "area", "bounds",
+            "mean_color", "holes", "touches_edge", "polygon", "path")),
         WorkspaceReferenceQueries::trace)
     referenceQuery(WorkspaceReferenceQueries.SNAP,
         "Move points onto the drawn lines of the reference image: each point goes to the centre of the nearest line within radius canvas units (default 4) - the nearest pixel clearly darker than its surroundings, then the darkest right around it; " +

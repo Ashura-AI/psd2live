@@ -127,6 +127,7 @@ CMO3 的完整模型仍用 `project_import_cmo3` 导入，不进入 Layout 流�
 部件可以照着参考图用矢量画出来（`WorkspaceDrawingEdits`、`WorkspaceVectorDrawing`）：
 
 - **绘制即素材**：`material_draw` 写入一个矢量条目，SVG 的 `viewBox` 是它在画布上的位置（画布单位），也就是条目的默认摆放；条目按密度（每画布单位的纹理像素，0.05–16）渲染，小部件可以给到需要的像素。写入时去掉根元素的 `width`、`height` 并设 `preserveAspectRatio="none"`，`viewBox` 恰好铺满栅格。重画时，显示它的图层替换像素，原先位于旧位置的图层移到新位置；图层与素材的关联保持。
+- **局部修改**：`material_draw` 的 `edits` 按元素 `id` 改属性（`WorkspaceVectorDrawing.patch`），不必整份重发；`material_get` 的 `include_svg` 读回存储的原文。
 - **绘制套件**：`WorkspaceLayout.drawingKit`（`DrawingKit`）保存颜色、类规则和 SVG 定义，所有绘制共用，各部件因此用同一套颜色与线条。修改套件时所有矢量条目按原分辨率重新渲染，变化的同步到图层；会让绘制缺少颜色时拒绝。
 - **渲染前的解析**：Skia 的 SVG 模块不支持样式表与 CSS 变量，渲染前先把套件与绘制自身 `<style>` 的规则（元素、`#id`、`.class` 选择器，可组合、不可嵌套）按特异性写入各元素的 `style`，元素自己的 `style` 最后；`var(--name)` 换成套件颜色；套件定义并入 `<defs>`（绘制自身同 id 的优先）；带 `data-taper` 的路径按宽度系数（从头到尾均匀分布）把描边换成填充轮廓，线条两头可以收细。`<ellipse>` 换成等价的 `<path>`（渲染器给椭圆的包围盒渐变画成黑色）。导入的 SVG 同样按文档套件渲染。混合模式不渲染。
 - **读参考图**：`reference_sample` 取点的颜色和区域主色（Lab 空间对 5 位直方图做 k-means），`reference_trace` 按颜色容差从种子扩展、沿像素边界取外轮廓并简化成多边形与平滑路径，`reference_snap` 把点吸到附近线条的中心。三者都按参考图在画布上的位置换算，返回画布坐标。

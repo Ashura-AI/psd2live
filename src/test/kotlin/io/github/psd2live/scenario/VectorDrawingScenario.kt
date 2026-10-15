@@ -3,6 +3,7 @@ package io.github.psd2live.scenario
 import io.github.psd2live.application.WorkspaceMaterialFiles
 import io.github.psd2live.application.WorkspaceMaterialStaging
 import io.github.psd2live.application.WorkspaceReadSession
+import io.github.psd2live.application.WorkspaceMaterialQueries
 import io.github.psd2live.application.WorkspaceReferenceQueries
 import io.github.psd2live.application.WorkspaceRenderSession
 import io.github.psd2live.project.*
@@ -58,6 +59,9 @@ class VectorDrawingScenario {
 		val area = traced.getValue("area").jsonPrimitive.double
 		expect("trace", abs(area - Math.PI * 58.5 * 58.5) < 0.06 * area && traced.getValue("path").jsonPrimitive.content.startsWith("M") &&
 			traced.getValue("touches_edge").jsonPrimitive.boolean.not()) { "the disc traced as $traced" }
+		val silhouette = WorkspaceReferenceQueries.trace(state, req("seed" to listOf(5, 5), "holes" to 2)).getValue("hole_outlines").jsonArray
+		val discHole = silhouette.first().jsonObject.getValue("area").jsonPrimitive.double
+		expect("trace", silhouette.size == 2 && abs(discHole - Math.PI * 61.5 * 61.5) < 0.06 * discHole) { "the background's largest hole is $discHole" }
 		val snapped = WorkspaceReferenceQueries.snap(state, req("points" to listOf(listOf(200, 297), listOf(30, 30)), "radius" to 5)).points()
 		val onLine = snapped[0].getValue("point").jsonArray.map { it.jsonPrimitive.float }
 		expect("snap", snapped[0]["snapped"]?.jsonPrimitive?.boolean == true && onLine[1] in 300f..303f && snapped[1]["snapped"]?.jsonPrimitive?.boolean == false) {
@@ -101,6 +105,18 @@ class VectorDrawingScenario {
 		expect("kit", pixel(warmer.raster, 120, 60).take(3) == listOf(0xff, 0xd0, 0xb0) &&
 			now.document.source.layers.single { it.id.raw == "eye_white" }.raster.rgba.contentEquals(warmer.raster.rgba)) { "the kit change did not reach the drawing and its layer" }
 		refused("a colour in use cannot go", "layout_set_drawing_kit", req("colors" to mapOf("skin" to null)))
+
+		// A drawing changed in place by element id, and read back as stored.
+		fun lock(guide: String) = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 110">
+			<path id="lock" d="$guide" stroke="var(--skin)" stroke-width="16" data-taper="0.8 1 0"/></svg>"""
+		edit("draw a lock", "material_draw", req("id" to "lock", "svg" to lock("M20 10 C 24 40, 18 70, 26 100"), "density" to 2))
+		val straight = requireNotNull(now.document.layout.materials.item("lock")).raster
+		edit("bend it", "material_draw", req("id" to "lock", "edits" to listOf(mapOf("id" to "lock", "set" to mapOf("d" to "M20 10 C 40 40, 10 70, 40 100")))))
+		val bent = requireNotNull(now.document.layout.materials.item("lock"))
+		val readBack = WorkspaceMaterialQueries.get(requireNotNull(WorkspaceReadSession(runtime.read()).layoutState()), "lock", includeSvg = true)
+		expect("edits", !bent.raster.rgba.contentEquals(straight.rgba) && bent.raster.width == straight.width &&
+			readBack["svg"]?.jsonPrimitive?.content?.contains("C 40 40") == true) { "the edit did not redraw the lock" }
+		refused("an edit names a missing element", "material_draw", req("id" to "lock", "edits" to listOf(mapOf("id" to "nope", "set" to mapOf("d" to "M0 0")))))
 
 		val render = WorkspaceRenderSession(runtime.read(), { it })
 		val view = runBlocking { render.renderModel(WorkspaceModelViewRequest(includeLayerIds = emptySet(),

@@ -60,6 +60,28 @@ internal object WorkspaceVectorDrawing {
         return write(document)
     }
 
+    /**
+     * [svg] with [edits] made: each names an element by `id` and sets attributes (a null value removes one); `text`
+     * replaces the element's text, for a `<style>` sheet.
+     */
+    fun patch(svg: String, edits: List<Pair<String, Map<String, String?>>>): String {
+        val document = parse(svg)
+        val byId = (document.documentElement.descendants() + document.documentElement)
+            .mapNotNull { element -> element.getAttribute("id").takeIf { it.isNotEmpty() }?.let { it to element } }.toMap()
+        for ((id, attributes) in edits) {
+            val element = byId[id] ?: throw IllegalArgumentException("No element with id $id in the drawing")
+            for ((name, value) in attributes) when {
+                name == "text" -> element.textContent = value.orEmpty()
+                value == null -> element.removeAttribute(name)
+                else -> {
+                    require(name.matches(Regex("[A-Za-z_][A-Za-z0-9_.:-]*")) && name != "id") { "Not an attribute to set: $name" }
+                    element.setAttribute(name, value)
+                }
+            }
+        }
+        return write(document)
+    }
+
     /** [svg] rendered over [width] x [height] pixels with [kit]. */
     fun render(svg: String, kit: DrawingKit?, width: Int, height: Int): LayerRaster =
         WorkspaceMaterialFiles.rasterize(resolve(svg, kit), width, height)

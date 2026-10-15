@@ -72,7 +72,7 @@ internal object WorkspaceMaterialQueries {
         }
     }
 
-    fun get(state: WorkspaceLayoutState, id: String): JsonObject {
+    fun get(state: WorkspaceLayoutState, id: String, includeSvg: Boolean = false): JsonObject {
         val library = state.layout.materials
         val references = references(state)
         library.item(id)?.let { item ->
@@ -81,6 +81,7 @@ internal object WorkspaceMaterialQueries {
                 putJsonArray("layers") { references[id].orEmpty().sorted().forEach { add(JsonPrimitive(it)) } }
                 putJsonArray("folder_path") { library.path(item.folderId).forEach { add(JsonPrimitive(it)) } }
                 if (item.kind == MaterialKind.VECTOR) put("vector_size", JsonArray(WorkspaceMaterialFiles.svgSize(requireNotNull(item.svg)).toList().map(::JsonPrimitive)))
+                if (includeSvg) item.svg?.let { put("svg", it) }
             })
         }
         val folder = library.folder(id) ?: throw IllegalArgumentException("Material not found: $id")

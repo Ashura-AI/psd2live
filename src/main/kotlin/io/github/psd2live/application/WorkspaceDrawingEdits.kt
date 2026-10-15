@@ -41,8 +41,12 @@ internal object WorkspaceDrawingEdits {
             require(id.matches(ID)) { "A material id is 1-64 letters, digits, _ . : -: $id" }
             require(library.folder(id) == null) { "$id names a material folder" }
         } else require(existing.kind == MaterialKind.VECTOR) { "$id is a bitmap material; draw under another id" }
-        val svg = request["svg"]?.jsonPrimitive?.content?.let(WorkspaceVectorDrawing::normalized)
-            ?: existing?.svg ?: throw IllegalArgumentException("Give svg to draw a new material")
+        val edits = request["edits"]?.jsonArray?.map { edit ->
+            val value = edit.jsonObject
+            value.getValue("id").jsonPrimitive.content to value.getValue("set").jsonObject.mapValues { (_, v) -> if (v is JsonNull) null else v.jsonPrimitive.content }
+        }.orEmpty()
+        val drawn = request["svg"]?.jsonPrimitive?.content ?: existing?.svg ?: throw IllegalArgumentException("Give svg to draw a new material")
+        val svg = WorkspaceVectorDrawing.normalized(if (edits.isEmpty()) drawn else WorkspaceVectorDrawing.patch(drawn, edits))
         val box = WorkspaceVectorDrawing.viewBox(svg)
         val density = request["density"]?.jsonPrimitive?.float ?: existing?.let(::density) ?: 1f
         require(density.isFinite() && density in MIN_DENSITY..MAX_DENSITY) { "density is $MIN_DENSITY..$MAX_DENSITY texture pixels per canvas unit" }
