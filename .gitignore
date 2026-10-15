@@ -30,7 +30,6 @@ __pycache__/
 .kotlin/
 .vscode/
 dist/
-docs/local/
 
 # Example binaries are downloaded from the pinned external catalog.
 examples/tml/psd-input/
@@ -42,5 +41,5 @@ examples/star_lan/moc3-cmo3-output/
 examples/star_lan/prj/
 examples/star_lan/webp-output/
 
-# Local archive of outdated docs, finished plans and abandoned attempts (not committed).
-/archive/
+# Everything kept only on this machine: notes, the archive of outdated docs and attempts, reference samples.
+/local/
