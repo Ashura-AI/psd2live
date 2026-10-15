@@ -17,7 +17,7 @@ import kotlin.math.min
  * A paint is free to reach anywhere on the canvas; its commit cuts it along the layer's meshes. What lands on them is
  * the layer's (for a layer showing a material, the material's, which every layer showing it follows); what lands
  * off them - which the meshes would never show - becomes a new layer of its own just above, with its own mesh under
- * the same parent and in the same part. The layer's meshes, keyforms and bindings stay as they are.
+ * the same parent and in the same part, showing a material of its own in the library. The layer's meshes, keyforms and bindings stay as they are.
  *
  * Off the meshes the layer keeps its own pixels: erasing there changes nothing, and only pixels the paint changed
  * move to the new layer, so a faint edge the meshes leave out never leaves the layer.
@@ -171,7 +171,17 @@ internal object WorkspacePaintOverflow {
         layers.add(layers.indexOfFirst { it.id == original.id } + 1, added)
         val source = WorkspaceSourceArt(document.source.widthPx, document.source.heightPx,
             layers.mapIndexed { index, layer -> WorkspaceSourceLayer.copyOf(layer, layers.lastIndex - index) }, document.source.groups)
+        // Like every layer read from a file, it shows a material of its own: beside the material of the layer it came
+        // from, else at the top of the library.
+        val library = document.layout.materials
+        val beside = document.layout.layerMaterials[original.id.raw]?.let(library::item)
+        val itemIds = HashSet<String>().apply { library.items.mapTo(this) { it.id }; library.folders.mapTo(this) { it.id } }
+        val itemId = StableIds.fresh(StableIds.stem("mat_", beside?.folderId, added.name, WorkspaceRevisions.rasterDigest(painted.raster.rgba))) { it in itemIds }
+        val item = MaterialItem(itemId, added.name, beside?.folderId, MaterialKind.BITMAP, painted.raster,
+            placement = painted.rect ?: LayerCanvasRect.of(painted.bounds), origin = beside?.origin.orEmpty(), opacity = original.opacity)
+        val items = library.items.toMutableList().apply { add(indexOfFirst { it.id == beside?.id } + 1, item) }
         val candidate = document.copy(source = source, layerVisibility = document.layerVisibility + (id to true),
+            layout = document.layout.copy(materials = library.copy(items = items), layerMaterials = document.layout.layerMaterials + (id to itemId)),
             layerOverrides = document.layerOverrides + (id to (document.layerOverrides[original.id.raw]
                 ?: LayerClassificationOverride(io.github.psd2live.core.LayerType.PRESET, SemanticTag.UNKNOWN, Side.NONE))))
         val puppet = model.rig.puppet

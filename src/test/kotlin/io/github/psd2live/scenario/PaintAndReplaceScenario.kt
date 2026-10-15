@@ -71,6 +71,9 @@ class PaintAndReplaceScenario {
 		val at = (row * added.raster.width + x) * 4
 		expect("cut", x in 0 until added.raster.width && (added.raster.rgba[at + 2].toInt() and 255) == 255 && added.raster.rgba[at + 3].toInt() != 0) {
 			"the new layer does not hold the stroke off the face" }
+		val material = now.document.layout.layerMaterials[added.id.raw]?.let(now.document.layout.materials::item)
+		expect("cut", material != null && material.name == added.name && material.raster.rgba.contentEquals(added.raster.rgba)) {
+			"the new layer has no material of its own in the library" }
 		val parent = puppet.drawables.single { it.id.raw == faceMesh }.parentDeformerId
 		expect("cut", puppet.drawables.single { it.id.raw == mesh(added.id.raw) }.parentDeformerId == parent) { "the new layer's mesh is not under the face's parent" }
 		reopen()

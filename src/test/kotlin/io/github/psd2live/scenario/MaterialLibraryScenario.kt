@@ -169,15 +169,18 @@ class MaterialLibraryScenario {
 			allShowTheMaterial() && now.document.layout.layerMaterials.keys.containsAll(listOf("a", "b"))) {
 			"a stroke off a linked layer is not a layer of its own: ${off?.bounds}" }
 		expect("cut", (material().rgba[(20 * 40 + 30) * 4 + 1].toInt() and 255) == 255) { "the stroke on the layer did not reach its material" }
+		val offMaterial = now.document.layout.layerMaterials[off!!.id.raw]?.let(now.document.layout.materials::item)
+		expect("cut", offMaterial != null && offMaterial.id != item.id && offMaterial.folderId == item.folderId &&
+			offMaterial.raster.rgba.contentEquals(off.raster.rgba)) { "the layer cut off is not a material beside the disc" }
 
 		// A paint session on a linked layer reaches anywhere on the canvas; its commit writes the material.
 		val sessions = io.github.psd2live.application.WorkspacePaintSessions(runtime)
 		val session = sessions.begin(now.state, "b")
 		expect("linked", session.materialId == item.id && !session.paintsMaterial && session.width == now.document.source.widthPx) {
 			"a paint session on a linked layer does not cover the canvas" }
-		session.gesture(req("mode" to "brush", "points" to listOf(listOf(205, 110), listOf(235, 110)), "radius" to 2, "color" to listOf(0, 0, 255, 255)))
+		session.gesture(req("mode" to "brush", "points" to listOf(listOf(210, 115), listOf(230, 115)), "radius" to 2, "color" to listOf(0, 0, 255, 255)))
 		step("apply the session") { sessions.commit(session.id, session.sessionState, false, false, MutationAuthor.USER) }
-		expect("linked", allShowTheMaterial() && (material().rgba[(10 * 40 + 20) * 4 + 2].toInt() and 255) == 255) { "the session's pixels did not reach both layers" }
+		expect("linked", allShowTheMaterial() && (material().rgba[(15 * 40 + 20) * 4 + 2].toInt() and 255) == 255) { "the session's pixels did not reach both layers" }
 
 		// Rebuilding a mesh keeps the material's raster and the link.
 		edit("rebuild b's mesh", "layer_mesh_rebuild", req("layer_id" to "b"))
@@ -186,11 +189,11 @@ class MaterialLibraryScenario {
 		// Unlinked, a layer's pixels are its own.
 		edit("unlink a", "material_unlink", req("layer_ids" to listOf("a")))
 		val kept = material()
-		edit("paint layer a alone", "source_paint_brush", req("layer_id" to "a", "points" to listOf(listOf(110, 130)), "radius" to 3, "color" to listOf(0, 255, 0, 255)))
+		edit("paint layer a alone", "source_paint_brush", req("layer_id" to "a", "points" to listOf(listOf(120, 125)), "radius" to 3, "color" to listOf(0, 255, 0, 255)))
 		expect("unlinked", "a" !in now.document.layout.layerMaterials && material() === kept && !pixels("a").rgba.contentEquals(kept.rgba) &&
 			pixels("b").rgba.contentEquals(kept.rgba)) { "painting an unlinked layer reached the material" }
 		reopen()
-		expect("reopened", now.document.layout.layerMaterials == mapOf("b" to item.id)) { "the links did not survive a save" }
+		expect("reopened", now.document.layout.layerMaterials == mapOf("b" to item.id, off.id.raw to offMaterial!!.id)) { "the links did not survive a save: ${now.document.layout.layerMaterials}" }
 	}
 
 	private fun WorkspaceMaterialEdits(item: MaterialItem) = io.github.psd2live.application.WorkspaceMaterialEdits.enclosing(requireNotNull(item.placement))

@@ -122,7 +122,7 @@ CMO3 的完整模型仍用 `project_import_cmo3` 导入，不进入 Layout 流�
 
 `layerMaterials` 中关联的图层显示素材自身的像素（栅格与素材相同，矩形为放置矩形），素材是唯一来源（`WorkspaceMaterialLinks`）：
 
-- 绘画关联图层即绘画素材：`source_paint_*` 与 `paint_session_begin`（`layer_id`）按普通图层在整张画布上绘画，会话快照另报 `material_id`；提交时按图层网格裁切（`WorkspacePaintOverflow`），网格上且在素材矩形内的像素写成素材修改并同步所有关联图层，其余新画的像素拆成紧邻其上的新图层，关联保留。
+- 绘画关联图层即绘画素材：`source_paint_*` 与 `paint_session_begin`（`layer_id`）按普通图层在整张画布上绘画，会话快照另报 `material_id`；提交时按图层网格裁切（`WorkspacePaintOverflow`），网格上且在素材矩形内的像素写成素材修改并同步所有关联图层，其余新画的像素拆成紧邻其上的新图层，关联保留。拆出的图层同时成为素材（与原图层的素材同一文件夹、紧随其后，原图层未关联时放在顶层）并与之关联。
 - 网格重建对关联图层保留整幅素材栅格，不裁边。
 - `WorkspaceDocumentEdits.apply` 与栅格提交在候选完成后执行 `reconcile`：图层像素不再等于素材时移除关联（拆分、换成别的图片等）。`material_unlink` 显式解除，像素保持不变。
 
