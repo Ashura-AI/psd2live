@@ -1,6 +1,14 @@
 package io.github.psd2live.ui.views
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.pointer.PointerButton
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
+import io.github.psd2live.ui.views.texture.MenuGlide
+import io.github.psd2live.ui.views.texture.glideItem
+import io.github.psd2live.ui.views.tooloptions.GlidingColumn
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -117,7 +125,6 @@ import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.tutorial.TutorialId
 import io.github.psd2live.ui.views.texture.AccentButton
 import io.github.psd2live.ui.views.texture.AccentSplitButton
-import io.github.psd2live.ui.views.texture.BarTooltip
 import io.github.psd2live.ui.views.texture.FloatingMenu
 import io.github.psd2live.ui.views.texture.FloatingMenuDivider
 import io.github.psd2live.ui.views.texture.FloatingMenuRadio
@@ -341,13 +348,13 @@ internal fun StartMainPanel(state: PSD2LiveState, viewModel: PSD2LiveViewModel, 
 						enabled = enabled,
 						onTile = { model.tile = it; model.saveSizes() },
 						onSelect = { model.selection.psdPath = it },
-						onGenerate = { viewModel.openRecentFile(it) },
+						actions = recentFileActions(viewModel, actions),
 						onBrowse = { actions.onOpenPsd?.invoke() },
 					)
 				}
 				StartSection.LAYOUT -> LayoutContent(model.layout, enabled) { w, h -> viewModel.createLayoutProject(w, h) }
 				StartSection.CMO3 -> Cmo3Content(enabled, actions.onOpenCmo3)
-				StartSection.RECENT -> RecentBrowser(files.recent, model, enabled, viewModel)
+				StartSection.RECENT -> RecentBrowser(files.recent, model, enabled, recentFileActions(viewModel, actions))
 				StartSection.UPDATES -> WhatsNewPanel(state.currentLanguage, model.updates, enabled, actions.onStartTutorial)
 			}
 			// A file carried over the window lands wherever it is dropped; outside the viewport the page says so.
@@ -497,7 +504,7 @@ private fun RecentPsdStrip(
 	enabled: Boolean,
 	onTile: (Float) -> Unit,
 	onSelect: (String) -> Unit,
-	onGenerate: (String) -> Unit,
+	actions: RecentFileActions,
 	onBrowse: () -> Unit,
 ) {
 	val colors = LocalToolColors.current
@@ -507,11 +514,15 @@ private fun RecentPsdStrip(
 			SubHeader(tr("start.generate.recent"), null, Modifier.weight(1f))
 			CompactSlider(value = tile, onValueChange = onTile, valueRange = StartPageModel.TILE, height = 12.dp, modifier = Modifier.width(72.dp))
 		}
-		Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 4.dp, end = 4.dp, bottom = 4.dp)) {
-			files.forEach { file ->
-				RecentTile(file, file.path == selectedPath, tile.dp, enabled, onClick = { onSelect(file.path) }, onDoubleClick = { onGenerate(file.path) })
+		Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 4.dp, end = 4.dp, bottom = 4.dp)) {
+			MenuGlide {
+				Row {
+					files.forEach { file ->
+						RecentTile(file, file.path == selectedPath, tile.dp, enabled, onClick = { onSelect(file.path) }, actions)
+					}
+					AddTile(tile.dp, enabled, onBrowse, if (files.isEmpty()) tr("start.generate.recent.empty") else tr("start.generate.recent.add"))
+				}
 			}
-			AddTile(tile.dp, enabled, onBrowse, if (files.isEmpty()) tr("start.generate.recent.empty") else tr("start.generate.recent.add"))
 		}
 	}
 }
@@ -524,8 +535,7 @@ private fun AddTile(size: Dp, enabled: Boolean, onClick: () -> Unit, label: Stri
 	val hovered by interaction.collectIsHoveredAsState()
 	val shape = RoundedCornerShape(5.dp)
 	Column(
-		Modifier.padding(3.dp).clip(shape)
-			.background(if (hovered && enabled) colors.controlHover.copy(alpha = 0.35f) else Color.Transparent)
+		Modifier.padding(3.dp).glideItem(enabled).clip(shape)
 			.hoverable(interaction)
 			.clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
 			.handCursor(enabled)
@@ -557,7 +567,7 @@ private fun LayoutContent(layout: LayoutDraft, enabled: Boolean, onCreate: (Int,
 		CanvasSizePreview(layout.w, layout.h, layout.valid, Modifier.weight(1f).fillMaxHeight())
 		Column(Modifier.width(240.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 			SubHeader(tr("start.layout.sizes"), null)
-			Column(Modifier.fillMaxWidth().border(0.5.dp, colors.divider)) {
+			MenuGlide(Modifier.fillMaxWidth().border(0.5.dp, colors.divider)) { Column(Modifier.fillMaxWidth()) {
 				val matched = LayoutCanvasSizes.any { (_, w, h) -> layout.w == w && layout.h == h }
 				LayoutCanvasSizes.forEach { (key, w, h) ->
 					SizeRow(tr("start.layout.size.$key"), "$w × $h", layout.w == w && layout.h == h, enabled,
@@ -566,7 +576,7 @@ private fun LayoutContent(layout: LayoutDraft, enabled: Boolean, onCreate: (Int,
 				// What the fields hold while it is none of the above.
 				SizeRow(tr("start.layout.size.custom"), if (matched) "" else "${layout.width.trim()} × ${layout.height.trim()}", !matched,
 					enabled = false, onClick = {}, onDoubleClick = {})
-			}
+			} }
 			Spacer(Modifier.height(4.dp))
 			SubHeader(tr("start.inspector.canvas"), null)
 			InspectorFormRow(tr("start.layout.width")) {
@@ -600,13 +610,11 @@ private fun LayoutContent(layout: LayoutDraft, enabled: Boolean, onCreate: (Int,
 private fun SizeRow(label: String, size: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit, onDoubleClick: () -> Unit) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	val interaction = remember { MutableInteractionSource() }
-	val hovered by interaction.collectIsHoveredAsState()
-	val fill by animateColorAsState(itemFill(selected, hovered && enabled), tween(Motion.Instant))
+	val fill by animateColorAsState(selectionFill(selected), tween(Motion.Instant))
 	Row(
 		Modifier.fillMaxWidth().height(24.dp)
+			.glideItem(enabled)
 			.background(fill)
-			.hoverable(interaction, enabled)
 			.selectOrOpen(enabled, onClick, onDoubleClick)
 			.handCursor(enabled)
 			.padding(horizontal = 8.dp),
@@ -742,7 +750,7 @@ private fun RecentBrowser(
 	recent: List<RecentFile>?,
 	model: StartPageModel,
 	enabled: Boolean,
-	viewModel: PSD2LiveViewModel,
+	actions: RecentFileActions,
 ) {
 	val selection = model.selection
 	val colors = LocalToolColors.current
@@ -778,51 +786,53 @@ private fun RecentBrowser(
 				Text(tr(if (recent.isEmpty()) "canvas.start.recent.empty" else "start.recent.noMatch"),
 					style = typography.caption.copy(fontSize = 11.sp), color = colors.textDisabled)
 			}
-			selection.recentGrid -> FlowRow(
-				Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(4.dp),
-			) {
-				shown.forEach { file ->
-					RecentTile(file, file.path == selection.recentPath, model.card.dp, enabled,
-						onClick = { selection.recentPath = file.path }, onDoubleClick = { viewModel.openRecentFile(file.path) })
+			// One highlight glides to the item under the pointer, as in the mode menu; it scrolls with the items.
+			selection.recentGrid -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(4.dp)) {
+				MenuGlide(Modifier.fillMaxWidth()) {
+					FlowRow(Modifier.fillMaxWidth()) {
+						shown.forEach { file ->
+							RecentTile(file, file.path == selection.recentPath, model.card.dp, enabled, onClick = { selection.recentPath = file.path }, actions)
+						}
+					}
 				}
 			}
-			else -> Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
-				shown.forEach { file ->
-					RecentRow(file, file.path == selection.recentPath, enabled,
-						onClick = { selection.recentPath = file.path }, onDoubleClick = { viewModel.openRecentFile(file.path) })
+			else -> Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+				MenuGlide(Modifier.fillMaxWidth()) {
+					Column(Modifier.fillMaxWidth()) {
+						shown.forEach { file ->
+							RecentRow(file, file.path == selection.recentPath, enabled, onClick = { selection.recentPath = file.path }, actions)
+						}
+					}
 				}
 			}
 		}
 	}
 }
 
-/** A recent file as the materials grid draws an image: its picture, its name under it, the selection behind both. */
+/**
+ * A recent file as the materials grid draws an image: its picture, its name under it, the selection behind both.
+ * Hovered, the gliding highlight comes to it and its edge lights; a right click opens its menu.
+ */
 @Composable
-private fun RecentTile(file: RecentFile, selected: Boolean, size: Dp, enabled: Boolean, onClick: () -> Unit, onDoubleClick: () -> Unit) {
+private fun RecentTile(file: RecentFile, selected: Boolean, size: Dp, enabled: Boolean, onClick: () -> Unit, actions: RecentFileActions) {
 	val colors = LocalToolColors.current
 	val details = rememberRecentFileDetails(file)
 	val interaction = remember { MutableInteractionSource() }
 	val hovered by interaction.collectIsHoveredAsState()
 	val shape = RoundedCornerShape(5.dp)
-	val tip = listOfNotNull(
-		file.path,
-		kindLabel(file.kind),
-		details?.canvasWidth?.let { "$it × ${details.canvasHeight}" },
-		details?.let { DateFormat.format(Instant.ofEpochMilli(it.modifiedMillis)) + " · " + formatBytes(it.sizeBytes) },
-	).joinToString("\n")
-	val fill by animateColorAsState(itemFill(selected, hovered && enabled), tween(Motion.Instant))
+	val fill by animateColorAsState(selectionFill(selected), tween(Motion.Instant))
 	val edge by animateColorAsState(when {
 		selected -> colors.accent.copy(alpha = 0.7f)
 		hovered && enabled -> colors.accent.copy(alpha = 0.35f)
 		else -> Color.Transparent
 	}, tween(Motion.Instant))
-	BarTooltip(tip) {
+	RecentFileMenuHost(file, enabled, onClick, actions) {
 		Column(
-			Modifier.padding(3.dp).clip(shape)
+			Modifier.padding(3.dp).glideItem(enabled).clip(shape)
 				.background(fill)
 				.border(0.5.dp, edge, shape)
 				.hoverable(interaction, enabled)
-				.selectOrOpen(enabled, onClick, onDoubleClick)
+				.selectOrOpen(enabled, onClick) { actions.open(file) }
 				.handCursor(enabled)
 				.padding(4.dp),
 			horizontalAlignment = Alignment.CenterHorizontally,
@@ -835,22 +845,30 @@ private fun RecentTile(file: RecentFile, selected: Boolean, size: Dp, enabled: B
 	}
 }
 
-/** A recent file as the materials list draws an image: a small picture, the name, then its facts in muted columns. */
+/**
+ * A recent file as the materials list draws an image: a small picture, the name, then its facts in muted columns.
+ * Hovered, the gliding highlight comes to it; a right click opens its menu.
+ */
 @Composable
-private fun RecentRow(file: RecentFile, selected: Boolean, enabled: Boolean, onClick: () -> Unit, onDoubleClick: () -> Unit) {
+private fun RecentRow(file: RecentFile, selected: Boolean, enabled: Boolean, onClick: () -> Unit, actions: RecentFileActions) {
 	val colors = LocalToolColors.current
 	val details = rememberRecentFileDetails(file)
-	val interaction = remember { MutableInteractionSource() }
-	val hovered by interaction.collectIsHoveredAsState()
 	val muted = if (selected) colors.selectionText.copy(alpha = 0.75f) else colors.textMuted
-	val fill by animateColorAsState(itemFill(selected, hovered && enabled), tween(Motion.Instant))
-	Row(
+	val fill by animateColorAsState(selectionFill(selected), tween(Motion.Instant))
+	RecentFileMenuHost(file, enabled, onClick, actions) { RecentRowContent(file, selected, details, muted,
 		Modifier.fillMaxWidth().height(30.dp)
+			.glideItem(enabled)
 			.background(fill)
-			.hoverable(interaction, enabled)
-			.selectOrOpen(enabled, onClick, onDoubleClick)
+			.selectOrOpen(enabled, onClick) { actions.open(file) }
 			.handCursor(enabled)
-			.padding(horizontal = 6.dp),
+			.padding(horizontal = 6.dp)) }
+}
+
+@Composable
+private fun RecentRowContent(file: RecentFile, selected: Boolean, details: io.github.psd2live.ui.state.RecentFileDetails?, muted: Color, modifier: Modifier) {
+	val colors = LocalToolColors.current
+	Row(
+		modifier,
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(6.dp),
 	) {
@@ -884,14 +902,50 @@ private fun Thumbnail(image: ImageBitmap?, kind: RecentFileKind, modifier: Modif
 	}
 }
 
-/** The fill behind a pickable item: the selection, the hover tint, or nothing. */
+/** The fill behind a pickable item: the selection, or nothing; hover is the gliding highlight under it. */
 @Composable
-private fun itemFill(selected: Boolean, hovered: Boolean): Color {
-	val colors = LocalToolColors.current
-	return when {
-		selected -> colors.selection
-		hovered -> colors.controlHover
-		else -> Color.Transparent
+private fun selectionFill(selected: Boolean): Color = if (selected) LocalToolColors.current.selection else Color.Transparent
+
+/** What a recent file's double click and menu do with it. */
+private class RecentFileActions(
+	val open: (RecentFile) -> Unit,
+	val reveal: (RecentFile) -> Unit,
+	val forget: (RecentFile) -> Unit,
+)
+
+private fun recentFileActions(viewModel: PSD2LiveViewModel, actions: PageActions) = RecentFileActions(
+	open = { viewModel.openRecentFile(it.path) },
+	reveal = { actions.onRevealFile(it.directory) },
+	forget = { viewModel.forgetRecentFile(it.path) },
+)
+
+/**
+ * Holds a recent file's [content] and its right-click menu: a right press selects the file through [onSelect] and
+ * opens the menu at the pointer, which opens or generates it, shows its folder, or forgets it.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun RecentFileMenuHost(file: RecentFile, enabled: Boolean, onSelect: () -> Unit, actions: RecentFileActions, content: @Composable () -> Unit) {
+	var menuAt by remember { mutableStateOf<Offset?>(null) }
+	Box(Modifier.onPointerEvent(PointerEventType.Press) { event ->
+		if (event.button == PointerButton.Secondary) {
+			onSelect()
+			menuAt = event.changes.firstOrNull()?.position
+		}
+	}) {
+		content()
+		val close = { menuAt = null }
+		PressMenu(menuAt != null, menuAt ?: Offset.Zero, onDismissRequest = close) {
+			GlidingColumn(Modifier.width(200.dp), 4, highlights = { i -> i == 1 || (i != 2 && enabled) }) { i ->
+				when (i) {
+					0 -> FloatingMenuRow(tr(if (file.kind == RecentFileKind.PSD) "start.action.recent.generate" else "start.action.recent.open"),
+						{ close(); actions.open(file) }, enabled = enabled)
+					1 -> FloatingMenuRow(tr("start.recent.reveal"), { close(); actions.reveal(file) })
+					2 -> FloatingMenuDivider()
+					else -> FloatingMenuRow(tr("start.recent.forget"), { close(); actions.forget(file) }, enabled = enabled)
+				}
+			}
+		}
 	}
 }
 

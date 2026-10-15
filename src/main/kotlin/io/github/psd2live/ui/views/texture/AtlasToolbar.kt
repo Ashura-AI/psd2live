@@ -431,7 +431,9 @@ internal val LocalMenuGlideHost = androidx.compose.runtime.staticCompositionLoca
 
 /**
  * Gives [content] the mode menu's motion: its rows (those marked with [glideRow]) arrive one after another and one
- * highlight glides to the row under the pointer instead of each row lighting up on its own.
+ * highlight glides to the row under the pointer instead of each row lighting up on its own. Items marked with
+ * [glideItem] take the highlight without arriving, and may sit anywhere in [content]: a grid's highlight glides
+ * across as well as down.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -441,23 +443,24 @@ internal fun MenuGlide(modifier: Modifier = Modifier, content: @Composable () ->
 	val host = remember { MenuGlideHost() }
 	val target = host.target
 	val glow by animateFloatAsState(if (target != null) 1f else 0f, tween(Motion.Quick, easing = FastOutSlowInEasing))
+	val left = remember { androidx.compose.animation.core.Animatable(0f) }
 	val top = remember { androidx.compose.animation.core.Animatable(0f) }
+	val width = remember { androidx.compose.animation.core.Animatable(0f) }
 	val height = remember { androidx.compose.animation.core.Animatable(0f) }
 	LaunchedEffect(target) {
 		val rect = target ?: return@LaunchedEffect
+		val edges = listOf(left to rect.left, top to rect.top, width to rect.width, height to rect.height)
 		// Appearing, it starts on its row; moving, it glides there.
-		if (glow < 0.05f) { top.snapTo(rect.top); height.snapTo(rect.height) }
+		if (glow < 0.05f) edges.forEach { (edge, value) -> edge.snapTo(value) }
 		else kotlinx.coroutines.coroutineScope {
-			launch { top.animateTo(rect.top, tween(Motion.Instant, easing = FastOutSlowInEasing)) }
-			launch { height.animateTo(rect.height, tween(Motion.Instant, easing = FastOutSlowInEasing)) }
+			edges.forEach { (edge, value) -> launch { edge.animateTo(value, tween(Motion.Instant, easing = FastOutSlowInEasing)) } }
 		}
 	}
 	Box(modifier.onGloballyPositioned { host.coordinates = it }.onPointerEvent(PointerEventType.Exit) { host.target = null }) {
 		Box(
 			Modifier
-				.offset { IntOffset(0, top.value.roundToInt()) }
-				.fillMaxWidth()
-				.height(with(density) { height.value.toDp() })
+				.offset { IntOffset(left.value.roundToInt(), top.value.roundToInt()) }
+				.size(with(density) { width.value.toDp() }, with(density) { height.value.toDp() })
 				.alpha(glow)
 				.clip(RoundedCornerShape(5.dp))
 				.background(colors.controlHover.copy(alpha = 0.75f)),
@@ -470,16 +473,37 @@ internal fun MenuGlide(modifier: Modifier = Modifier, content: @Composable () ->
  * A row of a [MenuGlide] column: it arrives in turn, sliding in from its side, and takes the gliding highlight when
  * [enabled] and the pointer enters it, telling [onEnter]. Outside a [MenuGlide] it changes nothing.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun Modifier.glideRow(enabled: Boolean, onEnter: () -> Unit = {}): Modifier {
 	val host = LocalMenuGlideHost.current ?: return this
 	val index = remember { host.nextRow() }
-	var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+	return glideItem(enabled, onEnter, spanWidth = true).menuArrival(index)
+}
+
+/**
+ * An item of a [MenuGlide] that takes the gliding highlight when [enabled] and the pointer enters it, telling
+ * [onEnter], without a row's arrival; its own hover fill is left to the highlight. The highlight follows it when it
+ * moves and leaves with it; [spanWidth] stretches it across the column, as a menu row's. Outside a [MenuGlide] it
+ * changes nothing.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun Modifier.glideItem(enabled: Boolean, onEnter: () -> Unit = {}, spanWidth: Boolean = false): Modifier {
+	val host = LocalMenuGlideHost.current ?: return this
+	val holder = remember { arrayOfNulls<androidx.compose.ui.geometry.Rect>(1) }
+	androidx.compose.runtime.DisposableEffect(host) {
+		onDispose { if (holder[0] != null && host.target == holder[0]) host.target = null }
+	}
 	return this
-		.onGloballyPositioned { c -> host.coordinates?.takeIf { it.isAttached }?.let { bounds = it.localBoundingBoxOf(c, clipBounds = false) } }
-		.onPointerEvent(PointerEventType.Enter) { host.target = if (enabled) bounds else null; onEnter() }
-		.menuArrival(index)
+		.onGloballyPositioned { c ->
+			host.coordinates?.takeIf { it.isAttached }?.let { panel ->
+				val box = panel.localBoundingBoxOf(c, clipBounds = false)
+				val bounds = if (spanWidth) box.copy(left = 0f, right = panel.size.width.toFloat()) else box
+				if (holder[0] != null && host.target == holder[0]) host.target = bounds
+				holder[0] = bounds
+			}
+		}
+		.onPointerEvent(PointerEventType.Enter) { host.target = if (enabled) holder[0] else null; onEnter() }
 }
 
 /** A caption over a group of [FloatingMenu] rows. */
