@@ -19,6 +19,11 @@ on:
         required: false
         type: boolean
         default: true
+      prerelease:
+        description: "Publish as a pre-release (not marked latest)"
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - "v*"
@@ -526,9 +531,9 @@ jobs:
           name: PSD2Live v${{ env.VERSION }}
           target_commitish: ${{ github.sha }}
           draft: false
-          prerelease: false
+          prerelease: ${{ inputs.prerelease == true }}
           fail_on_unmatched_files: true
-          make_latest: true
+          make_latest: ${{ inputs.prerelease == true && 'false' || 'true' }}
           body_path: release-body.md
           files: |
             release-assets/PSD2Live-${{ env.VERSION }}-windows-x64-setup.exe

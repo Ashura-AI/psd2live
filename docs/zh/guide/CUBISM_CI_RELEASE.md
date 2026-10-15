@@ -40,13 +40,13 @@ macOS 打包暂缓，本工作流不构建。
 
 ## 发布一个版本
 
-前提：私有 SDK 仓库已上传 zip，本仓库已配置上表的变量、密钥与 `release-cubism` 环境。下文以 `<version>` 表示目标版本号，例如 `3.4.5`。
+前提：私有 SDK 仓库已上传 zip，本仓库已配置上表的变量、密钥与 `release-cubism` 环境。下文以 `<version>` 表示目标版本号，例如 `3.5.0`。
 
 1. **先提升版本号**：工作流不会修改仓库内容。在 `build.gradle.kts` 中把 `version` 与 `packageVersion` 改为目标版本，同步界面中的版本字符串；在 `docs/zh/CHANGELOG.md` 添加本版条目，并把本版说明写入 `.github/release-notes.md`（中文在前，英文放在折叠的 `<details><summary>English</summary>` 中；不写下载区，发布时由 `.github/scripts/release_notes.py` 按实际附件生成分类的下载徽章）；提交并推送。
 2. 打开 Actions → **Release Cubism** → **Run workflow**，`version` 填 `<version>`（不带 `v`）。
-3. 按需勾选 `create_github_release`（默认开启；关闭时只生成构建产物）。
+3. 按需勾选 `create_github_release`（默认开启；关闭时只生成构建产物）；预览版勾选 `prerelease`，发布为预发布版本，不标记为最新。
 4. 通过环境保护审批，等待 Windows 与 Linux 构建完成。
-5. 开启发布时，工作流会创建或更新标签 `v<version>` 的**正式**（非预发布）GitHub Release，附件为：
+5. 开启发布时，工作流会创建或更新标签 `v<version>` 的 GitHub Release（默认为正式版，勾选 `prerelease` 时为预发布），附件为：
    命名统一为 `PSD2Live-<version>-<系统>-<架构>[-<类型>][-ffmpeg].<扩展名>`：系统为 `windows` / `linux`，架构为 `x64` / `arm64`，Windows 的类型为 `setup`（安装包）/ `portable`（免安装）。
    - `PSD2Live-<version>-windows-x64-setup.exe`、`PSD2Live-<version>-windows-x64-portable.zip`
    - 以上两项另各有内置 ffmpeg 的版本：`PSD2Live-<version>-windows-x64-setup-ffmpeg.exe`、`PSD2Live-<version>-windows-x64-portable-ffmpeg.zip`
