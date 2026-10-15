@@ -68,6 +68,26 @@ internal fun dockModule(root: DockNode?, module: String, target: String?, side: 
     return if (found) result else DockNode(first = clean, second = leaf, ratio = .75f)
 }
 
+/**
+ * Move every tab of leaf [group] into leaf [target]: merged into its tabs on [DockSide.CENTER] before the tab
+ * [before] (last when null or absent), keeping the group's selected tab, or as the same group split on any other side.
+ */
+internal fun dockGroup(root: DockNode, group: String, target: String, side: DockSide, before: String? = null): DockNode {
+    val source = root.find(group)?.takeIf { it.first == null && it.second == null } ?: return root
+    if (group == target) return root
+    val clean = source.modules.fold<String, DockNode?>(root) { layout, module -> layout?.remove(module) } ?: return root
+    if (clean.find(target) == null) return root
+    return clean.update(target) { node ->
+        if (side == DockSide.CENTER) {
+            val at = node.modules.indexOf(before).takeIf { it >= 0 } ?: node.modules.size
+            node.copy(modules = node.modules.toMutableList().apply { addAll(at, source.modules) }, selected = source.selected)
+        }
+        else DockNode(horizontal = side == DockSide.LEFT || side == DockSide.RIGHT,
+            first = if (side == DockSide.LEFT || side == DockSide.TOP) source else node,
+            second = if (side == DockSide.LEFT || side == DockSide.TOP) node else source)
+    }
+}
+
 /** Auto-placement chooses a module, while [dockModule] addresses a leaf node ID. */
 internal fun dockBesideModule(root: DockNode?, module: String, anchorModule: String?, side: DockSide): DockNode =
     dockModule(root, module, anchorModule?.let { root?.containing(it)?.id }, side)

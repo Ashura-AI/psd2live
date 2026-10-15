@@ -48,6 +48,8 @@ The UI is organized into workspace tabs, each with its own canvases and panel la
 
 **Reset layout** restores the current workspace's preset layout.
 
+In a group of tabbed panels, the blank part of the tab strip and the faint grip at its end drag the whole group: drop it on another panel's edge to split beside it, or on another tab strip to merge into its tabs. Right-click the blank part or any tab for **Close All Tabs**.
+
 ### Texture workspace
 
 Every layer has three sizes: the rectangle it covers on the canvas (canvas units), the pixels of its own raster, and the pixels of its tile in the texture atlas. The Texture workspace shows them side by side and adjusts them per layer:
