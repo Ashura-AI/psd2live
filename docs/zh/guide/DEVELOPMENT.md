@@ -59,7 +59,7 @@ Windows 也可以直接运行根目录的 `run-gui.bat`。不带参数启动 GUI
 
 ### 无界面 MCP 服务
 
-`./gradlew run --args="mcp [--port N] [--token T] [--store DIR] [--profile core|full]"` 不开窗口，只启动 MCP 端点，供智能体单独工作；启动后打印 `endpoint`、`token`、`profile` 与 `store`，直到进程结束。工作区存储默认在用户目录的 `psd2live-mcp` 下，与编辑器分开（不共用历史与实例锁）。`--token` 须为 32–256 个 URL 安全 Base64 字符，省略时随机生成。
+`./gradlew run --args="mcp [--port N] [--token T] [--store DIR] [--profile core|full]"` 不开窗口，只启动 MCP 端点，供智能体单独工作：工作区由应用层宿主承载，不创建 ViewModel 与 Compose 状态（见[无窗口宿主](../spec/HEADLESS_HOST.md)）；启动后打印 `endpoint`、`token`、`profile`、`store` 与 `capabilities`（`view_sample_motion=yes|no`，构建是否带 Cubism Core），直到进程结束。脚本用 `python mcp_proxy.py call <操作> [JSON] --edit` 或 Python 的 `mcp_proxy.Client` 调用，设 `PSD2LIVE_MCP_ENDPOINT` 与 `PSD2LIVE_MCP_TOKEN` 指向它。工作区存储默认在用户目录的 `psd2live-mcp` 下，与编辑器分开（不共用历史与实例锁）。`--token` 须为 32–256 个 URL 安全 Base64 字符，省略时随机生成。
 
 ## 导出到其他格式
 

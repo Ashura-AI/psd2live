@@ -59,7 +59,7 @@ Windows ではリポジトリ直下の `run-gui.bat` でも GUI を起動でき�
 
 ### ウィンドウなしの MCP サーバー
 
-`./gradlew run --args="mcp [--port N] [--token T] [--store DIR] [--profile core|full]"` はウィンドウを開かずに MCP エンドポイントだけを起動し、エージェントが単独で作業できるようにします。起動すると `endpoint`、`token`、`profile`、`store` を表示し、プロセスが終わるまで動きます。ワークスペースの保存先は既定でユーザーディレクトリの `psd2live-mcp` で、エディターとは分かれています（履歴とインスタンスロックを共有しません）。`--token` は 32–256 文字の URL セーフ Base64 で、省略するとランダムに生成されます。
+`./gradlew run --args="mcp [--port N] [--token T] [--store DIR] [--profile core|full]"` はウィンドウを開かずに MCP エンドポイントだけを起動し、エージェントが単独で作業できるようにします。ワークスペースはアプリケーション層のホストが直接持ち、ViewModel や Compose の状態は作りません（[ウィンドウなしホスト](../../zh/spec/HEADLESS_HOST.md)、中国語）。起動すると `endpoint`、`token`、`profile`、`store` と `capabilities`（`view_sample_motion=yes|no`、ビルドに Cubism Core が含まれるか）を表示し、プロセスが終わるまで動きます。スクリプトからは `python mcp_proxy.py call <操作> [JSON] --edit` か Python の `mcp_proxy.Client` で呼び出し、`PSD2LIVE_MCP_ENDPOINT` と `PSD2LIVE_MCP_TOKEN` をそこに向けます。ワークスペースの保存先は既定でユーザーディレクトリの `psd2live-mcp` で、エディターとは分かれています（履歴とインスタンスロックを共有しません）。`--token` は 32–256 文字の URL セーフ Base64 で、省略するとランダムに生成されます。
 
 ## 他の形式への書き出し
 

@@ -29,7 +29,7 @@ Agent 理解意图、选择对象、规划工具调用和观察结果；程序�
 
 公开入口围绕编辑领域组织：观察、形状、关键形、结构、素材、路径、参数、物理与历史。每项操作使用 `domain_operation` 名称与严格 `request` schema。应用层注册表同时驱动 MCP 发布、校验和能力发现；不提供任意内部工具名分发。
 
-`project` 保存中立文档、DTO 和归档；应用层定义必须实现的能力接口、运行时及命令边界，GUI 与 MCP 负责适配。`WorkspaceBackend` 仅供宿主组合接口，命令消费者按所需能力绑定，不继承抛异常或返回空值的默认实现。PSD/图片新建和切换、CMO3 新建与替换已共用可脱离 GUI 的应用层导入器；GUI 负责确认和投影，MCP 返回进程任务。桌面适配器（`DesktopWorkspace`）组合这些接口；目前没有脱离桌面应用的独立运行时，`psd2live mcp` 仍构造 ViewModel；正式的无窗口宿主见[设计稿](../spec/HEADLESS_HOST.md)。
+`project` 保存中立文档、DTO 和归档；应用层定义必须实现的能力接口、运行时及命令边界，GUI 与 MCP 负责适配。`WorkspaceBackend` 仅供宿主组合接口，命令消费者按所需能力绑定，不继承抛异常或返回空值的默认实现。PSD/图片新建和切换、CMO3 新建与替换已共用可脱离 GUI 的应用层导入器；GUI 负责确认和投影，MCP 返回进程任务。工作区的应用逻辑在不依赖界面的 `WorkspaceHost` 中，它通过 `WorkspaceHostPresentation` 与宿主的界面交互：桌面适配器（`DesktopWorkspace`）以 ViewModel 实现它，`psd2live mcp` 以 `HeadlessPresentation` 实现，不创建 ViewModel，见[无窗口宿主](../spec/HEADLESS_HOST.md)。
 
 优先用连续形变或路径表达局部动作，避免要求模型猜测大批顶点。连续操作仍需明确坐标、目标参数键与父级关系；它不保证姿态自然或拓扑无翻折。
 

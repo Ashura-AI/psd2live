@@ -59,7 +59,7 @@ Notes:
 
 ### Headless MCP server
 
-`./gradlew run --args="mcp [--port N] [--token T] [--store DIR] [--profile core|full]"` starts only the MCP endpoint, without a window, for an agent working alone; it prints `endpoint`, `token`, `profile` and `store` and serves until the process ends. The workspace store defaults to `psd2live-mcp` in the user's home, apart from the editor's (no shared history or instance lock). `--token` must be 32–256 URL-safe Base64 characters; it is random when omitted.
+`./gradlew run --args="mcp [--port N] [--token T] [--store DIR] [--profile core|full]"` starts only the MCP endpoint, without a window, for an agent working alone: the workspace runs on the application-layer host, with no view model or Compose state (see [Headless host](../../zh/spec/HEADLESS_HOST.md), Chinese); it prints `endpoint`, `token`, `profile`, `store` and `capabilities` (`view_sample_motion=yes|no`, whether the build carries the Cubism Core) and serves until the process ends. Scripts call it with `python mcp_proxy.py call <operation> [JSON] --edit` or Python's `mcp_proxy.Client`, with `PSD2LIVE_MCP_ENDPOINT` and `PSD2LIVE_MCP_TOKEN` pointing at it. The workspace store defaults to `psd2live-mcp` in the user's home, apart from the editor's (no shared history or instance lock). `--token` must be 32–256 URL-safe Base64 characters; it is random when omitted.
 
 ## Exporting to other formats
 

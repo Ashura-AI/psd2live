@@ -102,6 +102,15 @@ class CubismSdkPreviewSession internal constructor(
 		stagingRoot: java.nio.file.Path? = null,
 	) : this(onFrame, onStatus, stagingRoot, CubismNativeRuntime::load, io.github.psd2live.render.PrimaryGpuExecutor())
 
+	companion object {
+		/** A session drawing nothing, on a thread of its own without a window: samples motions for a host with no canvas. */
+		internal fun windowless(name: String = "cubism-sdk-windowless"): CubismSdkPreviewSession =
+			CubismSdkPreviewSession({}, {}, null, CubismNativeRuntime::load, io.github.psd2live.render.ThreadGpuExecutor(name))
+
+		/** Whether this build carries a Cubism Core for this platform; loading it is how to know. */
+		internal fun coreAvailable(): Boolean = runCatching { CubismNativeRuntime.load() }.isSuccess
+	}
+
 	private data class QueuedRender(
 		val generation: Long,
 		val request: PreviewRenderRequest,
