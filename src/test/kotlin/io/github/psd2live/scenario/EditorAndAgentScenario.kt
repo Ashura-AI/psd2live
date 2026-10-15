@@ -6,7 +6,6 @@ import io.github.psd2live.application.*
 import io.github.psd2live.project.MutationAuthor
 import io.github.psd2live.ui.state.DesktopWorkspace
 import io.github.psd2live.ui.state.PSD2LiveViewModel
-import io.github.psd2live.ui.state.ProjectController
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
@@ -152,7 +151,7 @@ class EditorAndAgentScenario {
 		val shown = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
 		val archive = temp.resolve("mouth-color.psd2live")
 		vm.saveProjectNow(archive)
-		ProjectController(vm).open(workspace, archive)
+		workspace.open(archive)
 		consistent("reopened color gesture")
 		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
 	}
@@ -190,7 +189,7 @@ class EditorAndAgentScenario {
 		val shown = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
 		val archive = temp.resolve("mouth-edit.psd2live")
 		vm.saveProjectNow(archive)
-		ProjectController(vm).open(workspace, archive)
+		workspace.open(archive)
 		consistent("reopened mouth")
 		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
 		Studio.run(temp, io.github.psd2live.ui.state.WorkspaceStateCodec.document(vm.state.value), checks = emptySet()) {
@@ -256,7 +255,7 @@ class EditorAndAgentScenario {
 		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
 		val archive = temp.resolve("preset-fields.psd2live")
 		vm.saveProjectNow(archive)
-		ProjectController(vm).open(workspace, archive)
+		workspace.open(archive)
 		consistent("reopened preset fields")
 		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
 		Studio.run(temp, io.github.psd2live.ui.state.WorkspaceStateCodec.document(vm.state.value), checks = emptySet()) {
@@ -360,7 +359,7 @@ class EditorAndAgentScenario {
 		vm.saveProjectNow(archive)
 		assertEquals(nodes, workspace.history().nodes.size, "saving an unchanged project added a revision")
 		val shown = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
-		ProjectController(vm).open(workspace, archive)
+		workspace.open(archive)
 		consistent("reopened")
 		assertEquals(saved, workspace.snapshot().historyHeadNodeId)
 		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet), "the reopened project shows another rig")

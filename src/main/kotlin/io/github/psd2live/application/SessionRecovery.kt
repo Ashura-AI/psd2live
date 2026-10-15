@@ -1,4 +1,4 @@
-package io.github.psd2live.ui.state
+package io.github.psd2live.application
 
 import kotlinx.serialization.json.*
 import java.nio.file.Files

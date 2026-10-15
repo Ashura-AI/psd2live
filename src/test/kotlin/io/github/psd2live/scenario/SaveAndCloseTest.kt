@@ -83,7 +83,7 @@ class SaveAndCloseTest {
         vm.withSavedChanges { closed = true }
         assertTrue(closed)
         vm.saveProjectNow(temp.resolve("presentation.psd2live"))
-        ProjectController(vm).open(workspace, temp.resolve("presentation.psd2live"))
+        workspace.open(temp.resolve("presentation.psd2live"))
         assertEquals(TabCamera(2f, 30f, 40f), vm.state.value.activeCanvas.camera)
         assertFalse(vm.state.value.projectDirty)
         assertEquals(head, workspace.snapshot().historyHeadNodeId)
@@ -269,7 +269,7 @@ class SaveAndCloseTest {
         val original = Files.readAllBytes(archive)
         vm.setOutputPath(temp.resolve("changed-output").toString())
         val repository = ProjectRepository(writeArchive = { _, _, _ -> throw java.io.IOException("Archive write failed") })
-        assertFailsWith<java.io.IOException> { ProjectController(vm, repository).save(workspace, archive) }
+        assertFailsWith<java.io.IOException> { workspace.save(archive, repository = repository) }
         assertContentEquals(original, Files.readAllBytes(archive))
         assertTrue(vm.state.value.projectDirty)
         assertFalse(vm.state.value.projectSaving)
@@ -277,7 +277,7 @@ class SaveAndCloseTest {
         vm.saveProjectNow(archive)
         assertFalse(vm.state.value.projectDirty)
         assertNull(vm.state.value.projectSaveError)
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         assertEquals(temp.resolve("changed-output").toString(), vm.state.value.outputPath)
     }
 
@@ -285,7 +285,7 @@ class SaveAndCloseTest {
         val archive = temp.resolve("committed-result.psd2live")
         val completion = io.github.psd2live.application.WorkspaceJobCompletion { error("Invalid job result") }
         assertFailsWith<IllegalStateException> {
-            withContext(completion) { ProjectController(vm).save(workspace, archive) }
+            withContext(completion) { workspace.save(archive) }
         }
         assertNotNull(completion.result)
         assertTrue(Files.isRegularFile(archive))
@@ -299,10 +299,10 @@ class SaveAndCloseTest {
     @Test fun openingReleasesTheReplacedArchiveDirectoryAndClosingTheLast() = editor { vm, workspace ->
         val archive = temp.resolve("cleanup.psd2live")
         vm.saveProjectNow(archive)
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         val first = Path.of(vm.state.value.loadedInputPath!!).parent.parent
         assertTrue(Files.isDirectory(first))
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         val second = Path.of(vm.state.value.loadedInputPath!!).parent.parent
         workspace.flushProjectPersistence()
         assertFalse(Files.exists(first))
@@ -316,7 +316,7 @@ class SaveAndCloseTest {
     @Test fun closingPreservesTheExtractedStoreNeededForUnsavedRecovery() = editor { vm, workspace ->
         val archive = temp.resolve("retain-recovery.psd2live")
         vm.saveProjectNow(archive)
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         val extracted = Path.of(vm.state.value.loadedInputPath!!).parent.parent
         try {
             workspace.updateParameter(WorkspaceUpdateParameterRequest("ParamAngleX", workspace.stateToken()!!, name = "Recover this edit"))
@@ -363,7 +363,7 @@ class SaveAndCloseTest {
                 assertEquals(model, Oracles.hash(reopened.state.value.previewModel!!.rig.puppet))
                 assertTrue(reopened.state.value.projectDirty)
                 reopened.saveProjectNow(temp.resolve("recovered.psd2live"))
-                ProjectController(reopened).open(replacement, temp.resolve("recovered.psd2live"))
+                replacement.open(temp.resolve("recovered.psd2live"))
                 assertEquals(expected.parameterSnapshots, reopened.state.value.parameterSnapshots)
                 assertFalse(reopened.state.value.projectDirty)
             }
@@ -383,7 +383,7 @@ class SaveAndCloseTest {
         Files.delete(source)
         val deleted = temp.resolve("deleted-origin.psd2live")
         vm.saveProjectNow(deleted)
-        ProjectController(vm).open(workspace, deleted)
+        workspace.open(deleted)
         assertEquals(model, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
         assertEquals(model, Oracles.hash(io.github.psd2live.application.WorkspaceModelLoader.load(deleted).rig.puppet))
         vm.saveProjectNow(deleted)
@@ -393,7 +393,7 @@ class SaveAndCloseTest {
     @Test fun explicitDiscardReleasesTheRecoveryDirectoryAndMarker() = editor { vm, workspace ->
         val archive = temp.resolve("discard-close.psd2live")
         vm.saveProjectNow(archive)
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         val directory = Path.of(vm.state.value.loadedInputPath!!).parent.parent
         vm.saveParameterSnapshot("Discard snapshot")
         workspace.flushProjectPersistence()
@@ -419,7 +419,7 @@ class SaveAndCloseTest {
         java.util.zip.ZipFile(archive.toFile()).use { zip ->
             assertContentEquals(bytes, zip.getInputStream(zip.getEntry("source/original.cmo3")).use { it.readAllBytes() })
         }
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         assertEquals(model, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
     }
 
@@ -442,7 +442,7 @@ class SaveAndCloseTest {
         vm.confirmUnsavedChanges = { 0 }
         vm.withSavedChanges { closed.complete(Unit) }
         withTimeout(20_000) { closed.await() }
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         assertFalse(vm.state.value.projectDirty)
         assertEquals(0.25f, vm.state.value.parameterValues[probe])
         assertEquals(model, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
@@ -493,7 +493,7 @@ class SaveAndCloseTest {
         assertEquals(0.25f, workspace.authoredPose(vm.state.value.activeWorkspace.id).values[probe])
         vm.saveProjectNow(temp.resolve("batch.psd2live"))
         assertFalse(vm.state.value.projectDirty)
-        ProjectController(vm).open(workspace, temp.resolve("batch.psd2live"))
+        workspace.open(temp.resolve("batch.psd2live"))
         assertEquals(0.25f, vm.state.value.parameterValues[probe])
     }
 
@@ -533,7 +533,7 @@ class SaveAndCloseTest {
         assertEquals("Renamed axis", vm.state.value.previewModel!!.rig.puppet.parameters.single { it.id.raw == "ParamAngleX" }.name)
         val model = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
         repeat(3) { vm.saveProjectNow(archive); assertFalse(vm.state.value.projectDirty) }
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         assertEquals(model, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
     }
 
@@ -565,7 +565,7 @@ class SaveAndCloseTest {
         vm.saveProjectNow(archive)
         assertEquals(workspace.snapshot().historyHeadNodeId, vm.state.value.historySnapshot?.headNodeId)
         assertFalse(vm.state.value.projectDirty)
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         assertEquals("Committed axis", vm.state.value.previewModel!!.rig.puppet.parameters.single { it.id.raw == "ParamAngleX" }.name)
     }
 
@@ -592,7 +592,7 @@ class SaveAndCloseTest {
         withTimeout(20_000) { closed.await() }
         assertNull(vm.queuedProjectSave)
         assertFalse(vm.state.value.projectDirty)
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         assertTrue(vm.state.value.analysis!!.source.layers.none { it.id.raw == layer })
     }
 
@@ -716,7 +716,7 @@ class SaveAndCloseTest {
             check(resume.await(20, TimeUnit.SECONDS))
             ProjectArchive.write(root, target, id)
         })
-        val save = async { ProjectController(vm, repository).save(workspace, path) }
+        val save = async { workspace.save(path, repository = repository) }
         try { withTimeout(20_000) { staged.await() }; edit() }
         finally { resume.countDown() }
         save.await()
@@ -757,7 +757,7 @@ class SaveAndCloseTest {
         vm.saveProjectNow(archive)
         val posed = org.umamo.render.eval.CpuDeformationEvaluator().evaluate(vm.state.value.previewModel!!.rig.puppet,
             vm.state.value.parameterValues).worldPositions.mapValues { it.value.toList() }
-        ProjectController(vm).open(workspace, archive)
+        workspace.open(archive)
         assertEquals(20f, vm.state.value.parameterValues[ParameterId("ParamAngleX")])
         assertEquals(TabCamera(2f, 30f, 40f), vm.state.value.activeCanvas.camera)
         assertEquals(posed, org.umamo.render.eval.CpuDeformationEvaluator().evaluate(vm.state.value.previewModel!!.rig.puppet,

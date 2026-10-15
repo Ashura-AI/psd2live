@@ -1,5 +1,7 @@
 package io.github.psd2live.ui.state
 
+import io.github.psd2live.application.SessionRecovery
+
 import io.github.psd2live.application.PendingPoseCommit
 import io.github.psd2live.application.WorkspacePoseQueue
 import io.github.psd2live.application.WorkspacePoseQueue.Pending as PendingPose
@@ -2266,7 +2268,7 @@ class PSD2LiveViewModel : AutoCloseable {
             return executeUserProject({ it.saveProjectAt(path?.toAbsolutePath()?.normalize()) }).historyNodeId
         } catch (failure: Throwable) {
             if (failure is kotlinx.coroutines.CancellationException) throw failure
-            // Fields can fail before ProjectController starts a save; Save and Close must report that too.
+            // Fields can fail before the workspace starts a save; Save and Close must report that too.
             if (_state.value.projectSaveError == null) reportProjectSaveFailure(failure, started, _state.value.projectSaving)
             throw failure
         }
