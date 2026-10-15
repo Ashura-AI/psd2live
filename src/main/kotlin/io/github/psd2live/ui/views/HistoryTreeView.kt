@@ -71,6 +71,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import io.github.psd2live.ui.theme.Motion
 import io.github.psd2live.ui.theme.handCursor
+import io.github.psd2live.ui.theme.selectOrOpen
 
 private const val NODE_WIDTH_DP = 184f
 private const val NODE_HEIGHT_DP = 46f
@@ -558,7 +559,7 @@ private fun HistoryNodeCard(
 					if (isHead) drawRect(colors.highlight, size = Size(stripe.toPx(), size.height))
 				}
 				.hoverable(interaction)
-				.combinedClickable(interactionSource = interaction, indication = null, onClick = onClick, onDoubleClick = onDoubleClick)
+				.selectOrOpen(true, onClick, onDoubleClick)
 				.padding(start = stripe + (5 * scale).dp, end = (6 * scale).dp),
 			contentAlignment = Alignment.CenterStart,
 		) {

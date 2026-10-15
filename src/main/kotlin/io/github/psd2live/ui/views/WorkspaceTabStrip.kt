@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -82,6 +81,7 @@ import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.Motion
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.theme.handCursor
+import io.github.psd2live.ui.theme.selectOrOpen
 
 /** Dock modules the window menu can show or hide, in menu order. */
 internal val WINDOW_MODULES = listOf(
@@ -408,17 +408,11 @@ private fun WorkspaceChip(
 						currentOnDrag(amount)
 					}
 				}
-				.combinedClickable(
-					interactionSource = interactionSource,
-					indication = null,
-					enabled = !renaming,
-					onClick = onSelect,
-					onDoubleClick = {
-						onSelect()
-						draft = workspace.displayName()
-						renaming = true
-					},
-				)
+				.hoverable(interactionSource)
+				.selectOrOpen(!renaming, onSelect) {
+					draft = workspace.displayName()
+					renaming = true
+				}
 				.padding(start = 8.dp, end = 4.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {

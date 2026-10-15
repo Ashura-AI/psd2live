@@ -7,10 +7,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.hoverable
@@ -127,6 +125,7 @@ import io.github.psd2live.ui.views.texture.FloatingMenuRow
 import io.github.psd2live.ui.views.texture.FloatingMenuSection
 import io.github.psd2live.ui.theme.Motion
 import io.github.psd2live.ui.theme.handCursor
+import io.github.psd2live.ui.theme.selectOrOpen
 import java.awt.Cursor
 import java.time.Instant
 import java.time.ZoneId
@@ -420,8 +419,9 @@ private fun GenerateViewport(
 			Modifier.weight(1f).fillMaxWidth()
 				.background(colors.inputBackground)
 				.hoverable(interaction)
-				.combinedClickable(interactionSource = interaction, indication = null, enabled = enabled,
-					onClick = { if (file == null) onOpenPsd() }, onDoubleClick = { if (file != null) onGenerate() else onOpenPsd() })
+				// Empty, a click browses at once; holding a PSD, only a double click acts, so a click has nothing to wait for.
+				.then(if (file == null) Modifier.clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onOpenPsd)
+					else Modifier.selectOrOpen(enabled, onSelect = {}, onOpen = onGenerate))
 				.handCursor(enabled),
 			contentAlignment = Alignment.Center,
 		) {
@@ -892,19 +892,6 @@ private fun itemFill(selected: Boolean, hovered: Boolean): Color {
 		selected -> colors.selection
 		hovered -> colors.controlHover
 		else -> Color.Transparent
-	}
-}
-
-/**
- * A click selects at the press, without waiting to tell it from a double click, and a double click opens. The latest
- * callbacks are read at each tap, so the selection recomposing the item does not restart the gesture between clicks.
- */
-@Composable
-private fun Modifier.selectOrOpen(enabled: Boolean, onSelect: () -> Unit, onOpen: () -> Unit): Modifier {
-	val select by rememberUpdatedState(onSelect)
-	val open by rememberUpdatedState(onOpen)
-	return pointerInput(enabled) {
-		if (enabled) detectTapGestures(onPress = { select() }, onDoubleTap = { open() })
 	}
 }
 

@@ -1439,9 +1439,11 @@ fun CompactRadioButton(
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val interactionSource = remember { MutableInteractionSource() }
+	val isHovered by interactionSource.collectIsHoveredAsState()
 
 	Row(
 		modifier = modifier
+			.hoverable(interactionSource)
 			.clickable(enabled = enabled, interactionSource = interactionSource, indication = null, onClick = onClick)
 			.padding(vertical = 2.dp),
 		verticalAlignment = Alignment.CenterVertically,
@@ -1452,7 +1454,7 @@ fun CompactRadioButton(
 				.clip(CircleShape)
 				.background(colors.inputBackground, CircleShape)
 				.border(
-					BorderStroke(1.dp, if (selected) colors.accent else colors.border),
+					BorderStroke(1.dp, if (selected) colors.accent else if (isHovered && enabled) colors.borderHover else colors.border),
 					CircleShape,
 				),
 			contentAlignment = Alignment.Center,
