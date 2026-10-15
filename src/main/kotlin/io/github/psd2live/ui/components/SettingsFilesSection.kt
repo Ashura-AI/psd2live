@@ -32,6 +32,14 @@ internal object AppDataFolders {
 	val runtime: Path get() = ModelDownloader.defaultRuntimeDir()
 	val upscaleCache: Path get() = Path.of(System.getProperty("user.home"), ".psd2live", "cache", "upscale")
 	val home: Path get() = Path.of(System.getProperty("user.home"), ".psd2live")
+
+	/**
+	 * Where the app is installed: the packaged launcher's folder, which jpackage names in `jpackage.app-path`. A run
+	 * from the sources has no launcher, so it is the folder the app was started in.
+	 */
+	val install: Path get() = System.getProperty("jpackage.app-path")?.takeIf(String::isNotBlank)
+		?.let { runCatching { Path.of(it).toAbsolutePath().parent }.getOrNull() }
+		?: Path.of(System.getProperty("user.dir")).toAbsolutePath()
 }
 
 /**
@@ -66,6 +74,7 @@ internal fun SettingsFilesSection(state: PSD2LiveState, viewModel: PSD2LiveViewM
 	}
 
 	InspectorSectionBox(tr("settings.files.data")) {
+		FolderRow(tr("settings.files.data.install"), AppDataFolders.install)
 		FolderRow(tr("settings.files.data.workspaces"), AppDataFolders.workspaces)
 		FolderRow(tr("settings.files.data.runtime"), AppDataFolders.runtime)
 		FolderRow(tr("settings.files.data.upscaleCache"), AppDataFolders.upscaleCache, clearable = !state.isUpscaling)
