@@ -45,6 +45,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -57,6 +58,8 @@ import io.github.psd2live.ui.state.AppSettings
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.state.SettingsTopic
+import io.github.psd2live.ui.views.InspectorFormRow
+import io.github.psd2live.ui.views.InspectorSectionBox
 import io.github.psd2live.ui.views.PageBody
 import io.github.psd2live.ui.views.PageNavItem
 import io.github.psd2live.ui.views.PageNavList
@@ -93,7 +96,7 @@ internal fun SettingsPanel(topic: SettingsTopic, state: PSD2LiveState, viewModel
 			SettingsTopic.SCALE -> SettingsScaleSection(
 				uiScale = state.uiScale,
 				fontScale = state.fontScale,
-				recommendedScale = DisplayMetricsCache.value.recommendedScale,
+				metrics = DisplayMetricsCache.value,
 				onUiScaleChange = viewModel::setUiScale,
 				onFontScaleChange = viewModel::setFontScale,
 			)
@@ -126,7 +129,6 @@ internal fun SettingsPanel(topic: SettingsTopic, state: PSD2LiveState, viewModel
 				onResetBinding = viewModel::resetKeyBinding,
 				onPresetChange = viewModel::applyKeymapPreset,
 			)
-			SettingsTopic.ENVIRONMENT -> SettingsEnvironmentSection(DisplayMetricsCache.value)
 		}
 	} }
 }
@@ -145,7 +147,7 @@ internal fun SettingsNav(selected: SettingsTopic, onSelect: (SettingsTopic) -> U
 
 /**
  * The display readout, taken once: the device query touches GraphicsEnvironment and is slow on multi-monitor Windows
- * setups, and the "Auto Recommend" button and the environment readout should describe the same snapshot.
+ * setups, and the recommended scale and the display readout should describe the same snapshot.
  */
 private object DisplayMetricsCache {
 	val value: AppSettings.DisplayMetrics by lazy { AppSettings.detectDisplayMetrics() }
@@ -170,151 +172,110 @@ internal fun SettingsSectionDescription(text: String) {
 	)
 }
 
+/** Interface scales offered as one click; any other is a drag of the slider away. */
+private val UiScalePresets = listOf(1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+
+private fun percent(scale: Float) = "${(scale * 100).roundToInt()}%"
+
+/**
+ * Scale and display, as the inspector lays out its sections: the interface scale with its common values and the
+ * display's own recommendation, the text size, and what the display reports. Everything applies as it changes.
+ */
 @Composable
 private fun SettingsScaleSection(
 	uiScale: Float,
 	fontScale: Float,
-	recommendedScale: Float,
+	metrics: AppSettings.DisplayMetrics,
 	onUiScaleChange: (Float) -> Unit,
 	onFontScaleChange: (Float) -> Unit,
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-
-	val uiScalePresets = listOf(1.0f, 1.15f, 1.25f, 1.35f, 1.50f, 1.75f, 2.00f, 2.50f)
 	val fontScalePresets = listOf(
 		0.90f to tr("settings.font.compact"),
 		1.00f to tr("settings.font.standard"),
 		1.15f to tr("settings.font.large"),
 		1.30f to tr("settings.font.extraLarge"),
 	)
+	val recommended = metrics.recommendedScale
+	val atRecommended = kotlin.math.abs(uiScale - recommended) < 0.005f
 
 	SettingsSectionDescription(tr("dialog.settings.scale.desc"))
 
-	// Section 1: UI Scaling (界面缩放)
-	Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-		Row(
-			modifier = Modifier.fillMaxWidth(),
-			horizontalArrangement = Arrangement.SpaceBetween,
-			verticalAlignment = Alignment.CenterVertically,
-		) {
-			Text(
-				text = tr("dialog.settings.uiScale"),
-				style = typography.header.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
-				color = colors.textPrimary,
-			)
-			Row(
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(6.dp),
-			) {
-				Text(
-					text = "${(uiScale * 100).roundToInt()}%",
-					style = typography.mono.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
-					color = colors.accent,
+	InspectorSectionBox(tr("settings.scale.group.ui")) {
+		InspectorFormRow(tr("settings.scale.value")) {
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+				CompactSlider(
+					value = uiScale,
+					onValueChange = { onUiScaleChange((it * 100).roundToInt() / 100f) },
+					valueRange = 0.75f..2.50f,
+					height = 14.dp,
+					modifier = Modifier.weight(1f),
 				)
+				Text(percent(uiScale), style = typography.monoSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+					color = colors.textPrimary, textAlign = TextAlign.End, modifier = Modifier.width(40.dp))
+			}
+		}
+		InspectorFormRow(tr("settings.scale.presets")) {
+			Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+				for (preset in UiScalePresets) {
+					CompactToggleChip(
+						text = percent(preset),
+						selected = kotlin.math.abs(uiScale - preset) < 0.005f,
+						onToggle = { onUiScaleChange(preset) },
+						modifier = Modifier.weight(1f),
+					)
+				}
+			}
+		}
+		InspectorFormRow(tr("settings.scale.recommended")) {
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 				CompactButton(
-					text = tr("dialog.settings.autoScale"),
-					onClick = { onUiScaleChange(recommendedScale) },
-					height = 20.dp,
+					text = tr("settings.scale.useRecommended", percent(recommended)),
+					onClick = { onUiScaleChange(recommended) },
+					enabled = !atRecommended,
+					height = 22.dp,
 				)
-			}
-		}
-
-		// Slider
-		CompactSlider(
-			value = uiScale,
-			onValueChange = { onUiScaleChange((it * 100).roundToInt() / 100f) },
-			valueRange = 0.75f..2.50f,
-			modifier = Modifier.fillMaxWidth().height(22.dp),
-		)
-
-		// Preset Buttons
-		Row(
-			modifier = Modifier.fillMaxWidth(),
-			horizontalArrangement = Arrangement.spacedBy(6.dp),
-		) {
-			for (preset in uiScalePresets) {
-				val isSelected = kotlin.math.abs(uiScale - preset) < 0.03f
-				CompactToggleChip(
-					text = "${(preset * 100).toInt()}%",
-					selected = isSelected,
-					onToggle = { onUiScaleChange(preset) },
-					modifier = Modifier.weight(1f),
+				Text(
+					tr(if (atRecommended) "settings.scale.recommended.current" else "settings.scale.recommended.hint"),
+					style = typography.caption.copy(fontSize = 10.5.sp),
+					color = colors.textMuted,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
 				)
 			}
 		}
 	}
 
-	// Section 2: Font Scaling (字体缩放)
-	Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-		Row(
-			modifier = Modifier.fillMaxWidth(),
-			horizontalArrangement = Arrangement.SpaceBetween,
-			verticalAlignment = Alignment.CenterVertically,
-		) {
-			Text(
-				text = tr("dialog.settings.fontScale"),
-				style = typography.header.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
-				color = colors.textPrimary,
-			)
-			Text(
-				text = "${(fontScale * 100).roundToInt()}%",
-				style = typography.mono.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
-				color = colors.accent,
-			)
-		}
-
-		Row(
-			modifier = Modifier.fillMaxWidth(),
-			horizontalArrangement = Arrangement.spacedBy(6.dp),
-		) {
-			for ((scale, label) in fontScalePresets) {
-				val isSelected = kotlin.math.abs(fontScale - scale) < 0.04f
-				CompactToggleChip(
-					text = label,
-					selected = isSelected,
-					onToggle = { onFontScaleChange(scale) },
-					modifier = Modifier.weight(1f),
-				)
+	InspectorSectionBox(tr("settings.scale.group.font")) {
+		InspectorFormRow(tr("settings.scale.fontSize")) {
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+				for ((scale, label) in fontScalePresets) {
+					CompactToggleChip(
+						text = label,
+						selected = kotlin.math.abs(fontScale - scale) < 0.04f,
+						onToggle = { onFontScaleChange(scale) },
+						modifier = Modifier.weight(1f),
+					)
+				}
+				Text(percent(fontScale), style = typography.monoSmall.copy(fontSize = 11.sp), color = colors.textMuted,
+					textAlign = TextAlign.End, modifier = Modifier.width(40.dp))
 			}
 		}
 	}
 
-	// Live Preview Sample Box
-	Column(
-		modifier = Modifier
-			.fillMaxWidth()
-			.background(colors.panelElevated, RoundedCornerShape(4.dp))
-			.border(BorderStroke(1.dp, colors.border), RoundedCornerShape(4.dp))
-			.padding(10.dp),
-		verticalArrangement = Arrangement.spacedBy(6.dp),
-	) {
-		Text(
-			text = tr("dialog.settings.previewSample"),
-			style = typography.caption.copy(fontSize = 10.sp),
-			color = colors.textMuted,
-		)
-		Row(
-			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(10.dp),
-		) {
-			Text(
-				text = "Head_FrontHair_01",
-				style = typography.body.copy(fontWeight = FontWeight.Medium),
-				color = colors.textPrimary,
-			)
-			CompactButton(
-				text = tr("action.analyze"),
-				onClick = {},
-				isPrimary = true,
-				height = 22.dp,
-			)
-			Text(
-				text = "Z: 500  ·  4096×4096",
-				style = typography.monoSmall,
-				color = colors.textMuted,
-			)
-		}
+	InspectorSectionBox(tr("settings.scale.group.display")) {
+		ReadoutRow(tr("settings.display.resolution"), "${metrics.physicalWidth} × ${metrics.physicalHeight}")
+		ReadoutRow(tr("settings.display.systemScale"), "${metrics.systemScalePercent}%")
+		ReadoutRow(tr("settings.display.recommended"), percent(recommended))
+	}
+}
+
+/** A read-only value in a section: its label, then the value in the mono face. */
+@Composable
+private fun ReadoutRow(label: String, value: String) {
+	InspectorFormRow(label, Modifier.height(20.dp)) {
+		Text(value, style = LocalToolTypography.current.monoSmall.copy(fontSize = 11.sp), color = LocalToolColors.current.textPrimary)
 	}
 }
 
@@ -735,37 +696,3 @@ private fun KeyChip(
 	}
 }
 
-@Composable
-private fun SettingsEnvironmentSection(displayMetrics: AppSettings.DisplayMetrics) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-
-	SettingsSectionDescription(tr("dialog.settings.environment.desc"))
-
-	// Display & Environment Info
-	Column(
-		modifier = Modifier
-			.fillMaxWidth()
-			.background(colors.inputBackground, RoundedCornerShape(4.dp))
-			.border(BorderStroke(1.dp, colors.border.copy(alpha = 0.5f)), RoundedCornerShape(4.dp))
-			.padding(10.dp),
-		verticalArrangement = Arrangement.spacedBy(4.dp),
-	) {
-		Text(
-			text = tr("dialog.settings.highDpiInfo"),
-			style = typography.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
-			color = colors.textPrimary,
-		)
-		Text(
-			text = tr(
-				"dialog.settings.displayMetrics",
-				displayMetrics.physicalWidth,
-				displayMetrics.physicalHeight,
-				displayMetrics.systemScalePercent,
-				"${(displayMetrics.recommendedScale * 100).toInt()}%",
-			),
-			style = typography.caption.copy(fontSize = 10.5.sp),
-			color = colors.textMuted,
-		)
-	}
-}

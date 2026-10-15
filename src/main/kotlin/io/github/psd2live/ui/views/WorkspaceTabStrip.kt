@@ -276,9 +276,8 @@ fun WorkspaceStrip(
 }
 
 /**
- * An app page's tab, ahead of the workspaces: never renamed or dragged. The start page's says its name; help's and
- * settings' are icons, named in their tooltip, with a close button while hovered or shown. The start page folds away
- * by itself once a project opens.
+ * An app page's tab, ahead of the workspaces: its icon and name, never renamed or dragged. Help's and settings' show
+ * a close button while hovered or shown; the start page's folds away by itself once a project opens.
  */
 @Composable
 private fun PageChip(page: AppPage, isActive: Boolean, onSelect: () -> Unit, onClose: (() -> Unit)?) {
@@ -286,9 +285,8 @@ private fun PageChip(page: AppPage, isActive: Boolean, onSelect: () -> Unit, onC
 	val typography = LocalToolTypography.current
 	val interactionSource = remember { MutableInteractionSource() }
 	val isHovered by interactionSource.collectIsHoveredAsState()
-	val compact = page != AppPage.START
 	val showClose = onClose != null && (isHovered || isActive)
-	io.github.psd2live.ui.views.texture.BarTooltip(if (compact) pageTitle(page) else "") {
+	run {
 		Row(
 			modifier = Modifier
 				.padding(end = 2.dp)
@@ -302,11 +300,11 @@ private fun PageChip(page: AppPage, isActive: Boolean, onSelect: () -> Unit, onC
 				.hoverable(interactionSource)
 				.handCursor()
 				.clickable(interactionSource = interactionSource, indication = null, onClick = onSelect)
-				.padding(start = if (compact) 6.dp else 8.dp, end = if (showClose) 3.dp else if (compact) 6.dp else 8.dp),
+				.padding(start = 8.dp, end = if (showClose) 3.dp else 8.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
 			PageIcon(page, if (isActive) colors.accent else colors.textMuted, Modifier.size(12.dp))
-			if (!compact) {
+			run {
 				Spacer(Modifier.width(5.dp))
 				Text(
 					text = pageTitle(page),

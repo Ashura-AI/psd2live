@@ -31,7 +31,7 @@ enum class HelpTab(internal val labelKey: String) {
 	ABOUT("help.tab.about"),
 }
 
-/** The settings page's topics, in its contents' order: what people come to change first, reference last. */
+/** The settings page's topics, in its contents' order: what people come to change first. */
 internal enum class SettingsTopic(val labelKey: String) {
 	SCALE("dialog.settings.category.scale"),
 	THEME("dialog.settings.category.theme"),
@@ -39,7 +39,6 @@ internal enum class SettingsTopic(val labelKey: String) {
 	CANVAS("settings.canvas.title"),
 	PROMPTS("dialog.settings.category.prompts"),
 	SHORTCUTS("dialog.settings.category.shortcuts"),
-	ENVIRONMENT("dialog.settings.category.environment"),
 }
 
 /** The page whose dock holds [module], or null for an editor module. */
