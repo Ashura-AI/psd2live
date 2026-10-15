@@ -4429,6 +4429,12 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	fun openSettings() = showPage(AppPage.SETTINGS)
 
+	/** Opens the settings page on [topic]. */
+	internal fun openSettings(topic: SettingsTopic) {
+		settingsTopic = topic
+		showPage(AppPage.SETTINGS, SETTINGS_CONTENT)
+	}
+
 	/** Leaving the settings page: a shortcut being recorded is dropped and the canvas takes the keys again. */
 	private fun endSettingsPage() {
 		updateState {

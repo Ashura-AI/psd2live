@@ -97,6 +97,9 @@ import io.github.psd2live.ui.theme.handCursor
 
 /** One title-bar layout toggle: the panels docked on [side] of the canvases. */
 @Immutable
+/** A folder the File menu opens; [path] is null, or not a folder, when there is none to open. */
+data class MenuFolder(val label: String, val path: String?, val startsGroup: Boolean = false)
+
 data class SidebarToggle(
 	val side: SidebarSide,
 	/** Whether any panel on that side is shown. */
@@ -115,7 +118,7 @@ fun AppTitleBar(
 	windowState: WindowState,
 	isBusy: Boolean,
 	hasInput: Boolean,
-	canOpenOutput: Boolean,
+	folders: List<MenuFolder> = emptyList(),
 	currentLanguage: AppLanguage,
 	uiScale: Float = 1.0f,
 	fontScale: Float = 1.0f,
@@ -138,7 +141,7 @@ fun AppTitleBar(
     projectTitle: String,
 	onReanalyze: () -> Unit,
 	onReexportPsd: () -> Unit,
-	onOpenOutput: () -> Unit,
+	onOpenFolder: (String) -> Unit = {},
 	onShowExport: () -> Unit,
 	/** Opens the export dialog of one neutral target, by id (File > Export as). */
 	onExportAs: (String) -> Unit = {},
@@ -378,12 +381,22 @@ fun AppTitleBar(
 							onClick = { activeMenu = null; activeSubmenu = null; onReexportPsd() },
 						)
 					}
-					AppMenuItem(
-						text = tr("menu.file.openOutput"),
-						enabled = canOpenOutput,
-						onHover = { activeSubmenu = null },
-						onClick = { activeMenu = null; onOpenOutput() },
-					)
+					AppSubmenuItem(
+						text = tr("menu.file.openFolder"),
+						isOpen = activeSubmenu == "folders",
+						onOpen = { activeSubmenu = "folders" },
+						onDismiss = { if (activeSubmenu == "folders") activeSubmenu = null },
+					) {
+						folders.forEach { folder ->
+							if (folder.startsGroup) AppMenuSeparator()
+							AppMenuItem(
+								text = folder.label,
+								enabled = folder.path != null,
+								icon = { tint -> IconFolder(Modifier.size(14.dp), tint) },
+								onClick = { activeMenu = null; activeSubmenu = null; folder.path?.let(onOpenFolder) },
+							)
+						}
+					}
 
 					AppMenuSeparator()
 

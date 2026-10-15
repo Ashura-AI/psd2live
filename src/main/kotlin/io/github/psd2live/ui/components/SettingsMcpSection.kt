@@ -3,13 +3,10 @@ package io.github.psd2live.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,24 +20,36 @@ import io.github.psd2live.agent.*
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
+import io.github.psd2live.ui.utils.DesktopUtils
+import io.github.psd2live.ui.views.InspectorFormRow
+import io.github.psd2live.ui.views.InspectorSectionBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.awt.Toolkit
-import java.awt.datatransfer.StringSelection
 import java.io.File
+
+/** The MCP service the app runs, for the settings page; null where none was started. */
+internal val LocalAgentMcp = staticCompositionLocalOf<AgentMcpController?> { null }
 
 private val CLIENT_LABELS = mapOf(
 	AgentMcpClient.CLAUDE_CODE to "Claude Code", AgentMcpClient.CODEX to "Codex",
 	AgentMcpClient.JSON to "JSON", AgentMcpClient.STDIO to "Stdio",
 )
 
-/** The single MCP entry: how to connect a host to the running endpoint, and the endpoint's own settings. */
+private val TOKEN_MASK = "•".repeat(24)
+
+/**
+ * The MCP topic of the settings page: how to connect a host to the running endpoint, then the endpoint's own
+ * settings. Unlike the other topics these are a draft until applied, since applying restarts the service.
+ */
 @Composable
-fun AgentMcpDialog(
-	controller: AgentMcpController,
-	onDismiss: () -> Unit,
-) {
+internal fun SettingsMcpSection() {
+	val controller = LocalAgentMcp.current
+	SettingsSectionDescription(tr("settings.mcp.desc"))
+	if (controller == null) {
+		Notice(tr("settings.mcp.unavailable"), LocalToolColors.current.textMuted)
+		return
+	}
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val scope = rememberCoroutineScope()
@@ -66,8 +75,7 @@ fun AgentMcpDialog(
 	}
 
 	fun copy(text: String, label: String) {
-		val selection = StringSelection(text)
-		Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
+		DesktopUtils.copyToClipboard(text)
 		copied = tr("dialog.agent.copied", label)
 	}
 
@@ -78,38 +86,24 @@ fun AgentMcpDialog(
 		}
 	}
 
-	ModalDialogFrame(
-		title = tr("dialog.agent.title"),
-		onDismiss = onDismiss,
-		width = 560.dp,
-		maxHeight = 660.dp,
-		dismissible = !applying,
-		titleTrailing = { StatusChip(status) },
-		footerStart = {
-			Text(copied?.let { "✓ $it" }.orEmpty(), style = typography.caption.copy(fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold),
-				color = colors.highlight)
-		},
-		footer = {
-			CompactButton(tr("dialog.agent.revert"), onClick = {
-				enabled = saved.enabled; portText = saved.port.toString(); token = saved.token; profile = saved.profile
-			}, enabled = dirty && !applying)
-			CompactButton(tr(if (applying) "dialog.agent.applying" else "dialog.agent.apply"), onClick = ::apply,
-				enabled = problem == null && !applying && (dirty || status is AgentMcpStatus.Failed), isPrimary = true)
-		},
-	) {
-		SectionTitle(tr("dialog.agent.section.connect"))
+	InspectorSectionBox(tr("dialog.agent.section.connect")) {
+		InspectorFormRow(tr("settings.mcp.status")) { StatusChip(status) }
 		when (val current = status) {
 			is AgentMcpStatus.Running -> {
 				val connection = current.connection
-				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					FieldLabel(tr("dialog.agent.endpoint"))
-					Text(connection.endpoint, style = typography.monoSmall.copy(fontSize = 11.sp), color = colors.textPrimary, modifier = Modifier.weight(1f))
-					CompactButton(tr("dialog.agent.copy"), onClick = { copy(connection.endpoint, tr("dialog.agent.endpoint")) }, height = 22.dp)
+				InspectorFormRow(tr("dialog.agent.endpoint")) {
+					Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+						Text(connection.endpoint, style = typography.monoSmall.copy(fontSize = 11.sp), color = colors.textPrimary,
+							modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+						CompactButton(tr("dialog.agent.copy"), onClick = { copy(connection.endpoint, tr("dialog.agent.endpoint")) }, height = 22.dp)
+					}
 				}
-				val clients = AgentMcpClient.entries
-				CompactTabBar(clients.map(CLIENT_LABELS::getValue), clients.indexOf(client), { client = clients[it] }, Modifier.fillMaxWidth())
+				InspectorFormRow(tr("settings.mcp.host")) {
+					val clients = AgentMcpClient.entries
+					CompactTabBar(clients.map(CLIENT_LABELS::getValue), clients.indexOf(client), { client = clients[it] }, Modifier.fillMaxWidth(), height = 24.dp)
+				}
 				val snippet = AgentMcpClientConfigs.snippet(client, connection, proxyPath)
-				Row(verticalAlignment = Alignment.CenterVertically) {
+				Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
 					Text(tr(when (client) {
 						AgentMcpClient.CLAUDE_CODE -> "dialog.agent.hint.claude"
 						AgentMcpClient.CODEX -> "dialog.agent.hint.codex"
@@ -133,35 +127,40 @@ fun AgentMcpDialog(
 							.padding(10.dp),
 					)
 				}
-				CompactButton(tr("dialog.agent.copyPrompt"), height = 22.dp, onClick = {
-					copy(tr("dialog.agent.prompt", connection.endpoint, connection.token), tr("dialog.agent.promptName"))
-				})
+				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					CompactButton(tr("dialog.agent.copyPrompt"), height = 22.dp, onClick = {
+						copy(tr("dialog.agent.prompt", connection.endpoint, connection.token), tr("dialog.agent.promptName"))
+					})
+					Copied(copied)
+				}
 			}
 			is AgentMcpStatus.Failed -> Notice(tr("dialog.agent.failed", current.message), colors.error)
 			AgentMcpStatus.Stopped -> Notice(tr("dialog.agent.offline"), colors.textMuted)
 		}
+	}
 
-		Spacer(Modifier.height(4.dp))
-		SectionTitle(tr("dialog.agent.section.settings"))
-		CompactCheckbox(enabled, { enabled = it }, label = tr("dialog.agent.enabled"), enabled = !applying)
-		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-			FieldLabel(tr("dialog.agent.port"))
+	InspectorSectionBox(tr("dialog.agent.section.settings")) {
+		InspectorFormRow(tr("settings.mcp.service")) {
+			CompactCheckbox(enabled, { enabled = it }, label = tr("dialog.agent.enabled"), enabled = !applying)
+		}
+		InspectorFormRow(tr("dialog.agent.port")) {
 			CompactTextField(portText, { text -> portText = text.filter(Char::isDigit).take(5) }, Modifier.width(96.dp), isMono = true, enabled = !applying)
 		}
-		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-			FieldLabel(tr("dialog.agent.token"))
-			if (tokenVisible) {
-				CompactTextField(token, { token = it.trim() }, Modifier.weight(1f), isMono = true, enabled = !applying)
-			} else {
-				Text(TOKEN_MASK, style = typography.monoSmall.copy(fontSize = 11.sp), color = colors.textPrimary,
-					modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Clip)
+		InspectorFormRow(tr("dialog.agent.token")) {
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+				if (tokenVisible) {
+					CompactTextField(token, { token = it.trim() }, Modifier.weight(1f), isMono = true, enabled = !applying)
+				} else {
+					Text(TOKEN_MASK, style = typography.monoSmall.copy(fontSize = 11.sp), color = colors.textPrimary,
+						modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Clip)
+				}
+				CompactButton(tr(if (tokenVisible) "dialog.agent.token.hide" else "dialog.agent.token.show"), { tokenVisible = !tokenVisible }, height = 22.dp)
+				CompactButton(tr("dialog.agent.token.regenerate"), { token = AgentMcpCredentials.generateToken() }, height = 22.dp, enabled = !applying)
+				CompactButton(tr("dialog.agent.copy"), { copy(token, tr("dialog.agent.token")) }, height = 22.dp)
 			}
-			CompactButton(tr(if (tokenVisible) "dialog.agent.token.hide" else "dialog.agent.token.show"), { tokenVisible = !tokenVisible }, height = 22.dp)
-			CompactButton(tr("dialog.agent.token.regenerate"), { token = AgentMcpCredentials.generateToken() }, height = 22.dp, enabled = !applying)
-			CompactButton(tr("dialog.agent.copy"), { copy(token, tr("dialog.agent.token")) }, height = 22.dp)
 		}
-		Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-			FieldLabel(tr("dialog.agent.tools"))
+		Row(verticalAlignment = Alignment.Top) {
+			FormLabel(tr("dialog.agent.tools"))
 			Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 				ProfileOption(profile == AgentToolProfile.CORE, tr("dialog.agent.profile.core"),
 					tr("dialog.agent.profile.coreDesc", CORE_TOOL_COUNT.toString()), !applying) { profile = AgentToolProfile.CORE }
@@ -169,10 +168,19 @@ fun AgentMcpDialog(
 					tr("dialog.agent.profile.fullDesc"), !applying) { profile = AgentToolProfile.FULL }
 			}
 		}
-		when (problem) {
-			AgentMcpSettingsProblem.PORT -> Notice(tr("dialog.agent.invalid.port"), colors.error)
-			AgentMcpSettingsProblem.TOKEN -> Notice(tr("dialog.agent.invalid.token"), colors.error)
-			null -> if (draft.port != saved.port || draft.token != saved.token) Notice(tr("dialog.agent.applyNote"), colors.warning)
+		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+			Box(Modifier.weight(1f)) {
+				when (problem) {
+					AgentMcpSettingsProblem.PORT -> Notice(tr("dialog.agent.invalid.port"), colors.error)
+					AgentMcpSettingsProblem.TOKEN -> Notice(tr("dialog.agent.invalid.token"), colors.error)
+					null -> if (draft.port != saved.port || draft.token != saved.token) Notice(tr("dialog.agent.applyNote"), colors.warning)
+				}
+			}
+			CompactButton(tr("dialog.agent.revert"), onClick = {
+				enabled = saved.enabled; portText = saved.port.toString(); token = saved.token; profile = saved.profile
+			}, enabled = dirty && !applying, height = 22.dp)
+			CompactButton(tr(if (applying) "dialog.agent.applying" else "dialog.agent.apply"), onClick = ::apply,
+				enabled = problem == null && !applying && (dirty || status is AgentMcpStatus.Failed), isPrimary = true, height = 22.dp)
 		}
 	}
 }
@@ -196,35 +204,31 @@ private fun StatusChip(status: AgentMcpStatus) {
 	}
 }
 
+/** A label in the inspector's label column, for a row whose content is taller than one line. */
 @Composable
-private fun SectionTitle(text: String) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	Text(text, style = typography.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold), color = colors.textPrimary)
+private fun FormLabel(text: String) {
+	Text(text, style = LocalToolTypography.current.caption.copy(fontSize = 11.sp), color = LocalToolColors.current.textPrimary,
+		textAlign = androidx.compose.ui.text.style.TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis,
+		modifier = Modifier.width(88.dp).padding(end = 8.dp, top = 2.dp))
 }
 
 @Composable
-private fun FieldLabel(text: String) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	Text(text, style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textMuted, modifier = Modifier.width(72.dp))
+private fun Copied(text: String?) {
+	if (text == null) return
+	Text("✓ $text", style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold),
+		color = LocalToolColors.current.highlight, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable
 private fun Notice(text: String, color: androidx.compose.ui.graphics.Color) {
-	val typography = LocalToolTypography.current
-	Text(text, style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = color)
+	Text(text, style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = color)
 }
 
 @Composable
 private fun ProfileOption(selected: Boolean, title: String, description: String, enabled: Boolean, onSelect: () -> Unit) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
 	Column {
 		CompactRadioButton(selected, onSelect, enabled = enabled, label = title)
-		Text(description, style = typography.caption.copy(fontSize = 10.sp, lineHeight = 13.sp), color = colors.textMuted,
-			modifier = Modifier.padding(start = 20.dp))
+		Text(description, style = LocalToolTypography.current.caption.copy(fontSize = 10.sp, lineHeight = 13.sp),
+			color = LocalToolColors.current.textMuted, modifier = Modifier.padding(start = 20.dp))
 	}
 }
-
-private val TOKEN_MASK = "•".repeat(24)

@@ -60,7 +60,9 @@ import io.github.psd2live.ui.state.LogLevel
 import io.github.psd2live.ui.EditHierarchyMode
 import io.github.psd2live.ui.CanvasStatusTone
 import io.github.psd2live.agent.AgentMcpController
-import io.github.psd2live.ui.components.AgentMcpDialog
+import io.github.psd2live.ui.components.AppDataFolders
+import io.github.psd2live.ui.components.LocalAgentMcp
+import io.github.psd2live.ui.components.MenuFolder
 import io.github.psd2live.ui.components.AppTitleBar
 import io.github.psd2live.ui.components.AppMenuHeader
 import io.github.psd2live.ui.components.AppMenuItem
@@ -73,6 +75,7 @@ import io.github.psd2live.ui.components.ImageLightboxDialog
 import io.github.psd2live.ui.components.ExportDialog
 import io.github.psd2live.ui.components.ExportPsdDialog
 import io.github.psd2live.ui.state.HelpTab
+import io.github.psd2live.ui.state.SettingsTopic
 import io.github.psd2live.ui.components.TextureUpscaleDialog
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
@@ -149,7 +152,6 @@ fun FrameWindowScope.PSD2LiveApp(
 	val download by viewModel.modelDownloadState.collectAsState()
 	val projectProgress by viewModel.projectProgress.collectAsState()
 	val task = io.github.psd2live.ui.state.taskProgress(state, baking, download, projectProgress)
-	var showAgentDialog by remember { mutableStateOf(false) }
 	var tutorial by remember { mutableStateOf(InteractiveTutorialState()) }
 	val tutorialTargets = rememberTutorialTargetRegistry()
 
@@ -297,10 +299,16 @@ fun FrameWindowScope.PSD2LiveApp(
 		val hasInput = state.inputPath.isNotBlank()
 		val hasOutput = state.outputPath.isNotBlank()
 		val canGenerate = hasInput && (state.exportCmo3 || state.exportMoc3) && !isBusy
-		val canOpenOutput = hasOutput && try {
-			Files.isDirectory(Path.of(state.outputPath.trim()))
-		} catch (_: Exception) {
-			false
+		// Folders the File menu opens: the open project's, then the app's own. Checked on each change of path, not on
+		// every recomposition, since a missing network share can stall the check.
+		val menuFolders = remember(state.projectFile, state.inputPath, state.outputPath, state.currentLanguage) {
+			listOf(
+				MenuFolder(tr("menu.file.openFolder.project"), existingFolder(state.projectFile?.let { Path.of(it).parent?.toString() })),
+				MenuFolder(tr("menu.file.openFolder.source"), existingFolder(state.inputPath.takeIf(String::isNotBlank)?.let { Path.of(it.trim()).parent?.toString() })),
+				MenuFolder(tr("menu.file.openFolder.output"), existingFolder(state.outputPath.takeIf { hasOutput })),
+				MenuFolder(tr("menu.file.openFolder.workspaces"), existingFolder(AppDataFolders.workspaces.toString()), startsGroup = true),
+				MenuFolder(tr("menu.file.openFolder.appData"), existingFolder(AppDataFolders.home.toString())),
+			)
 		}
 
 		val chooseOutputFolder = {
@@ -354,8 +362,7 @@ fun FrameWindowScope.PSD2LiveApp(
 		// A modal owns the keyboard: the root dispatcher stands down so shortcuts cannot fire behind
 		// a dialog (Ctrl+O with Help open used to raise a file picker behind it). Returning false
 		// rather than true is deliberate — the dialogs keep their own key handling and text input.
-		val modalOpen = showAgentDialog ||
-			state.showTextureUpscaleDialog ||
+		val modalOpen = state.showTextureUpscaleDialog ||
 			state.lightboxImage != null ||
 			state.showProjectLocationDialog ||
 			state.showExportDialog ||
@@ -506,7 +513,7 @@ fun FrameWindowScope.PSD2LiveApp(
 		}
 
 		Box(Modifier.fillMaxSize()) {
-		CompositionLocalProvider(LocalTutorialTargets provides tutorialTargets) {
+		CompositionLocalProvider(LocalTutorialTargets provides tutorialTargets, LocalAgentMcp provides agentMcp) {
 		Box(
 			modifier = Modifier
 				.fillMaxSize()
@@ -575,7 +582,7 @@ fun FrameWindowScope.PSD2LiveApp(
 						windowState = windowState,
 						isBusy = isBusy,
 						hasInput = hasInput,
-						canOpenOutput = canOpenOutput,
+						folders = menuFolders,
 						currentLanguage = currentLanguage,
 						uiScale = state.uiScale,
 						fontScale = state.fontScale,
@@ -596,7 +603,7 @@ fun FrameWindowScope.PSD2LiveApp(
                         projectTitle = (state.projectFile ?: tr("project.untitled")) + if (state.projectDirty) " *" else "",
 						onReanalyze = onReanalyzeAction,
 						onReexportPsd = { if (hasInput && !isBusy) viewModel.openExportPsdDialog() },
-						onOpenOutput = { openFolder(state.outputPath) },
+						onOpenFolder = ::openFolder,
 						onShowExport = { if (hasInput && !isBusy) viewModel.openExportDialog() },
 						onExportAs = { if (hasInput && !isBusy) viewModel.openOtherExport(it) },
 						onClose = onCloseRequest,
@@ -608,7 +615,7 @@ fun FrameWindowScope.PSD2LiveApp(
 						onSetFontScale = { viewModel.setFontScale(it) },
 						onToggleTheme = { viewModel.toggleDarkTheme() },
 						onShowSettings = { viewModel.openSettings() },
-						onShowAgentConnection = { showAgentDialog = true },
+						onShowAgentConnection = { viewModel.openSettings(SettingsTopic.MCP) },
 						onShowTextureUpscale = { viewModel.openTextureUpscaleDialog() },
 						onStartScreen = { viewModel.showStartPage(StartSection.GENERATE) },
 						onMeshSplitScan = { viewModel.requestMeshSplitScan() },
@@ -734,13 +741,6 @@ fun FrameWindowScope.PSD2LiveApp(
 					viewModel.setPromptEnabled(AppPrompt.EXPORT_SUCCESS, false)
 					viewModel.clearExportSuccess()
 				},
-			)
-		}
-
-		if (showAgentDialog && agentMcp != null) {
-			AgentMcpDialog(
-				controller = agentMcp,
-				onDismiss = { showAgentDialog = false },
 			)
 		}
 
@@ -1003,6 +1003,9 @@ private fun ModalDialog(
 		ModalMessage(message)
 	}
 }
+
+/** [path] when it names a folder that exists, otherwise null. */
+private fun existingFolder(path: String?): String? = path?.trim()?.takeIf { it.isNotEmpty() && runCatching { Files.isDirectory(Path.of(it)) }.getOrDefault(false) }
 
 private fun openFolder(pathString: String) {
 	DesktopUtils.openDirectory(pathString)

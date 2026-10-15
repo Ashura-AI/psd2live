@@ -129,6 +129,8 @@ internal fun SettingsPanel(topic: SettingsTopic, state: PSD2LiveState, viewModel
 				onResetBinding = viewModel::resetKeyBinding,
 				onPresetChange = viewModel::applyKeymapPreset,
 			)
+			SettingsTopic.FILES -> SettingsFilesSection(state, viewModel)
+			SettingsTopic.MCP -> SettingsMcpSection()
 		}
 	} }
 }

@@ -214,7 +214,7 @@ PSD2Live は Cubism Editor や SDK なしで動作し、Cubism の形式とは�
 
 ## Agent との連携（MCP）
 
-1. MCP サーバーは既定で有効で、PSD2Live の起動とともに `http://127.0.0.1:23871/mcp` で待ち受けます。**ツール → MCP…** で無効にしたり、ポート、アクセストークン、公開するツールセット（既定はコンパクト）を設定したりできます。アクセストークンはローカルのユーザー設定（Java Preferences）に平文で保存されます。
+1. MCP サーバーは既定で有効で、PSD2Live の起動とともに `http://127.0.0.1:23871/mcp` で待ち受けます。**設定 → MCP**（**ツール → MCP…** から直接開けます）で無効にしたり、ポート、アクセストークン、公開するツールセット（既定はコンパクト）を設定したりできます。アクセストークンはローカルのユーザー設定（Java Preferences）に平文で保存されます。
 2. 使用するホストに合ったコマンドまたは設定（Claude Code、Codex、汎用 JSON）をコピーします。Stdio のみのホストはリポジトリ直下の [`mcp_proxy.py`](../../mcp_proxy.py) を使います。
 3. Agent にはまず `workspace_overview` でプロジェクトの概要を、`workspace_inspect` で個々のオブジェクトを読ませてください。ツールとして公開されていない操作は `workspace_list_operations` で探し、`workspace_call` で呼び出します。
 

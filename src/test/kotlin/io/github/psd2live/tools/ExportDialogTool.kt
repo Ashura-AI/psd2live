@@ -48,9 +48,9 @@ class ExportDialogTool {
 							CompactToolTheme(colors = ToolColors.Dark) {
 								Box(Modifier.fillMaxSize().background(ToolColors.Dark.panelBackground)) {
 									AppTitleBar(
-										windowState = WindowState(), isBusy = false, hasInput = true, canOpenOutput = true,
+										windowState = WindowState(), isBusy = false, hasInput = true,
 										currentLanguage = language, onOpenPsd = {}, onOpenProject = {}, onSaveProject = {},
-										onSaveProjectAs = {}, projectTitle = "tml", onReanalyze = {}, onReexportPsd = {}, onOpenOutput = {},
+										onSaveProjectAs = {}, projectTitle = "tml", onReanalyze = {}, onReexportPsd = {},
 										onShowExport = {}, onClose = {}, onSetLanguage = {}, onShowAgentConnection = {},
 										onShowTextureUpscale = {}, onShowHistory = {}, onShowAbout = {},
 										tutorialMenuForce = "file",
