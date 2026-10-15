@@ -500,7 +500,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | 工具 | 主要参数 | 说明 |
 | --- | --- | --- |
 | `project_create` | `width`、`height`，可选 `discard_unsaved` | 新建未生成的空工程 |
-| `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的分层图片（没有时取纹理页）、SVG（按自身尺寸栅格化）或文件夹，作为一个历史节点加入素材库；每张图不超过 16MP |
+| `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的分层图片（没有时取纹理页）、SVG（按自身尺寸栅格化）或文件夹（保留嵌套结构，子文件夹成为素材文件夹，跳过隐藏项），作为一个历史节点加入素材库；每张图不超过 16MP |
 | `material_add` | `state`、`staging`，可选 `folder_id` | `material_import` 读取后实际提交的成员；`staging` 为进程内暂存的内容摘要，一般不直接调用 |
 | `material_list` | 可选 `folder_id`、`recursive`、`query`、`kind`、`unused`、`offset`、`limit`（≤256） | 列出文件夹与条目；`query` 匹配名称和标签（含文件夹标签），`references` 为使用它的图层数；读自 PSD / CMO3 的文件夹带 `origin` 文件名 |
 | `material_get` | `id` | 条目或文件夹详情；条目返回使用它的 `layers`，SVG 另有 `vector_size` |

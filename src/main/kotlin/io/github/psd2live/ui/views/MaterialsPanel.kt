@@ -293,13 +293,17 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 
 	Box(Modifier.fillMaxSize().onGloballyPositioned { panelCoordinates = it }) {
 		Column(Modifier.fillMaxSize()) {
-			val labels = listOf(tr("materials.import"), tr("materials.folder.new"))
+			val labels = listOf(tr("materials.import"), tr("materials.importFolder"), tr("materials.folder.new"))
 			PanelToolbar(labels = labels, iconCount = 4, search = PanelSearch(query, { query = it }, tr("materials.search")), reservedWidth = 60.dp) { labelsShown ->
 				PanelToolButton(labels[0], showLabel = labelsShown > 0, enabled = loaded, tooltip = tr("materials.import.tip"), onClick = {
 					val files = NativeFilePicker.chooseMaterialFiles(window)
 					if (files.isNotEmpty()) vm.importMaterials(files.map { it.toPath() }, folderId)
 				}) { IconAdd(Modifier.size(11.dp), colors.textPrimary) }
-				PanelToolButton(labels[1], showLabel = labelsShown > 1, enabled = loaded, tooltip = tr("materials.folder.new"), onClick = {
+				// A whole folder, its subfolders kept as material folders; the file picker would open it instead.
+				PanelToolButton(labels[1], showLabel = labelsShown > 1, enabled = loaded, tooltip = tr("materials.importFolder.tip"), onClick = {
+					NativeFilePicker.chooseDirectory(window, title = tr("materials.importFolder.title"))?.let { vm.importMaterials(listOf(java.nio.file.Path.of(it)), folderId) }
+				}) { ImportFolderGlyph(colors.textPrimary) }
+				PanelToolButton(labels[2], showLabel = labelsShown > 2, enabled = loaded, tooltip = tr("materials.folder.new"), onClick = {
 					vm.createMaterialFolder(uniqueName(library, folderId, tr("materials.folder.default")), folderId)
 				}) { IconFolder(Modifier.size(12.dp), colors.textPrimary) }
 				Spacer(Modifier.weight(1f))
@@ -421,10 +425,15 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 					val files = NativeFilePicker.chooseMaterialFiles(window)
 					if (files.isNotEmpty()) vm.importMaterials(files.map { it.toPath() }, into)
 				}
+				fun importFolderInto(into: String?) {
+					close()
+					NativeFilePicker.chooseDirectory(window, title = tr("materials.importFolder.title"))?.let { vm.importMaterials(listOf(java.nio.file.Path.of(it)), into) }
+				}
 				if (target == ROOT) {
 					add(MenuLine.Section(tr("materials.root")))
 					add(MenuLine.Action(tr("materials.folder.new"), { close(); vm.createMaterialFolder(uniqueName(library, null, tr("materials.folder.default")), null) }))
 					add(MenuLine.Action(tr("materials.import"), { importInto(null) }))
+					add(MenuLine.Action(tr("materials.importFolder"), { importFolderInto(null) }))
 					return@buildList
 				}
 				val item = target?.let(library::item); val folder = target?.let(library::folder)
@@ -445,6 +454,7 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				if (folder != null) {
 					add(MenuLine.Action(tr("materials.folder.new"), { close(); vm.createMaterialFolder(uniqueName(library, folder.id, tr("materials.folder.default")), folder.id) }))
 					add(MenuLine.Action(tr("materials.menu.importHere"), { importInto(folder.id) }))
+					add(MenuLine.Action(tr("materials.menu.importFolderHere"), { importFolderInto(folder.id) }))
 					add(MenuLine.Action(tr("materials.menu.exportPsd"), {
 						close()
 						NativeFilePicker.chooseSavePsdFile(window, folder.name)?.let { vm.exportMaterialFolder(folder.id, java.nio.file.Path.of(it)) }
@@ -767,4 +777,9 @@ internal fun MaterialLinkChip(name: String, shared: Int, onOpen: () -> Unit, onU
 /** Two links of a chain. */
 @Composable private fun LinkGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
 	box(2f, 6.5f, 8f, 5f, 2.5f); box(8f, 6.5f, 8f, 5f, 2.5f)
+}
+
+/** Import a folder: a folder with an arrow down into it. */
+@Composable private fun ImportFolderGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
+	box(2f, 6f, 14f, 9.5f, 1.6f); line(2.6f, 6f, 6.6f, 6f); line(9f, 1.6f, 9f, 11.2f); chevron(9f, 11.2f, 0f, 1f, 2.6f)
 }

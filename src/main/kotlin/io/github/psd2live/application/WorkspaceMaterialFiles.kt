@@ -44,6 +44,7 @@ internal object WorkspaceMaterialFiles {
     const val MAX_PATHS = 64
     private const val MAX_FILES = 4096
     private const val MAX_BYTES = 256L * 1024 * 1024
+    private const val MAX_DEPTH = 32
     /** The largest texture resolution a vector drawing renders at, per side. */
     const val MAX_VECTOR_SIDE = 4096
     val extensions = setOf("png", "bmp", "tif", "tiff", "webp", "jpg", "jpeg", "psd", "cmo3", "svg")
@@ -91,9 +92,16 @@ internal object WorkspaceMaterialFiles {
                 else -> listOf(Entry(name(path.nameWithoutExtension, "image"), folder, MaterialKind.BITMAP, bitmap(data, path.name), origin = origin))
             }
         }
+        // A folder linked into itself is read once; hidden files and folders (.git, .DS_Store) are left out.
+        val visited = HashSet<Path>()
         fun directory(path: Path, folder: List<String>): List<Entry> {
+            checkCancelled()
+            require(folder.size < MAX_DEPTH) { "An import nests folders at most $MAX_DEPTH deep" }
+            if (!visited.add(path.toRealPath())) return emptyList()
             val here = folder + name(path.name, "folder")
-            val children = Files.list(path).use { stream -> stream.sorted().toList() }
+            val children = Files.list(path).use { stream -> stream.toList() }
+                .filterNot { it.name.startsWith(".") || runCatching { Files.isHidden(it) }.getOrDefault(false) }
+                .sortedWith { a, b -> naturalOrder(a.name, b.name) }
             return children.flatMap { child ->
                 when {
                     child.isDirectory() -> directory(child, here)
@@ -110,6 +118,19 @@ internal object WorkspaceMaterialFiles {
                 file(path, emptyList())
             }
         }
+    }
+
+    /** File names in reading order, numbers by value: `arm2` before `arm10`, case aside. */
+    fun naturalOrder(a: String, b: String): Int {
+        val pattern = Regex("""\d+|\D+""")
+        val left = pattern.findAll(a.lowercase()).map { it.value }.toList(); val right = pattern.findAll(b.lowercase()).map { it.value }.toList()
+        for (i in 0 until minOf(left.size, right.size)) {
+            val x = left[i]; val y = right[i]
+            val order = if (x[0].isDigit() && y[0].isDigit()) x.trimStart('0').length.compareTo(y.trimStart('0').length)
+                .takeIf { it != 0 } ?: x.trimStart('0').compareTo(y.trimStart('0')) else x.compareTo(y)
+            if (order != 0) return order
+        }
+        return left.size.compareTo(right.size).takeIf { it != 0 } ?: a.compareTo(b)
     }
 
     /** [bytes] decoded to straight-alpha RGBA: the built-in codecs, else Skia (lossy WebP, progressive JPEG and the like). */
