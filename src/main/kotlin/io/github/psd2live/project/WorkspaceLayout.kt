@@ -73,7 +73,8 @@ data class MaterialFolder(val id: String, val name: String, val parentId: String
 /**
  * One material: a raster, or a vector drawing with the raster it is rendered to at its texture resolution
  * ([raster]'s size). [placement] is the canvas rectangle its source gave it (a PSD layer's position), used as its
- * default placement; [origin] names where it was imported from.
+ * default placement, on a [placementWidth] x [placementHeight] canvas (the PSD's; 0 when unknown); [origin] names
+ * where it was imported from.
  */
 data class MaterialItem(
 	val id: String,
@@ -87,6 +88,8 @@ data class MaterialItem(
 	val origin: String = "",
 	val opacity: Float = 1f,
 	val visible: Boolean = true,
+	val placementWidth: Int = 0,
+	val placementHeight: Int = 0,
 ) {
 	init {
 		require(kind != MaterialKind.VECTOR || svg != null) { "A vector material keeps its drawing" }
@@ -171,6 +174,7 @@ internal object WorkspaceLayoutCodec {
 					put("rasterWidth", item.raster.width); put("rasterHeight", item.raster.height)
 					put("rgbaBlob", rasterRef(item.raster))
 					item.placement?.let { rect -> putJsonArray("placement") { listOf(rect.left, rect.top, rect.width, rect.height).forEach { add(JsonPrimitive(it)) } } }
+					if (item.placementWidth > 0 && item.placementHeight > 0) putJsonArray("placementCanvas") { add(JsonPrimitive(item.placementWidth)); add(JsonPrimitive(item.placementHeight)) }
 					item.svg?.let { put("svg", it) }
 					if (item.tags.isNotEmpty()) putJsonArray("tags") { item.tags.sorted().forEach { add(JsonPrimitive(it)) } }
 					if (item.origin.isNotEmpty()) put("origin", item.origin)
@@ -215,6 +219,8 @@ internal object WorkspaceLayoutCodec {
 						origin = item["origin"]?.jsonPrimitive?.contentOrNull.orEmpty(),
 						opacity = item["opacity"]?.jsonPrimitive?.float ?: 1f,
 						visible = item["visible"]?.jsonPrimitive?.boolean ?: true,
+						placementWidth = item["placementCanvas"]?.jsonArray?.get(0)?.jsonPrimitive?.int ?: 0,
+						placementHeight = item["placementCanvas"]?.jsonArray?.get(1)?.jsonPrimitive?.int ?: 0,
 					)
 				},
 			)

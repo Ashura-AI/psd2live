@@ -61,6 +61,9 @@ internal object WorkspaceMaterialFiles {
         val visible: Boolean = true,
         /** The index in [folder] of the folder that stands for the file the entry was read from (a PSD or CMO3), or -1. */
         val fileFolder: Int = -1,
+        /** The canvas [placement] is on: the PSD's or CMO3's document size; 0 when unknown. */
+        val placementWidth: Int = 0,
+        val placementHeight: Int = 0,
     )
 
     /**
@@ -150,7 +153,7 @@ internal object WorkspaceMaterialFiles {
             val hidden = groups.indices.any { depth -> art.groups.firstOrNull { it.path == groups.take(depth + 1).joinToString("/") }?.visible == false }
             Entry(name(layer.name, layer.id.raw), folder + groups, MaterialKind.BITMAP, layer.raster,
                 layer.storedCanvasRect ?: LayerCanvasRect.of(layer.bounds), origin = "$origin#${layer.id.raw}",
-                opacity = layer.opacity, visible = layer.visible && !hidden)
+                opacity = layer.opacity, visible = layer.visible && !hidden, placementWidth = art.widthPx, placementHeight = art.heightPx)
         }
 
     /** [raw] as a material name: printable, at most 128 characters, [fallback] when nothing is left. */

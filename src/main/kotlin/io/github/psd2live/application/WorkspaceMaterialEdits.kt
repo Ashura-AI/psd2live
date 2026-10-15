@@ -22,7 +22,7 @@ internal object WorkspaceMaterialStaging {
         val token = StableIds.stem("staged_", JsonArray(entries.map { entry -> buildJsonObject {
             put("name", entry.name); put("folder", JsonArray(entry.folder.map(::JsonPrimitive))); put("kind", entry.kind.name)
             put("raster", WorkspaceRevisions.rasterDigest(entry.raster.rgba)); put("w", entry.raster.width); put("h", entry.raster.height)
-            entry.placement?.let { put("placement", "${it.left},${it.top},${it.width},${it.height}") }
+            entry.placement?.let { put("placement", "${it.left},${it.top},${it.width},${it.height} on ${entry.placementWidth}x${entry.placementHeight}") }
             entry.svg?.let { put("svg", WorkspaceRevisions.sha256(it.encodeToByteArray())) }
             put("origin", entry.origin); put("opacity", entry.opacity); put("visible", entry.visible)
         } }))
@@ -117,7 +117,8 @@ internal object WorkspaceMaterialEdits {
             val id = StableIds.fresh(StableIds.stem("mat_", folder, entry.name, WorkspaceRevisions.rasterDigest(entry.raster.rgba), entry.origin)) { it in ids }
             ids += id
             items += MaterialItem(id, requireName(entry.name), folder, entry.kind, entry.raster, entry.placement, entry.svg,
-                origin = entry.origin, opacity = entry.opacity, visible = entry.visible)
+                origin = entry.origin, opacity = entry.opacity, visible = entry.visible,
+                placementWidth = entry.placementWidth, placementHeight = entry.placementHeight)
         }
         library = MaterialLibrary(folders, items)
         return document.withLibrary(library)
@@ -253,10 +254,27 @@ internal object WorkspaceMaterialEdits {
         }
         require(items.isNotEmpty()) { "The folder holds no material: $materialId" }
         val width = document.source.widthPx.toFloat(); val height = document.source.heightPx.toFloat()
-        fun natural(item: MaterialItem): LayerCanvasRect = item.placement ?: run {
-            val scale = minOf(1f, width / item.raster.width, height / item.raster.height)
-            val w = item.raster.width * scale; val h = item.raster.height * scale
-            LayerCanvasRect((width - w) / 2f, (height - h) / 2f, w, h)
+        // A PSD layer keeps its place in the PSD, the PSD's canvas centred on this one and shrunk to fit it: the
+        // same place when both canvases are one size. A place on a canvas of unknown size is centred as a whole.
+        fun fitted(cw: Float, ch: Float, r: LayerCanvasRect): LayerCanvasRect {
+            if (cw == width && ch == height) return r
+            val scale = minOf(1f, width / cw, height / ch)
+            val dx = (width - cw * scale) / 2f; val dy = (height - ch * scale) / 2f
+            return LayerCanvasRect(dx + r.left * scale, dy + r.top * scale, r.width * scale, r.height * scale)
+        }
+        val unknown = items.mapNotNull { item -> item.placement?.takeIf { item.placementWidth <= 0 || item.placementHeight <= 0 } }
+        val unknownSpan = if (unknown.isEmpty()) null else LayerCanvasRect(unknown.minOf { it.left }, unknown.minOf { it.top },
+            unknown.maxOf { it.right } - unknown.minOf { it.left }, unknown.maxOf { it.bottom } - unknown.minOf { it.top })
+        fun natural(item: MaterialItem): LayerCanvasRect {
+            val place = item.placement ?: run {
+                val scale = minOf(1f, width / item.raster.width, height / item.raster.height)
+                val w = item.raster.width * scale; val h = item.raster.height * scale
+                return LayerCanvasRect((width - w) / 2f, (height - h) / 2f, w, h)
+            }
+            if (item.placementWidth > 0 && item.placementHeight > 0) return fitted(item.placementWidth.toFloat(), item.placementHeight.toFloat(), place)
+            val span = requireNotNull(unknownSpan)
+            val shifted = LayerCanvasRect(place.left - span.left, place.top - span.top, place.width, place.height)
+            return fitted(span.width, span.height, shifted)
         }
         val placements = items.associateWith { if (rect != null) rect else natural(it) }.toMutableMap()
         if (at != null && rect == null) {

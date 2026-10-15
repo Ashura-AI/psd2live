@@ -515,7 +515,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `material_set_pixels` | `state`、`id`、`staging` | 写入素材绘画会话暂存的像素；由 `paint_session_commit` 发起，一般不直接调用 |
 | `material_adjust` | `state`、`id`，至少一项：`flip`（`horizontal/vertical`）、`hue`（±180）、`saturation`/`lightness`/`contrast`（±100） | 先翻转再调色，尺寸不变；同步图层与 SVG 规则同上 |
 | `material_export_psd` | `state`、`folder_id`、`path`（绝对 `.psd`） | 后台把文件夹写成 PSD：条目按默认位置（无则自左上排开），子文件夹为图层组 |
-| `layer_place` | `state`、`material_id`，可选 `rect`（单个条目）、`at`（[x, y] 中心）、`layer_id`（单个条目的新图层 ID） | 放置条目或整个文件夹为新源图层，画在已有图层之上；默认 PSD 位置，否则 1 素材像素 = 1 画布单位并缩入画布；像素不重采样 |
+| `layer_place` | `state`、`material_id`，可选 `rect`（单个条目）、`at`（[x, y] 中心）、`layer_id`（单个条目的新图层 ID） | 放置条目或整个文件夹为新源图层，画在已有图层之上；默认 PSD 位置（PSD 画布居中映射到工程画布，超出时等比缩小，尺寸相同时原位），否则 1 素材像素 = 1 画布单位并缩入画布；像素不重采样 |
 | `layer_tag` | `state`、`layer_ids`（1–128），`set` 或 `add`/`remove` | 语义标签：部位词与 `left/right` 决定分类（如 `{hair, front}`、`{eye, iris, left}`），其余为用户标签；已生成图层的分类变化等待 `rig_generate` |
 | `layer_set_variant` | `state`、`layer_id`、`variant`（`none/toggle/switch`），可选 `parameter`、`switch_id` | 差分属性，保留标签 |
 | `rig_generate` | `state`，可选 `refresh_geometry` | 生成或重新生成：未生成工程按当前全部图层构建；已生成工程并入上次生成后放置的图层与等待的分类，按三方合并保留用户编辑，未能干净迁移的内容见 `quality.regeneration`。`refresh_geometry` 列出按当前像素重建网格的已生成图层，省略为全部替换过图片的图层，`[]` 全部保留 |

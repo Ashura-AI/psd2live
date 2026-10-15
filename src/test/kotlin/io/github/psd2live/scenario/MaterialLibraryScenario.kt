@@ -128,7 +128,7 @@ class MaterialLibraryScenario {
 	}
 
 	@Test fun anEmptyLayoutProjectIsPlacedThenGenerated() = Studio.run(temp,
-		WorkspaceDocument(WorkspaceSourceArt(420, 420, emptyList(), emptyList()), emptyMap(), emptySet(), emptyMap(), emptyMap(),
+		WorkspaceDocument(WorkspaceSourceArt(840, 600, emptyList(), emptyList()), emptyMap(), emptySet(), emptyMap(), emptyMap(),
 			io.github.psd2live.core.RigEditOverlay.Empty, Characters.figure().settings, layout = WorkspaceLayout(generation = WorkspaceGeneration.NotGenerated))) {
 		expect("created", now.model.layoutPreview && puppet.drawables.isEmpty()) { "an empty project shows meshes" }
 		val entries = WorkspaceMaterialFiles.read(listOf(Characters.figurePsd(Files.createDirectories(temp.resolve("files")))))
@@ -137,6 +137,12 @@ class MaterialLibraryScenario {
 		edit("place the whole figure", "layer_place", req("material_id" to folder.id))
 		expect("placed", now.document.source.layers.size == entries.size && puppet.drawables.size == entries.size) {
 			"placing the folder gave ${now.document.source.layers.size} layers and ${puppet.drawables.size} meshes" }
+		// The PSD's 420 x 420 canvas lands centred on this 840 x 600 one, every layer keeping its place in it.
+		val hairItem = now.document.layout.materials.items.single { it.name == "front_hair" }
+		val hair = now.document.source.layers.single { now.document.layout.layerMaterials[it.id.raw] == hairItem.id }.canvasRect()
+		val from = requireNotNull(hairItem.placement)
+		expect("placed", hairItem.placementWidth == 420 && hairItem.placementHeight == 420 &&
+			hair.left == from.left + 210f && hair.top == from.top + 90f && hair.width == from.width) { "the PSD is not centred: $from -> $hair" }
 		edit("generate", "rig_generate", req())
 		expect("generated", !now.model.layoutPreview && puppet.deformers.isNotEmpty()) { "the placed figure did not generate a rig" }
 		reopen()
