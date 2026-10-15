@@ -79,4 +79,63 @@ class ReferenceLayoutScenario {
 		edit("clear it", "layout_set_reference", req("material_id" to null))
 		expect("cleared", now.document.layout.reference == null) { "the reference is still set" }
 	}
+
+	/**
+	 * A part peeled off an image with a version that has it removed, as a generator gives it: the generator shifts every
+	 * colour a little, yet only the part's area is taken from it, matched back to the image's colours, and the part over
+	 * the image under it gives the image again. Both land where the image sits.
+	 */
+	@Test fun aPartIsPeeledOffAnImage() = Studio.run(temp, Characters.figure()) {
+		val files = Files.createDirectories(temp.resolve("peel"))
+		val size = 64
+		fun ground(x: Int, y: Int) = intArrayOf(180 + x / 4, 170 + y / 4, 200)
+		fun disc(x: Int, y: Int) = (x - 32) * (x - 32) + (y - 32) * (y - 32) <= 100
+		fun png(name: String, pixel: (Int, Int) -> IntArray?): Path {
+			val rgba = ByteArray(size * size * 4)
+			for (y in 0 until size) for (x in 0 until size) {
+				val c = pixel(x, y) ?: continue
+				val o = (y * size + x) * 4
+				for (k in 0..2) rgba[o + k] = c[k].coerceIn(0, 255).toByte()
+				rgba[o + 3] = -1
+			}
+			return files.resolve(name).also { Files.write(it, org.umamo.format.png.PngCodec.write(org.umamo.format.raster.RasterImage(size, size, rgba))) }
+		}
+		val before = png("before.png") { x, y -> if (disc(x, y)) intArrayOf(200, 30, 40) else ground(x, y) }
+		val revealed = png("revealed.png") { x, y -> ground(x, y).map { it - 9 }.toIntArray() }
+		edit("import the image and its generated version", "material_add",
+			req("staging" to WorkspaceMaterialStaging.stage(WorkspaceMaterialFiles.read(listOf(before, revealed)))))
+		val (image, generated) = now.document.layout.materials.items.sortedBy { it.name }
+		val place = mapOf("left" to 10f, "top" to 20f, "width" to 32f, "height" to 32f)
+		edit("place the image", "material_set_placement", req("id" to image.id, "canvas_rect" to place))
+		edit("the generated version takes its place", "material_set_placement", req("id" to generated.id, "from" to image.id))
+		expect("placement", now.document.layout.materials.item(generated.id)?.placement == io.github.psd2live.project.LayerCanvasRect(10f, 20f, 32f, 32f)) {
+			"from did not copy the place" }
+		refused("an image unlike itself has nothing to peel", "material_peel", req("id" to image.id, "revealed" to image.id))
+
+		edit("peel the disc off", "material_peel", req("id" to image.id, "revealed" to generated.id, "name" to "disc", "part_id" to "part", "base_id" to "base"))
+		val part = requireNotNull(now.document.layout.materials.item("part")).raster
+		val base = requireNotNull(now.document.layout.materials.item("base")).raster
+		val src = requireNotNull(now.document.layout.materials.item(image.id)).raster.rgba
+		fun at(r: org.umamo.format.art.LayerRaster, x: Int, y: Int, c: Int) = r.rgba[(y * size + x) * 4 + c].toInt() and 255
+		expect("part", at(part, 32, 32, 3) == 255 && at(part, 32, 32, 0) == 200 && at(part, 2, 2, 3) == 0 && at(part, 50, 32, 3) == 0) {
+			"the part is not the disc: centre alpha ${at(part, 32, 32, 3)}, outside ${at(part, 2, 2, 3)}" }
+		var outside = 0; var worst = 0; var recomposed = 0
+		for (y in 0 until size) for (x in 0 until size) {
+			val o = (y * size + x) * 4
+			val a = at(part, x, y, 3) / 255f
+			for (k in 0..2) {
+				val b = at(base, x, y, k); val s = src[o + k].toInt() and 255
+				if (a == 0f && b != s) outside++
+				if (disc(x, y)) worst = maxOf(worst, kotlin.math.abs(b - ground(x, y)[k]))
+				recomposed = maxOf(recomposed, kotlin.math.abs((at(part, x, y, k) * a + b * (1 - a)).toInt() - s))
+			}
+		}
+		expect("base", outside == 0) { "$outside channel(s) outside the part changed" }
+		expect("base", worst <= 3) { "the area under the disc is $worst off the image's colours: the generator's shift was not matched" }
+		expect("recompose", recomposed <= 2) { "the part over the image under it is $recomposed off the image" }
+		expect("placement", now.document.layout.materials.item("part")?.placement == image.copy().let { now.document.layout.materials.item(image.id)?.placement }) {
+			"the part does not sit where the image does" }
+		reopen()
+		expect("saved", now.document.layout.materials.item("base") != null) { "the peel did not survive saving" }
+	}
 }

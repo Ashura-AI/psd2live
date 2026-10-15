@@ -95,6 +95,14 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialPixels.ADJUST to schema(state + mapOf("id" to string(), "flip" to choices(*WorkspaceMaterialPixels.flips.toTypedArray()),
             "hue" to range(-180, 180), "saturation" to range(-100, 100), "lightness" to range(-100, 100), "contrast" to range(-100, 100)),
             listOf("state", "id")),
+        WorkspaceMaterialPeel.PEEL to schema(state + mapOf("id" to string(), "revealed" to string(), "region" to string(),
+            "threshold" to buildJsonObject { put("type", "array"); put("items", range(0, 255)); put("minItems", 2); put("maxItems", 2) },
+            "grow" to integer(0, WorkspaceMaterialPeel.MAX_RADIUS), "core" to integer(0, WorkspaceMaterialPeel.MAX_RADIUS),
+            "close" to integer(0, WorkspaceMaterialPeel.MAX_RADIUS), "band" to integer(0, WorkspaceMaterialPeel.MAX_RADIUS), "color_match" to boolean(),
+            "name" to string(), "part_id" to string(), "base_id" to string()), listOf("state", "id", "revealed")),
+        WorkspaceMaterialPeel.PLACEMENT to schema(state + mapOf("id" to string(),
+            "canvas_rect" to buildJsonObject { put("oneOf", buildJsonArray { add(rect); add(buildJsonObject { put("type", "null") }) }) },
+            "from" to string()), listOf("state", "id")),
     )
 
     val materialDescriptions: Map<String, String> = mapOf(
@@ -135,6 +143,15 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialPixels.SET_PIXELS to "Write the pixels a material paint session committed (staging names them; paint_session_commit stages and runs this). The item keeps its size; every layer showing it takes the new pixels over its unchanged canvas rectangle; a vector item becomes a bitmap. One history edit.",
         WorkspaceMaterialPixels.ADJUST to "Adjust a material item's pixels: flip (horizontal or vertical), then hue (-180..180 degrees), saturation, lightness and contrast (-100..100 each, 0 unchanged). " +
             "The item keeps its size; every layer showing it takes the new pixels over its unchanged canvas rectangle; a vector item becomes a bitmap of its current raster. One history edit.",
+        WorkspaceMaterialPeel.PEEL to "Peel a part off an image: id is the image (a close-up, or the image a previous peel left), revealed the same image generated elsewhere with the part removed and what was under it drawn in, " +
+            "the same size in pixels (a generator's output at the input's size). Makes two new items placed where id sits: the part, id's own pixels with alpha from where the two differ " +
+            "(threshold [low, high] colour difference 0..255, default [8, 30], soft between), and the image under it, id with only the part's area taken from revealed. " +
+            "Generators redraw a whole image slightly, so everything outside the part keeps id's pixels and the part over the image under it gives id again; a tone shift over the whole image (each channel's median offset, so the part should cover less than half of it) is not counted as a difference. " +
+            "region (an item of the same size, white or opaque where the part may be, such as a segmentation mask) keeps the part inside it, grown by grow pixels; core forces the region shrunk by core pixels fully into the part; " +
+            "close fills gaps up to that radius (default 2). color_match (default true) moves revealed's colours to id's over a band pixels wide (default 24) of untouched pixels around the part. " +
+            "Peel the front part first, then peel the next part off the image under it. name names the part; part_id and base_id name the new items for later batch members. One history edit; the changed list names them (material:<id>).",
+        WorkspaceMaterialPeel.PLACEMENT to "Set where a material item sits on the canvas, its default place for layer_place: canvas_rect in canvas units, from another item's place (a sharper image generated from a close-up takes the close-up's place, " +
+            "its extra pixels becoming a denser texture), or canvas_rect null to clear it. The pixels are unchanged. One history edit.",
     )
 
     fun summary(id: String, request: JsonObject): String = when (id) {
@@ -157,6 +174,8 @@ internal object WorkspaceLayoutOperations {
         WorkspaceDrawingEdits.DRAW -> "Drew ${request.getValue("id").jsonPrimitive.content}"
         WorkspaceDrawingEdits.KIT -> "Set the drawing kit"
         WorkspaceMaterialPixels.ADJUST -> "Adjusted material ${request.getValue("id").jsonPrimitive.content}"
+        WorkspaceMaterialPeel.PEEL -> "Peeled ${request["name"]?.jsonPrimitive?.content ?: "a part"} off ${request.getValue("id").jsonPrimitive.content}"
+        WorkspaceMaterialPeel.PLACEMENT -> "Placed material ${request.getValue("id").jsonPrimitive.content} on the canvas"
         else -> id
     }
 

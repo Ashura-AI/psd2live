@@ -52,7 +52,7 @@ internal object WorkspaceMaterialEdits {
     const val REFERENCE = "layout_set_reference"
     const val CROP = "material_crop"
     val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, REFERENCE, CROP) + WorkspaceMaterialPixels.supported +
-        WorkspaceDrawingEdits.supported
+        WorkspaceDrawingEdits.supported + WorkspaceMaterialPeel.supported
     private const val MAX_NAME = 128
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
@@ -60,6 +60,7 @@ internal object WorkspaceMaterialEdits {
         val request = operation.request
         if (operation.operation in WorkspaceMaterialPixels.supported) return WorkspaceMaterialPixels.apply(operation, document, model, work)
         if (operation.operation in WorkspaceDrawingEdits.supported) return WorkspaceDrawingEdits.apply(operation, document, model, work)
+        if (operation.operation in WorkspaceMaterialPeel.supported) return WorkspaceMaterialPeel.apply(operation, document, work)
         fun text(key: String) = request.getValue(key).jsonPrimitive.content
         fun optional(key: String) = request[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
         fun strings(key: String) = request[key]?.jsonArray?.map { it.jsonPrimitive.content }

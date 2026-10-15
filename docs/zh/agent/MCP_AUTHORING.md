@@ -9,7 +9,7 @@
 1. 启动桌面应用，载入或创建工作区。
 2. 打开 **设置 → MCP**（标题栏右侧的齿轮），按宿主复制命令或配置：Claude Code 命令、Codex TOML、通用 `mcpServers` JSON（地址字段因宿主而异）或 Stdio 代理。「复制安装提示词」生成一段让 Agent 自行配置的短提示。
 3. 优先使用 Streamable HTTP 和 Bearer 令牌。不要改用已废弃的 `/sse` 端点。
-4. 仅支持 Stdio 的宿主使用 Python 3 运行根目录 `mcp_proxy.py`；代理读取 `PSD2LIVE_MCP_ENDPOINT` 和 `PSD2LIVE_MCP_TOKEN`，未设置时在 Windows 上读取应用保存的端口与令牌。
+4. 仅支持 Stdio 的宿主使用 Python 3 运行根目录 `mcp_proxy.py`；代理读取 `PSD2LIVE_MCP_ENDPOINT` 和 `PSD2LIVE_MCP_TOKEN`，未设置时在 Windows 上读取应用保存的端口与令牌。脚本与命令行也用它调用：`python mcp_proxy.py call <操作> [JSON | @文件] [--edit] [--out 目录]`（`--edit` 自动填入当前 `state`，图片存为 PNG）、`python mcp_proxy.py operations`；Python 中 `from mcp_proxy import Client` 后 `call` / `edit`，两种工具档案都适用，后台操作等到结束再返回结果。
 5. 列出工具后调用 `workspace_inspect`，读取实际对象 ID、参数、当前 `project_id` 与 `state`。
 
 同一对话框设置是否启用服务、端口（1024–65535，默认 23871）、访问令牌（32–256 个字母、数字、`-`、`_`，可重新生成或自行填写）和工具集，保存在用户偏好中，应用后重启端点。重启保留进程内任务与请求去重记录；已连接的宿主需重连，改了端口或令牌还要更新宿主配置。
@@ -518,6 +518,8 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `material_export_png` | `state`、`id`、`path`（绝对 `.png`） | 后台把条目自身像素原样写成 PNG（不缩放），例如把参考图特写交给外部工具画成更清晰的部件 |
 | `layout_set_reference` | `state`，可选 `material_id`（null 清除）、`rect`、`opacity`（0–1，默认 0.5）、`visible` | 参考图：把条目叠在画布上用于摆放与对照。它不是图层，生成、导出与 Rig 都看不到它；新设时不给 `rect` 则等比放大或缩小到画布内并居中，省略的字段保持原值；`material_list` 返回当前参考图 |
 | `material_crop` | `state`、`id`，`rect`（条目像素）或 `canvas_rect`（画布单位，条目须为参考图或按本画布摆放），可选 `name`、`new_id`、`folder_id` | 无损裁出新条目，新条目记住这些像素在画布上的位置，`layer_place` 不给 `rect` 时正好落回参考图上；保留标签与文件夹 |
+| `material_set_placement` | `state`、`id`，`canvas_rect`（null 清除）或 `from`（另一条目） | 设置条目在画布上的默认位置，像素不变；外部从特写生成的高清图取特写的位置，多出的像素即更高的纹理密度 |
+| `material_peel` | `state`、`id`（当前图）、`revealed`（同尺寸、去掉部件后的生成图），可选 `region`（同尺寸蒙版，白或不透明处可能是部件）、`threshold`（[低, 高] 色差 0–255，默认 [8, 30]）、`grow`、`core`、`close`（默认 2）、`band`（默认 24）、`color_match`（默认 true）、`name`、`part_id`、`base_id` | 剥离一个部件，新建两个放在 `id` 位置的条目：部件（`id` 自身像素，透明度来自两图差异，限制在 `region` 加 `grow` 内，`core` 把收缩后的蒙版强制并入）与其下的图（只在部件区域取 `revealed`，按周围 `band` 像素宽的未改动区域做 Lab 颜色匹配）。部件之外保留原像素，部件叠回即原图；整图色调偏移（各通道差值中位数）不计为差异。从最前面的部件开始，在新底图上继续剥下一个 |
 | `material_draw` | `state`、`id`，可选 `svg`、`edits`、`density`（0.05–16，每画布单位的纹理像素）、`name`、`folder_id` | 以矢量画一个部件或重画：`id` 空闲时新建。SVG 的 `viewBox` 就是部件在画布上的位置（画布单位），路径直接写画布坐标；按 `density` 渲染（省略时沿用条目当前密度，新条目为 1；单边 ≤4096 像素）。除 Skia 能渲染的内容（路径、渐变、裁剪、蒙版、`feGaussianBlur` 等滤镜、不透明度）外，还支持 `<style>` 中的元素、`#id`、`.class` 规则，`var(--name)` 取绘制套件的颜色，路径上的 `data-taper`（从头到尾均匀分布的宽度系数，如 `"0.1 1 0.2"`）把描边变成两头收细的填充线条；混合模式与自定义 CSS 变量不渲染。使用它的图层随之替换像素，原先摆在旧位置的移到新 `viewBox`；`edits` 按元素 `id` 局部修改当前绘制（或同时给出的 `svg`）：`set` 设置属性，null 删除属性，`text` 替换 `<style>` 的文本，例如只改一条路径的 `d` 或一个颜色；不给 `svg` 和 `edits` 时按新 `density` 重新渲染 |
 | `layout_set_drawing_kit` | `state`，可选 `colors`（名称 → `#rgb`/`#rrggbb`，合并，null 删除）、`styles`（类规则样式表）、`defs`（SVG 定义：渐变、滤镜） | 所有绘制共用的颜色、类规则与定义；`styles`、`defs` 整体替换，绘制自身同名的规则与 id 优先。所有矢量条目按原分辨率重新渲染，变化的同步到图层；会让某个绘制缺少颜色时拒绝 |
 | `reference_sample` | `points`（≤256 个 [x, y]）、`radius`（画布单位，取均值）、`rect`、`colors`（1–16，默认 6）至少给一项 | 读参考图颜色：各点的颜色与 alpha；`rect` 内不透明像素的主色（按明度从暗到亮，附占比），用来定套件颜色 |
@@ -536,7 +538,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 
 按参考图绘制部件的流程：`layout_set_reference` → `reference_sample` 取色，`layout_set_drawing_kit` 定颜色与线条类 → 带 `grid` 的 `view_render_model` 放大看部件，`reference_trace` 取轮廓、`reference_snap` 校正线条上的点 → `material_draw`（被遮挡部分按形体画完整，原画的缺陷不照描）→ `outline_material_ids` 或放置后用 `reference` 对照 → 反复修改 → `layer_place`、`layer_tag` → `rig_generate` → `view_render_poses` 检查转动时露出的部分。
 
-按参考图拆件的流程：`material_import` 参考图 → `layout_set_reference` → `material_crop`（`canvas_rect`）截取特写 → `material_export_png` → 外部放大或重绘、拆成部件 → `material_import` → `layer_place`（`rect` 取特写的位置换算）→ `view_render_model` 的 `reference`（`difference` 看对齐，`referenceDifference` 为平均差值）与 `density`（纹理密度热力图，`texelDensity` 列出各图层每画布单位的纹理像素）检查 → `layer_set_canvas_rect` / `layer_transform` 微调 → `layer_tag` → `rig_generate` → `view_render_poses` 检查动作。
+按参考图拆件的流程：`material_import` 参考图 → `layout_set_reference` → `material_crop`（`canvas_rect`）截取特写 → `material_export_png` → 外部放大或重绘 → `material_import` → `material_set_placement`（`from` 特写）→ 逐层：外部生成去掉最前部件的图 → `material_peel` → 在新底图上继续 → `layer_place`→ `view_render_model` 的 `reference`（`difference` 看对齐，`referenceDifference` 为平均差值）与 `density`（纹理密度热力图，`texelDensity` 列出各图层每画布单位的纹理像素）检查 → `layer_set_canvas_rect` / `layer_transform` 微调 → `layer_tag` → `rig_generate` → `view_render_poses` 检查动作。
 
 ## 素材工作流（asset_*）
 
