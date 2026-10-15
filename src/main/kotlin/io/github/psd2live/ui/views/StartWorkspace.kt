@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.hoverable
@@ -595,18 +596,18 @@ private fun LayoutContent(layout: LayoutDraft, enabled: Boolean, onCreate: (Int,
 }
 
 /** A row of the canvas size list: its name, its size muted at the end, the selection behind both. */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SizeRow(label: String, size: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit, onDoubleClick: () -> Unit) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val interaction = remember { MutableInteractionSource() }
 	val hovered by interaction.collectIsHoveredAsState()
+	val fill by animateColorAsState(itemFill(selected, hovered && enabled), tween(Motion.Instant))
 	Row(
 		Modifier.fillMaxWidth().height(24.dp)
-			.background(if (selected) colors.selection else if (hovered && enabled) colors.controlHover.copy(alpha = 0.35f) else Color.Transparent)
-			.hoverable(interaction)
-			.combinedClickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick, onDoubleClick = onDoubleClick)
+			.background(fill)
+			.hoverable(interaction, enabled)
+			.selectOrOpen(enabled, onClick, onDoubleClick)
 			.handCursor(enabled)
 			.padding(horizontal = 8.dp),
 		verticalAlignment = Alignment.CenterVertically,
@@ -796,7 +797,6 @@ private fun RecentBrowser(
 }
 
 /** A recent file as the materials grid draws an image: its picture, its name under it, the selection behind both. */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RecentTile(file: RecentFile, selected: Boolean, size: Dp, enabled: Boolean, onClick: () -> Unit, onDoubleClick: () -> Unit) {
 	val colors = LocalToolColors.current
@@ -810,17 +810,19 @@ private fun RecentTile(file: RecentFile, selected: Boolean, size: Dp, enabled: B
 		details?.canvasWidth?.let { "$it × ${details.canvasHeight}" },
 		details?.let { DateFormat.format(Instant.ofEpochMilli(it.modifiedMillis)) + " · " + formatBytes(it.sizeBytes) },
 	).joinToString("\n")
+	val fill by animateColorAsState(itemFill(selected, hovered && enabled), tween(Motion.Instant))
+	val edge by animateColorAsState(when {
+		selected -> colors.accent.copy(alpha = 0.7f)
+		hovered && enabled -> colors.accent.copy(alpha = 0.35f)
+		else -> Color.Transparent
+	}, tween(Motion.Instant))
 	BarTooltip(tip) {
 		Column(
 			Modifier.padding(3.dp).clip(shape)
-				.background(when {
-					selected -> colors.selection
-					hovered && enabled -> colors.controlHover.copy(alpha = 0.35f)
-					else -> Color.Transparent
-				})
-				.border(0.5.dp, if (selected) colors.accent.copy(alpha = 0.7f) else Color.Transparent, shape)
-				.hoverable(interaction)
-				.combinedClickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick, onDoubleClick = onDoubleClick)
+				.background(fill)
+				.border(0.5.dp, edge, shape)
+				.hoverable(interaction, enabled)
+				.selectOrOpen(enabled, onClick, onDoubleClick)
 				.handCursor(enabled)
 				.padding(4.dp),
 			horizontalAlignment = Alignment.CenterHorizontally,
@@ -834,7 +836,6 @@ private fun RecentTile(file: RecentFile, selected: Boolean, size: Dp, enabled: B
 }
 
 /** A recent file as the materials list draws an image: a small picture, the name, then its facts in muted columns. */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RecentRow(file: RecentFile, selected: Boolean, enabled: Boolean, onClick: () -> Unit, onDoubleClick: () -> Unit) {
 	val colors = LocalToolColors.current
@@ -842,15 +843,12 @@ private fun RecentRow(file: RecentFile, selected: Boolean, enabled: Boolean, onC
 	val interaction = remember { MutableInteractionSource() }
 	val hovered by interaction.collectIsHoveredAsState()
 	val muted = if (selected) colors.selectionText.copy(alpha = 0.75f) else colors.textMuted
+	val fill by animateColorAsState(itemFill(selected, hovered && enabled), tween(Motion.Instant))
 	Row(
 		Modifier.fillMaxWidth().height(30.dp)
-			.background(when {
-				selected -> colors.selection
-				hovered && enabled -> colors.controlHover.copy(alpha = 0.3f)
-				else -> Color.Transparent
-			})
-			.hoverable(interaction)
-			.combinedClickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick, onDoubleClick = onDoubleClick)
+			.background(fill)
+			.hoverable(interaction, enabled)
+			.selectOrOpen(enabled, onClick, onDoubleClick)
 			.handCursor(enabled)
 			.padding(horizontal = 6.dp),
 		verticalAlignment = Alignment.CenterVertically,
@@ -883,6 +881,30 @@ private fun Thumbnail(image: ImageBitmap?, kind: RecentFileKind, modifier: Modif
 			RecentFileKind.PROJECT -> IconFolder(modifier = Modifier.size(16.dp), tint = colors.warning.copy(alpha = 0.8f))
 			RecentFileKind.PSD -> IconDocument(Modifier.size(16.dp), colors.accent.copy(alpha = 0.85f))
 		}
+	}
+}
+
+/** The fill behind a pickable item: the selection, the hover tint, or nothing. */
+@Composable
+private fun itemFill(selected: Boolean, hovered: Boolean): Color {
+	val colors = LocalToolColors.current
+	return when {
+		selected -> colors.selection
+		hovered -> colors.controlHover
+		else -> Color.Transparent
+	}
+}
+
+/**
+ * A click selects at the press, without waiting to tell it from a double click, and a double click opens. The latest
+ * callbacks are read at each tap, so the selection recomposing the item does not restart the gesture between clicks.
+ */
+@Composable
+private fun Modifier.selectOrOpen(enabled: Boolean, onSelect: () -> Unit, onOpen: () -> Unit): Modifier {
+	val select by rememberUpdatedState(onSelect)
+	val open by rememberUpdatedState(onOpen)
+	return pointerInput(enabled) {
+		if (enabled) detectTapGestures(onPress = { select() }, onDoubleTap = { open() })
 	}
 }
 
