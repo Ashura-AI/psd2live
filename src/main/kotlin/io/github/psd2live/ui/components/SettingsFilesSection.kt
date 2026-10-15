@@ -1,11 +1,15 @@
 package io.github.psd2live.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,24 +95,23 @@ internal fun SettingsFilesSection(state: PSD2LiveState, viewModel: PSD2LiveViewM
 
 	InspectorSectionBox(tr("settings.files.recent")) {
 		val psds = state.recentFiles.count { it.endsWith(".psd", ignoreCase = true) }
-		InspectorFormRow(tr("settings.files.recent.list")) {
-			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-				Value(tr("settings.files.recent.count", (state.recentFiles.size - psds).toString(), psds.toString()), Modifier.weight(1f))
-				CompactButton(tr("menu.file.recent.clear"), onClick = viewModel::clearRecentFiles, enabled = state.recentFiles.isNotEmpty(), height = 22.dp)
-			}
-		}
+		EntryRow(
+			label = tr("settings.files.recent.list"),
+			value = tr("settings.files.recent.count", (state.recentFiles.size - psds).toString(), psds.toString()),
+			mono = false,
+			clear = RowAction(tr("settings.files.data.clear"), state.recentFiles.isNotEmpty(), viewModel::clearRecentFiles),
+		)
 	}
 
 	InspectorSectionBox(tr("settings.files.export")) {
 		val lastExport = remember { viewModel.lastExportDirectory }
-		InspectorFormRow(tr("settings.files.export.last")) {
-			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-				val folder = lastExport
-				if (folder == null) Value(tr("settings.files.export.none"), Modifier.weight(1f), muted = true)
-				else Value(folder, Modifier.weight(1f), mono = true)
-				CompactButton(tr("settings.files.open"), onClick = { folder?.let(DesktopUtils::openDirectory) }, enabled = folder != null, height = 22.dp)
-			}
-		}
+		EntryRow(
+			label = tr("settings.files.export.last"),
+			value = lastExport ?: tr("settings.files.export.none"),
+			mono = lastExport != null,
+			muted = lastExport == null,
+			open = RowAction(tr("settings.files.open"), lastExport != null) { lastExport?.let(DesktopUtils::openDirectory) },
+		)
 	}
 
 	InspectorSectionBox(tr("settings.files.data")) {
@@ -119,12 +122,11 @@ internal fun SettingsFilesSection(state: PSD2LiveState, viewModel: PSD2LiveViewM
 		FolderRow(tr("settings.files.data.logs"), AppDataFolders.logs, clearable = true)
 		FolderRow(tr("settings.files.data.headlessStore"), AppDataFolders.headlessStore)
 		TempLeftoversRow()
-		InspectorFormRow(tr("settings.files.data.preferences")) {
-			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-				Value(AppDataFolders.preferences, Modifier.weight(1f), mono = true)
-				CompactButton(tr("dialog.agent.copy"), onClick = { DesktopUtils.copyToClipboard(AppDataFolders.preferences) }, height = 22.dp)
-			}
-		}
+		EntryRow(
+			label = tr("settings.files.data.preferences"),
+			value = AppDataFolders.preferences,
+			open = RowAction(tr("dialog.agent.copy")) { DesktopUtils.copyToClipboard(AppDataFolders.preferences) },
+		)
 		Text(
 			tr("settings.files.data.clearHint"),
 			style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
@@ -141,23 +143,24 @@ private fun FolderRow(label: String, folder: Path, clearable: Boolean? = null) {
 	var generation by remember { mutableStateOf(0) }
 	LaunchedEffect(folder, generation) { size = withContext(Dispatchers.IO) { folderSize(folder) } }
 	val exists = size != null && size!! >= 0
-	InspectorFormRow(label) {
-		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-			Value(folder.toString(), Modifier.weight(1f), mono = true)
-			Value(when (val bytes = size) {
-				null -> "…"
-				-1L -> tr("settings.files.data.missing")
-				else -> ModelDownloader.formatBytes(bytes)
-			}, muted = true)
-			CompactButton(tr("settings.files.open"), onClick = { DesktopUtils.openDirectory(folder) }, enabled = exists, height = 22.dp)
-			if (clearable != null) CompactButton(tr("settings.files.data.clear"), onClick = {
+	EntryRow(
+		label = label,
+		value = folder.toString(),
+		info = when (val bytes = size) {
+			null -> "…"
+			-1L -> tr("settings.files.data.missing")
+			else -> ModelDownloader.formatBytes(bytes)
+		},
+		open = RowAction(tr("settings.files.open"), exists) { DesktopUtils.openDirectory(folder) },
+		clear = clearable?.let { allowed ->
+			RowAction(tr("settings.files.data.clear"), allowed && exists && size!! > 0) {
 				scope.launch {
 					withContext(Dispatchers.IO) { clearFolder(folder) }
 					generation++
 				}
-			}, enabled = clearable && exists && size!! > 0, height = 22.dp)
-		}
-	}
+			}
+		},
+	)
 }
 
 /** The leftovers in the temporary folder: how many and how large, opened at the folder, cleared together. */
@@ -171,25 +174,57 @@ private fun TempLeftoversRow() {
 			AppDataFolders.tempLeftovers().let { entries -> entries.size to entries.sumOf { maxOf(0L, folderSize(it)) } }
 		}
 	}
-	InspectorFormRow(tr("settings.files.data.temp")) {
+	EntryRow(
+		label = tr("settings.files.data.temp"),
+		value = AppDataFolders.temp.toString(),
+		info = found?.let { (count, bytes) ->
+			if (count == 0) tr("settings.files.data.temp.none") else tr("settings.files.data.temp.found", count.toString(), ModelDownloader.formatBytes(bytes))
+		} ?: "…",
+		open = RowAction(tr("settings.files.open")) { DesktopUtils.openDirectory(AppDataFolders.temp) },
+		clear = RowAction(tr("settings.files.data.clear"), (found?.first ?: 0) > 0) {
+			scope.launch {
+				withContext(Dispatchers.IO) { AppDataFolders.tempLeftovers().forEach(::deleteEntry) }
+				generation++
+			}
+		},
+	)
+}
+
+/** A button in one of a row's two action columns. */
+private class RowAction(val text: String, val enabled: Boolean = true, val onClick: () -> Unit)
+
+/** Width of a row's size column and of each action column, shared so every row's buttons line up. */
+private val InfoColumn = 104.dp
+private val ActionColumn = 56.dp
+
+/**
+ * One row of the topic: the value, a size column and two action columns, open then clear. A row without an action
+ * keeps its column empty, so the buttons of every row stand in the same place.
+ */
+@Composable
+private fun EntryRow(
+	label: String,
+	value: String,
+	mono: Boolean = true,
+	muted: Boolean = false,
+	info: String? = null,
+	open: RowAction? = null,
+	clear: RowAction? = null,
+) {
+	InspectorFormRow(label) {
 		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-			Value(AppDataFolders.temp.toString(), Modifier.weight(1f), mono = true)
-			Value(found?.let { (count, bytes) ->
-				if (count == 0) tr("settings.files.data.temp.none") else tr("settings.files.data.temp.found", count.toString(), ModelDownloader.formatBytes(bytes))
-			} ?: "…", muted = true)
-			CompactButton(tr("settings.files.open"), onClick = { DesktopUtils.openDirectory(AppDataFolders.temp) }, height = 22.dp)
-			CompactButton(tr("settings.files.data.clear"), onClick = {
-				scope.launch {
-					withContext(Dispatchers.IO) { AppDataFolders.tempLeftovers().forEach(::deleteEntry) }
-					generation++
-				}
-			}, enabled = (found?.first ?: 0) > 0, height = 22.dp)
+			Value(value, Modifier.weight(1f), mono = mono, muted = muted)
+			Value(info.orEmpty(), Modifier.width(InfoColumn), muted = true, end = true)
+			for (action in listOf(open, clear)) Box(Modifier.width(ActionColumn)) {
+				if (action != null) CompactButton(action.text, onClick = action.onClick, enabled = action.enabled, height = 22.dp,
+					modifier = Modifier.fillMaxWidth())
+			}
 		}
 	}
 }
 
 @Composable
-private fun Value(text: String, modifier: Modifier = Modifier, mono: Boolean = false, muted: Boolean = false) {
+private fun Value(text: String, modifier: Modifier = Modifier, mono: Boolean = false, muted: Boolean = false, end: Boolean = false) {
 	val typography = LocalToolTypography.current
 	Text(
 		text,
@@ -197,6 +232,7 @@ private fun Value(text: String, modifier: Modifier = Modifier, mono: Boolean = f
 		color = if (muted) LocalToolColors.current.textMuted else LocalToolColors.current.textPrimary,
 		maxLines = 1,
 		overflow = TextOverflow.Ellipsis,
+		textAlign = if (end) TextAlign.End else TextAlign.Start,
 		modifier = modifier,
 	)
 }
