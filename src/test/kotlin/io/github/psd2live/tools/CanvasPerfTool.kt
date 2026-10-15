@@ -69,7 +69,7 @@ class CanvasPerfTool {
 			viewModel.openRecentFile(sample.path.toAbsolutePath().toString())
 			waitFor(600, "model") { viewModel.state.value.previewModel != null && !viewModel.state.value.isBusy }
 			SwingUtilities.invokeAndWait {
-				viewModel.dismissStartScreen()
+				viewModel.dismissMeshSplitBatch()
 				viewModel.setCanvasMode(viewModel.state.value.activeCanvas.id, CanvasMode.EDIT)
 				// Every mesh wireframe (faded in object mode), every warp lattice and rotation: the heaviest guides the canvas draws.
 				val state = viewModel.state.value

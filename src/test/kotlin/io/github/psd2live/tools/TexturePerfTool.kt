@@ -100,7 +100,7 @@ class TexturePerfTool {
 		val report = StringBuilder()
 		viewModel.openRecentFile(sample.path.toAbsolutePath().toString())
 		waitFor(600, "model") { viewModel.state.value.previewModel != null && !viewModel.state.value.isBusy && viewModel.currentWorkspaceState() != null }
-		javax.swing.SwingUtilities.invokeAndWait { viewModel.dismissStartScreen() }
+		javax.swing.SwingUtilities.invokeAndWait { viewModel.dismissMeshSplitBatch() }
 		Thread.sleep(1000)
 		val first = requireNotNull(viewModel.textureSnapshot())
 		val tile = first.atlas.tiles.filter { it.width >= 16 }.minBy { it.layerId }

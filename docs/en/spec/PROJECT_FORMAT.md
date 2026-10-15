@@ -48,6 +48,7 @@ Saves write v2. Each history revision is split into content-addressed document n
 | `rig/objects/` | Rig objects: those checkpoint records name (required by revisions with checkpoints) and those of each revision's authored rig |
 | `rig/revisions/` | Optional, each revision's authored rig index (see "Authored rig" below) |
 | `cache/head/` | Optional, disposable cache for rebuilding the head revision (see "Head cache" below) |
+| `thumbnail.png` | Optional preview for the start page: the saved model at rest, at most 256 px on the longer side. Never read on open and written afresh on each save |
 
 Document node, override and clip files are named by the SHA-256 of their bytes, checked on open. Splitting is lossless: opening joins every revision's complete document from its index, so revision IDs, node IDs and branches are unchanged. The complete rig model is never stored; a revision with an authored rig builds from it on open, any other from source, settings and edits. Auxiliary entries depend on features used; `cache/` holds only disposable rebuild caches and takes part in no identity.
 

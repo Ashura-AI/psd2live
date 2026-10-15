@@ -42,9 +42,10 @@ internal class ProjectController(private val viewModel: PSD2LiveViewModel,
             run {
                 workspace.flushProjectPersistence()
                 val state = capture.uiState
+                val thumbnail = withContext(kotlinx.coroutines.Dispatchers.Default) { thumbnailOf(state) }
                 repository.save(ProjectSaveCapture(capture.projectId, capture.history,
                     WorkspaceStateCodec.encode(state), io.github.psd2live.project.OwnedProjectSource.resolve(capture.store.root, capture.auxiliary),
-                    capture.store, capture.spatial, capture.tasks, capture.auxiliary), path,
+                    capture.store, capture.spatial, capture.tasks, capture.auxiliary, thumbnail), path,
                     progress = { stage, fraction ->
                         when (stage) {
                             ProjectStage.STAGING -> progress("project.progress.staging", path, 0.15f, 0.4f, fraction)
@@ -69,6 +70,20 @@ internal class ProjectController(private val viewModel: PSD2LiveViewModel,
             throw failure
         } finally { viewModel.clearProjectProgress() }
     }
+
+    /**
+     * The saved model at rest, its hidden layers left out, on the CPU renderer: Layout placements show before a
+     * generation too. A failure only costs the picture, never the save.
+     */
+    private fun thumbnailOf(state: PSD2LiveState): ByteArray? = runCatching {
+        val model = state.previewModel ?: return null
+        val source = model.analysis.source
+        val layers = model.rig.layerIdByDrawableId.values.filterTo(mutableSetOf()) { state.documentLayerVisibility[it] != false }
+        io.github.psd2live.application.WorkspaceViewRenderer.modelComposite(model, "thumbnail", emptyMap(), layers, emptySet(),
+            io.github.psd2live.project.WorkspaceViewFrame.CanvasRect(io.github.psd2live.core.Bounds(0f, 0f, source.widthPx.toFloat(), source.heightPx.toFloat())),
+            io.github.psd2live.project.WorkspaceViewBackground.TRANSPARENT,
+            io.github.psd2live.project.WorkspaceViewOutputSpec(io.github.psd2live.project.ProjectThumbnail.LONG_EDGE)).png
+    }.getOrNull()
 
     suspend fun open(workspace: DesktopWorkspace, path: Path, discardUnsaved: Boolean = true) = saves.withLock {
         val expected = workspace.captureProjectOpen(discardUnsaved)

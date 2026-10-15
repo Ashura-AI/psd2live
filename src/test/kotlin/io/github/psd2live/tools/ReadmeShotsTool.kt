@@ -9,6 +9,9 @@ import androidx.compose.ui.window.rememberWindowState
 import io.github.psd2live.render.SkiaGpu
 import io.github.psd2live.ui.components.BatchSplitItemState
 import io.github.psd2live.ui.state.StartQuickPreset
+import io.github.psd2live.ui.state.StartSection
+import io.github.psd2live.ui.state.AppSettings
+import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.state.WorkspacePreset
 import io.github.psd2live.ui.views.LocalAwtWindow
@@ -21,7 +24,7 @@ import javax.swing.SwingUtilities
 import kotlin.test.Test
 
 /**
- * Screenshots of the real editor window for the project page: a PSD imported through the start screen with the
+ * Screenshots of the real editor window for the project page: a PSD imported from the start page with the
  * full preset, an automatic skeleton, then each workspace. Frames are the window's own Skia frames, never the screen.
  * The project is saved as `project.psd2live` so the raster exports can render its clips.
  *
@@ -116,20 +119,39 @@ class ReadmeShotsTool {
 			waitFor(30, "GPU") { SkiaGpu.status.value !is SkiaGpu.Status.Starting }
 			val project = out.resolve("project.psd2live")
 			val reuse = setting("PSD2LIVE_SHOT_REUSE", "0") == "1" && project.isFile
-			vm.openRecentFile((if (reuse) project.toPath() else sample.path).toAbsolutePath().toString())
-			waitFor(600, "model") { vm.state.value.previewModel != null && !vm.state.value.isBusy }
+			// The import applies the start page's presets; the user's own choice comes back once the bakes are done.
+			val userChoices = AppSettings.startChoices
 			if (!reuse) {
-				waitFor(120, "start screen") { vm.pendingStartScreen?.splits != null }
-				capture("01-start")
-				val offer = vm.pendingStartScreen!!
-				val decisions = offer.splits.orEmpty().map { BatchSplitItemState(it) }.filter { it.isSelected && setting("PSD2LIVE_SHOT_SPLITS", "1") == "1" }.map { item ->
-					val (names, sides) = item.generatedNamesAndSides()
-					PSD2LiveViewModel.LayerSplitDecision(item.offer, names, sides)
+				SwingUtilities.invokeAndWait {
+					vm.setStartChoices(StartQuickPreset.FULL.choices)
+					vm.showStartPage(StartSection.GENERATE)
 				}
-				log.appendLine("splits: ${decisions.map { it.names }}")
-				SwingUtilities.invokeAndWait { vm.applyStartScreen(StartQuickPreset.FULL.choices, decisions) }
+				capture("01-start")
+			}
+			vm.openRecentFile((if (reuse) project.toPath() else sample.path).toAbsolutePath().toString())
+			waitFor(600, "model") { vm.state.value.previewModel != null && !vm.state.value.isBusy && !vm.startPageShown }
+			if (!reuse) {
 				idle()
 				bakes()
+				SwingUtilities.invokeAndWait { vm.setStartChoices(userChoices) }
+				if (setting("PSD2LIVE_SHOT_SPLITS", "1") == "1") {
+					SwingUtilities.invokeAndWait { vm.requestMeshSplitScan() }
+					waitFor(120, "mesh split scan") {
+						vm.pendingMeshSplitBatch != null || vm.pendingMeshSplit != null || vm.state.value.statusText == tr("start.splits.none")
+					}
+					vm.pendingMeshSplitBatch?.let { offer ->
+						capture("02-splits")
+						val decisions = offer.splits.map { BatchSplitItemState(it) }.filter { it.isSelected }.map { item ->
+							val (names, sides) = item.generatedNamesAndSides()
+							PSD2LiveViewModel.LayerSplitDecision(item.offer, names, sides)
+						}
+						log.appendLine("splits: ${decisions.map { it.names }}")
+						SwingUtilities.invokeAndWait { vm.applyMeshSplitBatch(decisions) }
+					}
+					vm.pendingMeshSplit?.let { SwingUtilities.invokeAndWait { vm.dismissMeshSplit() } }
+					idle()
+					bakes()
+				}
 				val model = vm.state.value.previewModel!!
 				val spec = io.github.psd2live.core.SkeletonAutoBuilder.build(model.analysis, model.rig)
 				log.appendLine("skeleton before: ${vm.state.value.rigEdits.skeleton?.bones?.size}; auto ${spec.bones.size}")
@@ -144,7 +166,7 @@ class ReadmeShotsTool {
 				bakes()
 				log.appendLine("skeleton: ${vm.state.value.rigEdits.skeleton?.bones?.size}; arm/leg params ${vm.state.value.previewModel!!.rig.puppet.parameters.count { it.id.raw.startsWith("ParamArm") || it.id.raw.startsWith("ParamLeg") }}")
 				kotlinx.coroutines.runBlocking { vm.saveProjectNow(project.toPath()) }
-			} else vm.dismissStartScreen()
+			}
 			log.appendLine("simulations: ${vm.state.value.rigEdits.simEdits.map { it.id }}")
 			SwingUtilities.invokeAndWait { vm.setLogPanelExpanded(false) }
 			for (preset in WorkspacePreset.entries.filter { it != WorkspacePreset.BLANK && it != WorkspacePreset.HISTORY }) {

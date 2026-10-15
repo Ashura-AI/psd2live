@@ -79,7 +79,7 @@ internal fun MeshSplitDialog(
         onDismiss = onDismiss,
         width = 520.dp,
         footerStart = {
-            DontShowAgainCheckbox(AppPrompt.START_SCREEN_ON_IMPORT, mutedOnImport, onPromptMutedChange,
+            DontShowAgainCheckbox(AppPrompt.MESH_SPLITS_ON_IMPORT, mutedOnImport, onPromptMutedChange,
                 label = tr("prompt.dontShowOnImport"))
         },
         footer = {

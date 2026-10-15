@@ -143,7 +143,6 @@ import io.github.psd2live.ui.state.TabCamera
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.tutorial.TutorialTargetId
-import io.github.psd2live.ui.tutorial.TutorialId
 import io.github.psd2live.ui.tutorial.tutorialTarget
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
@@ -182,10 +181,6 @@ fun CanvasViewportComposable(
 	cameraZoom: Float = state.forCanvas(canvasId).canvasZoom,
 	cameraPanX: Float = state.forCanvas(canvasId).canvasPanX,
 	cameraPanY: Float = state.forCanvas(canvasId).canvasPanY,
-	onOpenTutorialCatalog: (() -> Unit)? = null,
-	onStartTutorial: ((TutorialId) -> Unit)? = null,
-	onOpenProject: (() -> Unit)? = null,
-	onOpenPsd: (() -> Unit)? = null,
 ) {
     val editor = viewModel.canvasEditorFor(canvasId)
     val ownerState = state.forCanvas(canvasId)
@@ -1756,17 +1751,10 @@ fun CanvasViewportComposable(
 		}
         // Overlay: Empty hint or Stats Badge
 		if (previewModel == null) {
-			EmptyCanvasStart(
-				recentPaths = canvasState.recentFiles,
+			EmptyCanvasHint(
 				enabled = !canvasState.isBusy,
-				openProjectShortcut = canvasState.keymap.labelFor(ShortcutAction.OPEN_PROJECT),
-				openPsdShortcut = canvasState.keymap.labelFor(ShortcutAction.OPEN_PSD),
-				onOpenTutorialCatalog = onOpenTutorialCatalog,
-				onStartTutorial = onStartTutorial,
-				onOpenProject = onOpenProject,
-				onOpenPsd = onOpenPsd,
-				onOpenRecent = viewModel::openRecentFile,
-				modifier = Modifier.align(Alignment.Center).fillMaxSize(),
+				onShowStart = { viewModel.showStartPage() },
+				modifier = Modifier.align(Alignment.Center),
 			)
 		} else {
 			// Floating Stats Pill Badge

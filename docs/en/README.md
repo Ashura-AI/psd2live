@@ -63,7 +63,7 @@ The images below come from the two example PSDs in the repository (the knee test
 </tr>
 <tr>
 <td width="50%" valign="top"><img src="../imgs/readme/workspace-texture.webp" alt="Texture workspace: tiles on an atlas page, model preview and texture panel"><br><sub><b>Textures</b>: arrange tiles on the atlas and set texture density per layer</sub></td>
-<td width="50%" valign="top"><img src="../imgs/readme/start-screen.webp" alt="Start screen: model presets and the layers that can be split by mesh"><br><sub><b>Import</b>: pick model presets and split left and right parts drawn on one layer</sub></td>
+<td width="50%" valign="top"><img src="../imgs/readme/start-screen.webp" alt="Start page: sidebar, presets and recent files, and the inspector"><br><sub><b>Start</b>: pick presets and drop a PSD to generate in one go, or start a layout project or reopen a recent one</sub></td>
 </tr>
 </table>
 
@@ -150,7 +150,7 @@ Get the latest version from [Releases](https://github.com/tsunehimatoi/psd2live/
 
 ## Quick start
 
-1. **Import a PSD** with **File → Import → New project from PSD…** (`Ctrl+Shift+O`) or drop it on the window. On the Start screen, pick the model presets (Minimal / Default / Full) and tick the layers to split by mesh (such as both legs drawn on one layer).
+1. **Import a PSD** with **File → Import → New project from PSD…** (`Ctrl+Shift+O`) or drop it on the window. Before importing, pick the model presets (Minimal / Default / Full) under Generate from PSD on the Start page (the inspector on the right sets each one); the model is generated and opened for editing. Split left and right parts drawn on one layer (such as both legs) with **Tools → Split Layers by Mesh…**.
 2. **Check the classification** in the Layers table: part type, side and variant settings. Correct anything that was misread.
 3. **Preview and refine** in the Preview workspace, then adjust in the Edit, Rigging, Animation, Physics and Texture workspaces as needed.
 4. **Save and export**: `Ctrl+S` saves a `.psd2live` project; `Ctrl+G` exports `.moc3` / `.cmo3`, and other formats are under **File → Export as**.

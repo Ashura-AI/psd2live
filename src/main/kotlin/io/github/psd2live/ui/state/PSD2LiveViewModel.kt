@@ -147,21 +147,37 @@ class PSD2LiveViewModel : AutoCloseable {
         val sides: List<Side>,
     )
 
-    /**
-     * The start screen: the model presets with quick choices, and the layers that can be split by mesh.
-     * [splits] is null while the scan runs. Without [presets] it only offers the splits, as after a layer
-     * import. [initial] is what the preset controls open on.
-     */
-    internal data class StartScreenOffer(
+    /** Several layers that can be split by mesh, offered together: after a layer import, or from the Tools menu. */
+    internal data class MeshSplitBatchOffer(
         val preview: RigPreviewModel,
-        val presets: Boolean,
-        val splits: List<MeshSplitOffer>?,
-        val initial: StartPresetChoices,
+        val splits: List<MeshSplitOffer>,
     )
 
     internal var pendingMeshSplit by mutableStateOf<MeshSplitOffer?>(null)
         private set
-    internal var pendingStartScreen by mutableStateOf<StartScreenOffer?>(null)
+    internal var pendingMeshSplitBatch by mutableStateOf<MeshSplitBatchOffer?>(null)
+        private set
+
+    /**
+     * The start page, the fixed first tab of the workspace strip, covers the dock while shown. It belongs to the
+     * app, not the project: nothing about it is saved with one. It shows at launch and goes once a project opens.
+     */
+    internal var startPageShown by mutableStateOf(true)
+        private set
+    /** The start page's section; it opens on the recent files each launch, or on generating while there are none. */
+    internal var startSection by mutableStateOf(StartSection.RECENT)
+        private set
+    /** Whether the launch's section has been settled against the recent files, once they were checked. */
+    private var startLandingSettled = false
+
+    /** Moves a launch with no recent file to generating from a PSD, once; later the page stays where it is put. */
+    internal fun settleStartLanding(hasRecentFiles: Boolean) {
+        if (startLandingSettled) return
+        startLandingSettled = true
+        if (!hasRecentFiles && startSection == StartSection.RECENT) startSection = StartSection.GENERATE
+    }
+    /** The presets the next PSD import applies. */
+    internal var startChoices by mutableStateOf(AppSettings.startChoices)
         private set
 
     /**
@@ -1022,7 +1038,7 @@ class PSD2LiveViewModel : AutoCloseable {
                 if (next.projectOpenGeneration != current.projectOpenGeneration) {
                     meshSplitCheck.cancel()
                     pendingMeshSplit = null
-                    pendingStartScreen = null
+                    pendingMeshSplitBatch = null
                     meshSplitQueue.clear()
                     manualMeshSplitRequests.clear()
                 }
@@ -1084,7 +1100,7 @@ class PSD2LiveViewModel : AutoCloseable {
                 simulationSessionId = null; pendingSimulationDelta = 0f
                 _simulationFrames.value = null; _simulationStatus.value = SimulationStatus.Idle
                 pendingMeshSplit = null
-                pendingStartScreen = null
+                pendingMeshSplitBatch = null
                 meshSplitQueue.clear()
                 manualMeshSplitRequests.clear()
             }
@@ -1239,45 +1255,42 @@ class PSD2LiveViewModel : AutoCloseable {
         checkNextMeshSplit()
     }
 
-    /** A layer import with several new layers: offers their splits, alone or on a start screen without presets. */
+    /** A layer import with several new layers: offers their splits, alone or together. */
     internal fun offerImportMeshSplit(layerIds: List<String>) {
         if (!AppSettings.autoDetectMeshSplitsOnImport) return
-        if (meshSplitChecking || meshSplitApplying || pendingMeshSplit != null || pendingStartScreen != null) return
+        if (meshSplitChecking || meshSplitApplying || pendingMeshSplit != null || pendingMeshSplitBatch != null) return
         val preview = _state.value.previewModel ?: return
         meshSplitCheck.start(
             action = { detectMeshSplits(preview, layerIds) },
             completed = { offers ->
                 if (_state.value.previewModel === preview) when {
                     offers.size == 1 -> pendingMeshSplit = offers.single()
-                    offers.size > 1 -> pendingStartScreen = StartScreenOffer(preview, presets = false, splits = offers,
-                        initial = StartPresetChoices.of(_state.value))
+                    offers.size > 1 -> pendingMeshSplitBatch = MeshSplitBatchOffer(preview, offers)
                 }
             },
             failed = { reportMeshSplitCheckFailure(it) },
         )
     }
 
-    /**
-     * Opens the start screen on the current model and scans every source layer for meshes to split. After a
-     * PSD import ([fresh]) the presets open on the defaults; from the Tools menu they open on the model as it is.
-     */
-    internal fun requestStartScreen(fresh: Boolean = false) {
-        if (meshSplitChecking || meshSplitApplying || pendingMeshSplit != null || pendingStartScreen != null) return
-        val current = _state.value
-        val preview = current.previewModel ?: return
-        val initial = if (fresh) StartQuickPreset.DEFAULT.choices else StartPresetChoices.of(current)
-        val offer = StartScreenOffer(preview, presets = !current.meshOnly && current.rigEdits.importedCmo3 == null,
-            splits = null, initial = initial)
-        pendingStartScreen = offer
+    /** Tools > split layers by mesh: scans every source layer and offers the ones whose mesh falls apart. */
+    internal fun requestMeshSplitScan() {
+        if (meshSplitChecking || meshSplitApplying || pendingMeshSplit != null || pendingMeshSplitBatch != null) return
+        val preview = _state.value.previewModel ?: return
+        if (preview.config.rigEdits.importedCmo3 != null) {
+            setErrorMessage(tr("editor.meshSplit.authored"))
+            return
+        }
+        setStatusText(tr("start.splits.scanning"))
         meshSplitCheck.start(
             action = { detectMeshSplits(preview, preview.analysis.source.layers.map { it.id.raw }) },
             completed = { offers ->
-                if (pendingStartScreen === offer) pendingStartScreen = offer.copy(splits = offers)
+                if (_state.value.previewModel === preview) when {
+                    offers.isEmpty() -> setStatusText(tr("start.splits.none"))
+                    offers.size == 1 -> pendingMeshSplit = offers.single()
+                    else -> pendingMeshSplitBatch = MeshSplitBatchOffer(preview, offers)
+                }
             },
-            failed = {
-                if (pendingStartScreen === offer) pendingStartScreen = null
-                reportMeshSplitCheckFailure(it)
-            },
+            failed = { reportMeshSplitCheckFailure(it) },
         )
     }
 
@@ -1304,44 +1317,72 @@ class PSD2LiveViewModel : AutoCloseable {
         }
     }
 
-    /**
-     * Answers the start screen: splits the [decisions] first, since a preset simulation holds on to the meshes
-     * it reads, then brings the model to [choices] (null keeps the presets as they are).
-     */
-    internal fun applyStartScreen(choices: StartPresetChoices?, decisions: List<LayerSplitDecision>) {
-        val offer = pendingStartScreen ?: return
+    /** Splits the layers chosen in the batch offer. */
+    internal fun applyMeshSplitBatch(decisions: List<LayerSplitDecision>) {
+        val offer = pendingMeshSplitBatch ?: return
         meshSplitCheck.cancel()
-        pendingStartScreen = null
+        pendingMeshSplitBatch = null
         val valid = validSplitDecisions(decisions)
-        if (valid.isEmpty() && choices == null) return
+        if (valid.isEmpty()) return
         meshSplitApplying = true
         scope.launch {
             try {
-                if (valid.isNotEmpty()) applyMeshSplits(offer.preview, valid)
-                if (choices != null) applyPresetChoices(choices)
+                applyMeshSplits(offer.preview, valid)
             } catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
                 setErrorMessage(workspaceFailureMessage(failure))
             } finally {
                 meshSplitApplying = false
-                if (pendingMeshSplit == null && pendingStartScreen == null) checkNextMeshSplit()
+                if (pendingMeshSplit == null && pendingMeshSplitBatch == null) checkNextMeshSplit()
             }
         }
     }
 
-    internal fun dismissStartScreen() {
+    internal fun dismissMeshSplitBatch() {
         meshSplitCheck.cancel()
-        pendingStartScreen = null
+        pendingMeshSplitBatch = null
         checkNextMeshSplit()
     }
 
-    /** A PSD import with the start screen turned off still gets the default presets, clothing included. */
-    private fun applyStartScreenDefaults() {
+    /** Shows the start page, on [section] when given. */
+    internal fun showStartPage(section: StartSection? = null) {
+        section?.let(::setStartSection)
+        startPageShown = true
+    }
+
+    /** Back to the active workspace. */
+    fun leaveStartPage() {
+        startPageShown = false
+    }
+
+    internal fun setStartSection(section: StartSection) {
+        startSection = section
+    }
+
+    internal fun setStartChoices(choices: StartPresetChoices) {
+        startChoices = choices
+        AppSettings.startChoices = choices
+    }
+
+    /** Whether the start page's presets can apply to the model open now: one generated from a PSD. */
+    internal fun startPresetsApplyToCurrent(state: PSD2LiveState = _state.value): Boolean =
+        state.previewModel != null && !state.meshOnly && state.rigEdits.importedCmo3 == null
+
+    /** Brings the open model to the start page's presets, then shows the edit workspace. */
+    fun applyStartChoicesToCurrent() {
+        if (!startPresetsApplyToCurrent()) return
+        applyStartPresets(startChoices)
+        leaveStartPage()
+        openWorkspacePreset(WorkspacePreset.EDIT)
+    }
+
+    /** Brings the model to [choices] in the background: after a PSD import, or from the start page. */
+    private fun applyStartPresets(choices: StartPresetChoices) {
         if (meshSplitApplying) return
         meshSplitApplying = true
         scope.launch {
             try {
-                applyPresetChoices(StartQuickPreset.DEFAULT.choices)
+                applyPresetChoices(choices)
             } catch (failure: Throwable) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
                 setErrorMessage(workspaceFailureMessage(failure))
@@ -1635,13 +1676,13 @@ class PSD2LiveViewModel : AutoCloseable {
     internal fun dismissAllMeshSplits() {
         meshSplitCheck.cancel()
         pendingMeshSplit = null
-        pendingStartScreen = null
+        pendingMeshSplitBatch = null
         meshSplitQueue.clear()
         manualMeshSplitRequests.clear()
     }
 
     private fun checkNextMeshSplit() {
-        if (meshSplitChecking || meshSplitApplying || pendingMeshSplit != null || pendingStartScreen != null || meshSplitQueue.isEmpty()) return
+        if (meshSplitChecking || meshSplitApplying || pendingMeshSplit != null || pendingMeshSplitBatch != null || meshSplitQueue.isEmpty()) return
         val id = meshSplitQueue.removeFirst()
         val preview = _state.value.previewModel ?: return
         if (preview.config.rigEdits.importedCmo3 != null) {
@@ -1660,7 +1701,7 @@ class PSD2LiveViewModel : AutoCloseable {
             },
             failed = { reportMeshSplitCheckFailure(it) },
             finished = {
-                if (pendingMeshSplit == null && pendingStartScreen == null) checkNextMeshSplit()
+                if (pendingMeshSplit == null && pendingMeshSplitBatch == null) checkNextMeshSplit()
             },
         )
     }
@@ -1679,7 +1720,7 @@ class PSD2LiveViewModel : AutoCloseable {
                 setErrorMessage(workspaceFailureMessage(failure))
             } finally {
                 meshSplitApplying = false
-                if (pendingMeshSplit == null && pendingStartScreen == null) checkNextMeshSplit()
+                if (pendingMeshSplit == null && pendingMeshSplitBatch == null) checkNextMeshSplit()
             }
         }
     }
@@ -2174,7 +2215,9 @@ class PSD2LiveViewModel : AutoCloseable {
     fun openProject(path: Path) = withSavedChanges {
         scope.launch {
             try {
+                val generation = _state.value.projectOpenGeneration
                 openProjectNow(path, discardUnsaved = true)
+                if (_state.value.projectOpenGeneration != generation) leaveStartPage()
             } catch (failure: Exception) { updateState { it.copy(errorMessage = failure.message) } }
         }
     }
@@ -3050,6 +3093,11 @@ class PSD2LiveViewModel : AutoCloseable {
 				updateState { it.copy(recentFiles = AppSettings.recentFiles()) }
 			}
 		}
+	}
+
+	fun forgetRecentFile(path: String) {
+		AppSettings.forgetRecentFile(path)
+		updateState { it.copy(recentFiles = AppSettings.recentFiles()) }
 	}
 
 	fun clearRecentFiles() {
@@ -4823,7 +4871,9 @@ class PSD2LiveViewModel : AutoCloseable {
 	}
 
 
+	/** Shows workspace [id]; asking for any workspace leaves the start page, the one already active included. */
 	fun setActiveWorkspace(id: String) {
+		leaveStartPage()
         if (_state.value.workspaceEditBusy) return
 		val before = _state.value
 		if (before.activeWorkspaceId == id || before.workspaces.none { it.id == id }) return
@@ -4870,6 +4920,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	/** Copies layout, panel visibility and canvases into a new workspace. */
 	fun duplicateWorkspace(id: String = _state.value.activeWorkspace.id): String {
+		leaveStartPage()
 		val source = _state.value.workspaces.firstOrNull { it.id == id } ?: return addWorkspace()
 		val workspace = source.copy(
 			id = java.util.UUID.randomUUID().toString(),
@@ -5027,6 +5078,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	/** Docks another canvas. [focus] makes it the one zoom shortcuts and the editor follow. */
 	fun addCanvas(mode: CanvasMode, focus: Boolean = true): String {
+		leaveStartPage()
 		val id = "canvas:${java.util.UUID.randomUUID()}"
 		val pane = CanvasWindowState(id = id, mode = mode)
 		updateState { current ->
@@ -5072,6 +5124,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	 * Showing a module that is not in the layout asks the dock to place it.
 	 */
 	fun setModuleVisible(module: String, visible: Boolean) {
+		if (visible) leaveStartPage()
 		updateState { current ->
 			current.updateActiveWorkspace { workspace ->
 				val hidden = if (visible) workspace.hiddenModules - module else workspace.hiddenModules + module
@@ -5572,7 +5625,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		}
 	}
 
-	fun setAutoDetectMeshSplitsOnImport(enabled: Boolean) = setPromptEnabled(AppPrompt.START_SCREEN_ON_IMPORT, enabled)
+	fun setAutoDetectMeshSplitsOnImport(enabled: Boolean) = setPromptEnabled(AppPrompt.MESH_SPLITS_ON_IMPORT, enabled)
 
 	fun setHoveredItem(layerId: String?, deformerId: String?) {
 		updateState {
@@ -5918,6 +5971,7 @@ class PSD2LiveViewModel : AutoCloseable {
 			scope.launch {
 				try {
 					workspace.createLayoutProject(width, height, discardUnsaved = true)
+					leaveStartPage()
 					openWorkspacePreset(WorkspacePreset.LAYOUT)
 				} catch (failure: Exception) {
 					if (failure is kotlinx.coroutines.CancellationException) throw failure
@@ -6513,8 +6567,9 @@ class PSD2LiveViewModel : AutoCloseable {
             updateState { it.copy(errorMessage = tr("dialog.inputInvalid", input)) }; return
         }
         startWorkspaceImport(discardUnsaved, tr("status.analyzing"), afterImport = {
-            if (AppSettings.autoDetectMeshSplitsOnImport) requestStartScreen(fresh = true)
-            else applyStartScreenDefaults()
+            applyStartPresets(startChoices)
+            leaveStartPage()
+            openWorkspacePreset(WorkspacePreset.EDIT)
         }) { it.importPsd(input.toAbsolutePath().normalize().toString(), discardUnsaved) }
     }
 
@@ -6527,7 +6582,9 @@ class PSD2LiveViewModel : AutoCloseable {
     }
 
     private fun startCmo3Import(path: Path, mode: io.github.psd2live.core.Cmo3ImportMode, discardUnsaved: Boolean) =
-        startWorkspaceImport(discardUnsaved, tr("cmo3.importing")) {
+        startWorkspaceImport(discardUnsaved, tr("cmo3.importing"), afterImport = {
+            if (mode == io.github.psd2live.core.Cmo3ImportMode.NEW) leaveStartPage()
+        }) {
             it.importCmo3(path.toAbsolutePath().normalize(), mode, discardUnsaved)
         }
 

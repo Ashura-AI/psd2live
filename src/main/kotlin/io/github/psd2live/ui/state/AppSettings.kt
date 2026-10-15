@@ -276,13 +276,28 @@ object AppSettings {
 
 	private const val KEY_RECENT_FILES = "recent_files"
 
-	/**
-	 * Opens the start screen after a PSD import (off: the default presets apply at once) and offers the
-	 * splits of a layer import. The name and key predate the start screen.
-	 */
+	/** Offers the splits of the layers a layer import adds. */
 	var autoDetectMeshSplitsOnImport: Boolean
-		get() = promptEnabled(AppPrompt.START_SCREEN_ON_IMPORT)
-		set(value) = setPromptEnabled(AppPrompt.START_SCREEN_ON_IMPORT, value)
+		get() = promptEnabled(AppPrompt.MESH_SPLITS_ON_IMPORT)
+		set(value) = setPromptEnabled(AppPrompt.MESH_SPLITS_ON_IMPORT, value)
+
+	private const val KEY_START_CHOICES = "start_choices"
+
+	/** The start page's panel sizes in dp, as last dragged: sidebar and inspector widths, the recent PSD strip's height. */
+	internal fun startPanelSize(key: String, default: Float, range: ClosedFloatingPointRange<Float>): Float =
+		runCatching { preferences.getFloat("start_$key", default) }.getOrDefault(default).let { if (it.isFinite()) it.coerceIn(range) else default }
+
+	internal fun setStartPanelSize(key: String, value: Float) {
+		if (value.isFinite()) runCatching { preferences.putFloat("start_$key", value) }
+	}
+
+	/** The presets a PSD import applies, as last set on the start page; the default set the first time. */
+	internal var startChoices: StartPresetChoices
+		get() = StartPresetChoices.decode(runCatching { preferences.get(KEY_START_CHOICES, null) }.getOrNull())
+			?: StartQuickPreset.DEFAULT.choices
+		set(value) {
+			runCatching { preferences.put(KEY_START_CHOICES, value.encode()) }
+		}
 
 	fun promptEnabled(prompt: AppPrompt): Boolean =
 		runCatching { preferences.getBoolean(prompt.key, true) }.getOrDefault(true)
@@ -494,8 +509,8 @@ object AppSettings {
  * [key] is its preference; [labelKey] names it in Settings, phrased as what is shown when it is on.
  */
 enum class AppPrompt(internal val key: String, val labelKey: String) {
-	/** The start screen after a PSD import; the key predates the start screen. */
-	START_SCREEN_ON_IMPORT("auto_detect_mesh_splits_on_import", "editor.meshSplit.promptOnImport"),
+	/** The splits offered after a layer import. */
+	MESH_SPLITS_ON_IMPORT("auto_detect_mesh_splits_on_import", "editor.meshSplit.promptOnImport"),
 	/** The dialog that reports a finished export and offers its folder. */
 	EXPORT_SUCCESS("prompt_export_success", "prompt.exportSuccess"),
 }

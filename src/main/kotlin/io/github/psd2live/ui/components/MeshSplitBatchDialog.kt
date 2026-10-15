@@ -5,12 +5,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.Divider
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,25 +18,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.core.Side
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.state.AppPrompt
 import io.github.psd2live.ui.state.AppSettings
-import io.github.psd2live.ui.state.HairMode
 import io.github.psd2live.ui.state.PSD2LiveViewModel
-import io.github.psd2live.ui.state.PresetParts
-import io.github.psd2live.ui.state.StartPresetChoices
-import io.github.psd2live.ui.state.StartQuickPreset
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import kotlin.math.roundToInt
 
 internal enum class SplitNamesMode { LR, TB, NUMBER, CUSTOM }
 
@@ -85,31 +76,25 @@ internal class BatchSplitItemState(
 }
 
 /**
- * The start screen after a PSD import, also under Tools: quick preset sets, the model presets they fill in,
- * and the layers whose mesh falls apart into pieces, each to be split or kept. Without presets in the
- * [offer] it only lists the splits. [onApply] gets the preset choices (null without presets) and the splits.
+ * The layers whose mesh falls apart into pieces, each to be split or kept: after a layer import that adds several,
+ * or from Tools. [onApply] gets the splits chosen.
  */
 @Composable
-internal fun StartScreenDialog(
-    offer: PSD2LiveViewModel.StartScreenOffer,
-    onApply: (StartPresetChoices?, List<PSD2LiveViewModel.LayerSplitDecision>) -> Unit,
+internal fun MeshSplitBatchDialog(
+    offer: PSD2LiveViewModel.MeshSplitBatchOffer,
+    onApply: (List<PSD2LiveViewModel.LayerSplitDecision>) -> Unit,
     onDismiss: () -> Unit,
     mutedOnImport: Boolean = !AppSettings.autoDetectMeshSplitsOnImport,
     onPromptMutedChange: (AppPrompt, Boolean) -> Unit = { prompt, muted -> AppSettings.setPromptEnabled(prompt, !muted) },
 ) {
     val colors = LocalToolColors.current
     val typography = LocalToolTypography.current
-    val splits = offer.splits
-    val itemStates = remember(splits) { splits.orEmpty().map { BatchSplitItemState(it) } }
-    val previewsByOffer = remember(splits) {
-        splits.orEmpty().associate { split -> split.layerId to split.plan.previewImages.map { it.toImageBitmapFast() } }
+    val itemStates = remember(offer) { offer.splits.map { BatchSplitItemState(it) } }
+    val previewsByOffer = remember(offer) {
+        offer.splits.associate { split -> split.layerId to split.plan.previewImages.map { it.toImageBitmapFast() } }
     }
-    var choices by remember(offer.initial) { mutableStateOf(offer.initial) }
-    val parts = remember(offer.preview) { PresetParts.of(offer.preview.analysis) }
-
     val selectedItems = itemStates.filter { it.isSelected }
-    val allValid = selectedItems.all { it.isValid }
-    val canApply = allValid && (offer.presets || selectedItems.isNotEmpty())
+    val canApply = selectedItems.isNotEmpty() && selectedItems.all { it.isValid }
 
     fun decisions() = selectedItems.map { item ->
         val (names, sides) = item.generatedNamesAndSides()
@@ -118,12 +103,11 @@ internal fun StartScreenDialog(
 
     val source = offer.preview.analysis.source
     ModalDialogFrame(
-        title = if (offer.presets) tr("start.title") else tr("editor.meshSplit.batchTitle"),
-        subtitle = if (offer.presets) tr("start.body") else tr("editor.meshSplit.batchBody", offer.splits.orEmpty().size),
+        title = tr("editor.meshSplit.batchTitle"),
+        subtitle = tr("editor.meshSplit.batchBody", offer.splits.size),
         onDismiss = onDismiss,
         width = 720.dp,
         maxHeight = 620.dp,
-        fit = if (offer.presets) { maxWidth, maxHeight -> DpSize(minOf(900.dp, maxWidth), minOf(640.dp, maxHeight)) } else null,
         scrollable = false,
         headerDivider = true,
         bodyPadding = PaddingValues(0.dp),
@@ -136,179 +120,48 @@ internal fun StartScreenDialog(
             )
         },
         footerStart = {
-            DontShowAgainCheckbox(AppPrompt.START_SCREEN_ON_IMPORT, mutedOnImport, onPromptMutedChange,
+            DontShowAgainCheckbox(AppPrompt.MESH_SPLITS_ON_IMPORT, mutedOnImport, onPromptMutedChange,
                 label = tr("prompt.dontShowOnImport"))
         },
         footer = {
-            CompactButton(text = tr("start.skip"), onClick = onDismiss)
+            CompactButton(text = tr("editor.meshSplit.keepAll"), onClick = onDismiss)
             CompactButton(
-                text = if (offer.presets) tr("start.apply")
-                    else tr("editor.meshSplit.confirmSelected", selectedItems.size),
-                onClick = { onApply(if (offer.presets) choices else null, decisions()) },
+                text = tr("editor.meshSplit.confirmSelected", selectedItems.size),
+                onClick = { onApply(decisions()) },
                 enabled = canApply,
                 isPrimary = true,
             )
         },
     ) {
-        Row(Modifier.fillMaxWidth().weight(1f, fill = offer.presets)) {
-            if (offer.presets) {
-                Column(
-                    Modifier.width(340.dp).fillMaxHeight().verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    QuickPresetRow(choices, parts) { choices = it.choices }
-                    Spacer(Modifier.height(4.dp))
-                    PresetChoicesPanel(choices, parts) { choices = it }
-                }
-                Box(Modifier.width(1.dp).fillMaxHeight().background(colors.divider))
-            }
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SplitHeader(itemStates)
             Column(
-                Modifier.weight(1f).then(if (offer.presets) Modifier.fillMaxHeight() else Modifier)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                SplitHeader(itemStates, scanning = splits == null)
-                when {
-                    splits == null -> EmptyNote(tr("start.splits.scanning"))
-                    itemStates.isEmpty() -> EmptyNote(tr("start.splits.none"))
-                    else -> Column(
-                        Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        itemStates.forEach { SplitCard(it, previewsByOffer[it.offer.layerId].orEmpty()) }
-                    }
-                }
+                itemStates.forEach { SplitCard(it, previewsByOffer[it.offer.layerId].orEmpty()) }
             }
         }
     }
 }
 
-/** A small dropdown of the quick sets, on the one matching the current choices, or on "Custom" when none does. */
 @Composable
-private fun QuickPresetRow(choices: StartPresetChoices, parts: PresetParts, onPick: (StartQuickPreset) -> Unit) {
-    val colors = LocalToolColors.current
-    val typography = LocalToolTypography.current
-    val matched = StartQuickPreset.entries.firstOrNull { it.choices.within(parts) == choices.within(parts) }
-    Row(Modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(tr("start.quick"), style = typography.body.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold),
-            color = colors.textPrimary, modifier = Modifier.width(80.dp))
-        CompactDropdown(
-            items = if (matched == null) StartQuickPreset.entries + null else StartQuickPreset.entries,
-            selectedItem = matched,
-            onItemSelected = { it?.let(onPick) },
-            itemLabel = { it?.let { preset -> tr(preset.key) } ?: tr("start.quick.custom") },
-            itemEnabled = { it != null },
-            height = 20.dp,
-            modifier = Modifier.width(110.dp),
-        )
-    }
-}
-
-/** The model presets the start screen sets, grouped as in the model presets panel. */
-@Composable
-private fun PresetChoicesPanel(choices: StartPresetChoices, parts: PresetParts, onChange: (StartPresetChoices) -> Unit) {
-    val colors = LocalToolColors.current
-    val typography = LocalToolTypography.current
-
-    SectionLabel(tr("settings.group.rigging"))
-    StrengthRow(tr("settings.headStrength"), choices.headStrength) { onChange(choices.copy(headStrength = it)) }
-    StrengthRow(tr("settings.bodyStrength"), choices.bodyStrength) { onChange(choices.copy(bodyStrength = it)) }
-    Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
-        CompactCheckbox(choices.featureDisplacement, { onChange(choices.copy(featureDisplacement = it)) },
-            label = tr("model.deformer.featureDisplacement"), modifier = Modifier.weight(1f))
-        CompactCheckbox(choices.mouthOutline, { onChange(choices.copy(mouthOutline = it)) },
-            label = tr("mouth.outline"), modifier = Modifier.weight(1f))
-    }
-
-    Spacer(Modifier.height(6.dp))
-    SectionLabel(tr("settings.group.motions"))
-    Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
-        CompactCheckbox(choices.motionBasic, { onChange(choices.copy(motionBasic = it)) },
-            label = tr("settings.motion.basic"), modifier = Modifier.weight(1f))
-        CompactCheckbox(choices.motionSkeleton, { onChange(choices.copy(motionSkeleton = it)) },
-            label = tr("settings.motion.skeleton"), modifier = Modifier.weight(1f))
-    }
-
-    Spacer(Modifier.height(6.dp))
-    SectionLabel(tr("settings.group.simulation"))
-    for (front in listOf(true, false)) {
-        val exists = if (front) parts.frontHair else parts.backHair
-        Row(Modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                tr(if (front) "presets.frontHair" else "presets.backHair"),
-                style = typography.body.copy(fontSize = 11.5.sp),
-                color = if (exists) colors.textPrimary else colors.textDisabled,
-                modifier = Modifier.width(52.dp),
-            )
-            CompactDropdown(
-                items = HairMode.entries,
-                selectedItem = if (front) choices.frontHair else choices.backHair,
-                onItemSelected = { onChange(if (front) choices.copy(frontHair = it) else choices.copy(backHair = it)) },
-                itemLabel = { tr(it.key) },
-                enabled = exists,
-                height = 20.dp,
-                modifier = Modifier.width(110.dp),
-            )
-            if (!exists) Note(tr("presets.status.absent"))
-        }
-    }
-    Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
-        CompactCheckbox(choices.clothing && parts.clothing, { onChange(choices.copy(clothing = it)) },
-            label = tr("presets.clothing"), enabled = parts.clothing)
-        if (!parts.clothing) Note(tr("presets.status.noClothing"))
-    }
-    if (parts.clothing) Text(
-        tr("presets.clothingHint"),
-        style = typography.caption.copy(fontSize = 10.5.sp),
-        color = colors.textMuted,
-        modifier = Modifier.padding(start = 22.dp),
-    )
-    Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
-        CompactCheckbox(choices.eyeJelly && parts.eyeJelly, { onChange(choices.copy(eyeJelly = it)) },
-            label = tr("export.physics.eyeJelly"), enabled = parts.eyeJelly)
-        if (!parts.eyeJelly) Note(tr("presets.status.absent"))
-    }
-
-    Spacer(Modifier.height(6.dp))
-    Text(tr("start.presets.note"), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textMuted)
-}
-
-@Composable
-private fun StrengthRow(label: String, value: Float, onChange: (Float) -> Unit) {
-    val colors = LocalToolColors.current
-    val typography = LocalToolTypography.current
-    Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = typography.body.copy(fontSize = 11.5.sp), color = colors.textPrimary, modifier = Modifier.width(80.dp),
-            maxLines = 1, overflow = TextOverflow.Ellipsis)
-        CompactSlider(
-            value = value,
-            onValueChange = { onChange((it * 20f).roundToInt() / 20f) },
-            valueRange = 0f..4f,
-            height = 14.dp,
-            modifier = Modifier.weight(1f),
-        )
-        Text("%.2f×".format(value), style = typography.monoSmall, color = colors.textPrimary,
-            modifier = Modifier.width(44.dp).padding(start = 6.dp))
-    }
-}
-
-@Composable
-private fun SplitHeader(items: List<BatchSplitItemState>, scanning: Boolean) {
+private fun SplitHeader(items: List<BatchSplitItemState>) {
     val colors = LocalToolColors.current
     val typography = LocalToolTypography.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionLabel(tr("start.splits"))
-        if (!scanning && items.isNotEmpty()) Text(
+        Text(
             tr("editor.meshSplit.selectedCount", items.count { it.isSelected }, items.size),
             style = typography.caption,
             color = colors.textMuted,
         )
         Spacer(Modifier.weight(1f))
-        if (!scanning && items.isNotEmpty()) {
-            CompactButton(tr("editor.meshSplit.selectAll"), { items.forEach { it.isSelected = true } }, height = 22.dp)
-            CompactButton(tr("editor.meshSplit.deselectAll"), { items.forEach { it.isSelected = false } }, height = 22.dp)
-        }
+        CompactButton(tr("editor.meshSplit.selectAll"), { items.forEach { it.isSelected = true } }, height = 22.dp)
+        CompactButton(tr("editor.meshSplit.deselectAll"), { items.forEach { it.isSelected = false } }, height = 22.dp)
     }
 }
 
@@ -427,23 +280,4 @@ private fun SectionLabel(text: String) {
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
     )
-}
-
-@Composable
-private fun RowScope.Note(text: String) {
-    Text(
-        text,
-        style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp),
-        color = LocalToolColors.current.textMuted,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.weight(1f).padding(start = 8.dp),
-    )
-}
-
-@Composable
-private fun EmptyNote(text: String) {
-    Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-        Text(text, style = LocalToolTypography.current.caption.copy(fontSize = 11.5.sp), color = LocalToolColors.current.textMuted)
-    }
 }

@@ -226,6 +226,10 @@ internal fun DockWorkspaceView(
 	onStartTutorial: ((TutorialId) -> Unit)? = null,
 	onOpenProject: (() -> Unit)? = null,
 	onOpenPsd: (() -> Unit)? = null,
+	onOpenCmo3: (() -> Unit)? = null,
+	onRevealFile: (String) -> Unit = {},
+	/** A file is being dragged over the window; the start page shows where it will land. */
+	filesDragging: Boolean = false,
 ) {
     val sessions = remember(state.projectOpenGeneration) { mutableMapOf<String, DockSession>() }
     val workspace = state.activeWorkspace
@@ -285,7 +289,7 @@ internal fun DockWorkspaceView(
     // especially for the canvas that existed before a second canvas was added.
     fun content(id: String): @Composable () -> Unit = {
         key(workspace.id, id) {
-            DockModuleContent(id, state, viewModel, onOpenTutorialCatalog, onStartTutorial, onOpenProject, onOpenPsd)
+            DockModuleContent(id, state, viewModel)
         }
     }
     DisposableEffect(session) { onDispose { session.cancel() } }
@@ -309,6 +313,7 @@ internal fun DockWorkspaceView(
         }
     }
     val colors = LocalToolColors.current
+    val startShown = viewModel.startPageShown
     // Overlay the rebuild prompt on a Box so its fillMaxSize scrim cannot compete for
     // Column height with the dock (which would collapse the workspace to solid black).
     Box(modifier) {
@@ -323,14 +328,17 @@ internal fun DockWorkspaceView(
                     layoutModules = session.root?.allModules()?.toSet().orEmpty(),
                     modifier = Modifier.weight(1f),
                 )
-                TabStripButton(label = tr("dock.reset")) {
+                if (!startShown) TabStripButton(label = tr("dock.reset")) {
                     session.floating.clear()
                     session.root = presetDockLayout(workspace)
                     viewModel.resetWorkspaceArrangement()
                 }
                 Spacer(Modifier.width(4.dp))
             }
-            key(workspace.id) {
+            if (startShown) {
+                StartWorkspace(state, viewModel, filesDragging, onOpenTutorialCatalog, onStartTutorial, onOpenProject, onOpenPsd,
+                    onOpenCmo3, onRevealFile, Modifier.weight(1f).fillMaxWidth())
+            } else key(workspace.id) {
                 Box(Modifier.weight(1f).fillMaxWidth().tutorialTarget(TutorialTargetId.DOCK_AREA).onGloballyPositioned { coordinates ->
                     session.workspaceBounds = { screenBounds(coordinates, mainWindow) }
                 }) {
@@ -350,7 +358,7 @@ internal fun DockWorkspaceView(
                 }
             }
         }
-        key(state.projectOpenGeneration, workspace.id) {
+        if (!startShown) key(state.projectOpenGeneration, workspace.id) {
             WorkspaceEditPanels(state, viewModel, Modifier.align(Alignment.BottomStart).padding(10.dp))
         }
         viewModel.pendingDepthSplit?.takeIf { it.workspaceId == workspace.id }?.let { offer ->
@@ -367,11 +375,11 @@ internal fun DockWorkspaceView(
                 onPromptMutedChange = { prompt, muted -> viewModel.setPromptEnabled(prompt, !muted) },
             )
         }
-        viewModel.pendingStartScreen?.let { offer ->
-            io.github.psd2live.ui.components.StartScreenDialog(
+        viewModel.pendingMeshSplitBatch?.let { offer ->
+            io.github.psd2live.ui.components.MeshSplitBatchDialog(
                 offer = offer,
-                onApply = viewModel::applyStartScreen,
-                onDismiss = viewModel::dismissStartScreen,
+                onApply = viewModel::applyMeshSplitBatch,
+                onDismiss = viewModel::dismissMeshSplitBatch,
                 mutedOnImport = !state.autoDetectMeshSplitsOnImport,
                 onPromptMutedChange = { prompt, muted -> viewModel.setPromptEnabled(prompt, !muted) },
             )
@@ -383,7 +391,7 @@ internal fun DockWorkspaceView(
         key(workspace.id, id, transparent) {
             Window(onCloseRequest = { session.returnToDock(id) }, state = windowState,
                 title = floatingTitle(id, state, viewModel), undecorated = true, transparent = transparent,
-                visible = id !in hiddenModules) {
+                visible = id !in hiddenModules && !startShown) {
                 DisposableEffect(window) {
                     session.floatingWindows[id] = window
                     onDispose { session.floatingWindows.remove(id) }
@@ -1020,10 +1028,6 @@ private fun DockModuleContent(
 	id: String,
 	state: PSD2LiveState,
 	vm: PSD2LiveViewModel,
-	onOpenTutorialCatalog: (() -> Unit)? = null,
-	onStartTutorial: ((TutorialId) -> Unit)? = null,
-	onOpenProject: (() -> Unit)? = null,
-	onOpenPsd: (() -> Unit)? = null,
 ) {
 	if (isCanvasModule(id)) {
 		val canvas = state.activeWorkspace.canvases.firstOrNull { it.id == id } ?: return
@@ -1037,10 +1041,6 @@ private fun DockModuleContent(
 			cameraPanX = canvas.camera.panX,
 			cameraPanY = canvas.camera.panY,
 			modifier = Modifier.fillMaxSize(),
-			onOpenTutorialCatalog = onOpenTutorialCatalog,
-			onStartTutorial = onStartTutorial,
-			onOpenProject = onOpenProject,
-			onOpenPsd = onOpenPsd,
 		)
 		return
 	}

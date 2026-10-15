@@ -725,10 +725,10 @@ internal fun MaterialDragGhost(vm: PSD2LiveViewModel) {
 	}
 }
 
-@Composable private fun GridGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
+@Composable internal fun GridGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
 	listOf(3f to 3f, 10f to 3f, 3f to 10f, 10f to 10f).forEach { (x, y) -> box(x, y, 5f, 5f, 1f) }
 }
-@Composable private fun ListGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
+@Composable internal fun ListGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
 	listOf(4f, 9f, 14f).forEach { y -> line(2.5f, y, 4f, y); line(6.5f, y, 15.5f, y) }
 }
 /** The folder tree's toggle: a trunk with two branches. */

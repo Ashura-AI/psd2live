@@ -153,6 +153,7 @@ fun AppTitleBar(
 	onShowAgentConnection: () -> Unit,
 	onShowTextureUpscale: () -> Unit,
 	onStartScreen: () -> Unit = {},
+	onMeshSplitScan: () -> Unit = {},
 	/** Tools > Upgrade split records: enabled while the document holds version 1 split records. */
 	canUpdateGeneration: Boolean = false,
 	onUpdateGeneration: () -> Unit = {},
@@ -273,6 +274,8 @@ fun AppTitleBar(
 						}
 					} else null,
 				) {
+					AppMenuItem(text = tr("menu.file.startPage"), onHover = { activeSubmenu = null }, onClick = { activeMenu = null; onStartScreen() })
+					AppMenuSeparator()
 					// Project
 					AppMenuItem(text = tr("project.open"), shortcut = keymap.labelFor(ShortcutAction.OPEN_PROJECT), enabled = !isBusy, onHover = { activeSubmenu = null }, onClick = { activeMenu = null; onOpenProject() })
 					val recent = rememberExistingRecentFiles(recentFiles)
@@ -653,12 +656,21 @@ fun AppTitleBar(
 					)
 					AppMenuItem(
 						text = tr("menu.tools.startScreen"),
-						enabled = hasInput && !isBusy,
 						onHover = { activeSubmenu = null },
 						onClick = {
 							activeMenu = null
 							activeSubmenu = null
 							onStartScreen()
+						},
+					)
+					AppMenuItem(
+						text = tr("menu.tools.meshSplit"),
+						enabled = hasInput && !isBusy,
+						onHover = { activeSubmenu = null },
+						onClick = {
+							activeMenu = null
+							activeSubmenu = null
+							onMeshSplitScan()
 						},
 					)
 					AppMenuItem(

@@ -647,7 +647,7 @@ data class PSD2LiveState(
     }
 	val darkTheme: Boolean get() = toolColors.isDark
 
-	val autoDetectMeshSplitsOnImport: Boolean get() = AppPrompt.START_SCREEN_ON_IMPORT !in mutedPrompts
+	val autoDetectMeshSplitsOnImport: Boolean get() = AppPrompt.MESH_SPLITS_ON_IMPORT !in mutedPrompts
 
 	val activeWorkspace: EditorWorkspace
 		get() = workspaces.firstOrNull { it.id == activeWorkspaceId }

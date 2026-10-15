@@ -3,8 +3,11 @@ package io.github.psd2live.ui.state
 import io.github.psd2live.core.PhysicsGenerator
 import io.github.psd2live.core.PipelineAnalysis
 import io.github.psd2live.core.sim.ModelPresets
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 /** How a hair moves: simulated, the legacy sway, or still. */
+@Serializable
 internal enum class HairMode(val key: String) {
 	SIMULATION("presets.hairMode.simulate"),
 	CLASSIC("presets.classicSway"),
@@ -22,7 +25,11 @@ internal data class PresetParts(val frontHair: Boolean, val backHair: Boolean, v
 	}
 }
 
-/** The model presets the start screen sets: rig strength and facial switches, motion groups, physics and simulation. */
+/**
+ * The model presets the start page sets: rig strength and facial switches, motion groups, physics and simulation.
+ * A PSD import applies them as soon as the model is built.
+ */
+@Serializable
 internal data class StartPresetChoices(
 	val headStrength: Float = 1f,
 	val bodyStrength: Float = 1f,
@@ -43,7 +50,15 @@ internal data class StartPresetChoices(
 		eyeJelly = eyeJelly && parts.eyeJelly,
 	)
 
+	fun encode(): String = choicesJson.encodeToString(serializer(), this)
+
 	companion object {
+		private val choicesJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+		/** [raw] as written by [encode]; null when missing or unreadable. */
+		fun decode(raw: String?): StartPresetChoices? =
+			raw?.let { runCatching { choicesJson.decodeFromString(serializer(), it) }.getOrNull() }
+
 		/** What the model in [state] has now. */
 		fun of(state: PSD2LiveState) = StartPresetChoices(
 			headStrength = state.headStrength,
@@ -66,7 +81,7 @@ internal data class StartPresetChoices(
 	}
 }
 
-/** One-click sets of [StartPresetChoices] on the start screen. */
+/** One-click sets of [StartPresetChoices] on the start page. */
 internal enum class StartQuickPreset(val key: String, val choices: StartPresetChoices) {
 	/** The rig alone: no generated motions, physics or simulation, no mouth outline. */
 	MINIMAL("start.quick.minimal", StartPresetChoices(
@@ -80,3 +95,13 @@ internal enum class StartQuickPreset(val key: String, val choices: StartPresetCh
 		featureDisplacement = true, frontHair = HairMode.SIMULATION, backHair = HairMode.SIMULATION,
 	)),
 }
+
+/**
+ * The start page's sections, as its sidebar lists them. It opens on the recent files; the next three start a project:
+ * a model generated from a PSD, an empty canvas to lay materials out on, or a Cubism model. The last lists what is new.
+ */
+internal enum class StartSection { RECENT, GENERATE, LAYOUT, CMO3, UPDATES }
+
+/** Canvas sizes a Layout project accepts: each side up to 8192, at most 16M pixels. */
+internal fun validLayoutCanvasSize(width: Int?, height: Int?): Boolean =
+	width != null && height != null && width in 1..8192 && height in 1..8192 && width.toLong() * height <= 16_777_216

@@ -78,7 +78,7 @@ class PreviewWindowTool {
 			report.appendLine("GPU: ${SkiaGpu.status.value}")
 			vm.openRecentFile(sample.path.toAbsolutePath().toString())
 			waitFor(600, "model") { vm.state.value.previewModel != null && !vm.state.value.isBusy }
-			SwingUtilities.invokeAndWait { vm.dismissStartScreen() }
+			SwingUtilities.invokeAndWait { vm.dismissMeshSplitBatch() }
 			Thread.sleep(1500)
 			report.appendLine("edit canvas GPU frames: ${CanvasGpu.framesDrawn.values.sumOf { it.get() }}")
 			capture("edit", vm.canvasRenderKey(vm.state.value.activeCanvas.id, CanvasMode.EDIT))

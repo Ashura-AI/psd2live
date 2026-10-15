@@ -100,7 +100,7 @@ class PreviewFpsTool {
 				else workspace.importPsd(path.toString(), true)
 			}
 			waitFor(60, "model") { vm.state.value.previewModel != null && !vm.state.value.isBusy }
-			SwingUtilities.invokeAndWait { vm.dismissStartScreen() }
+			SwingUtilities.invokeAndWait { vm.dismissMeshSplitBatch() }
 			System.getenv("PSD2LIVE_WORKSPACE")?.takeIf { it.isNotBlank() }?.let { name ->
 				SwingUtilities.invokeAndWait {
 					vm.setActiveWorkspace(vm.state.value.workspaces.firstOrNull { it.id == name || it.preset.name.equals(name, true) }?.id ?: name)

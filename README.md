@@ -63,7 +63,7 @@ PSD2Live 是一套完整的 2D 角色绑定工具链：从分层 PSD 自动生�
 </tr>
 <tr>
 <td width="50%" valign="top"><img src="docs/imgs/readme/workspace-texture.webp" alt="纹理工作区：纹理集页面上的图块排布、模型预览与纹理面板"><br><sub><b>纹理</b>：在纹理集上排布图块，逐层设定纹理密度</sub></td>
-<td width="50%" valign="top"><img src="docs/imgs/readme/start-screen.webp" alt="开始界面：模型预设与可按网格拆分的图层列表"><br><sub><b>导入</b>：选择模型预设，按网格拆分画在同一层的左右部件</sub></td>
+<td width="50%" valign="top"><img src="docs/imgs/readme/start-screen.webp" alt="开始页：左侧导航、中间预设与最近文件、右侧属性"><br><sub><b>开始</b>：选好预设后拖入 PSD 一键生成，或新建排版工程、打开最近的工程</sub></td>
 </tr>
 </table>
 
@@ -150,7 +150,7 @@ PSD2Live 不依赖 Cubism Editor 或 SDK 运行，但与 Cubism 格式保持兼�
 
 ## 快速开始
 
-1. **导入 PSD**：**文件 → 导入 → 从 PSD 新建工程…**（`Ctrl+Shift+O`），或把 PSD 拖进窗口。在「开始」界面选择模型预设（最小 / 默认 / 完整），并勾选需要按网格拆分的图层（如画在同一层的左右腿）。
+1. **导入 PSD**：**文件 → 导入 → 从 PSD 新建工程…**（`Ctrl+Shift+O`），或把 PSD 拖进窗口。导入前在「开始」页的「从 PSD 生成」中选好模型预设（右侧属性面板可逐项调整）（最小 / 默认 / 完整），导入后自动生成并进入编辑；画在同一层的左右部件（如左右腿）用「工具 → 按网格拆分图层…」拆开。
 2. **核对识别结果**：在「图层」表格中检查每层的部件类型、侧别与差分设置，识别错的直接改。
 3. **预览与修改**：切到「预览」工作区检查动作和物理，再按需进入编辑、绑定、动画、物理、纹理工作区。
 4. **保存与导出**：`Ctrl+S` 保存 `.psd2live` 工程；`Ctrl+G` 导出 `.moc3` / `.cmo3`，其他格式在 **文件 → 导出为** 中。

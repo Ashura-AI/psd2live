@@ -76,6 +76,7 @@ import io.github.psd2live.ui.state.WorkspacePreset
 import io.github.psd2live.ui.state.displayName
 import io.github.psd2live.ui.state.isCanvasModule
 import io.github.psd2live.ui.theme.LocalToolColors
+import io.github.psd2live.ui.theme.Motion
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.theme.handCursor
 
@@ -101,7 +102,7 @@ internal val WINDOW_MODULES = listOf(
 )
 
 /**
- * Workspace strip: each chip is a named arrangement of panels and canvases.
+ * Workspace strip: the fixed Start tab, then a chip per named arrangement of panels and canvases.
  * The window menu toggles components and adds canvases.
  */
 @OptIn(ExperimentalComposeUiApi::class)
@@ -157,11 +158,25 @@ fun WorkspaceStrip(
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(chipSpacing),
 		) {
+			val startShown = viewModel.startPageShown
+			// The Start tab lives while the start page shows: it folds away once a project takes over, and opens out again
+			// when the start page is asked for.
+			androidx.compose.animation.AnimatedVisibility(
+				visible = startShown,
+				enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Motion.Fade, delayMillis = Motion.Instant)) +
+					androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(Motion.Expand), expandFrom = Alignment.Start),
+				exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(Motion.Instant)) +
+					androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(Motion.Expand), shrinkTowards = Alignment.Start),
+			) {
+				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(chipSpacing)) {
+					StartChip(isActive = true, onSelect = { viewModel.showStartPage() })
+				}
+			}
 			state.workspaces.forEachIndexed { index, item ->
 				val dragging = draggingId == item.id
 				WorkspaceChip(
 					workspace = item,
-					isActive = item.id == state.activeWorkspaceId,
+					isActive = !startShown && item.id == state.activeWorkspaceId,
 					canClose = state.workspaces.size > 1,
 					canCloseRight = index < state.workspaces.lastIndex,
 					onSelect = { viewModel.setActiveWorkspace(item.id) },
@@ -222,6 +237,40 @@ fun WorkspaceStrip(
 		}
 		Spacer(Modifier.width(2.dp))
 	}
+}
+
+/** The start page's tab: first while it shows, never closed by hand, renamed or dragged. */
+@Composable
+private fun StartChip(isActive: Boolean, onSelect: () -> Unit) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val interactionSource = remember { MutableInteractionSource() }
+	val isHovered by interactionSource.collectIsHoveredAsState()
+	Row(
+		modifier = Modifier
+			.height(22.dp)
+			.clip(RoundedCornerShape(4.dp))
+			.background(when {
+				isActive -> colors.controlBackground
+				isHovered -> colors.controlHover.copy(alpha = 0.6f)
+				else -> Color.Transparent
+			})
+			.handCursor()
+			.clickable(interactionSource = interactionSource, indication = null, onClick = onSelect)
+			.padding(horizontal = 8.dp),
+		verticalAlignment = Alignment.CenterVertically,
+	) {
+		StartIcon(tint = if (isActive) colors.accent else colors.textMuted, modifier = Modifier.size(12.dp))
+		Spacer(Modifier.width(5.dp))
+		Text(
+			text = tr("start.page.tab"),
+			style = typography.body.copy(fontSize = 11.5.sp, fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal),
+			color = if (isActive) colors.textPrimary else colors.textMuted,
+			maxLines = 1,
+		)
+	}
+	// Keeps the fixed tab apart from the workspaces, which can be reordered among themselves.
+	Box(Modifier.padding(horizontal = 2.dp).width(1.dp).height(14.dp).background(colors.divider))
 }
 
 @Composable

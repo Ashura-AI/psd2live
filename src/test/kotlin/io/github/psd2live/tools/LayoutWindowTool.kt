@@ -55,7 +55,7 @@ class LayoutWindowTool {
 			val psd = Characters.figurePsd(out.toPath())
 			vm.openRecentFile(psd.toAbsolutePath().toString())
 			waitFor(300, "model") { vm.state.value.previewModel != null && !vm.state.value.isBusy }
-			SwingUtilities.invokeAndWait { vm.dismissStartScreen(); vm.openWorkspacePreset(WorkspacePreset.LAYOUT) }
+			SwingUtilities.invokeAndWait { vm.dismissMeshSplitBatch(); vm.openWorkspacePreset(WorkspacePreset.LAYOUT) }
 			waitFor(30, "GPU renderer") { SkiaGpu.status.value !is SkiaGpu.Status.Starting }
 			waitFor(30, "materials panel") { MaterialsPanelProbe.firstEntry != null && vm.materialDropTargets.isNotEmpty() }
 			Thread.sleep(1500)

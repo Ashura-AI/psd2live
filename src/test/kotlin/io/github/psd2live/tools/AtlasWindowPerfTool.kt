@@ -58,7 +58,7 @@ class AtlasWindowPerfTool {
 			waitFor(60, "window") { window.get()?.isShowing == true }
 			vm.openRecentFile(sample.path.toAbsolutePath().toString())
 			waitFor(600, "model") { vm.state.value.previewModel != null && !vm.state.value.isBusy }
-			SwingUtilities.invokeAndWait { vm.dismissStartScreen(); vm.openWorkspacePreset(WorkspacePreset.TEXTURE) }
+			SwingUtilities.invokeAndWait { vm.dismissMeshSplitBatch(); vm.openWorkspacePreset(WorkspacePreset.TEXTURE) }
 			waitFor(30, "GPU renderer") { SkiaGpu.status.value !is SkiaGpu.Status.Starting }
 			report.appendLine("GPU: ${SkiaGpu.status.value}")
 			Thread.sleep(2500)

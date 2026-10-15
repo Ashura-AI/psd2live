@@ -216,7 +216,8 @@ internal fun Chevron(tint: Color, open: Boolean) {
 
 /**
  * The bar's primary action, shaped like the edit canvas's mode button: an accent body that runs [onClick] and a
- * chevron that opens its options. [onMenu] toggles the options; [open] says they show.
+ * chevron that opens its options. [onMenu] toggles the options; [open] says they show. [emphasis] makes it a page's
+ * one main action: a little taller and fuller, the same accent glass.
  */
 @Composable
 internal fun AccentSplitButton(
@@ -228,54 +229,57 @@ internal fun AccentSplitButton(
 	enabled: Boolean = true,
 	tooltip: String? = null,
 	menuTooltip: String? = null,
+	emphasis: Boolean = false,
 ) {
 	val colors = LocalToolColors.current
+	val height = if (emphasis) 28.dp else 24.dp
 	val body = remember { MutableInteractionSource() }
 	val menu = remember { MutableInteractionSource() }
 	val bodyHovered by body.collectIsHoveredAsState()
 	val menuHovered by menu.collectIsHoveredAsState()
 	val tint = if (enabled) colors.accent else colors.textMuted.copy(alpha = 0.6f)
+	val lift = if (emphasis) 0.08f else 0f
 	fun fill(hovered: Boolean, pressed: Boolean) = when {
 		!enabled -> colors.accent.copy(alpha = 0.08f)
-		pressed -> colors.accent.copy(alpha = 0.3f)
-		hovered -> colors.accent.copy(alpha = 0.26f)
-		else -> colors.accent.copy(alpha = 0.18f)
+		pressed -> colors.accent.copy(alpha = 0.3f + lift)
+		hovered -> colors.accent.copy(alpha = 0.26f + lift)
+		else -> colors.accent.copy(alpha = 0.18f + lift)
 	}
 	val bodyFill by animateColorAsState(fill(bodyHovered, false), tween(Motion.Instant))
 	val menuFill by animateColorAsState(fill(menuHovered, open), tween(Motion.Instant))
 	Row(
 		Modifier
-			.height(24.dp)
+			.height(height)
 			.clip(RoundedCornerShape(4.dp))
-			.border(0.5.dp, colors.accent.copy(alpha = if (open) 0.75f else if (enabled) 0.5f else 0.2f), RoundedCornerShape(4.dp)),
+			.border(0.5.dp, colors.accent.copy(alpha = if (open) 0.75f + lift else if (enabled) 0.5f + lift * 2 else 0.2f), RoundedCornerShape(4.dp)),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		BarTooltip(tooltip) {
 			Row(
 				Modifier
-					.height(24.dp)
+					.height(height)
 					.background(bodyFill)
 					.hoverable(body)
 					.clickable(interactionSource = body, indication = null, enabled = enabled, onClick = onClick)
 					.semantics { contentDescription = label }
-					.padding(start = 6.dp, end = 7.dp),
+					.padding(start = if (emphasis) 10.dp else 6.dp, end = if (emphasis) 12.dp else 7.dp),
 				verticalAlignment = Alignment.CenterVertically,
 			) {
 				icon(tint)
-				Spacer(Modifier.width(5.dp))
-				Text(label, color = tint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+				Spacer(Modifier.width(if (emphasis) 6.dp else 5.dp))
+				Text(label, color = tint, fontSize = if (emphasis) 12.sp else 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
 			}
 		}
-		Box(Modifier.width(0.5.dp).height(24.dp).background(colors.accent.copy(alpha = if (enabled) 0.4f else 0.15f)))
+		Box(Modifier.width(0.5.dp).height(height).background(colors.accent.copy(alpha = if (enabled) 0.4f else 0.15f)))
 		BarTooltip(menuTooltip) {
 			Box(
 				Modifier
-					.height(24.dp)
+					.height(height)
 					.background(menuFill)
 					.hoverable(menu)
 					.clickable(interactionSource = menu, indication = null, enabled = enabled, onClick = onMenu)
 					.semantics { contentDescription = menuTooltip ?: label }
-					.padding(horizontal = 5.dp),
+					.padding(horizontal = if (emphasis) 7.dp else 5.dp),
 				contentAlignment = Alignment.Center,
 			) { Chevron(tint, open) }
 		}
@@ -284,38 +288,38 @@ internal fun AccentSplitButton(
 
 /**
  * The bar's one-click primary action, accent-filled like [AccentSplitButton]'s body: an optional icon and a label, or
- * the icon alone when [label] is null (its name then goes in the [tooltip]).
+ * the icon alone when [label] is null (its name then goes in the [tooltip]). [emphasis] sizes it as [AccentSplitButton]'s.
  */
 @Composable
 internal fun AccentButton(label: String?, onClick: () -> Unit, enabled: Boolean = true, tooltip: String? = null,
-                          icon: (@Composable (Color) -> Unit)? = null) {
+                          emphasis: Boolean = false, icon: (@Composable (Color) -> Unit)? = null) {
 	val colors = LocalToolColors.current
 	val interaction = remember { MutableInteractionSource() }
 	val hovered by interaction.collectIsHoveredAsState()
 	val tint = if (enabled) colors.accent else colors.textMuted.copy(alpha = 0.6f)
 	val fill by animateColorAsState(when {
 		!enabled -> colors.accent.copy(alpha = 0.08f)
-		hovered -> colors.accent.copy(alpha = 0.3f)
-		else -> colors.accent.copy(alpha = 0.2f)
+		hovered -> colors.accent.copy(alpha = if (emphasis) 0.36f else 0.3f)
+		else -> colors.accent.copy(alpha = if (emphasis) 0.26f else 0.2f)
 	}, tween(Motion.Instant))
 	BarTooltip(tooltip) {
 		Row(
 			Modifier
-				.height(24.dp)
+				.height(if (emphasis) 28.dp else 24.dp)
 				.defaultMinSize(minWidth = 24.dp)
 				.clip(RoundedCornerShape(4.dp))
 				.background(fill)
-				.border(0.5.dp, colors.accent.copy(alpha = if (enabled) 0.55f else 0.2f), RoundedCornerShape(4.dp))
+				.border(0.5.dp, colors.accent.copy(alpha = if (enabled) (if (emphasis) 0.7f else 0.55f) else 0.2f), RoundedCornerShape(4.dp))
 				.hoverable(interaction)
 				.clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
 				.semantics { contentDescription = label ?: tooltip ?: "" }
-				.padding(horizontal = if (label == null) 5.dp else if (icon != null) 8.dp else 10.dp),
+				.padding(horizontal = if (label == null) 5.dp else if (emphasis) 12.dp else if (icon != null) 8.dp else 10.dp),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.Center,
 		) {
 			if (icon != null) icon(tint)
-			if (icon != null && label != null) Spacer(Modifier.width(5.dp))
-			if (label != null) Text(label, color = tint, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+			if (icon != null && label != null) Spacer(Modifier.width(if (emphasis) 6.dp else 5.dp))
+			if (label != null) Text(label, color = tint, fontSize = if (emphasis) 12.sp else 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
 		}
 	}
 }

@@ -78,6 +78,7 @@ import io.github.psd2live.ui.components.TextureUpscaleDialog
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.state.ShortcutAction
+import io.github.psd2live.ui.state.StartSection
 import io.github.psd2live.ui.state.ShortcutScope
 import io.github.psd2live.ui.state.buttonBindingOf
 import io.github.psd2live.ui.state.wheelBindingOf
@@ -156,6 +157,8 @@ fun FrameWindowScope.PSD2LiveApp(
 
 	fun startInteractiveTutorial(id: TutorialId = TutorialId.BASIC, path: TutorialPath = TutorialPath.defaultFor(id)) {
 		helpDialogTab = null
+		// The steps point into the dock, which the start page covers.
+		viewModel.leaveStartPage()
 		tutorial = InteractiveTutorialState().start(id, path, hasModel = state.previewModel != null)
 	}
 
@@ -221,8 +224,6 @@ fun FrameWindowScope.PSD2LiveApp(
 			io.github.psd2live.render.SkiaGpu.Status.Starting -> Unit
 		}
 	}
-
-	var newLayoutDialog by remember { mutableStateOf(false) }
 
 	// Window Drop Target for PSD Drag & Drop and Project Files
 	LaunchedEffect(window) {
@@ -331,6 +332,11 @@ fun FrameWindowScope.PSD2LiveApp(
 				}
 			}
 		}
+		val onNewCmo3Action: () -> Unit = {
+			if (!isBusy) NativeFilePicker.chooseCmo3File(window, state.inputPath)?.let {
+				viewModel.withSavedChanges { viewModel.importCmo3(Path.of(it), io.github.psd2live.core.Cmo3ImportMode.NEW) }
+			}
+		}
         val onReanalyzeAction = {
 			if (hasInput && !isBusy) {
 				viewModel.withSavedChanges { viewModel.analyze(discardUnsaved = true) }
@@ -363,7 +369,7 @@ fun FrameWindowScope.PSD2LiveApp(
 
 		// The start screen that follows an import, like a mesh split offer, is a modal inside the workspace;
 		// the tour steps aside until it is answered so neither covers the other.
-		val tutorialPaused = viewModel.pendingMeshSplit != null || viewModel.pendingStartScreen != null
+		val tutorialPaused = viewModel.pendingMeshSplit != null || viewModel.pendingMeshSplitBatch != null
 		val tutorialShown = tutorial.active && !tutorialPaused
 
 		// Tutorial step side-effects and auto-advance
@@ -583,12 +589,8 @@ fun FrameWindowScope.PSD2LiveApp(
                                 viewModel.importCmo3(Path.of(it), io.github.psd2live.core.Cmo3ImportMode.REPLACE)
                             }
                         },
-                        onNewLayout = { newLayoutDialog = true },
-                        onNewCmo3 = {
-                            NativeFilePicker.chooseCmo3File(window, state.inputPath)?.let {
-                                viewModel.withSavedChanges { viewModel.importCmo3(Path.of(it), io.github.psd2live.core.Cmo3ImportMode.NEW) }
-                            }
-                        },
+                        onNewLayout = { viewModel.showStartPage(StartSection.LAYOUT) },
+                        onNewCmo3 = onNewCmo3Action,
                         onOpenProject = onOpenProjectAction,
 						recentFiles = state.recentFiles,
 						onOpenRecent = viewModel::openRecentFile,
@@ -612,7 +614,8 @@ fun FrameWindowScope.PSD2LiveApp(
 						onShowSettings = { viewModel.openSettingsDialog() },
 						onShowAgentConnection = { showAgentDialog = true },
 						onShowTextureUpscale = { viewModel.openTextureUpscaleDialog() },
-						onStartScreen = { viewModel.requestStartScreen() },
+						onStartScreen = { viewModel.showStartPage(StartSection.GENERATE) },
+						onMeshSplitScan = { viewModel.requestMeshSplitScan() },
 						canUpdateGeneration = viewModel.canUpdateGeneration(state),
 						onUpdateGeneration = { viewModel.updateGeneration() },
 						onPreviewGenerationUpdate = { viewModel.previewGenerationUpdate() },
@@ -662,6 +665,9 @@ fun FrameWindowScope.PSD2LiveApp(
 						onStartTutorial = { startInteractiveTutorial(it) },
 						onOpenProject = onOpenProjectAction,
 						onOpenPsd = onOpenPsdAction,
+						onOpenCmo3 = onNewCmo3Action,
+						onRevealFile = ::openFolder,
+						filesDragging = isDraggingOver,
 					)
 					// Selection / tool hint bar ("已选 N 个对象 / M 个控制点 · …")
 					if (task == null) {
@@ -676,10 +682,6 @@ fun FrameWindowScope.PSD2LiveApp(
 			MaterialDragGhost(viewModel)
 			// The material window: a material to look at and paint, in a window of its own.
 			MaterialEditorWindow(state, viewModel)
-			if (newLayoutDialog) CanvasSizeDialog(onDismiss = { newLayoutDialog = false }) { width, height ->
-				newLayoutDialog = false
-				viewModel.createLayoutProject(width, height)
-			}
 
 			if (tutorialShown && !tutorial.step.coachBesideMenu) {
 				// Menu steps render their overlay inside the menu popup.
@@ -834,7 +836,8 @@ fun FrameWindowScope.PSD2LiveApp(
 			)
 		}
 
-		if (isDraggingOver) {
+		// The start page shows where a dropped file lands itself.
+		if (isDraggingOver && !viewModel.startPageShown) {
 			Box(
 				modifier = Modifier
 					.fillMaxSize()

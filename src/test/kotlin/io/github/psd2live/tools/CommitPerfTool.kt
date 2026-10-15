@@ -106,7 +106,7 @@ class CommitPerfTool {
 		val report = StringBuilder()
 		viewModel.openRecentFile(sample.path.toAbsolutePath().toString())
 		waitFor(600, "model") { viewModel.state.value.previewModel != null && !viewModel.state.value.isBusy && viewModel.currentWorkspaceState() != null }
-		javax.swing.SwingUtilities.invokeAndWait { viewModel.dismissStartScreen() }
+		javax.swing.SwingUtilities.invokeAndWait { viewModel.dismissMeshSplitBatch() }
 		Thread.sleep(1000)
 		val mesh = viewModel.state.value.previewModel!!.rig.puppet.drawables.filter { it.mesh != null }.maxBy { it.mesh!!.positions.size }
 		report.appendLine("target=${mesh.id.raw} vertices=${mesh.mesh!!.positions.size / 2}")
