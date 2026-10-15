@@ -312,13 +312,17 @@ class DesktopWorkspace(
         val input = Path.of(path)
         val owned = runInterruptible(Dispatchers.IO) { io.github.psd2live.project.OwnedProjectSource.capture(workspaceStore.root, input) }
         val result = sourceImporter.importPsd(owned.path, state.capture?.projectId, state.state, discardUnsaved,
-            state.capture?.document?.rawConfig() ?: current.rawConfig(), sourceAuxiliary = owned.auxiliary,
+            sourceConfig(state, current), sourceAuxiliary = owned.auxiliary,
             displayName = input.fileName.toString()) { document, preview, id ->
             viewModel.applySourceImport(current, document, preview, input, id)
         }
         finishSourceImport(result)
         result.mutation("Imported PSD ${input.fileName}")
     }
+
+    /** The settings a new source starts from: the open project's, without an imported model's switched-off generation. */
+    private fun sourceConfig(state: WorkspaceRuntimeState<io.github.psd2live.core.RigPreviewModel>, current: PSD2LiveState) =
+        io.github.psd2live.core.Cmo3ModelImport.generationRestored(state.capture?.document?.rawConfig() ?: current.rawConfig())
 
     private suspend fun captureSourceImport(discardUnsaved: Boolean): Pair<WorkspaceRuntimeState<io.github.psd2live.core.RigPreviewModel>, PSD2LiveState> {
         draftQueue.awaitSettled()
@@ -1153,7 +1157,7 @@ class DesktopWorkspace(
         val discard = arguments["discard_unsaved"]?.jsonPrimitive?.boolean ?: false
         val (state, current) = captureSourceImport(discard)
         val result = sourceImporter.createArtwork(arguments, state.capture?.projectId, state.state, discard,
-            state.capture?.document?.rawConfig() ?: current.rawConfig()) { document, preview, id ->
+            sourceConfig(state, current)) { document, preview, id ->
             viewModel.applySourceImport(current, document, preview, null, id)
         }
         finishSourceImport(result)
@@ -1163,7 +1167,7 @@ class DesktopWorkspace(
     override suspend fun createLayoutProject(width: Int, height: Int, discardUnsaved: Boolean): WorkspaceMutationResult = editMutex.withLock {
         val (state, current) = captureSourceImport(discardUnsaved)
         val result = sourceImporter.createLayout(width, height, state.capture?.projectId, state.state, discardUnsaved,
-            state.capture?.document?.rawConfig() ?: current.rawConfig()) { document, preview, id ->
+            sourceConfig(state, current)) { document, preview, id ->
             viewModel.applySourceImport(current, document, preview, null, id)
         }
         finishSourceImport(result)

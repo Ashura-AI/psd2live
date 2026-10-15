@@ -28,6 +28,20 @@ enum class Cmo3ImportMode { REPLACE, NEW }
 /** The embedded baseline is shared by history, project persistence, preview rebuilds and export. */
 internal object Cmo3ModelImport {
     /**
+     * [config] with the generation an imported model switches off for itself switched back to the defaults: what a
+     * new source - a PSD, an artwork, a Layout project - starts from when the open project is an imported model.
+     */
+    fun generationRestored(config: PipelineConfig): PipelineConfig {
+        if (config.rigEdits.importedCmo3 == null) return config
+        val defaults = PipelineConfig()
+        return config.copy(mouthOutlineEnabled = defaults.mouthOutlineEnabled, generateDeformers = defaults.generateDeformers,
+            physicsFrontHair = defaults.physicsFrontHair, physicsBackHair = defaults.physicsBackHair, physicsEyeJelly = defaults.physicsEyeJelly,
+            generatePhysics = defaults.generatePhysics, motionBasic = defaults.motionBasic, motionIdle = defaults.motionIdle,
+            motionBlink = defaults.motionBlink, motionNod = defaults.motionNod, motionShake = defaults.motionShake,
+            motionSkeleton = defaults.motionSkeleton, runtimeTarget = defaults.runtimeTarget)
+    }
+
+    /**
      * A read model. [densityByDrawableId] is the page texels per canvas unit (x, y) each drawable's art holds,
      * from its model-image affine and its packing; drawables without one, or at most one texel per unit, are absent.
      */
