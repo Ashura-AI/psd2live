@@ -659,6 +659,11 @@ internal fun LayersTableView(
 									overflow = TextOverflow.Ellipsis,
 								)
 							}
+							// The material this layer shows, which painting it paints.
+							state.layout.layerMaterials[layerId]?.let { materialId -> state.layout.materials.item(materialId) }?.let { material ->
+								MaterialLinkChip(material.name, state.layout.layerMaterials.count { it.value == material.id },
+									onOpen = { viewModel.openMaterialEditor(material.id) }, onUnlink = { viewModel.unlinkMaterials(listOf(layerId)) })
+							}
 						}
 
 						// 1. Semantic tags: the part and side words the generators read and the user's own (`layer_tag`).

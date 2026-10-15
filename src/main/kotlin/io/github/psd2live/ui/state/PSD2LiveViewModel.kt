@@ -5907,6 +5907,10 @@ class PSD2LiveViewModel : AutoCloseable {
 			if (adjustment.contrast != 0f) put("contrast", adjustment.contrast)
 		})
 
+	/** Unlinks [layerIds] from their materials: their pixels become their own (`material_unlink`). */
+	fun unlinkMaterials(layerIds: Collection<String>) = layoutEdit(tr("materials.unlinked"), io.github.psd2live.application.WorkspaceMaterialEdits.UNLINK,
+		kotlinx.serialization.json.buildJsonObject { put("layer_ids", strings(layerIds)) })
+
 	/** Generates the rig, or generates it again: what waits joins it, the user's edits stay. [refresh]: mesh replaced images from their new pixels. */
 	fun generateLayout(refresh: Boolean = true) = layoutEdit(tr("layout.generate.summary"), io.github.psd2live.application.WorkspaceGenerationEdits.GENERATE,
 		kotlinx.serialization.json.buildJsonObject { if (!refresh) put("refresh_geometry", kotlinx.serialization.json.JsonArray(emptyList())) })

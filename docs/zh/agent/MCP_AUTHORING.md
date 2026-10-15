@@ -511,6 +511,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `material_tag` | `ids`，`set` 或 `add`/`remove` | 条目与文件夹的标签；放置时并入图层标签 |
 | `material_set_resolution` | `id`、`width`、`height`（单边 ≤4096） | SVG 的纹理分辨率；使用它的图层画布矩形不变、像素随之替换 |
 | `material_paint` | `state`、`id`，以及一笔（`mode` 及其参数）或 `gestures`（1–512 笔，各含 `mode` 及其参数，按顺序作为一次修改）；`mode` 为 `brush/pencil/eraser/bucket/shape/clear`，参数：`points`+`radius`+`hardness`、`point`+`tolerance`、`from`+`to`+`shape`+`stroke_width`+`filled`；可选 `color`（RGBA 字节）、`opacity` | 在条目自身像素坐标（左上为原点）上画一笔，算法与 `paint` 相同；使用它的图层画布矩形不变、像素随之替换，SVG 变为位图 |
+| `material_unlink` | `state`、`layer_ids`（1–128） | 解除图层与素材的关联，像素归图层自己。关联图层显示素材的像素：对它的 `source_paint_*` 与 `paint_session_begin`（`layer_id`）都画到素材上，所有关联图层同步；让图层像素与素材不同的其他编辑会自动解除关联 |
 | `material_set_pixels` | `state`、`id`、`staging` | 写入素材绘画会话暂存的像素；由 `paint_session_commit` 发起，一般不直接调用 |
 | `material_adjust` | `state`、`id`，至少一项：`flip`（`horizontal/vertical`）、`hue`（±180）、`saturation`/`lightness`/`contrast`（±100） | 先翻转再调色，尺寸不变；同步图层与 SVG 规则同上 |
 | `material_export_psd` | `state`、`folder_id`、`path`（绝对 `.psd`） | 后台把文件夹写成 PSD：条目按默认位置（无则自左上排开），子文件夹为图层组 |

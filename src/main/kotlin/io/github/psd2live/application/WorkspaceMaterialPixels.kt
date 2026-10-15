@@ -53,7 +53,7 @@ internal object WorkspaceMaterialPixels {
     }
 
     /** [item] showing [raster] (its own size) in the library and in every layer that shows it. */
-    private fun replace(document: WorkspaceDocument, model: RigPreviewModel, item: MaterialItem, raster: LayerRaster): WorkspaceDocument {
+    fun replace(document: WorkspaceDocument, model: RigPreviewModel, item: MaterialItem, raster: LayerRaster): WorkspaceDocument {
         val library = document.layout.materials
         val edited = item.copy(raster = raster, kind = MaterialKind.BITMAP, svg = null)
         var next = document.copy(layout = document.layout.copy(materials = library.copy(items = library.items.map { if (it.id == item.id) edited else it })))
@@ -171,7 +171,7 @@ internal object WorkspaceMaterialPixels {
         }
     }
 
-    private fun image(raster: LayerRaster): BufferedImage {
+    fun image(raster: LayerRaster): BufferedImage {
         val image = BufferedImage(raster.width, raster.height, BufferedImage.TYPE_INT_ARGB)
         val pixels = IntArray(raster.width * raster.height) { i ->
             val o = i * 4
@@ -182,7 +182,7 @@ internal object WorkspaceMaterialPixels {
         return image
     }
 
-    private fun raster(image: BufferedImage): LayerRaster {
+    fun raster(image: BufferedImage): LayerRaster {
         val pixels = image.getRGB(0, 0, image.width, image.height, null, 0, image.width)
         val rgba = ByteArray(pixels.size * 4)
         for (i in pixels.indices) {

@@ -188,6 +188,8 @@ internal class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigP
     fun begin(state: String, layerId: String): WorkspacePaintSession = synchronized(sessions) {
         val captured = runtime.capture()
         if (captured.state != state) throw WorkspaceConflict(state, captured.state)
+        // A layer showing a material paints the material, through the layer's rectangle.
+        WorkspaceMaterialLinks.linked(captured.document, layerId)?.let { (item, _) -> return beginMaterial(item.id, layerId) }
         val layer = RasterPaintCommit.sourceLayerFor(captured.model, captured.model.analysis, layerId)
             ?: throw IllegalArgumentException("Paint layer not found: $layerId")
         val painting = captured.document.layerPaintImage(layer.id.raw)
@@ -203,12 +205,17 @@ internal class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigP
         session
     }
     /**
-     * A session painting material item [materialId] at its own pixels. It stays open while other edits commit: only a
-     * change to the material's own pixels, or another project, ends it.
+     * A session painting material item [materialId] at its own pixels: through [layerId]'s canvas rectangle when it
+     * paints a layer showing the material, else at one pixel per unit. It stays open while other edits commit: only a
+     * change to the material's own pixels or to that layer's place, or another project, ends it.
      */
-    fun beginMaterial(materialId: String): WorkspacePaintSession = synchronized(sessions) {
+    fun beginMaterial(materialId: String, layerId: String? = null): WorkspacePaintSession = synchronized(sessions) {
         val captured = runtime.capture()
         val item = captured.document.layout.materials.item(materialId) ?: throw IllegalArgumentException("Material not found: $materialId")
+        val layer = layerId?.let { id -> WorkspaceMaterialLinks.linked(captured.document, id)?.second?.takeIf { captured.document.layout.layerMaterials[id] == materialId }
+            ?: throw IllegalArgumentException("Layer $id does not show material $materialId") }
+        val space = layer?.let { WorkspaceMaterialLinks.space(it, item) } ?: PaintSpace.canvas(item.raster.width, item.raster.height)
+        val place = layer?.let { io.github.psd2live.core.LayerSpace.of(it) }
         val image = BufferedImage(item.raster.width, item.raster.height, BufferedImage.TYPE_INT_ARGB)
         val rgba = item.raster.rgba
         image.setRGB(0, 0, item.raster.width, item.raster.height, IntArray(item.raster.width * item.raster.height) { i ->
@@ -219,10 +226,18 @@ internal class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigP
         sessions.entries.removeIf { it.value.finished }
         var pixels = item.raster
         val session = WorkspacePaintSession(UUID.randomUUID().toString(), captured.projectId, captured.state,
-            WorkspacePaintSession.MATERIAL_PREFIX + materialId, item.name, image, validateWorkspace = {
+            layerId ?: (WorkspacePaintSession.MATERIAL_PREFIX + materialId), item.name, image, space,
+            if (layer != null) captured.document.source.widthPx else item.raster.width,
+            if (layer != null) captured.document.source.heightPx else item.raster.height, validateWorkspace = {
                 val now = runtime.capture()
                 val current = now.document.layout.materials.item(materialId)?.raster
                 if (now.projectId != captured.projectId || current == null) throw WorkspaceConflict(captured.state, now.state)
+                if (layerId != null) {
+                    val shown = now.document.source.layers.singleOrNull { it.id.raw == layerId }
+                    if (now.document.layout.layerMaterials[layerId] != materialId || shown == null || io.github.psd2live.core.LayerSpace.of(shown).let {
+                            it.left != place!!.left || it.top != place.top || it.width != place.width || it.height != place.height })
+                        throw WorkspaceConflict(captured.state, now.state)
+                }
                 // The same pixels under a new object (an undo back to them) still match.
                 if (current !== pixels) {
                     if (current.width != pixels.width || current.height != pixels.height || !current.rgba.contentEquals(pixels.rgba))

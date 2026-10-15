@@ -60,6 +60,13 @@ internal object WorkspaceRasterEdits {
     private val pipeline = PSD2LivePipeline()
     fun paint(document: WorkspaceDocument, model: RigPreviewModel, arguments: JsonObject,
               work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): WorkspaceDocument {
+        // A layer showing a material paints the material, and every layer showing it follows.
+        WorkspaceMaterialLinks.linked(document, arguments.getValue("layer_id").jsonPrimitive.content)?.let { (item, layer) ->
+            val image = WorkspaceMaterialPixels.image(item.raster)
+            paintRasterGesture(image, arguments, work, space = WorkspaceMaterialLinks.space(layer, item))
+            val raster = WorkspaceMaterialPixels.raster(image)
+            return if (WorkspaceMaterialLinks.shows(raster, item.raster)) document else WorkspaceMaterialPixels.replace(document, model, item, raster)
+        }
         val (painting, touched) = document.paintLayerImage(arguments, work)
         val region = painting.space.layerArea().let { area -> touched?.let { if (area.isEmpty) it else area.union(it) } ?: area }
         return prepare(document, model, WorkspacePaintRaster.capture(arguments.getValue("layer_id").jsonPrimitive.content,
@@ -80,6 +87,9 @@ internal object WorkspaceRasterEdits {
             ?: throw IllegalArgumentException("Layer not found: $layerId")
         val layer = document.source.layers.singleOrNull { it.id.raw == id && id !in document.deletedLayerIds }
             ?: throw IllegalArgumentException("Layer not found: $layerId")
+        // A layer showing a material keeps the material's whole raster over its rectangle.
+        if (WorkspaceMaterialLinks.linked(document, id) != null) return prepare(document, model, WorkspacePaintRaster(layerId, layer.raster,
+            rebuildMesh = true, rect = LayerSpace.of(layer).let { LayerCanvasRect(it.left, it.top, it.width, it.height) }), work)
         val own = PaintSpace.of(layer, document.source.widthPx, document.source.heightPx).cropLayer(layer, work::checkpoint)
         require((0 until own.raster.width * own.raster.height).any { (own.raster.rgba[it * 4 + 3].toInt() and 255) > model.config.alphaThreshold }) {
             "Layer $layerId has no visible pixels to mesh"
@@ -89,7 +99,12 @@ internal object WorkspaceRasterEdits {
     }
 
     fun prepare(document: WorkspaceDocument, model: RigPreviewModel, request: WorkspacePaintRaster,
-                work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): WorkspaceDocument {
+                work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): WorkspaceDocument =
+        // Pixels written to a layer showing a material make them its own, unless they are the material's.
+        WorkspaceMaterialLinks.reconcile(document, prepareLayer(document, model, request, work))
+
+    private fun prepareLayer(document: WorkspaceDocument, model: RigPreviewModel, request: WorkspacePaintRaster,
+                             work: WorkspaceRasterWork): WorkspaceDocument {
         work.progress(0.25f, "Preparing painted pixels")
         val canvasWidth = document.source.widthPx; val canvasHeight = document.source.heightPx
         if (request.rect == null) require(request.raster.width == canvasWidth && request.raster.height == canvasHeight) {
@@ -103,7 +118,7 @@ internal object WorkspaceRasterEdits {
         val painted = PaintSpace.crop(request.pixels, canvasWidth, canvasHeight, work::checkpoint)
         // A depth-split front layer keeps its raster size and reads every pixel it covers, so it is handed the
         // whole capture; anything else is handed the crop.
-        val pixels = if (DepthSplit.isFrontLayer(model, id)) request.pixels
+        val pixels = if (DepthSplit.isFrontLayer(model, id) || WorkspaceMaterialLinks.linked(document, id) != null) request.pixels
             else PaintPixels(painted.raster, painted.rect ?: LayerCanvasRect.of(painted.bounds))
         val samePixels = painted.samePixels(PaintSpace.of(layer, canvasWidth, canvasHeight).cropLayer(layer, work::checkpoint))
         val missingMesh = model.rig.puppet.drawables.none { drawable -> drawable.mesh != null && model.rig.layerIdByDrawableId[drawable.id.raw] == id }

@@ -741,3 +741,30 @@ internal fun MaterialDragGhost(vm: PSD2LiveViewModel) {
 	shape(path { m(4f, 2f); l(11f, 2f); l(15f, 6f); l(15f, 16f); l(4f, 16f); z() })
 	outline(path { m(11f, 2f); l(11f, 6f); l(15f, 6f) })
 }
+
+/**
+ * The mark of a layer showing a material: painting the layer paints the material, and the [shared] layers showing it
+ * follow. A click opens the material in its window or unlinks the layer, whose pixels then become its own.
+ */
+@Composable
+internal fun MaterialLinkChip(name: String, shared: Int, onOpen: () -> Unit, onUnlink: () -> Unit) {
+	val colors = LocalToolColors.current
+	var open by remember { mutableStateOf(false) }
+	Box {
+		io.github.psd2live.ui.views.texture.BarTooltip(tr("materials.link.tip", name, shared)) {
+			Box(Modifier.padding(start = 4.dp).size(16.dp).clip(RoundedCornerShape(3.dp)).clickable { open = !open }, contentAlignment = Alignment.Center) {
+				LinkGlyph(colors.accent)
+			}
+		}
+		io.github.psd2live.ui.views.texture.FloatingMenu(expanded = open, onDismiss = { open = false }, width = 200.dp) {
+			FloatingMenuSection(name)
+			FloatingMenuRow(tr("materials.menu.edit"), { open = false; onOpen() })
+			FloatingMenuRow(tr("materials.link.unlink"), { open = false; onUnlink() })
+		}
+	}
+}
+
+/** Two links of a chain. */
+@Composable private fun LinkGlyph(tint: Color) = io.github.psd2live.ui.components.GridIcon(Modifier.size(12.dp), tint) {
+	box(2f, 6.5f, 8f, 5f, 2.5f); box(8f, 6.5f, 8f, 5f, 2.5f)
+}

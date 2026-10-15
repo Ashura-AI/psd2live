@@ -48,7 +48,8 @@ internal object WorkspaceMaterialEdits {
     const val TAG = "material_tag"
     const val RESOLUTION = "material_set_resolution"
     const val PLACE = "layer_place"
-    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE) + WorkspaceMaterialPixels.supported
+    const val UNLINK = "material_unlink"
+    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK) + WorkspaceMaterialPixels.supported
     private const val MAX_NAME = 128
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
@@ -65,6 +66,7 @@ internal object WorkspaceMaterialEdits {
             RENAME -> rename(document, text("id"), text("name"))
             DELETE -> delete(document, strings("ids").orEmpty())
             TAG -> tag(document, strings("ids").orEmpty(), strings("set"), strings("add").orEmpty(), strings("remove").orEmpty())
+            UNLINK -> WorkspaceMaterialLinks.unlink(document, strings("layer_ids").orEmpty())
             RESOLUTION -> resolution(document, model, text("id"), request.getValue("width").jsonPrimitive.int, request.getValue("height").jsonPrimitive.int)
             PLACE -> place(document, model, text("material_id"), request["rect"]?.jsonObject?.let(::rect),
                 request["at"]?.jsonArray?.map { it.jsonPrimitive.float }?.also { require(it.size == 2) { "at takes [x, y]" } },

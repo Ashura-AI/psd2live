@@ -39,7 +39,13 @@ internal object WorkspaceDocumentEdits {
               simulationWork: WorkspaceSimulationWork = WorkspaceSimulationWork.Direct,
               physicsWork: WorkspacePhysicsWork = WorkspacePhysicsWork.Direct,
               rasterWork: WorkspaceRasterWork = WorkspaceRasterWork.Direct,
-              assetResources: WorkspaceAssetWorkflow? = null): WorkspaceDocument {
+              assetResources: WorkspaceAssetWorkflow? = null): WorkspaceDocument =
+        // A layer an edit gave pixels of its own no longer shows its material.
+        WorkspaceMaterialLinks.reconcile(document, routed(operation, document, model, simulationWork, physicsWork, rasterWork, assetResources))
+
+    private fun routed(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
+                       simulationWork: WorkspaceSimulationWork, physicsWork: WorkspacePhysicsWork, rasterWork: WorkspaceRasterWork,
+                       assetResources: WorkspaceAssetWorkflow?): WorkspaceDocument {
         val id = operation.operation
         // Layout edits read the whole document; texture edits route pending layers themselves.
         if (id in WorkspaceLayoutEdits.supported || id in WorkspaceMaterialEdits.supported || id == "layer_classify" ||

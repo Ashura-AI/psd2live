@@ -142,5 +142,50 @@ class MaterialLibraryScenario {
 		reopen()
 	}
 
+	@Test fun aLinkedLayerShowsItsMaterial() = Studio.run(temp, Characters.figure()) {
+		val disc = WorkspaceMaterialFiles.read(listOf(Characters.disc(Files.createDirectories(temp.resolve("files")), size = 40)))
+		edit("import the disc", "material_add", req("staging" to WorkspaceMaterialStaging.stage(disc)))
+		val item = now.document.layout.materials.items.single()
+		edits("place it twice",
+			"layer_place" to req("material_id" to item.id, "rect" to mapOf("left" to 100, "top" to 100, "width" to 40, "height" to 40), "layer_id" to "a"),
+			"layer_place" to req("material_id" to item.id, "rect" to mapOf("left" to 200, "top" to 100, "width" to 40, "height" to 40), "layer_id" to "b"))
+		allow("REGENERATION_CONFLICT")
+		edit("generate", "rig_generate", req())
+		fun pixels(id: String) = now.document.source.layers.single { it.id.raw == id }.raster
+		fun material() = now.document.layout.materials.item(item.id)!!.raster
+		fun allShowTheMaterial() = pixels("a").rgba.contentEquals(material().rgba) && pixels("b").rgba.contentEquals(material().rgba)
+
+		// Painting either layer paints the material, and the other layer follows.
+		edit("paint layer a", "source_paint_brush", req("layer_id" to "a", "points" to listOf(listOf(105, 120), listOf(135, 120)), "radius" to 2,
+			"color" to listOf(255, 0, 0, 255)))
+		expect("linked", !material().rgba.contentEquals(item.raster.rgba) && allShowTheMaterial() &&
+			now.document.layout.layerMaterials.keys.containsAll(listOf("a", "b"))) { "painting a linked layer did not paint its material" }
+		val sessions = io.github.psd2live.application.WorkspacePaintSessions(runtime)
+		val session = sessions.begin(now.state, "b")
+		expect("linked", session.materialId == item.id && session.layerId == "b") { "a paint session on a linked layer does not paint its material" }
+		session.gesture(req("mode" to "brush", "points" to listOf(listOf(205, 110), listOf(235, 110)), "radius" to 2, "color" to listOf(0, 0, 255, 255)))
+		val image = session.image()
+		val argb = image.getRGB(0, 0, image.width, image.height, null, 0, image.width)
+		val painted = org.umamo.format.art.LayerRaster(image.width, image.height, ByteArray(argb.size * 4).also { out ->
+			argb.forEachIndexed { i, p -> if (p ushr 24 != 0) { out[i * 4] = (p shr 16).toByte(); out[i * 4 + 1] = (p shr 8).toByte(); out[i * 4 + 2] = p.toByte(); out[i * 4 + 3] = (p ushr 24).toByte() } }
+		})
+		expect("linked", painted.width == 40 && painted.rgba[(10 * 40 + 20) * 4 + 2].toInt() and 255 == 255) { "the session's stroke did not land in the material's pixels under the layer" }
+		edit("apply the session", "material_set_pixels", req("id" to item.id, "staging" to io.github.psd2live.application.WorkspaceMaterialPixels.stage(painted)))
+		expect("linked", allShowTheMaterial()) { "the session's pixels did not reach both layers" }
+
+		// Rebuilding a mesh keeps the material's raster and the link.
+		edit("rebuild b's mesh", "layer_mesh_rebuild", req("layer_id" to "b"))
+		expect("linked", now.document.layout.layerMaterials["b"] == item.id && allShowTheMaterial()) { "a mesh rebuild cut the layer loose from its material" }
+
+		// Unlinked, a layer's pixels are its own.
+		edit("unlink a", "material_unlink", req("layer_ids" to listOf("a")))
+		val kept = material()
+		edit("paint layer a alone", "source_paint_brush", req("layer_id" to "a", "points" to listOf(listOf(110, 130)), "radius" to 3, "color" to listOf(0, 255, 0, 255)))
+		expect("unlinked", "a" !in now.document.layout.layerMaterials && material() === kept && !pixels("a").rgba.contentEquals(kept.rgba) &&
+			pixels("b").rgba.contentEquals(kept.rgba)) { "painting an unlinked layer reached the material" }
+		reopen()
+		expect("reopened", now.document.layout.layerMaterials == mapOf("b" to item.id)) { "the links did not survive a save" }
+	}
+
 	private fun WorkspaceMaterialEdits(item: MaterialItem) = io.github.psd2live.application.WorkspaceMaterialEdits.enclosing(requireNotNull(item.placement))
 }

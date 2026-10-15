@@ -1452,7 +1452,13 @@ internal fun BoxScope.PaintSessionBar(editor: CanvasEditor, modeBarWidth: Int, f
     val density = LocalDensity.current
     SessionTopBar(
         visible = editor.hierarchyMode == EditHierarchyMode.PAINT && session != null && (dirty || canRedo),
-        summary = session?.let { tr("editor.paint.sessionSummary", it.layerName, it.strokeCount) } ?: "",
+        // A layer showing a material paints the material: the bar names it and how many layers share it.
+        summary = session?.let { s ->
+            val material = s.handle.materialId
+            if (material == null) tr("editor.paint.sessionSummary", s.layerName, s.strokeCount)
+            else tr("editor.paint.materialSessionSummary", s.layerName, s.strokeCount,
+                editor.state.layout.layerMaterials.count { it.value == material })
+        } ?: "",
         badge = "${session?.strokeCount ?: 0}",
         undo = SessionAction(tr("editor.undo"), { editor.undoPaint(); focus() }, canUndo,
             tr("editor.paint.undoHint", keymap.labelFor(ShortcutAction.UNDO))),
