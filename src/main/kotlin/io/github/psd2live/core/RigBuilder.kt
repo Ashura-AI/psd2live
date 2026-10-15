@@ -2043,6 +2043,26 @@ object RigBuilder {
 	internal fun gazePoint(u: Float, v: Float, eyeX: Float, eyeY: Float, tuning: RigTuning = RigTuning()): Pair<Float, Float> =
 		(u + eyeX * tuning.gazeX / 100f) to (v - eyeY * tuning.gazeY / 100f)
 
+	/**
+	 * How hair below the chin answers the head's tilt: the head turns about ([pivotX], [pivotY]) by Angle Z degrees,
+	 * and a point below [chinY] turns back by [hold] of that, easing in from the chin over six times the chin's depth
+	 * below the pivot.
+	 */
+	internal data class HairRoll(val pivotX: Float, val pivotY: Float, val chinY: Float, val hold: Float) {
+		/** The canvas offset that turns ([x], [y]) back for an Angle Z of [angleZ], on hair ending at [bottom]. */
+		fun turnBack(x: Float, y: Float, bottom: Float, angleZ: Float): Pair<Float, Float> {
+			// Full hold a little below the chin - about half the chin's depth under the pivot, times six - or at the tips if they are nearer.
+			val reach = minOf(bottom - chinY, (chinY - pivotY).coerceAtLeast(1f) * 6f).coerceAtLeast(1f)
+			val t = ((y - chinY) / reach).coerceIn(0f, 1f)
+			val weight = t * t * (3f - 2f * t) * hold
+			if (weight <= 0f || angleZ == 0f) return 0f to 0f
+			val radians = Math.toRadians((-angleZ * weight).toDouble())
+			val cos = kotlin.math.cos(radians).toFloat(); val sin = kotlin.math.sin(radians).toFloat()
+			val rx = x - pivotX; val ry = y - pivotY
+			return (rx * cos - ry * sin - rx) to (rx * sin + ry * cos - ry)
+		}
+	}
+
 	internal fun hairFollowPoint(
 		inHead: Bounds,
 		u: Float,
@@ -2246,6 +2266,7 @@ object RigBuilder {
 				-config.rigTuning.frontHairTurn / 100f,
 				-config.rigTuning.frontHairTilt / 100f,
 				yawPerspective = config.rigTuning.frontHairPerspective / 100f,
+				roll = HairRoll(headPivotCanvas.first, headPivotCanvas.second, faceFrame.bottom, config.rigTuning.hairRollHold / 100f),
 			)
 			deformers += hairPhysicsWarp(
 				frontHairPhysicsWarpId,
@@ -2261,7 +2282,8 @@ object RigBuilder {
 		}
 		backHair?.let { frame ->
 			deformers += hairFollowWarp(backHairFollowWarpId, tr("model.deformer.backHairFollow"), frame, head, backHairPartId,
-				-config.rigTuning.backHairTurn / 100f, -config.rigTuning.backHairTilt / 100f)
+				-config.rigTuning.backHairTurn / 100f, -config.rigTuning.backHairTilt / 100f,
+				roll = HairRoll(headPivotCanvas.first, headPivotCanvas.second, faceFrame.bottom, config.rigTuning.hairRollHold / 100f))
 			deformers += hairPhysicsWarp(
 				backHairPhysicsWarpId,
 				tr("model.deformer.backHairPhysics"),
@@ -2593,14 +2615,21 @@ object RigBuilder {
 		yawParallax: Float,
 		pitchParallax: Float,
 		yawPerspective: Float = 0f,
+		roll: HairRoll? = null,
 	): Deformer.Warp {
 		val inHead = mapBounds(frame, head)
+		// Hair reaching below the chin bends with Angle Z rather than swinging out whole: its lower rows turn back.
+		val bends = roll != null && roll.hold > 0f && frame.bottom > roll.chinY + frame.height * 0.1f
 		val grid = warpGrid(
-			ninePoseAxes(),
+			if (bends) ninePoseAxes() + axis(StandardParameters.ANGLE_Z, -30f, 0f, 30f) else ninePoseAxes(),
 			3,
 			4,
 		) { u, v, values ->
-			hairFollowPoint(inHead, u, v, values[0], values[1], yawParallax, pitchParallax, yawPerspective)
+			val point = hairFollowPoint(inHead, u, v, values[0], values[1], yawParallax, pitchParallax, yawPerspective)
+			if (!bends) point else {
+				val (dx, dy) = requireNotNull(roll).turnBack(frame.left + u * frame.width, frame.top + v * frame.height, frame.bottom, values[2])
+				point.first + dx / head.width to point.second + dy / head.height
+			}
 		}
 		return Deformer.Warp(id, name, headWarpId, part, 4, 3, true, grid)
 	}

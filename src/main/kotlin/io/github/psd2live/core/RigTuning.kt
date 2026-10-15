@@ -157,6 +157,8 @@ data class RigTuning(
 	val backHairSway: Float = 10f,
 	/** Back hair sway: the tips lifted at a full swing, percent of the hair's smaller side. */
 	val backHairCurl: Float = 2.5f,
+	/** Angle Z: how much of the head's tilt hair below the chin turns back, percent at its tips; long hair bends instead of swinging out whole. */
+	val hairRollHold: Float = 80f,
 
 	// Body
 	/** Body X: degrees the upper body turns. */
@@ -322,6 +324,7 @@ data class RigTuning(
 			Field("frontHairPerspective", Group.HAIR, P, 0f..30f, 0.5f, ADVANCED, { it.frontHairPerspective }) { t, v -> t.copy(frontHairPerspective = v) },
 			Field("frontHairCurl", Group.HAIR, P, 0f..15f, 0.1f, ADVANCED, { it.frontHairCurl }) { t, v -> t.copy(frontHairCurl = v) },
 			Field("backHairCurl", Group.HAIR, P, 0f..15f, 0.1f, ADVANCED, { it.backHairCurl }) { t, v -> t.copy(backHairCurl = v) },
+			Field("hairRollHold", Group.HAIR, P, 0f..100f, 1f, COMMON, { it.hairRollHold }) { t, v -> t.copy(hairRollHold = v) },
 
 			Field("turnDegrees", Group.TURN, D, 0f..30f, 0.5f, COMMON, { it.turnDegrees }) { t, v -> t.copy(turnDegrees = v) },
 			Field("armSwingDegrees", Group.TURN, D, -15f..15f, 0.5f, COMMON, { it.armSwingDegrees }) { t, v -> t.copy(armSwingDegrees = v) },
