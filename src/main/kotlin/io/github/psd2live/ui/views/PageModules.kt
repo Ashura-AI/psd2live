@@ -5,6 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.unit.dp
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.components.GridIcon
@@ -79,13 +81,25 @@ internal fun PageIcon(page: AppPage, tint: Color, modifier: Modifier = Modifier.
 		AppPage.START -> StartIcon(modifier, tint)
 		AppPage.HELP -> IconInfo(modifier = modifier, tint = tint)
 		AppPage.SETTINGS -> GridIcon(modifier, tint) {
-			// A cog: eight teeth round a ring, the axle hole open.
-			for (i in 0 until 8) {
-				val a = i * PI / 4
-				line(9f + 5.2f * cos(a).toFloat(), 9f + 5.2f * sin(a).toFloat(), 9f + 7.4f * cos(a).toFloat(), 9f + 7.4f * sin(a).toFloat(), width = 2.2f)
+			// A cog as one closed outline: six broad teeth on a round body, the axle hole open. Broad teeth and
+			// rounded joins keep it apart from the sun's eight thin rays beside it in the title bar.
+			val cog = Path()
+			for (i in 0 until 6) {
+				val a = i * PI / 3 - PI / 2
+				fun at(r: Float, offset: Double) = p(9f + r * cos(a + offset).toFloat(), 9f + r * sin(a + offset).toFloat())
+				val base = at(5.9f, -0.36)
+				if (i == 0) cog.moveTo(base.x, base.y) else cog.lineTo(base.x, base.y)
+				at(7.6f, -0.2).let { cog.lineTo(it.x, it.y) }
+				at(7.6f, 0.2).let { cog.lineTo(it.x, it.y) }
+				at(5.9f, 0.36).let { cog.lineTo(it.x, it.y) }
+				// The body between teeth follows the circle rather than cutting a chord across it.
+				val r = 5.9f * s
+				val c = p(9f, 9f)
+				cog.arcTo(Rect(c, r), Math.toDegrees(a + 0.36).toFloat(), Math.toDegrees(PI / 3 - 0.72).toFloat(), false)
 			}
-			ring(9f, 9f, 5f)
-			ring(9f, 9f, 2f)
+			cog.close()
+			shape(cog)
+			ring(9f, 9f, 2.1f)
 		}
 	}
 }
