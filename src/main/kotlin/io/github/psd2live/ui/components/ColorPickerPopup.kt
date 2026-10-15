@@ -39,8 +39,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -52,9 +50,9 @@ import androidx.compose.ui.window.PopupProperties
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
 import javax.swing.JColorChooser
 import javax.swing.SwingUtilities
+import io.github.psd2live.ui.theme.handCursor
 
 /** A painter's palette, its wells holding the theme's colours: pick a colour. */
 @Composable
@@ -107,7 +105,7 @@ fun ColorPickerSwatch(
                 .background(colors.inputBackground)
                 .clickable(enabled = enabled) { expanded = true }
                 .padding(horizontal = 4.dp, vertical = 2.dp)
-                .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+                .handCursor()
         ) {
             Box(
                 Modifier
@@ -182,7 +180,7 @@ fun PaintColorChip(
             .background(color)
             .border(border, shape)
             .clickable { expanded = true }
-            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+            .handCursor()
     ) {
         if (expanded) {
             Popup(
@@ -263,7 +261,7 @@ fun PaintFgBgSwatch(
                 .size(swapHit)
                 .clip(RoundedCornerShape(2.dp))
                 .clickable(onClick = onSwap)
-                .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+                .handCursor(),
             contentAlignment = Alignment.Center,
         ) {
             IconPaintColorSwap(
@@ -278,7 +276,7 @@ fun PaintFgBgSwatch(
                     .size(swapHit)
                     .clip(RoundedCornerShape(2.dp))
                     .clickable(onClick = onReset)
-                    .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+                    .handCursor(),
                 contentAlignment = Alignment.Center,
             ) {
                 IconPaintDefaultColors(Modifier.size(swapHit * 0.75f))
@@ -549,7 +547,7 @@ fun ColorPickerPopupContent(
                                     RoundedCornerShape(3.dp)
                                 )
                                 .clickable { updateRgb(sampledColor) }
-                                .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+                                .handCursor()
                         ) {
                             Text("A", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.85f))
                         }
@@ -566,7 +564,7 @@ fun ColorPickerPopupContent(
                                     RoundedCornerShape(3.dp)
                                 )
                                 .clickable { updateRgb(preset) }
-                                .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+                                .handCursor()
                         )
                     }
                 }

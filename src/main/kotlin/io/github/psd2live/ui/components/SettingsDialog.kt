@@ -43,9 +43,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
@@ -71,8 +69,8 @@ import io.github.psd2live.ui.theme.CustomTheme
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.theme.ThemeCatalog
-import java.awt.Cursor
 import kotlin.math.roundToInt
+import io.github.psd2live.ui.theme.handCursor
 
 /**
  * The categories of the settings window, in sidebar order: the options the user came to change
@@ -323,7 +321,7 @@ private fun SettingsSidebarRow(
 			}
 			.hoverable(interactionSource)
 			.clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.handCursor()
 			.padding(start = 12.dp, end = 8.dp),
 		contentAlignment = Alignment.CenterStart,
 	) {
@@ -546,7 +544,7 @@ private fun SettingsCanvasSection() {
 		Row(
 			modifier = Modifier
 				.fillMaxWidth()
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.handCursor()
 				.clickable { AppSettings.softwareCanvas = !softwareCanvas }
 				.padding(vertical = 2.dp),
 			verticalAlignment = Alignment.CenterVertically,
@@ -806,7 +804,7 @@ private fun ShortcutRow(
 						Text(
 							text = "×",
 							modifier = Modifier
-								.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+								.handCursor()
 								.clickable { onRemoveBinding(action, index) }
 								.padding(horizontal = 1.dp),
 							style = typography.monoSmall.copy(fontSize = 10.sp),
@@ -881,7 +879,7 @@ private fun KeyChip(
 
 	Box(
 		modifier = Modifier
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.handCursor()
 			// Recording: a wheel notch, or a press of any button but a bare left one (which is still a
 			// click on the cell), becomes the binding. Read in the initial pass so the panel's scroll
 			// and the cell's click never see it.

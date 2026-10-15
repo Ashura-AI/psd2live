@@ -41,13 +41,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.isAltPressed
 import io.github.psd2live.ui.state.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
-import androidx.compose.ui.input.pointer.pointerHoverIcon
-import java.awt.Cursor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,6 +81,8 @@ import kotlin.math.roundToInt
 import io.github.psd2live.ui.components.IconEye
 import io.github.psd2live.ui.components.IconPaintColorSwap
 import io.github.psd2live.ui.components.IconUndo
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
 
 @Composable
 internal fun ModelPresetsSection(
@@ -420,7 +419,7 @@ private fun CompactSwitchParamField(
 				Box(
 					modifier = Modifier
 						.size(16.dp)
-						.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+						.handCursor(enabled)
 						.clickable(enabled = enabled) { expanded = !expanded },
 					contentAlignment = Alignment.Center,
 				) {
@@ -618,7 +617,7 @@ internal fun LayersTableView(
 							modifier = Modifier
 								.weight(1.0f)
 								.fillMaxHeight()
-								.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+								.handCursor()
 								.onPointerEvent(PointerEventType.Press) { event ->
 									if (event.button != PointerButton.Primary) return@onPointerEvent
 									val ordered = layers.map { it.source.id.raw }
@@ -649,7 +648,7 @@ internal fun LayersTableView(
 											color = colors.textPrimary, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
 									}
 								},
-								delayMillis = 500,
+								delayMillis = Motion.TooltipDelay,
 							) {
 								Text(
 									text = layer.source.name,
@@ -785,7 +784,7 @@ internal fun LayersTableView(
 						Box(
 							modifier = Modifier
 								.size(20.dp)
-								.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+								.handCursor()
 								.clickable { viewModel.deleteLayer(layerId) }
 								.padding(2.dp),
 							contentAlignment = Alignment.Center,

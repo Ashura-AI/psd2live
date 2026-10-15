@@ -26,8 +26,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.core.PhysicsInput
@@ -49,7 +47,7 @@ import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import org.umamo.runtime.model.Parameter
-import java.awt.Cursor
+import io.github.psd2live.ui.theme.handCursor
 
 /** "+ Add" with the parameters a group can take; [driven] ones are shown but belong to another group. */
 @Composable
@@ -150,7 +148,7 @@ internal fun OutputRow(
 			// The dot shows this output's range on the pendulum.
 			Box(
 				Modifier.size(14.dp).clip(CircleShape).background(if (selected) outputColor(index).copy(alpha = 0.3f) else Color.Transparent)
-					.clickable(onClick = onSelect).pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+					.clickable(onClick = onSelect).handCursor(),
 				contentAlignment = Alignment.Center,
 			) { Box(Modifier.size(7.dp).clip(CircleShape).background(outputColor(index))) }
 			ParameterPicker(output.parameter, parameters, setting.parameters.toSet(), driven, label, Modifier.weight(1f)) { onChange(output.copy(parameter = it)) }

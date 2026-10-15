@@ -65,6 +65,8 @@ import java.io.ByteArrayInputStream
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import javax.imageio.ImageIO
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
 
 private val TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
 
@@ -432,7 +434,7 @@ private fun LogFilterTab(
 			.fillMaxHeight()
 			.hoverable(interactionSource)
 			.clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.handCursor()
 			.drawBehind {
 				if (selected) {
 					val bar = 2.dp.toPx()
@@ -940,7 +942,7 @@ private fun LogEntryRow(
 					.then(
 						if (hasDetail) Modifier
 							.clickable(onClick = onToggle)
-							.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+							.handCursor()
 						else Modifier,
 					),
 				contentAlignment = Alignment.Center,
@@ -1030,7 +1032,7 @@ private fun LogEntryRow(
 private fun RepeatBadge(count: Int) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	TooltipArea(tooltip = { ParameterTooltip(tr("log.dock.repeated", count)) }, delayMillis = 400) {
+	TooltipArea(tooltip = { ParameterTooltip(tr("log.dock.repeated", count)) }, delayMillis = Motion.TooltipDelay) {
 		Box(
 			modifier = Modifier
 				.height(16.dp)
@@ -1066,7 +1068,7 @@ private fun LogImageCard(entry: AppLogEntry, inset: Dp, onImageClick: (ByteArray
 			.border(BorderStroke(1.dp, if (hovered) colors.accent else colors.border), RoundedCornerShape(4.dp))
 			.hoverable(interaction)
 			.clickable { onImageClick(imgBytes, label) }
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.handCursor()
 			.padding(4.dp),
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(8.dp),

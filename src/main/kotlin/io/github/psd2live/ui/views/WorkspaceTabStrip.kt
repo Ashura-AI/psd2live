@@ -57,9 +57,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,7 +77,7 @@ import io.github.psd2live.ui.state.displayName
 import io.github.psd2live.ui.state.isCanvasModule
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
+import io.github.psd2live.ui.theme.handCursor
 
 /** Dock modules the window menu can show or hide, in menu order. */
 internal val WINDOW_MODULES = listOf(
@@ -279,7 +277,7 @@ private fun WorkspaceChip(
 				.height(22.dp)
 				.clip(RoundedCornerShape(4.dp))
 				.background(bg)
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.handCursor()
 				.onPointerEvent(PointerEventType.Press, pass = PointerEventPass.Initial) { event ->
 					when {
 						event.button == PointerButton.Secondary -> {
@@ -382,7 +380,7 @@ private fun WorkspaceChip(
 			Box(
 				modifier = Modifier
 					.size(14.dp)
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.handCursor()
 					.clickable(enabled = canClose && (isActive || isHovered)) { onClose() },
 				contentAlignment = Alignment.Center,
 			) {
@@ -437,7 +435,7 @@ internal fun TabStripButton(
 			.height(22.dp)
 			.clip(RoundedCornerShape(4.dp))
 			.background(if (isHovered) colors.controlHover.copy(alpha = 0.6f) else Color.Transparent)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.handCursor()
 			.clickable(interactionSource = interactionSource, indication = null) { onClick() }
 			.drawBehind {
 				if (highlighted) {

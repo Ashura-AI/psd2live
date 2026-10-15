@@ -36,9 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -55,7 +53,7 @@ import io.github.psd2live.ui.state.CanvasMode
 import io.github.psd2live.ui.state.WorkspacePreset
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
+import io.github.psd2live.ui.theme.handCursor
 
 /**
  * "+" menu of the workspace strip: presets on the left, each with its icon and a small layout
@@ -142,7 +140,7 @@ private fun PresetRow(
 			.fillMaxWidth()
 			.height(30.dp)
 			.background(if (highlighted) colors.selection else Color.Transparent)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.handCursor()
 			.onPointerEvent(PointerEventType.Enter) { onHover() }
 			.clickable(onClick = onClick)
 			.padding(horizontal = 10.dp),

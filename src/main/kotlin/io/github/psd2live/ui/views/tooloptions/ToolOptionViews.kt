@@ -1,7 +1,6 @@
 package io.github.psd2live.ui.views.tooloptions
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -27,12 +26,9 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,21 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.shape.RoundedCornerShape
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalDensity
-import kotlinx.coroutines.delay
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.onSizeChanged
@@ -121,9 +103,12 @@ import io.github.psd2live.ui.views.texture.FloatingMenuSlider
 import io.github.psd2live.ui.views.texture.FloatingMenuSubmenuRow
 import io.github.psd2live.ui.views.texture.FloatingMenuSwitch
 import io.github.psd2live.ui.views.texture.GlidingSegments
-import io.github.psd2live.ui.views.texture.LocalMenuGlide
+import io.github.psd2live.ui.views.texture.LocalMenuGlideHost
+import io.github.psd2live.ui.views.texture.MenuGlide
+import io.github.psd2live.ui.views.texture.glideRow
 import io.github.psd2live.ui.views.vertexGroupKindColor
 import org.umamo.runtime.model.VertexGroupKind
+import io.github.psd2live.ui.theme.Motion
 
 /** Whether [editor] has a tool options bar to show: options of its own, or paint mode's colours. */
 internal fun toolOptionsBarShown(editor: CanvasEditor): Boolean =
@@ -324,8 +309,8 @@ internal fun ToolOptionMenu(editor: CanvasEditor, onDismiss: () -> Unit, onActio
         // width instead would move the popup's frame every frame.
         AnimatedVisibility(
             open != null,
-            enter = fadeIn(tween(120, easing = LinearOutSlowInEasing)) + slideInHorizontally(tween(120, easing = FastOutSlowInEasing)) { -it / 12 },
-            exit = fadeOut(tween(80, easing = FastOutLinearInEasing)),
+            enter = fadeIn(tween(Motion.Fade, easing = LinearOutSlowInEasing)) + slideInHorizontally(tween(Motion.Fade, easing = FastOutSlowInEasing)) { -it / 12 },
+            exit = fadeOut(tween(Motion.Instant, easing = FastOutLinearInEasing)),
         ) {
             val rule = colors.border.copy(alpha = 0.5f)
             val level = open ?: return@AnimatedVisibility
@@ -370,7 +355,6 @@ private fun rowHighlights(option: ToolOption?): Boolean = when (option) {
  * the row under the pointer instead of each row lighting up on its own. [highlights] says which rows take it - not a
  * caption or a note; [onHover] hears which row the pointer entered.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun GlidingColumn(
     modifier: Modifier,
@@ -379,60 +363,13 @@ internal fun GlidingColumn(
     onHover: (Int) -> Unit = {},
     row: @Composable (Int) -> Unit,
 ) {
-    val colors = LocalToolColors.current
-    val density = LocalDensity.current
-    val bounds = remember { mutableStateMapOf<Int, Pair<Float, Float>>() }
-    var hovered by remember { mutableStateOf<Int?>(null) }
-    val target = hovered?.takeIf { highlights(it) }?.let { bounds[it] }
-    val glow by animateFloatAsState(if (target != null) 1f else 0f, tween(100, easing = FastOutSlowInEasing))
-    val top = remember { Animatable(0f) }
-    val height = remember { Animatable(0f) }
-    LaunchedEffect(target) {
-        val (y, h) = target ?: return@LaunchedEffect
-        // Appearing, it starts on its row; moving, it glides there.
-        if (glow < 0.05f) { top.snapTo(y); height.snapTo(h) }
-        else coroutineScope {
-            launch { top.animateTo(y, tween(80, easing = FastOutSlowInEasing)) }
-            launch { height.animateTo(h, tween(80, easing = FastOutSlowInEasing)) }
-        }
-    }
-    Box(modifier.onPointerEvent(PointerEventType.Exit) { hovered = null }) {
-        Box(
-            Modifier
-                .offset { IntOffset(0, top.value.roundToInt()) }
-                .fillMaxWidth()
-                .height(with(density) { height.value.toDp() })
-                .alpha(glow)
-                .clip(RoundedCornerShape(5.dp))
-                .background(colors.controlHover.copy(alpha = 0.75f)),
-        )
-        CompositionLocalProvider(LocalMenuGlide provides true) {
-            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                for (i in 0 until count) {
-                    Box(
-                        Modifier
-                            .arrival(i)
-                            .onGloballyPositioned { bounds[i] = it.positionInParent().y to it.size.height.toFloat() }
-                            .onPointerEvent(PointerEventType.Enter) { hovered = i; onHover(i) },
-                    ) { row(i) }
-                }
+    MenuGlide(modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            // The column's rows take the highlight; a row's own glideRow stays out of it.
+            for (i in 0 until count) Box(Modifier.glideRow(highlights(i)) { onHover(i) }) {
+                CompositionLocalProvider(LocalMenuGlideHost provides null) { row(i) }
             }
         }
-    }
-}
-
-/** A menu row arriving the way the mode menu's do: [index] five milliseconds after the first, sliding in from its side. */
-@Composable
-private fun Modifier.arrival(index: Int): Modifier {
-    val arrival = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        delay(index * 5L)
-        arrival.animateTo(1f, tween(90, easing = FastOutSlowInEasing))
-    }
-    val density = LocalDensity.current
-    return graphicsLayer {
-        alpha = arrival.value
-        translationX = (1f - arrival.value) * -8f * density.density
     }
 }
 

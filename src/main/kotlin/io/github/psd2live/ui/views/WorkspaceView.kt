@@ -128,6 +128,7 @@ import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
+import io.github.psd2live.ui.theme.handCursor
 
 @Composable
 internal fun DockHierarchyView(
@@ -1279,7 +1280,7 @@ private fun DeformerTreeItem(
 			Box(
 				modifier = Modifier
 					.size(TREE_CHEVRON_WIDTH_DP.dp)
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.handCursor()
 					.clickable(enabled = hasChildren) {
 						treeDragState.clear()
 						val nextExpanded = !isExpanded
@@ -1341,7 +1342,7 @@ private fun DeformerTreeItem(
 					Row(
 						modifier = Modifier
 							.then(if (index == chain.deformers.lastIndex) Modifier.weight(1f, fill = false) else Modifier)
-							.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+							.handCursor()
 							.onGloballyPositioned { coords ->
 								val row = rowCoords
 								if (row != null && row.isAttached && coords.isAttached) {
@@ -1435,7 +1436,7 @@ private fun DeformerTreeItem(
 			Box(
 				modifier = Modifier
 					.size(16.dp)
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.handCursor()
 					.clickable {
 						treeDragState.clear()
 						val nextVis = !isDeformerVis
@@ -1809,7 +1810,7 @@ private fun DrawableTreeItem(
 				Box(
 					modifier = Modifier
 						.size(16.dp)
-						.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+						.handCursor()
 						.clickable {
 							treeDragState.clear()
 							viewModel.toggleLayerVisibility(layerId)

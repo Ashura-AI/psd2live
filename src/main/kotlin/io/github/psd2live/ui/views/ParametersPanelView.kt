@@ -159,6 +159,9 @@ import org.umamo.runtime.model.Parameter
 import org.umamo.runtime.model.ParameterKind
 import org.umamo.runtime.model.ParameterNode
 import org.umamo.runtime.model.PuppetModel
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
+import io.github.psd2live.ui.theme.HandPointer
 
 /** One visible row in the parameter panel (folder header, single slider, or combined 2D pad). */
 internal sealed interface ParameterPanelRow {
@@ -712,7 +715,7 @@ internal fun ParametersListView(
 						val isDragged = dragState.isDragging && dragState.draggedKey == key
 						val shift by animateFloatAsState(
 							targetValue = if (dragState.isDragging) parameterDragShift(layout, dragState, itemBoundsMap.values) else 0f,
-							animationSpec = tween(if (dragState.isDragging) 120 else 0),
+							animationSpec = tween(if (dragState.isDragging) Motion.Fade else 0),
 						)
 
 						Column(
@@ -1208,7 +1211,7 @@ private fun ParameterFolderRow(
 			.then(
 				if (!renaming) {
 					Modifier
-						.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+						.handCursor()
 						.clickable(
 							interactionSource = interactionSource,
 							indication = null,
@@ -1361,7 +1364,7 @@ private fun ParameterLabelSwatch(
 				RoundedCornerShape(3.dp),
 			)
 			.clickable(onClick = onClick)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+			.handCursor(),
 	)
 }
 
@@ -1690,7 +1693,7 @@ private fun ParameterLinkSlot(
 				.hoverable(interaction)
 				.clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick)
 				.pointerHoverIcon(
-					if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))
+					if (enabled) HandPointer
 					else PointerIcon.Default,
 				),
 			contentAlignment = Alignment.Center,
@@ -1708,7 +1711,7 @@ private fun ParameterLinkSlot(
 	}
 	TooltipArea(
 		tooltip = { ParameterTooltip(tooltip) },
-		delayMillis = 400,
+		delayMillis = Motion.TooltipDelay,
 	) { content() }
 }
 
@@ -2271,7 +2274,7 @@ private fun EditableParameterName(
         tooltip = { ParameterTooltip(param.name + if (physicsOutput) " · " +
             tr(if (controlled) "parameters.physicsControlled" else "parameters.physicsOutput") else "") },
         modifier = Modifier.width(LocalParameterNameWidth.current - (depth * ParamRowDepthIndent).dp),
-        delayMillis = 400,
+        delayMillis = Motion.TooltipDelay,
     ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
     if (physicsOutput) {
@@ -2410,7 +2413,7 @@ private fun ParameterKeyOwnersFloat(
 													indication = null,
 													onClick = { onSelect(component) },
 												)
-												.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+												.handCursor()
 										} else Modifier.hoverable(interaction),
 									)
 									.padding(horizontal = 4.dp, vertical = 3.dp),

@@ -51,13 +51,10 @@ import org.jetbrains.skia.VertexMode as SkiaVertexMode
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isShiftPressed
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import java.awt.Cursor
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -111,6 +108,8 @@ import kotlin.math.sin
 import kotlin.math.hypot
 import org.umamo.runtime.model.DrawableId
 import org.umamo.edit.MeshTopology
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -160,7 +159,7 @@ internal fun BoxScope.CanvasEditorOverlay(
             guideFade.snapTo(1f)
         } else {
             guideEnd = editor.cursor
-            guideFade.animateTo(0f, tween(durationMillis = 260, easing = FastOutSlowInEasing))
+            guideFade.animateTo(0f, tween(durationMillis = Motion.Expand, easing = FastOutSlowInEasing))
         }
     }
 
@@ -1911,7 +1910,7 @@ private fun MiniStepper(
                 .clickable(enabled = value > min) {
                     onValueChange((value - step).coerceAtLeast(min))
                 }
-                .pointerHoverIcon(if (value > min) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default),
+                .handCursor(value > min),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -1965,7 +1964,7 @@ private fun MiniStepper(
                 .clickable(enabled = value < max) {
                     onValueChange((value + step).coerceAtMost(max))
                 }
-                .pointerHoverIcon(if (value < max) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default),
+                .handCursor(value < max),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -2111,8 +2110,8 @@ private fun pickKey(keymap: Keymap, index: Int): String =
 private fun RailRows(visible: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = visible,
-        enter = expandVertically(animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(150)),
-        exit = shrinkVertically(animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(120)),
+        enter = expandVertically(animationSpec = tween(durationMillis = Motion.Expand, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(Motion.Fade)),
+        exit = shrinkVertically(animationSpec = tween(durationMillis = Motion.Fold, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(Motion.Fade)),
     ) { content() }
 }
 
@@ -2160,13 +2159,13 @@ private fun BoxScope.HierarchyModeBar(
         AnimatedVisibility(
             visible = editor.deformLevelsShown(),
             enter = expandHorizontally(
-                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Expand, easing = FastOutSlowInEasing),
                 expandFrom = Alignment.Start,
-            ) + fadeIn(animationSpec = tween(160)),
+            ) + fadeIn(animationSpec = tween(Motion.Fold)),
             exit = shrinkHorizontally(
-                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Fold, easing = FastOutSlowInEasing),
                 shrinkTowards = Alignment.Start,
-            ) + fadeOut(animationSpec = tween(120)),
+            ) + fadeOut(animationSpec = tween(Motion.Fade)),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -2194,13 +2193,13 @@ private fun BoxScope.HierarchyModeBar(
         AnimatedVisibility(
             visible = editor.hierarchyMode == EditHierarchyMode.EDIT && target?.kind == "warp",
             enter = expandHorizontally(
-                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Expand, easing = FastOutSlowInEasing),
                 expandFrom = Alignment.Start,
-            ) + fadeIn(animationSpec = tween(160)),
+            ) + fadeIn(animationSpec = tween(Motion.Fold)),
             exit = shrinkHorizontally(
-                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Fold, easing = FastOutSlowInEasing),
                 shrinkTowards = Alignment.Start,
-            ) + fadeOut(animationSpec = tween(120)),
+            ) + fadeOut(animationSpec = tween(Motion.Fade)),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -2222,13 +2221,13 @@ private fun BoxScope.HierarchyModeBar(
         AnimatedVisibility(
             visible = editor.hierarchyMode == EditHierarchyMode.SIMULATE,
             enter = expandHorizontally(
-                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Expand, easing = FastOutSlowInEasing),
                 expandFrom = Alignment.Start,
-            ) + fadeIn(animationSpec = tween(160)),
+            ) + fadeIn(animationSpec = tween(Motion.Fold)),
             exit = shrinkHorizontally(
-                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Fold, easing = FastOutSlowInEasing),
                 shrinkTowards = Alignment.Start,
-            ) + fadeOut(animationSpec = tween(120)),
+            ) + fadeOut(animationSpec = tween(Motion.Fade)),
         ) {
             SimulateModeExtras(editor, focus)
         }
@@ -2237,13 +2236,13 @@ private fun BoxScope.HierarchyModeBar(
         AnimatedVisibility(
             visible = editor.hierarchyMode == EditHierarchyMode.SKELETON,
             enter = expandHorizontally(
-                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Expand, easing = FastOutSlowInEasing),
                 expandFrom = Alignment.Start,
-            ) + fadeIn(animationSpec = tween(160)),
+            ) + fadeIn(animationSpec = tween(Motion.Fold)),
             exit = shrinkHorizontally(
-                animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Fold, easing = FastOutSlowInEasing),
                 shrinkTowards = Alignment.Start,
-            ) + fadeOut(animationSpec = tween(120)),
+            ) + fadeOut(animationSpec = tween(Motion.Fade)),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -2269,13 +2268,13 @@ private fun BoxScope.HierarchyModeBar(
         AnimatedVisibility(
             visible = session != null,
             enter = expandHorizontally(
-                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Expand, easing = FastOutSlowInEasing),
                 expandFrom = Alignment.Start,
-            ) + fadeIn(animationSpec = tween(150)),
+            ) + fadeIn(animationSpec = tween(Motion.Fade)),
             exit = shrinkHorizontally(
-                animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Fold, easing = FastOutSlowInEasing),
                 shrinkTowards = Alignment.Start,
-            ) + fadeOut(animationSpec = tween(100)),
+            ) + fadeOut(animationSpec = tween(Motion.Quick)),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -2297,13 +2296,13 @@ private fun BoxScope.HierarchyModeBar(
         AnimatedVisibility(
             visible = topOptions(editor).isNotEmpty(),
             enter = expandHorizontally(
-                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Expand, easing = FastOutSlowInEasing),
                 expandFrom = Alignment.Start,
-            ) + fadeIn(animationSpec = tween(150)),
+            ) + fadeIn(animationSpec = tween(Motion.Fade)),
             exit = shrinkHorizontally(
-                animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Fold, easing = FastOutSlowInEasing),
                 shrinkTowards = Alignment.Start,
-            ) + fadeOut(animationSpec = tween(100)),
+            ) + fadeOut(animationSpec = tween(Motion.Quick)),
         ) {
             ModeBarToolOptions(editor, focus)
         }
@@ -2313,13 +2312,13 @@ private fun BoxScope.HierarchyModeBar(
         AnimatedVisibility(
             visible = targetLabel != null,
             enter = expandHorizontally(
-                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Expand, easing = FastOutSlowInEasing),
                 expandFrom = Alignment.Start,
-            ) + fadeIn(animationSpec = tween(150)),
+            ) + fadeIn(animationSpec = tween(Motion.Fade)),
             exit = shrinkHorizontally(
-                animationSpec = tween(durationMillis = 160, easing = FastOutSlowInEasing),
+                animationSpec = tween(durationMillis = Motion.Fold, easing = FastOutSlowInEasing),
                 shrinkTowards = Alignment.Start,
-            ) + fadeOut(animationSpec = tween(100)),
+            ) + fadeOut(animationSpec = tween(Motion.Quick)),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,

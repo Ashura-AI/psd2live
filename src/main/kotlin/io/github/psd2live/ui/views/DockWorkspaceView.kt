@@ -57,6 +57,7 @@ import java.awt.MouseInfo
 import java.awt.Cursor
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import io.github.psd2live.ui.theme.handCursor
 
 /** How far a pressed tab or header must travel before it starts dragging. */
 private val DockDragSlop = 16.dp
@@ -577,7 +578,7 @@ private fun DockTabStrip(node: DockNode, session: DockSession, window: java.awt.
         if (scroll.maxValue > 0) {
             Box {
                 Box(Modifier.size(22.dp)
-                    .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+                    .handCursor()
                     .clickable { listMenu = true }, contentAlignment = Alignment.Center) {
                     io.github.psd2live.ui.components.IconChevron(expanded = true, tint = colors.textMuted,
                         modifier = Modifier.size(10.dp))
@@ -943,7 +944,7 @@ private fun DockHeaderIcon(onClick: () -> Unit, content: @Composable () -> Unit)
     Box(Modifier.size(14.dp).clip(RoundedCornerShape(3.dp))
         .background(if (hovered) colors.controlHover else Color.Transparent)
         .hoverable(interaction)
-        .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+        .handCursor()
         .clickable(interactionSource = interaction, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center) {
         content()
@@ -960,7 +961,7 @@ private fun CanvasModeChip(label: String, active: Boolean, modifier: Modifier, o
         style = typography.body.copy(fontSize = 10.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal),
         maxLines = 1,
         modifier = modifier
-            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+            .handCursor()
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp),
     )

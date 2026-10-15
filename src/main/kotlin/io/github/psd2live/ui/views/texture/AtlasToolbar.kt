@@ -80,6 +80,7 @@ import io.github.psd2live.ui.components.ICON_FINE
 import io.github.psd2live.ui.components.IconClose
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
+import io.github.psd2live.ui.theme.Motion
 import io.github.psd2live.ui.theme.frostedGlass
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
@@ -111,7 +112,7 @@ internal fun FloatingBar(modifier: Modifier = Modifier, content: @Composable Row
 	val hoveredBySource by interactionSource.collectIsHoveredAsState()
 	var hoveredByEvent by remember { mutableStateOf(false) }
 	val hovered = hoveredBySource || hoveredByEvent
-	val elevation by animateDpAsState(if (hovered) 8.dp else 2.dp, tween(200))
+	val elevation by animateDpAsState(if (hovered) 8.dp else 2.dp, tween(Motion.Expand))
 	Row(
 		modifier
 			.canvasChrome()
@@ -120,7 +121,7 @@ internal fun FloatingBar(modifier: Modifier = Modifier, content: @Composable Row
 			.onPointerEvent(PointerEventType.Enter) { hoveredByEvent = true }
 			.onPointerEvent(PointerEventType.Exit) { hoveredByEvent = false }
 			.padding(horizontal = 4.dp, vertical = 3.dp)
-			.animateContentSize(tween(200, easing = FastOutSlowInEasing)),
+			.animateContentSize(tween(Motion.Expand, easing = FastOutSlowInEasing)),
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(3.dp),
 		content = content,
@@ -147,7 +148,7 @@ internal fun BarTooltip(text: String?, content: @Composable () -> Unit) {
 					modifier = Modifier.widthIn(max = 280.dp).padding(horizontal = 7.dp, vertical = 4.dp))
 			}
 		},
-		delayMillis = 450,
+		delayMillis = Motion.TooltipDelay,
 	) { content() }
 }
 
@@ -173,13 +174,13 @@ internal fun BarChip(
 		selected -> colors.accent.copy(alpha = 0.22f)
 		open || hovered && enabled -> colors.controlHover.copy(alpha = 0.7f)
 		else -> Color.Transparent
-	}, tween(80))
+	}, tween(Motion.Instant))
 	val tint by animateColorAsState(when {
 		!enabled -> colors.textMuted.copy(alpha = 0.5f)
 		selected -> colors.accent
 		hovered || open -> colors.textPrimary
 		else -> colors.textMuted
-	}, tween(80))
+	}, tween(Motion.Instant))
 	BarTooltip(tooltip) {
 		Row(
 			Modifier
@@ -207,7 +208,7 @@ internal fun BarChip(
 /** The menu chevron of the mode button: it turns over while its menu is open. */
 @Composable
 internal fun Chevron(tint: Color, open: Boolean) {
-	val turn by animateFloatAsState(if (open) 180f else 0f, tween(100, easing = FastOutSlowInEasing))
+	val turn by animateFloatAsState(if (open) 180f else 0f, tween(Motion.Quick, easing = FastOutSlowInEasing))
 	GridIcon(Modifier.size(10.dp).rotate(turn), tint) {
 		outline(path { m(3.6f, 6.8f); l(9f, 11.8f); l(14.4f, 6.8f) }, 1.6f)
 	}
@@ -240,8 +241,8 @@ internal fun AccentSplitButton(
 		hovered -> colors.accent.copy(alpha = 0.26f)
 		else -> colors.accent.copy(alpha = 0.18f)
 	}
-	val bodyFill by animateColorAsState(fill(bodyHovered, false), tween(80))
-	val menuFill by animateColorAsState(fill(menuHovered, open), tween(80))
+	val bodyFill by animateColorAsState(fill(bodyHovered, false), tween(Motion.Instant))
+	val menuFill by animateColorAsState(fill(menuHovered, open), tween(Motion.Instant))
 	Row(
 		Modifier
 			.height(24.dp)
@@ -296,7 +297,7 @@ internal fun AccentButton(label: String?, onClick: () -> Unit, enabled: Boolean 
 		!enabled -> colors.accent.copy(alpha = 0.08f)
 		hovered -> colors.accent.copy(alpha = 0.3f)
 		else -> colors.accent.copy(alpha = 0.2f)
-	}, tween(80))
+	}, tween(Motion.Instant))
 	BarTooltip(tooltip) {
 		Row(
 			Modifier
@@ -341,26 +342,11 @@ internal fun FloatingMenu(
 	val density = LocalDensity.current
 	val body: @Composable () -> Unit = {
 		CompositionLocalProvider(LocalDensity provides density, LocalToolColors provides colors, LocalToolTypography provides typography) {
-			val transition = rememberTransition(visibility, "FloatingMenu")
-			val alpha by transition.animateFloat({
-				if (false isTransitioningTo true) tween(120, easing = LinearOutSlowInEasing) else tween(80, easing = FastOutLinearInEasing)
-			}, "alpha") { if (it) 1f else 0f }
-			val scale by transition.animateFloat({
-				if (false isTransitioningTo true) tween(100, easing = LinearOutSlowInEasing) else tween(80, easing = FastOutLinearInEasing)
-			}, "scale") { if (it) 1f else 0.92f }
-			val lift by transition.animateFloat({
-				if (false isTransitioningTo true) tween(100, easing = FastOutSlowInEasing) else tween(80, easing = FastOutLinearInEasing)
-			}, "lift") { if (it) 0f else if (rise) 6f else -6f }
 			Box(
 				Modifier
-					.graphicsLayer {
-						this.alpha = alpha; scaleX = scale; scaleY = scale
-						translationY = lift * density.density
-						transformOrigin = TransformOrigin(if (alignment == Alignment.TopEnd || alignment == Alignment.BottomEnd) 0.88f else 0.12f, if (rise) 1f else 0f)
-					}
+					.menuAppearance(visibility, TransformOrigin(if (alignment == Alignment.TopEnd || alignment == Alignment.BottomEnd) 0.88f else 0.12f, if (rise) 1f else 0f), rise)
 					.width(width)
-					.frostedGlass(RoundedCornerShape(7.dp), isHovered = true, elevation = 12.dp, baseColor = colors.panelElevated, alpha = 0.9f)
-					.border(0.5.dp, colors.borderHover.copy(alpha = 0.45f), RoundedCornerShape(7.dp))
+					.menuPanel()
 					.padding(4.dp),
 			) { MenuGlide { Column(verticalArrangement = Arrangement.spacedBy(1.dp), content = content) } }
 		}
@@ -372,6 +358,52 @@ internal fun FloatingMenu(
 		properties = PopupProperties(focusable = true),
 		content = body,
 	)
+}
+
+/**
+ * How every menu comes and goes: fading in while it grows from [origin] and settles toward its anchor, leaving
+ * quicker than it came. [rise] for a menu that opens upward from its anchor.
+ */
+@Composable
+internal fun Modifier.menuAppearance(visibility: MutableTransitionState<Boolean>, origin: TransformOrigin, rise: Boolean): Modifier {
+	val density = LocalDensity.current
+	val transition = rememberTransition(visibility, "menu")
+	val alpha by transition.animateFloat({
+		if (false isTransitioningTo true) tween(Motion.Fade, easing = LinearOutSlowInEasing) else tween(Motion.Instant, easing = FastOutLinearInEasing)
+	}, "alpha") { if (it) 1f else 0f }
+	val scale by transition.animateFloat({
+		if (false isTransitioningTo true) tween(Motion.Quick, easing = LinearOutSlowInEasing) else tween(Motion.Instant, easing = FastOutLinearInEasing)
+	}, "scale") { if (it) 1f else 0.92f }
+	val lift by transition.animateFloat({
+		if (false isTransitioningTo true) tween(Motion.Quick, easing = FastOutSlowInEasing) else tween(Motion.Instant, easing = FastOutLinearInEasing)
+	}, "lift") { if (it) 0f else 6f }
+	return graphicsLayer {
+		this.alpha = alpha; scaleX = scale; scaleY = scale
+		translationY = (if (rise) lift else -lift) * density.density
+		transformOrigin = origin
+	}
+}
+
+/** The frosted panel every menu sits on. */
+@Composable
+internal fun Modifier.menuPanel(): Modifier {
+	val colors = LocalToolColors.current
+	val shape = RoundedCornerShape(7.dp)
+	return frostedGlass(shape, isHovered = true, elevation = 12.dp, baseColor = colors.panelElevated, alpha = 0.9f)
+		.border(0.5.dp, colors.borderHover.copy(alpha = 0.45f), shape)
+}
+
+/** A menu row arriving in turn: [index] rows after the first, fading and sliding in from its side. */
+@Composable
+internal fun Modifier.menuArrival(index: Int): Modifier {
+	val arrival = remember { androidx.compose.animation.core.Animatable(0f) }
+	// Staggered on the frame clock, so it keeps time with the frames that draw it.
+	LaunchedEffect(Unit) { arrival.animateTo(1f, tween(Motion.RowArrival, delayMillis = index * Motion.RowStagger, easing = FastOutSlowInEasing)) }
+	val density = LocalDensity.current
+	return graphicsLayer {
+		alpha = arrival.value
+		translationX = (1f - arrival.value) * -8f * density.density
+	}
 }
 
 /**
@@ -399,12 +431,12 @@ internal val LocalMenuGlideHost = androidx.compose.runtime.staticCompositionLoca
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-internal fun MenuGlide(content: @Composable () -> Unit) {
+internal fun MenuGlide(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 	val colors = LocalToolColors.current
 	val density = LocalDensity.current
 	val host = remember { MenuGlideHost() }
 	val target = host.target
-	val glow by animateFloatAsState(if (target != null) 1f else 0f, tween(100, easing = FastOutSlowInEasing))
+	val glow by animateFloatAsState(if (target != null) 1f else 0f, tween(Motion.Quick, easing = FastOutSlowInEasing))
 	val top = remember { androidx.compose.animation.core.Animatable(0f) }
 	val height = remember { androidx.compose.animation.core.Animatable(0f) }
 	LaunchedEffect(target) {
@@ -412,11 +444,11 @@ internal fun MenuGlide(content: @Composable () -> Unit) {
 		// Appearing, it starts on its row; moving, it glides there.
 		if (glow < 0.05f) { top.snapTo(rect.top); height.snapTo(rect.height) }
 		else kotlinx.coroutines.coroutineScope {
-			launch { top.animateTo(rect.top, tween(80, easing = FastOutSlowInEasing)) }
-			launch { height.animateTo(rect.height, tween(80, easing = FastOutSlowInEasing)) }
+			launch { top.animateTo(rect.top, tween(Motion.Instant, easing = FastOutSlowInEasing)) }
+			launch { height.animateTo(rect.height, tween(Motion.Instant, easing = FastOutSlowInEasing)) }
 		}
 	}
-	Box(Modifier.onGloballyPositioned { host.coordinates = it }.onPointerEvent(PointerEventType.Exit) { host.target = null }) {
+	Box(modifier.onGloballyPositioned { host.coordinates = it }.onPointerEvent(PointerEventType.Exit) { host.target = null }) {
 		Box(
 			Modifier
 				.offset { IntOffset(0, top.value.roundToInt()) }
@@ -432,25 +464,18 @@ internal fun MenuGlide(content: @Composable () -> Unit) {
 
 /**
  * A row of a [MenuGlide] column: it arrives in turn, sliding in from its side, and takes the gliding highlight when
- * [enabled] and the pointer enters it. Outside a [MenuGlide] it changes nothing.
+ * [enabled] and the pointer enters it, telling [onEnter]. Outside a [MenuGlide] it changes nothing.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-internal fun Modifier.glideRow(enabled: Boolean): Modifier {
+internal fun Modifier.glideRow(enabled: Boolean, onEnter: () -> Unit = {}): Modifier {
 	val host = LocalMenuGlideHost.current ?: return this
 	val index = remember { host.nextRow() }
-	val arrival = remember { androidx.compose.animation.core.Animatable(0f) }
-	// Staggered on the frame clock, so it keeps time with the frames that draw it.
-	LaunchedEffect(Unit) { arrival.animateTo(1f, tween(90, delayMillis = index * 5, easing = FastOutSlowInEasing)) }
 	var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
-	val density = LocalDensity.current
 	return this
 		.onGloballyPositioned { c -> host.coordinates?.takeIf { it.isAttached }?.let { bounds = it.localBoundingBoxOf(c, clipBounds = false) } }
-		.onPointerEvent(PointerEventType.Enter) { host.target = if (enabled) bounds else null }
-		.graphicsLayer {
-			alpha = arrival.value
-			translationX = (1f - arrival.value) * -8f * density.density
-		}
+		.onPointerEvent(PointerEventType.Enter) { host.target = if (enabled) bounds else null; onEnter() }
+		.menuArrival(index)
 }
 
 /** A caption over a group of [FloatingMenu] rows. */
@@ -490,10 +515,10 @@ internal fun FloatingMenuRow(
 		selected -> colors.accent
 		hovered -> colors.textPrimary
 		else -> colors.textMuted
-	}, tween(80))
+	}, tween(Motion.Instant))
 	val glide = LocalMenuGlide.current
-	val background by animateColorAsState(if (hovered && enabled && !glide) colors.controlHover.copy(alpha = 0.75f) else Color.Transparent, tween(80))
-	val edge by animateFloatAsState(if (selected && bar) 1f else 0f, tween(80, easing = FastOutSlowInEasing))
+	val background by animateColorAsState(if (hovered && enabled && !glide) colors.controlHover.copy(alpha = 0.75f) else Color.Transparent, tween(Motion.Instant))
+	val edge by animateFloatAsState(if (selected && bar) 1f else 0f, tween(Motion.Instant, easing = FastOutSlowInEasing))
 	Row(
 		Modifier
 			.glideRow(enabled)
@@ -529,12 +554,12 @@ internal fun FloatingMenuRow(
 internal fun FloatingMenuSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, enabled: Boolean = true,
                                 hint: String? = null) {
 	val colors = LocalToolColors.current
-	val thumb by animateDpAsState(if (checked) 10.dp else 2.dp, tween(140))
+	val thumb by animateDpAsState(if (checked) 10.dp else 2.dp, tween(Motion.Fade))
 	val track by animateColorAsState(when {
 		!enabled -> colors.border.copy(alpha = 0.4f)
 		checked -> colors.accent
 		else -> colors.border
-	}, tween(140))
+	}, tween(Motion.Fade))
 	FloatingMenuRow(label, { onCheckedChange(!checked) }, selected = checked, enabled = enabled, hint = hint, bar = false, control = {
 		Box(Modifier.size(20.dp, 12.dp).clip(RoundedCornerShape(6.dp)).background(track)) {
 			Box(Modifier.offset(x = thumb, y = 2.dp).size(8.dp).clip(CircleShape).background(Color.White.copy(alpha = if (enabled) 1f else 0.6f)))
@@ -594,7 +619,7 @@ internal fun FloatingMenuSubmenuRow(label: String, open: Boolean, onOpen: () -> 
 		open -> colors.controlHover.copy(alpha = 0.75f)
 		hovered && !glide -> colors.controlHover.copy(alpha = 0.75f)
 		else -> Color.Transparent
-	}, tween(80))
+	}, tween(Motion.Instant))
 	Row(
 		Modifier
 			.fillMaxWidth()
@@ -648,7 +673,7 @@ internal fun BarValueChip(
 		dragging || open -> colors.accent.copy(alpha = 0.18f)
 		hovered && enabled -> colors.controlHover.copy(alpha = 0.7f)
 		else -> Color.Transparent
-	}, tween(80))
+	}, tween(Motion.Instant))
 	val currentValue by rememberUpdatedState(value)
 	val change by rememberUpdatedState(onValueChange)
 	val commit by rememberUpdatedState(onCommit)
@@ -725,14 +750,14 @@ internal fun <T> GlidingSegments(
 		val target = index?.let { bounds[it] }
 		val x = remember { androidx.compose.animation.core.Animatable(0f) }
 		val w = remember { androidx.compose.animation.core.Animatable(0f) }
-		val shown by animateFloatAsState(if (target != null) 1f else 0f, tween(100, easing = FastOutSlowInEasing))
+		val shown by animateFloatAsState(if (target != null) 1f else 0f, tween(Motion.Quick, easing = FastOutSlowInEasing))
 		LaunchedEffect(target) {
 			val (left, width) = target ?: return@LaunchedEffect
 			// Appearing, it starts on its segment; moving, it glides there.
 			if (shown < 0.05f) { x.snapTo(left); w.snapTo(width) }
 			else kotlinx.coroutines.coroutineScope {
-				launch { x.animateTo(left, tween(110, easing = FastOutSlowInEasing)) }
-				launch { w.animateTo(width, tween(110, easing = FastOutSlowInEasing)) }
+				launch { x.animateTo(left, tween(Motion.Quick, easing = FastOutSlowInEasing)) }
+				launch { w.animateTo(width, tween(Motion.Quick, easing = FastOutSlowInEasing)) }
 			}
 		}
 		Box(
@@ -759,7 +784,7 @@ internal fun <T> GlidingSegments(
 					isSelected -> colors.accent
 					isHovered -> colors.textPrimary
 					else -> colors.textMuted
-				}, tween(80))
+				}, tween(Motion.Instant))
 				// Measured outside the tooltip, whose own box would make every segment sit at its origin.
 				Box(
 					Modifier
@@ -802,7 +827,7 @@ internal fun FloatingMenuRadio(label: String, selected: Boolean, onSelect: () ->
 @Composable
 internal fun RadioMark(selected: Boolean, enabled: Boolean = true) {
 	val colors = LocalToolColors.current
-	val mark by animateFloatAsState(if (selected) 1f else 0f, tween(120, easing = FastOutSlowInEasing))
+	val mark by animateFloatAsState(if (selected) 1f else 0f, tween(Motion.Fade, easing = FastOutSlowInEasing))
 	val rim = if (selected) colors.accent else colors.textMuted.copy(alpha = 0.8f)
 	GridIcon(Modifier.size(12.dp).alpha(if (enabled) 1f else 0.5f), rim) {
 		ring(9f, 9f, 7.4f)

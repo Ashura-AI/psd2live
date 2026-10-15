@@ -86,6 +86,10 @@ import io.github.psd2live.ui.state.previewControlCanvas
 import io.github.psd2live.ui.state.previewPanelState
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import io.github.psd2live.ui.theme.Motion
 
 private const val MOTION_SETTINGS_FIELD = "motion-settings"
 private const val BUILTIN_SECTION = "builtin"
@@ -465,8 +469,8 @@ private fun MotionRow(
 
 		AnimatedVisibility(
 			visible = settingsOpen,
-			enter = expandVertically() + fadeIn(),
-			exit = shrinkVertically() + fadeOut(),
+			enter = expandVertically(tween(Motion.Fold, easing = FastOutSlowInEasing)) + fadeIn(tween(Motion.Fade)),
+			exit = shrinkVertically(tween(Motion.Instant, easing = FastOutLinearInEasing)) + fadeOut(tween(Motion.Instant)),
 		) {
 			Column(
 				modifier = Modifier

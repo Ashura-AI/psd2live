@@ -22,8 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,7 +45,7 @@ import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import org.umamo.runtime.model.Parameter
-import java.awt.Cursor
+import io.github.psd2live.ui.theme.handCursor
 
 /** The selected group: its pendulum, dynamics, inputs, outputs and the raw numbers. */
 @Composable
@@ -267,7 +265,7 @@ internal fun GroupTitle(
 		if (group.overridden) {
 			Text(
 				tr("physics.resetDefaults"), style = typography.caption.copy(fontSize = 9.5.sp), color = colors.accent,
-				modifier = Modifier.clickable { viewModel.removePhysicsGroup(group.id) }.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+				modifier = Modifier.clickable { viewModel.removePhysicsGroup(group.id) }.handCursor(),
 			)
 		}
 	}

@@ -33,9 +33,9 @@ import io.github.psd2live.ui.components.CompactTextField
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import org.umamo.runtime.eval.EPS_SPAN
-import java.awt.Cursor
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import io.github.psd2live.ui.theme.handCursor
 
 /** Trim binary float noise so axis labels stay readable. */
 internal fun formatAxisValue(value: Float): String {
@@ -163,7 +163,7 @@ internal fun ParameterKeyAxis(
             }
         }
         Canvas(Modifier.fillMaxWidth().height(46.dp)
-            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+            .handCursor()
             .onPointerEvent(PointerEventType.Move) { event -> hoverX = event.changes.firstOrNull()?.position?.x }
             .onPointerEvent(PointerEventType.Exit) { hoverX = null }
             .onPointerEvent(PointerEventType.Press) { event ->

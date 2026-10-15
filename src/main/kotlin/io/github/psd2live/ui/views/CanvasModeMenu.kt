@@ -2,15 +2,11 @@ package io.github.psd2live.ui.views
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -54,7 +50,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -83,8 +78,10 @@ import androidx.compose.ui.input.key.isShiftPressed
 import io.github.psd2live.ui.state.CanvasMode
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import io.github.psd2live.ui.theme.frostedGlass
-import kotlinx.coroutines.delay
+import io.github.psd2live.ui.views.texture.menuAppearance
+import io.github.psd2live.ui.views.texture.menuArrival
+import io.github.psd2live.ui.views.texture.menuPanel
+import io.github.psd2live.ui.theme.Motion
 
 /**
  * One row of the canvas mode menu: the six editing modes, then Preview. Preview is the canvas's preview
@@ -166,11 +163,11 @@ internal fun CanvasModeMenu(
             hovered -> colors.accent.copy(alpha = 0.26f)
             else -> colors.accent.copy(alpha = 0.18f)
         },
-        animationSpec = tween(80),
+        animationSpec = tween(Motion.Instant),
     )
     val chevronTurn by animateFloatAsState(
         targetValue = if (open) 180f else 0f,
-        animationSpec = tween(100, easing = FastOutSlowInEasing),
+        animationSpec = tween(Motion.Quick, easing = FastOutSlowInEasing),
     )
 
     Box(modifier) {
@@ -192,10 +189,10 @@ internal fun CanvasModeMenu(
                 targetState = current,
                 transitionSpec = {
                     val down = targetState.ordinal > initialState.ordinal
-                    (slideInVertically(tween(100, easing = FastOutSlowInEasing)) { h -> if (down) h / 2 else -h / 2 } +
-                        fadeIn(tween(80))) togetherWith
-                        (slideOutVertically(tween(100, easing = FastOutLinearInEasing)) { h -> if (down) -h / 2 else h / 2 } +
-                            fadeOut(tween(100)))
+                    (slideInVertically(tween(Motion.Quick, easing = FastOutSlowInEasing)) { h -> if (down) h / 2 else -h / 2 } +
+                        fadeIn(tween(Motion.Instant))) togetherWith
+                        (slideOutVertically(tween(Motion.Quick, easing = FastOutLinearInEasing)) { h -> if (down) -h / 2 else h / 2 } +
+                            fadeOut(tween(Motion.Quick)))
                 },
             ) { choice ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -261,30 +258,6 @@ private fun CanvasModeMenuPopup(
             LocalToolColors provides colors,
             LocalToolTypography provides typography,
         ) {
-            // A short entrance keeps mode changes responsive.
-            val transition = rememberTransition(visibility, "CanvasModeMenu")
-            val alpha by transition.animateFloat(
-                transitionSpec = {
-                    if (false isTransitioningTo true) tween(120, easing = LinearOutSlowInEasing)
-                    else tween(80, easing = FastOutLinearInEasing)
-                },
-                label = "alpha",
-            ) { if (it) 1f else 0f }
-            val scale by transition.animateFloat(
-                transitionSpec = {
-                    if (false isTransitioningTo true) tween(100, easing = LinearOutSlowInEasing)
-                    else tween(80, easing = FastOutLinearInEasing)
-                },
-                label = "scale",
-            ) { if (it) 1f else 0.92f }
-            val lift by transition.animateFloat(
-                transitionSpec = {
-                    if (false isTransitioningTo true) tween(100, easing = FastOutSlowInEasing)
-                    else tween(80, easing = FastOutLinearInEasing)
-                },
-                label = "lift",
-            ) { if (it) 0f else -6f }
-
             val choices = CanvasModeChoice.entries
             var focused by remember { mutableStateOf(current.ordinal) }
             val focusRequester = remember { FocusRequester() }
@@ -298,27 +271,14 @@ private fun CanvasModeMenuPopup(
             // The highlight glides between rows instead of jumping, following the keyboard or the pointer.
             val highlightTop by animateDpAsState(
                 targetValue = menuRowTop(focused),
-                animationSpec = tween(80, easing = FastOutSlowInEasing),
+                animationSpec = tween(Motion.Instant, easing = FastOutSlowInEasing),
             )
 
             Box(
                 modifier = Modifier
-                    .graphicsLayer {
-                        this.alpha = alpha
-                        scaleX = scale
-                        scaleY = scale
-                        translationY = lift * density.density
-                        transformOrigin = TransformOrigin(0.12f, 0f)
-                    }
+                    .menuAppearance(visibility, TransformOrigin(0.12f, 0f), rise = false)
                     .width(MenuWidth)
-                    .frostedGlass(
-                        shape = RoundedCornerShape(7.dp),
-                        isHovered = true,
-                        elevation = 12.dp,
-                        baseColor = colors.panelElevated,
-                        alpha = 0.9f,
-                    )
-                    .border(0.5.dp, colors.borderHover.copy(alpha = 0.45f), RoundedCornerShape(7.dp))
+                    .menuPanel()
                     .focusRequester(focusRequester)
                     .focusable()
                     .onPreviewKeyEvent { event ->
@@ -398,12 +358,6 @@ private fun ModeMenuRow(
     val hovered by interactionSource.collectIsHoveredAsState()
     LaunchedEffect(hovered) { if (hovered) onHover() }
 
-    // Rows arrive one after another, a few milliseconds apart, sliding in from the button's side.
-    val arrival = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        delay(index * 5L)
-        arrival.animateTo(1f, tween(90, easing = FastOutSlowInEasing))
-    }
     val tint by animateColorAsState(
         targetValue = when {
             selected -> colors.accent
@@ -411,18 +365,15 @@ private fun ModeMenuRow(
             hovered -> colors.textPrimary
             else -> colors.textMuted
         },
-        animationSpec = tween(80),
+        animationSpec = tween(Motion.Instant),
     )
-    val density = LocalDensity.current
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(MenuItemHeight)
-            .graphicsLayer {
-                alpha = arrival.value
-                translationX = (1f - arrival.value) * -8f * density.density
-            }
+            // Rows arrive one after another, a few milliseconds apart, sliding in from the button's side.
+            .menuArrival(index)
             .clip(RoundedCornerShape(5.dp))
             .hoverable(interactionSource)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
@@ -431,7 +382,7 @@ private fun ModeMenuRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // The current mode is marked by a bar at the row's edge; the moving highlight is the focus.
-        val bar by animateFloatAsState(if (selected) 1f else 0f, tween(80, easing = FastOutSlowInEasing))
+        val bar by animateFloatAsState(if (selected) 1f else 0f, tween(Motion.Instant, easing = FastOutSlowInEasing))
         Box(
             Modifier
                 .width(2.dp)

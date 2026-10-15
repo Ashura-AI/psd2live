@@ -33,8 +33,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,7 +59,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.floatOrNull
-import java.awt.Cursor
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
 
 /**
  * A group of the model presets, drawn like a parameter folder: chevron, folder icon, name, and on the
@@ -79,7 +78,7 @@ internal fun PresetFolderRow(title: String, summary: String, expanded: Boolean, 
 			.height(24.dp)
 			.background(if (hovered && enabled) colors.controlHover.copy(alpha = 0.55f) else colors.panelElevated.copy(alpha = 0.55f))
 			.hoverable(interaction)
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.handCursor(enabled)
 			.clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onToggle)
 			.padding(start = 6.dp, end = 8.dp),
 		verticalAlignment = Alignment.CenterVertically,
@@ -126,7 +125,7 @@ private fun Hint(text: String, modifier: Modifier = Modifier, content: @Composab
 			}
 		},
 		modifier = modifier,
-		delayMillis = 400,
+		delayMillis = Motion.TooltipDelay,
 	) { content() }
 }
 
@@ -486,7 +485,7 @@ internal fun RigTuningPresets(state: PSD2LiveState, viewModel: PSD2LiveViewModel
 				.height(20.dp)
 				.background(if (hovered && !isBusy) colors.controlHover.copy(alpha = 0.55f) else colors.panelElevated.copy(alpha = 0.35f))
 				.hoverable(interaction)
-				.pointerHoverIcon(if (!isBusy) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+				.handCursor(!isBusy)
 				.clickable(enabled = !isBusy, interactionSource = interaction, indication = null) {
 					viewModel.setRigTuningAdvancedExpanded(!state.rigTuningAdvancedExpanded)
 				}

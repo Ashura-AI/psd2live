@@ -37,8 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -84,8 +82,12 @@ import org.umamo.runtime.model.Drawable
 import org.umamo.runtime.model.DrawableId
 import org.umamo.runtime.model.OrgChild
 import org.umamo.runtime.model.PartId
-import java.awt.Cursor
 import kotlin.math.roundToInt
+import io.github.psd2live.ui.theme.handCursor
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import io.github.psd2live.ui.theme.Motion
 
 @Composable
 internal fun InspectorPanelView(
@@ -689,8 +691,8 @@ private fun ArtMeshInspector(
 
             AnimatedVisibility(
                 visible = userDataExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut(),
+                enter = expandVertically(tween(Motion.Fold, easing = FastOutSlowInEasing)) + fadeIn(tween(Motion.Fade)),
+                exit = shrinkVertically(tween(Motion.Instant, easing = FastOutLinearInEasing)) + fadeOut(tween(Motion.Instant)),
             ) {
                 CompactTextField(
                     value = drawable.userData,
@@ -1138,7 +1140,7 @@ private fun InspectorColorRow(
                         .background(Color(intColor))
                         .border(1.dp, colors.border, RoundedCornerShape(2.dp))
                         .clickable { colorPickerOpen = true }
-                        .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+                        .handCursor()
                 )
 
                 if (colorPickerOpen) {
@@ -1239,7 +1241,7 @@ private fun ActionButton(
             .background(colors.panelElevated)
             .border(1.dp, colors.border, RoundedCornerShape(3.dp))
             .clickable(onClick = onClick)
-            .pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+            .handCursor(),
         contentAlignment = Alignment.Center,
     ) {
         content()

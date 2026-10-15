@@ -31,8 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,10 +44,10 @@ import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.theme.ThemeCatalog
 import io.github.psd2live.ui.theme.ThemeCodec
 import io.github.psd2live.ui.theme.ToolColors
-import java.awt.Cursor
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
+import io.github.psd2live.ui.theme.handCursor
 
 private const val THEME_CARD_COLUMNS = 4
 
@@ -199,7 +197,7 @@ private fun ThemeCard(
 		modifier = modifier
 			.hoverable(interactionSource)
 			.clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+			.handCursor(),
 		verticalArrangement = Arrangement.spacedBy(4.dp),
 	) {
 		Box(

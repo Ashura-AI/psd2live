@@ -42,13 +42,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.rememberTransition
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.DropdownMenu
@@ -59,7 +53,6 @@ import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
@@ -112,8 +105,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import io.github.psd2live.ui.theme.frostedGlass
-import java.awt.Cursor
+import io.github.psd2live.ui.views.texture.menuAppearance
+import io.github.psd2live.ui.views.texture.menuPanel
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
+import io.github.psd2live.ui.theme.HandPointer
 
 /**
  * Click-to-dismiss for a full-window dialog scrim. Without a MaterialTheme the default indication
@@ -640,7 +636,7 @@ fun CompactMenuItem(
 			.height(26.dp)
 			.clip(RoundedCornerShape(4.dp))
 			.background(itemBg)
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.handCursor(enabled)
 			.onPointerEvent(PointerEventType.Enter) { if (enabled) isHovered = true }
 			.onPointerEvent(PointerEventType.Exit) { isHovered = false }
 			.clickable(enabled = enabled, onClick = onClick)
@@ -759,27 +755,11 @@ fun TreeContextMenu(
 
 	Popup(popupPositionProvider = positionProvider, onDismissRequest = onDismissRequest, properties = PopupProperties(focusable = true)) {
 		androidx.compose.runtime.CompositionLocalProvider(LocalDensity provides density, LocalToolColors provides colors, LocalToolTypography provides typography) {
-			val transition = rememberTransition(expandedStates, "TreeContextMenuTransition")
-			val alpha by transition.animateFloat({
-				if (false isTransitioningTo true) tween(120, easing = LinearOutSlowInEasing) else tween(80, easing = FastOutLinearInEasing)
-			}, "alpha") { if (it) 1f else 0f }
-			val scale by transition.animateFloat({
-				if (false isTransitioningTo true) tween(100, easing = LinearOutSlowInEasing) else tween(80, easing = FastOutLinearInEasing)
-			}, "scale") { if (it) 1f else 0.92f }
-			val lift by transition.animateFloat({
-				if (false isTransitioningTo true) tween(100, easing = FastOutSlowInEasing) else tween(80, easing = FastOutLinearInEasing)
-			}, "lift") { if (it) 0f else -6f }
-			val shape = RoundedCornerShape(7.dp)
 			Column(
 				modifier
-					.graphicsLayer {
-						this.alpha = alpha; scaleX = scale; scaleY = scale
-						translationY = (if (corner.pivotFractionY == 1f) -lift else lift) * density.density
-						transformOrigin = corner
-					}
+					.menuAppearance(expandedStates, corner, rise = corner.pivotFractionY == 1f)
 					.widthIn(min = minWidth, max = maxWidth)
-					.frostedGlass(shape, isHovered = true, elevation = 12.dp, baseColor = colors.panelElevated, alpha = 0.9f)
-					.border(0.5.dp, colors.borderHover.copy(alpha = 0.45f), shape)
+					.menuPanel()
 					.padding(4.dp),
 				content = content,
 			)
@@ -837,7 +817,7 @@ fun CompactButton(
 			.border(BorderStroke(1.dp, borderColor), RoundedCornerShape(2.dp))
 			.hoverable(interactionSource)
 			.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) { onClick() }
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.handCursor(enabled)
 			.padding(horizontal = 6.dp),
 		contentAlignment = Alignment.Center,
 	) {
@@ -896,7 +876,7 @@ fun CompactIconButton(
 				.border(BorderStroke(1.dp, if (isHovered && enabled) colors.borderHover else colors.border), RoundedCornerShape(2.dp))
 				.hoverable(interactionSource)
 				.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) { onClick() }
-				.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default),
+				.handCursor(enabled),
 			contentAlignment = Alignment.Center,
 		) {
 			content()
@@ -921,7 +901,7 @@ fun CompactIconButton(
 				}
 			},
 			modifier = modifier,
-			delayMillis = 400,
+			delayMillis = Motion.TooltipDelay,
 		) {
 			buttonBox()
 		}
@@ -1223,7 +1203,7 @@ fun CompactSlider(
 			.height(height)
 			.hoverable(interactionSource)
 			.pointerHoverIcon(
-				if (enabled) PointerIcon(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR))
+				if (enabled) HandPointer
 				else PointerIcon.Default,
 			)
 			.pointerInput(valueRange, enabled) {
@@ -1310,7 +1290,7 @@ fun CompactCheckbox(
 			.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) {
 				onCheckedChange(!checked)
 			}
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.handCursor(enabled)
 			.padding(vertical = 2.dp),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
@@ -1391,7 +1371,7 @@ fun CompactToggleChip(
 				.border(BorderStroke(1.dp, borderColor), RoundedCornerShape(2.dp))
 				.hoverable(interactionSource)
 				.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) { onToggle() }
-				.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+				.handCursor(enabled)
 				.padding(horizontal = 4.dp),
 			contentAlignment = Alignment.Center,
 		) {
@@ -1437,7 +1417,7 @@ fun CompactToggleChip(
 					)
 				}
 			},
-			delayMillis = 400,
+			delayMillis = Motion.TooltipDelay,
 			modifier = modifier,
 		) {
 			chipBox()
@@ -1520,7 +1500,7 @@ fun <T> CompactDropdown(
 				.fillMaxWidth()
 				.background(colors.inputBackground, RoundedCornerShape(2.dp))
 				.border(BorderStroke(1.dp, colors.border), RoundedCornerShape(2.dp))
-				.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+				.handCursor(enabled)
 				.clickable(enabled = enabled) { expanded = true }
 				.padding(horizontal = 6.dp),
 			verticalAlignment = Alignment.CenterVertically,
@@ -1558,7 +1538,7 @@ fun <T> CompactDropdown(
 					modifier = Modifier
 						.height(26.dp)
 						.background(if (isSelected) colors.selection else Color.Transparent)
-						.pointerHoverIcon(if (isItemEnabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default),
+						.handCursor(isItemEnabled),
 				) {
 					Text(
 						text = itemLabel(item),
@@ -1622,7 +1602,7 @@ fun CompactTabBar(
 							)
 						}
 					}
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.handCursor()
 					.clickable(interactionSource = interactionSource, indication = null) {
 						onTabSelected(index)
 					}

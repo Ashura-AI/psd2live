@@ -28,6 +28,7 @@ import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import java.util.Locale
 import kotlin.math.abs
+import io.github.psd2live.ui.theme.Motion
 
 internal const val PHYSICS_FIELD = "physics-field"
 
@@ -82,7 +83,7 @@ internal fun FieldLabel(text: String, width: Int = 64, tooltip: String? = null) 
 					modifier = Modifier.widthIn(max = 260.dp).padding(horizontal = 6.dp, vertical = 3.dp))
 			}
 		},
-		delayMillis = 300,
+		delayMillis = Motion.TooltipDelay,
 	) { label() }
 }
 

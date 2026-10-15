@@ -69,6 +69,8 @@ import java.awt.datatransfer.StringSelection
 import kotlinx.coroutines.delay
 import kotlin.math.max
 import kotlin.math.roundToInt
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
 
 private const val NODE_WIDTH_DP = 184f
 private const val NODE_HEIGHT_DP = 46f
@@ -527,7 +529,7 @@ private fun HistoryNodeCard(
 	TooltipArea(
 		tooltip = { NodeTooltip(node, annotation, hint = if (isHead) null else tr("history.hint.doubleClick")) },
 		modifier = modifier,
-		delayMillis = 600,
+		delayMillis = Motion.TooltipDelay,
 	) {
 		Box(
 			modifier = Modifier
@@ -760,7 +762,7 @@ private fun PillButton(
 	val colors = LocalToolColors.current
 	val interaction = remember { MutableInteractionSource() }
 	val hovered by interaction.collectIsHoveredAsState()
-	TooltipArea(tooltip = { ParameterTooltip(tooltip) }, delayMillis = 400) {
+	TooltipArea(tooltip = { ParameterTooltip(tooltip) }, delayMillis = Motion.TooltipDelay) {
 		Box(
 			modifier = Modifier
 				.width(width)
@@ -768,7 +770,7 @@ private fun PillButton(
 				.background(if (hovered) colors.controlHover else Color.Transparent, RoundedCornerShape(3.dp))
 				.hoverable(interaction)
 				.clickable(interactionSource = interaction, indication = null, onClick = onClick)
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))),
+				.handCursor(),
 			contentAlignment = Alignment.Center,
 		) {
 			content(if (hovered) colors.textPrimary else colors.textMuted)
@@ -1070,7 +1072,7 @@ private fun ListRow(
 	val hovered by interaction.collectIsHoveredAsState()
 	val canRewind = enabled && !current
 
-	TooltipArea(tooltip = tooltip, delayMillis = 600) {
+	TooltipArea(tooltip = tooltip, delayMillis = Motion.TooltipDelay) {
 		Row(
 			modifier = Modifier
 				.fillMaxWidth()
@@ -1083,9 +1085,7 @@ private fun ListRow(
 					}
 				)
 				.hoverable(interaction)
-				.pointerHoverIcon(
-					PointerIcon(Cursor.getPredefinedCursor(if (canRewind) Cursor.HAND_CURSOR else Cursor.DEFAULT_CURSOR))
-				)
+				.handCursor(canRewind)
 				.clickable(enabled = canRewind, interactionSource = interaction, indication = null, onClick = onClick)
 				.padding(start = 6.dp, end = 6.dp),
 			verticalAlignment = Alignment.CenterVertically,
@@ -1173,7 +1173,7 @@ private fun DetailRow(label: String, value: String, onCopy: (() -> Unit)? = null
 			modifier = Modifier.weight(1f).then(
 				if (onCopy == null) Modifier else Modifier
 					.hoverable(interaction)
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.handCursor()
 					.clickable(interactionSource = interaction, indication = null, onClick = onCopy)
 			),
 		)

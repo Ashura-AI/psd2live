@@ -37,6 +37,7 @@ import io.github.psd2live.ui.views.texture.FloatingMenuRow
 import io.github.psd2live.ui.views.texture.FloatingMenuSection
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import io.github.psd2live.ui.theme.Motion
 
 /** Asks for the canvas size of a new Layout project, in canvas units. */
 @Composable
@@ -92,8 +93,8 @@ internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: (
 	AnimatedVisibility(
 		visible = visible,
 		modifier = Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 8.dp),
-		enter = slideInVertically(tween(200, easing = FastOutSlowInEasing)) { -it } + fadeIn(tween(160)),
-		exit = slideOutVertically(tween(160, easing = FastOutSlowInEasing)) { -it } + fadeOut(tween(120)),
+		enter = slideInVertically(tween(Motion.Expand, easing = FastOutSlowInEasing)) { -it } + fadeIn(tween(Motion.Fold)),
+		exit = slideOutVertically(tween(Motion.Fold, easing = FastOutSlowInEasing)) { -it } + fadeOut(tween(Motion.Fade)),
 	) {
 		val colors = LocalToolColors.current
 		FloatingBar {

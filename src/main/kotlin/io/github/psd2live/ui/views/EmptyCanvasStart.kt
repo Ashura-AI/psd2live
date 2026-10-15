@@ -52,7 +52,8 @@ import io.github.psd2live.ui.state.rememberExistingRecentFiles
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.tutorial.TutorialId
-import java.awt.Cursor
+import io.github.psd2live.ui.theme.handCursor
+import io.github.psd2live.ui.theme.HandPointer
 
 @Composable
 internal fun EmptyCanvasStart(
@@ -227,7 +228,7 @@ private fun FeatureUpdateRow(
 			.background(if (hovered && enabled) colors.controlHover else colors.windowBackground.copy(alpha = 0f), shape)
 			.hoverable(interactionSource)
 			.clickable(enabled = enabled, interactionSource = interactionSource, indication = null, onClick = onClick)
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.handCursor(enabled)
 			.padding(horizontal = 6.dp, vertical = 6.dp),
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -309,7 +310,7 @@ private fun StartActionRow(
 				onClick = onClick,
 			)
 			.pointerHoverIcon(
-				if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))
+				if (enabled) HandPointer
 				else PointerIcon.Default,
 			)
 			.padding(horizontal = 6.dp, vertical = 5.dp),
@@ -367,7 +368,7 @@ private fun RecentFileRow(
 				onClick = onClick,
 			)
 			.pointerHoverIcon(
-				if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR))
+				if (enabled) HandPointer
 				else PointerIcon.Default,
 			)
 			.padding(horizontal = 6.dp, vertical = 5.dp),

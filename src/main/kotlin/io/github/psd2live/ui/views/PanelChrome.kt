@@ -55,8 +55,6 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -80,7 +78,8 @@ import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
 
 /*
  * Panel toolbars. Every dock panel opens with one 28dp strip: 22dp controls 3dp apart on the elevated
@@ -359,7 +358,7 @@ internal fun PanelToolButton(
 	val interaction = remember { MutableInteractionSource() }
 	val hovered by interaction.collectIsHoveredAsState()
 	val pressed by interaction.collectIsPressedAsState()
-	TooltipArea(tooltip = { ParameterTooltip(tooltip) }, delayMillis = 400) {
+	TooltipArea(tooltip = { ParameterTooltip(tooltip) }, delayMillis = Motion.TooltipDelay) {
 		Row(
 			modifier = Modifier
 				.height(PanelToolHeight)
@@ -379,15 +378,15 @@ internal fun PanelToolButton(
 				)
 				.hoverable(interaction)
 				.clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick)
-				.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+				.handCursor(enabled)
 				.padding(horizontal = 5.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
 			Box(Modifier.size(12.dp), contentAlignment = Alignment.Center) { icon() }
 			AnimatedVisibility(
 				visible = showLabel,
-				enter = expandHorizontally(tween(160)) + fadeIn(tween(160)),
-				exit = shrinkHorizontally(tween(160)) + fadeOut(tween(120)),
+				enter = expandHorizontally(tween(Motion.Fold)) + fadeIn(tween(Motion.Fold)),
+				exit = shrinkHorizontally(tween(Motion.Fold)) + fadeOut(tween(Motion.Fade)),
 			) {
 				Text(
 					text = label,
@@ -424,23 +423,23 @@ internal fun PanelToolSwitch(
 	val typography = LocalToolTypography.current
 	val interaction = remember { MutableInteractionSource() }
 	val hovered by interaction.collectIsHoveredAsState()
-	val thumb by animateDpAsState(if (checked) 10.dp else 2.dp, tween(140))
+	val thumb by animateDpAsState(if (checked) 10.dp else 2.dp, tween(Motion.Fade))
 	val track by animateColorAsState(
 		when {
 			!enabled -> colors.border.copy(alpha = 0.4f)
 			checked -> colors.accent
 			else -> colors.border
 		},
-		tween(140),
+		tween(Motion.Fade),
 	)
-	TooltipArea(tooltip = { ParameterTooltip(tooltip) }, delayMillis = 400) {
+	TooltipArea(tooltip = { ParameterTooltip(tooltip) }, delayMillis = Motion.TooltipDelay) {
 		Row(
 			modifier = Modifier
 				.height(PanelToolHeight)
 				.background(if (hovered && enabled) colors.controlHover else Color.Transparent, RoundedCornerShape(2.dp))
 				.hoverable(interaction)
 				.clickable(enabled = enabled, interactionSource = interaction, indication = null) { onCheckedChange(!checked) }
-				.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+				.handCursor(enabled)
 				.padding(horizontal = 4.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
@@ -454,8 +453,8 @@ internal fun PanelToolSwitch(
 			}
 			AnimatedVisibility(
 				visible = showLabel,
-				enter = expandHorizontally(tween(160)) + fadeIn(tween(160)),
-				exit = shrinkHorizontally(tween(160)) + fadeOut(tween(120)),
+				enter = expandHorizontally(tween(Motion.Fold)) + fadeIn(tween(Motion.Fold)),
+				exit = shrinkHorizontally(tween(Motion.Fold)) + fadeOut(tween(Motion.Fade)),
 			) {
 				Text(
 					text = label,
@@ -505,7 +504,7 @@ internal fun PanelSectionRow(
 			.fillMaxWidth()
 			.background(if (hovered) colors.controlHover.copy(alpha = 0.55f) else colors.panelElevated.copy(alpha = 0.55f))
 			.hoverable(interaction)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.handCursor()
 			.clickable(interactionSource = interaction, indication = null, onClick = onToggle)
 			.padding(start = 4.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
 		verticalAlignment = Alignment.CenterVertically,

@@ -43,6 +43,7 @@ import io.github.psd2live.ui.views.texture.BarChip
 import io.github.psd2live.ui.views.texture.BarDivider
 import io.github.psd2live.ui.views.texture.BarTooltip
 import io.github.psd2live.ui.views.texture.FloatingBar
+import io.github.psd2live.ui.theme.Motion
 
 /** One button of a [SessionTopBar]: its label, the hint its tooltip adds, and whether it can run. */
 internal class SessionAction(val label: String, val onClick: () -> Unit, val enabled: Boolean = true, val hint: String? = null)
@@ -74,8 +75,8 @@ internal fun BoxScope.SessionTopBar(
 	AnimatedVisibility(
 		visible = visible,
 		modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
-		enter = slideInVertically(tween(220, easing = FastOutSlowInEasing)) { -it } + fadeIn(tween(160)),
-		exit = slideOutVertically(tween(160, easing = FastOutLinearInEasing)) { -it } + fadeOut(tween(120)),
+		enter = slideInVertically(tween(Motion.Expand, easing = FastOutSlowInEasing)) { -it } + fadeIn(tween(Motion.Fold)),
+		exit = slideOutVertically(tween(Motion.Fold, easing = FastOutLinearInEasing)) { -it } + fadeOut(tween(Motion.Fade)),
 	) {
 		SubcomposeLayout(Modifier.fillMaxWidth()) { constraints ->
 			val loose = Constraints(maxHeight = constraints.maxHeight)
@@ -136,7 +137,7 @@ private fun tooltip(action: SessionAction, compact: Boolean): String? = when {
 @Composable
 private fun PendingDot(color: Color) {
 	val breath by rememberInfiniteTransition("pending").animateFloat(0.45f, 1f,
-		infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse), "breath")
+		infiniteRepeatable(tween(Motion.Pulse, easing = LinearEasing), RepeatMode.Reverse), "breath")
 	Canvas(Modifier.size(7.dp)) {
 		drawCircle(color.copy(alpha = 0.25f * breath), size.minDimension / 2f)
 		drawCircle(color.copy(alpha = 0.6f + 0.4f * breath), size.minDimension / 2f - 1.5f)

@@ -67,9 +67,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -91,9 +89,10 @@ import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.utils.DesktopUtils
 import io.github.psd2live.ui.state.SidebarSide
-import java.awt.Cursor
 import java.awt.MouseInfo
 import java.awt.Point
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
 
 /** One title-bar layout toggle: the panels docked on [side] of the canvases. */
 @Immutable
@@ -881,8 +880,8 @@ fun AppTitleBar(
 					if (toggle != null) last[0] = toggle
 					AnimatedVisibility(
 						visible = toggle != null,
-						enter = fadeIn(tween(160)) + expandHorizontally(tween(200), expandFrom = Alignment.Start),
-						exit = fadeOut(tween(120)) + shrinkHorizontally(tween(200), shrinkTowards = Alignment.Start),
+						enter = fadeIn(tween(Motion.Fold)) + expandHorizontally(tween(Motion.Expand), expandFrom = Alignment.Start),
+						exit = fadeOut(tween(Motion.Fade)) + shrinkHorizontally(tween(Motion.Expand), shrinkTowards = Alignment.Start),
 					) {
 						val shown = toggle ?: last[0] ?: return@AnimatedVisibility
 						TitleBarLayoutToggle(
@@ -972,7 +971,7 @@ private fun TitleBarMenuItem(
 	Box(
 		modifier = modifier
 			.fillMaxHeight()
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.handCursor()
 			.onPointerEvent(PointerEventType.Enter) {
 				isHovered = true
 				onHoverWhenActive()
@@ -1097,7 +1096,7 @@ fun AppMenuItem(
 					else -> Color.Transparent
 				}
 			)
-			.pointerHoverIcon(if (enabled) PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)) else PointerIcon.Default)
+			.handCursor(enabled)
 			.onPointerEvent(PointerEventType.Enter) {
 				if (enabled) {
 					isHovered = true
@@ -1208,7 +1207,7 @@ fun AppSubmenuItem(
 						else -> Color.Transparent
 					}
 				)
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.handCursor()
 				.onPointerEvent(PointerEventType.Enter) {
 					isHovered = true
 					onOpen()
@@ -1309,8 +1308,8 @@ private fun TitleBarLayoutToggle(
 	val typography = LocalToolTypography.current
 	var isHovered by remember { mutableStateOf(false) }
 	// The band grows in from the frame edge as the sidebar opens and shrinks as it closes.
-	val open by animateFloatAsState(if (active) 1f else 0f, tween(200), label = "sidebarOpen")
-	val hover by animateFloatAsState(if (isHovered) 1f else 0f, tween(120), label = "sidebarHover")
+	val open by animateFloatAsState(if (active) 1f else 0f, tween(Motion.Expand), label = "sidebarOpen")
+	val hover by animateFloatAsState(if (isHovered) 1f else 0f, tween(Motion.Fade), label = "sidebarHover")
 
 	TooltipArea(
 		tooltip = {
@@ -1328,13 +1327,13 @@ private fun TitleBarLayoutToggle(
 				)
 			}
 		},
-		delayMillis = 400,
+		delayMillis = Motion.TooltipDelay,
 	) {
 		Box(
 			modifier = modifier
 				.width(30.dp)
 				.fillMaxHeight()
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.handCursor()
 				.onPointerEvent(PointerEventType.Enter) { isHovered = true }
 				.onPointerEvent(PointerEventType.Exit) { isHovered = false }
 				.clickable(onClick = onClick),
@@ -1398,14 +1397,14 @@ private fun TitleBarLanguageButton(
 				)
 			}
 		},
-		delayMillis = 400,
+		delayMillis = Motion.TooltipDelay,
 	) {
 		Box(
 			modifier = Modifier
 				.width(30.dp)
 				.fillMaxHeight()
 				.background(if (expanded) colors.selection else Color.Transparent)
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.handCursor()
 				.onPointerEvent(PointerEventType.Enter) { isHovered = true }
 				.onPointerEvent(PointerEventType.Exit) { isHovered = false }
 				.clickable(onClick = onToggle),
@@ -1467,13 +1466,13 @@ private fun TitleBarThemeToggle(
 				)
 			}
 		},
-		delayMillis = 400,
+		delayMillis = Motion.TooltipDelay,
 	) {
 		Box(
 			modifier = Modifier
 				.width(30.dp)
 				.fillMaxHeight()
-				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+				.handCursor()
 				.onPointerEvent(PointerEventType.Enter) { isHovered = true }
 				.onPointerEvent(PointerEventType.Exit) { isHovered = false }
 				.clickable(onClick = onClick),
@@ -1515,7 +1514,7 @@ private fun WindowControlButton(
 		modifier = Modifier
 			.width(44.dp)
 			.fillMaxHeight()
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.handCursor()
 			.onPointerEvent(PointerEventType.Enter) { isHovered = true }
 			.onPointerEvent(PointerEventType.Exit) { isHovered = false }
 			.background(

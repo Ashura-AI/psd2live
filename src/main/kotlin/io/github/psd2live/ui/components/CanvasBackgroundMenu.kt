@@ -18,8 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,7 +26,7 @@ import io.github.psd2live.ui.state.CanvasBackground
 import io.github.psd2live.ui.state.CanvasBackgroundKind
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
+import io.github.psd2live.ui.theme.handCursor
 
 /**
  * The canvas header's background dropdown: the kind, then the colours of that kind. Picking a kind
@@ -134,7 +132,7 @@ private fun SizeChip(size: Int, active: Boolean, onClick: () -> Unit) {
 			.clip(RoundedCornerShape(3.dp))
 			.background(if (active) colors.accent.copy(alpha = 0.14f) else Color.Transparent)
 			.border(1.dp, if (active) colors.accent.copy(alpha = 0.5f) else colors.border, RoundedCornerShape(3.dp))
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+			.handCursor()
 			.clickable(onClick = onClick)
 			.padding(vertical = 2.dp),
 		textAlign = androidx.compose.ui.text.style.TextAlign.Center,

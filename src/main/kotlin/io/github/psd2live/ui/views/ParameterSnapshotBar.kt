@@ -43,9 +43,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,7 +62,8 @@ import io.github.psd2live.project.ParameterSnapshot
 import io.github.psd2live.ui.state.ParameterSnapshotPreview
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
-import java.awt.Cursor
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
 
 /**
  * One-line bar of parameter snapshots: + saves the current pose, hover ghosts it on the canvas, a click loads one,
@@ -86,7 +85,7 @@ internal fun ParameterSnapshotBar(
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(3.dp),
 	) {
-		TooltipArea(tooltip = { ParameterTooltip(tr("parameters.snapshotsHint")) }, delayMillis = 400) {
+		TooltipArea(tooltip = { ParameterTooltip(tr("parameters.snapshotsHint")) }, delayMillis = Motion.TooltipDelay) {
 			Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
 				IconSnapshot(modifier = Modifier.size(12.dp), tint = colors.textMuted)
 			}
@@ -187,7 +186,7 @@ private fun ParameterSnapshotChip(
 				onFocusLost = ::commit,
 			)
 		} else {
-			TooltipArea(tooltip = { ParameterTooltip(snapshot.name.ifBlank { tr("parameters.snapshotName", snapshot.number) }) }, delayMillis = 400) {
+			TooltipArea(tooltip = { ParameterTooltip(snapshot.name.ifBlank { tr("parameters.snapshotName", snapshot.number) }) }, delayMillis = Motion.TooltipDelay) {
 				Box(
 					modifier = Modifier
 						.height(18.dp)
@@ -210,7 +209,7 @@ private fun ParameterSnapshotChip(
 							}
 						}
 						.clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onApply)
-						.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+						.handCursor()
 						.padding(horizontal = 4.dp),
 					contentAlignment = Alignment.Center,
 				) {

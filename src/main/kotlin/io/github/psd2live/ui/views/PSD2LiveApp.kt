@@ -41,8 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
@@ -119,7 +117,6 @@ import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.utils.NativeFilePicker
 import io.github.psd2live.ui.components.SidebarToggle
-import java.awt.Cursor
 import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
@@ -133,6 +130,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.JOptionPane
 import androidx.compose.ui.input.key.Key
+import io.github.psd2live.ui.theme.Motion
+import io.github.psd2live.ui.theme.handCursor
 @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun FrameWindowScope.PSD2LiveApp(
@@ -906,7 +905,7 @@ private fun StatusBar(
 		androidx.compose.foundation.TooltipArea(
 			tooltip = { Box(Modifier.widthIn(max = 720.dp)) { ParameterTooltip(statusText) } },
 			modifier = Modifier.weight(1f),
-			delayMillis = 400,
+			delayMillis = Motion.TooltipDelay,
 		) {
 			Text(
 				text = statusText,
@@ -963,7 +962,7 @@ private fun StatusBar(
 					.background(colors.controlBackground, RoundedCornerShape(3.dp))
 					.border(BorderStroke(1.dp, colors.border), RoundedCornerShape(3.dp))
 					.clickable { showZoomMenu = true }
-					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)))
+					.handCursor()
 					.padding(horizontal = 6.dp),
 				verticalAlignment = Alignment.CenterVertically,
 				horizontalArrangement = Arrangement.spacedBy(4.dp),

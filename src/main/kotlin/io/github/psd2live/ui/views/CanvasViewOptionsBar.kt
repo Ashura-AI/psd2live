@@ -63,6 +63,7 @@ import io.github.psd2live.ui.views.texture.BarTooltip
 import io.github.psd2live.ui.views.texture.canvasChrome
 import io.github.psd2live.ui.tutorial.TutorialTargetId
 import io.github.psd2live.ui.tutorial.tutorialTarget
+import io.github.psd2live.ui.theme.Motion
 
 /**
  * What a row of a [CanvasOptionsRail] needs to animate with it: whether the rail is open, its labels' fade and
@@ -99,13 +100,13 @@ internal fun CanvasOptionsRail(
 
 	val animatedWidth by animateDpAsState(
 		targetValue = if (isToolbarHovered) expandedWidth else 34.dp,
-		animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+		animationSpec = tween(durationMillis = Motion.Expand, easing = FastOutSlowInEasing),
 	)
 	val textAlpha by animateFloatAsState(
 		targetValue = if (isToolbarHovered) 1f else 0f,
 		animationSpec = tween(
-			durationMillis = if (isToolbarHovered) 150 else 80,
-			delayMillis = if (isToolbarHovered) 40 else 0,
+			durationMillis = if (isToolbarHovered) Motion.Fade else Motion.Instant,
+			delayMillis = if (isToolbarHovered) Motion.LabelDelay else 0,
 			easing = FastOutSlowInEasing,
 		),
 	)
@@ -113,14 +114,14 @@ internal fun CanvasOptionsRail(
 	val textOffset by animateDpAsState(
 		targetValue = if (isToolbarHovered) 0.dp else if (leading) (-6).dp else 6.dp,
 		animationSpec = tween(
-			durationMillis = if (isToolbarHovered) 180 else 80,
-			delayMillis = if (isToolbarHovered) 30 else 0,
+			durationMillis = if (isToolbarHovered) Motion.Fold else Motion.Instant,
+			delayMillis = if (isToolbarHovered) Motion.LabelDelay else 0,
 			easing = FastOutSlowInEasing,
 		),
 	)
 	val elevation by animateDpAsState(
 		targetValue = if (isToolbarHovered) 8.dp else 2.dp,
-		animationSpec = tween(durationMillis = 200),
+		animationSpec = tween(durationMillis = Motion.Expand),
 	)
 	val scope = CanvasRailScope(animatedWidth > 42.dp, textAlpha, textOffset, leading)
 	Column(
