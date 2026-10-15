@@ -51,8 +51,8 @@ class ExportDialogTool {
 										windowState = WindowState(), isBusy = false, hasInput = true,
 										currentLanguage = language, onOpenPsd = {}, onOpenProject = {}, onSaveProject = {},
 										onSaveProjectAs = {}, projectTitle = "tml", onReanalyze = {}, onReexportPsd = {},
-										onShowExport = {}, onClose = {}, onSetLanguage = {}, onShowAgentConnection = {},
-										onShowTextureUpscale = {}, onShowHistory = {}, onShowAbout = {},
+										onShowExport = {}, onClose = {}, onSetLanguage = {},
+										onShowTextureUpscale = {}, onShowHistory = {},
 										tutorialMenuForce = "file",
 									)
 								}

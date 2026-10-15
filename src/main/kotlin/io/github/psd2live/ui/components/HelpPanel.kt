@@ -94,6 +94,8 @@ internal fun HelpPanel(
 						copied = true
 					},
 				)
+				HelpTab.EXAMPLES -> ExamplesContent(onOpenUrl)
+				HelpTab.LICENSES -> LicensesContent(onOpenUrl)
 				HelpTab.ABOUT -> DccAboutContent()
 			}
 		}
@@ -176,6 +178,16 @@ private fun DccPsdSpecContent(onOpenUrl: (String) -> Unit) {
 		style = typography.caption.copy(fontSize = 11.5.sp, lineHeight = 16.sp),
 		color = colors.textPrimary,
 	)
+	CompactButton(tr("help.spec.fullTable"), onClick = { onOpenUrl(docsUrl("spec/PSD_LAYER_SPEC.md")) }, height = 22.dp)
+
+	DccSpecTable(
+		title = tr("help.spec.group.prepare"),
+		rows = listOf(
+			tr("help.spec.prepare.format"),
+			tr("help.spec.prepare.raster"),
+			tr("help.spec.prepare.pose"),
+		),
+	)
 
 	// Head & Facial Group
 	DccSpecTable(
@@ -226,7 +238,8 @@ private fun DccPsdSpecContent(onOpenUrl: (String) -> Unit) {
 		rows = listOf(
 			tr("help.spec.note.eyelash"),
 			tr("help.spec.note.mouth"),
-			tr("help.spec.note.body"),
+			tr("help.spec.note.hair"),
+			tr("help.spec.note.sides"),
 			tr("help.spec.note.unknown"),
 		),
 	)
@@ -291,14 +304,6 @@ private fun DccShortcutsContent(keymap: Keymap, query: String) {
 			tr("help.shortcuts.zoomWheel") to "Wheel",
 			tr("help.shortcuts.panCanvas") to "Space + Left Drag",
 			tr("help.shortcuts.selectLayer") to "Left Click",
-		),
-	)
-
-	// Menu-only commands: no key to show, but the page still documents them.
-	DccShortcutGroup(
-		title = tr("help.shortcuts.group.tools"),
-		shortcuts = listOf(
-			tr("help.shortcuts.agentConnect") to tr("help.shortcuts.menuOnly"),
 		),
 	)
 
@@ -393,6 +398,7 @@ private fun DccCommunityLinksContent(
 		Triple(tr("help.links.issues.title"), DesktopUtils.GITHUB_ISSUES_URL, tr("help.links.issues.desc")),
 		Triple(tr("help.links.releases.title"), DesktopUtils.GITHUB_RELEASES_URL, tr("help.links.releases.desc")),
 		Triple(tr("help.links.docs.title"), DesktopUtils.GITHUB_DOCS_URL, tr("help.links.docs.desc")),
+		Triple(tr("help.links.examples.title"), DesktopUtils.EXAMPLES_REPO_URL, tr("help.links.examples.desc")),
 	)
 
 	Column(
@@ -509,6 +515,12 @@ private fun DccAboutContent() {
 		)
 
 		Text(
+			text = tr("help.about.thirdParty"),
+			style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 15.sp),
+			color = colors.textMuted,
+		)
+
+		Text(
 			text = tr("help.about.sdkNotice"),
 			style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 15.sp),
 			color = colors.textMuted,
@@ -521,5 +533,113 @@ private fun DccAboutContent() {
 			style = typography.monoSmall.copy(fontSize = 10.sp),
 			color = colors.textMuted,
 		)
+	}
+}
+
+/** A page of the repository's documentation in the reader's language, Chinese where it has no translation. */
+private fun docsUrl(path: String): String {
+	val folder = when (io.github.psd2live.i18n.I18n.currentLanguage.tag) {
+		"en" -> "en"
+		"ja" -> "ja"
+		else -> "zh"
+	}
+	return "${DesktopUtils.GITHUB_REPO_URL}/blob/master/docs/$folder/$path"
+}
+
+// ---------------------------------------------------------------------------
+// Examples: what the example repository holds and how to use it.
+// ---------------------------------------------------------------------------
+@Composable
+private fun ExamplesContent(onOpenUrl: (String) -> Unit) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+
+	Text(
+		text = tr("help.examples.intro"),
+		style = typography.caption.copy(fontSize = 11.5.sp, lineHeight = 16.sp),
+		color = colors.textPrimary,
+	)
+	Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+		CompactButton(tr("help.examples.open"), onClick = { onOpenUrl(DesktopUtils.EXAMPLES_REPO_URL) }, isPrimary = true, height = 22.dp)
+		CompactButton(tr("help.examples.submit"), onClick = { onOpenUrl(DesktopUtils.EXAMPLES_SUBMIT_URL) }, height = 22.dp)
+	}
+	DccSpecTable(
+		title = tr("help.examples.group.contents"),
+		rows = listOf(
+			tr("help.examples.contents.psd"),
+			tr("help.examples.contents.projects"),
+			tr("help.examples.contents.cases"),
+			tr("help.examples.contents.prompts"),
+		),
+	)
+	DccSpecTable(
+		title = tr("help.examples.group.use"),
+		rows = listOf(
+			tr("help.examples.use.psd"),
+			tr("help.examples.use.project"),
+			tr("help.examples.use.terms"),
+		),
+	)
+}
+
+// ---------------------------------------------------------------------------
+// Licenses: the third-party components the app is built from or ships with.
+// ---------------------------------------------------------------------------
+
+/** One component: its name, its license as published, and what it does here (a message key). */
+private class ThirdPartyComponent(val name: String, val license: String, val useKey: String)
+
+private val ThirdPartyComponents = listOf(
+	ThirdPartyComponent("Umamo", "GPL-3.0", "help.licenses.use.umamo"),
+	ThirdPartyComponent("Compose Multiplatform · Skiko (Skia)", "Apache-2.0 · BSD-3-Clause", "help.licenses.use.compose"),
+	ThirdPartyComponent("Kotlin · kotlinx.coroutines · kotlinx.serialization · kotlinx-datetime", "Apache-2.0", "help.licenses.use.kotlin"),
+	ThirdPartyComponent("LWJGL", "BSD-3-Clause", "help.licenses.use.lwjgl"),
+	ThirdPartyComponent("JNA", "Apache-2.0 / LGPL-2.1", "help.licenses.use.jna"),
+	ThirdPartyComponent("Model Context Protocol Kotlin SDK", "MIT · Apache-2.0", "help.licenses.use.mcp"),
+	ThirdPartyComponent("Ktor", "Apache-2.0", "help.licenses.use.ktor"),
+	ThirdPartyComponent("Okio", "Apache-2.0", "help.licenses.use.okio"),
+	ThirdPartyComponent("JDOM", "JDOM License", "help.licenses.use.jdom"),
+	ThirdPartyComponent("aircompressor", "Apache-2.0", "help.licenses.use.aircompressor"),
+	ThirdPartyComponent("miniz_oxide · ruzstd", "MIT / Zlib / Apache-2.0 · MIT", "help.licenses.use.runtimeCrates"),
+	ThirdPartyComponent("MHR v1.0.1", "Apache-2.0", "help.licenses.use.mhr"),
+	ThirdPartyComponent("Stretchy Studio", "MIT", "help.licenses.use.stretchy"),
+	ThirdPartyComponent("FFmpeg", "GPL-3.0", "help.licenses.use.ffmpeg"),
+	ThirdPartyComponent("waifu2x (nunif)", "MIT", "help.licenses.use.nunif"),
+	ThirdPartyComponent("Live2D Cubism SDK", "Live2D Proprietary Software License", "help.licenses.use.cubism"),
+)
+
+@Composable
+private fun LicensesContent(onOpenUrl: (String) -> Unit) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+
+	Text(
+		text = tr("help.licenses.intro"),
+		style = typography.caption.copy(fontSize = 11.5.sp, lineHeight = 16.sp),
+		color = colors.textPrimary,
+	)
+	CompactButton(tr("help.licenses.full"), onClick = { onOpenUrl("${DesktopUtils.GITHUB_REPO_URL}/blob/master/THIRD_PARTY_NOTICES.md") }, height = 22.dp)
+
+	Column(
+		modifier = Modifier
+			.fillMaxWidth()
+			.background(colors.panelElevated)
+			.border(BorderStroke(1.dp, colors.divider)),
+	) {
+		ThirdPartyComponents.forEachIndexed { index, component ->
+			if (index > 0) Divider(color = colors.divider, thickness = 1.dp)
+			Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+					Text(
+						component.name,
+						style = typography.caption.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold),
+						color = colors.textPrimary,
+						modifier = Modifier.weight(1f),
+					)
+					Text(component.license, style = typography.monoSmall.copy(fontSize = 10.5.sp), color = colors.accent)
+				}
+				Text(tr(component.useKey), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
+			}
+		}
 	}
 }

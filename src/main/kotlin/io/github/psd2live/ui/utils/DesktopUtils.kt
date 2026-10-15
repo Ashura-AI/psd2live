@@ -12,6 +12,8 @@ object DesktopUtils {
 	const val GITHUB_REPO_URL = "https://github.com/tsunehimatoi/psd2live"
 	const val GITHUB_ISSUES_URL = "https://github.com/tsunehimatoi/psd2live/issues"
 	const val GITHUB_RELEASES_URL = "https://github.com/tsunehimatoi/psd2live/releases"
+	const val EXAMPLES_REPO_URL = "https://github.com/tsunehimatoi/psd2live-examples"
+	const val EXAMPLES_SUBMIT_URL = "https://github.com/tsunehimatoi/psd2live-examples/issues/new/choose"
 	const val GITHUB_DOCS_URL = "https://github.com/tsunehimatoi/psd2live#%E6%96%87%E6%A1%A3%E7%B4%A2%E5%BC%95"
 
 	private val lock = Any()

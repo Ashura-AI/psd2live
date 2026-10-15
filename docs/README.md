@@ -2,11 +2,11 @@
 
 [中文首页](../README.md) · [English](en/README.md) · [日本語](ja/README.md) · [한국어](ko/README.md) · [更新日志](zh/CHANGELOG.md)
 
-学习操作请先用程序内的 **帮助 → 教程…**（`F1`）：零基础路线 19 课，Cubism 经验者路线 14 课。下列文档用于回看操作和查阅技术细节。中文为主要语言；尚无译文的页面在英文、日文列中标注为中文参考。
+学习操作请先用程序内帮助页的 **教程**（`F1`）：零基础路线 19 课，Cubism 经验者路线 14 课。下列文档用于回看操作和查阅技术细节。中文为主要语言；尚无译文的页面在英文、日文列中标注为中文参考。
 
-For hands-on learning, open **Help → Tutorials…** (`F1`). Chinese is the primary documentation language; pages without a translation link to the Chinese reference.
+For hands-on learning, open the **Tutorials** on the Help page (`F1`). Chinese is the primary documentation language; pages without a translation link to the Chinese reference.
 
-操作の習得には **ヘルプ → チュートリアル…**（`F1`）を使ってください。主要言語は中国語で、未翻訳のページは中国語版へリンクしています。
+操作の習得にはヘルプページの **チュートリアル**（`F1`）を使ってください。主要言語は中国語で、未翻訳のページは中国語版へリンクしています。
 
 ## 使用指南 · Guides
 

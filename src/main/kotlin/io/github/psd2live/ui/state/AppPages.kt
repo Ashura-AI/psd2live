@@ -27,7 +27,9 @@ enum class HelpTab(internal val labelKey: String) {
 	QUICK_START("help.tab.quickstart"),
 	PSD_SPEC("help.tab.psd_spec"),
 	SHORTCUTS("help.tab.shortcuts"),
+	EXAMPLES("help.tab.examples"),
 	COMMUNITY_LINKS("help.tab.links"),
+	LICENSES("help.tab.licenses"),
 	ABOUT("help.tab.about"),
 }
 

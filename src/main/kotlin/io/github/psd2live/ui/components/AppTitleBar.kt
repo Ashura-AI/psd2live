@@ -84,7 +84,8 @@ import io.github.psd2live.i18n.AppLanguage
 import io.github.psd2live.i18n.I18n
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.theme.LocalToolColors
-import io.github.psd2live.ui.state.HelpTab
+import io.github.psd2live.ui.state.AppPage
+import io.github.psd2live.ui.views.PageIcon
 import io.github.psd2live.ui.state.Keymap
 import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.theme.LocalToolTypography
@@ -99,6 +100,15 @@ import io.github.psd2live.ui.theme.handCursor
 @Immutable
 /** A folder the File menu opens; [path] is null, or not a folder, when there is none to open. */
 data class MenuFolder(val label: String, val path: String?, val startsGroup: Boolean = false)
+
+/** The web pages the Help menu opens, in its order: label key to address. */
+internal val HelpLinks = listOf(
+	"menu.help.github" to DesktopUtils.GITHUB_REPO_URL,
+	"menu.help.docs" to DesktopUtils.GITHUB_DOCS_URL,
+	"menu.help.examples" to DesktopUtils.EXAMPLES_REPO_URL,
+	"menu.help.releases" to DesktopUtils.GITHUB_RELEASES_URL,
+	"menu.help.issues" to DesktopUtils.GITHUB_ISSUES_URL,
+)
 
 data class SidebarToggle(
 	val side: SidebarSide,
@@ -120,8 +130,6 @@ fun AppTitleBar(
 	hasInput: Boolean,
 	folders: List<MenuFolder> = emptyList(),
 	currentLanguage: AppLanguage,
-	uiScale: Float = 1.0f,
-	fontScale: Float = 1.0f,
 	darkTheme: Boolean = true,
 	keymap: Keymap = Keymap.DEFAULT,
 	/** Only the sides the active workspace docks panels on; a side with none gets no button. */
@@ -150,11 +158,10 @@ fun AppTitleBar(
 	onZoomIn: () -> Unit = {},
 	onZoomOut: () -> Unit = {},
 	onResetZoom: () -> Unit = {},
-	onSetUiScale: (Float) -> Unit = {},
-	onSetFontScale: (Float) -> Unit = {},
 	onToggleTheme: () -> Unit = {},
+	/** Whether the settings page is the one shown: its title-bar button reads as pressed. */
+	settingsShown: Boolean = false,
 	onShowSettings: () -> Unit = {},
-	onShowAgentConnection: () -> Unit,
 	onShowTextureUpscale: () -> Unit,
 	onStartScreen: () -> Unit = {},
 	onMeshSplitScan: () -> Unit = {},
@@ -169,9 +176,8 @@ fun AppTitleBar(
 	onCloseTab: () -> Unit = {},
 	onNextTab: () -> Unit = {},
 	onPrevTab: () -> Unit = {},
-	onShowAbout: () -> Unit,
-	onShowHelp: (HelpTab) -> Unit = { onShowAbout() },
-	onOpenTutorialCatalog: () -> Unit = {},
+	/** Opens the help page on the topic last read there. */
+	onOpenHelp: () -> Unit = {},
 	tutorialMenuForce: String? = null,
 	tutorialHighlightTarget: TutorialTargetId? = null,
 	tutorialId: TutorialId? = null,
@@ -320,9 +326,9 @@ fun AppTitleBar(
 
 					AppMenuSeparator()
 
-					// Import: a new project from a PSD or a cmo3, or a cmo3 over the current one.
+					// New: a project from a PSD, a cmo3 or an empty layout canvas.
 					AppSubmenuItem(
-						text = tr("menu.file.import"),
+						text = tr("menu.file.new"),
 						isOpen = activeSubmenu == "import" ||
 							tutorialMenuForce == "file" && tutorialHighlightTarget == TutorialTargetId.FILE_IMPORT,
 						onOpen = { activeSubmenu = "import" },
@@ -337,14 +343,6 @@ fun AppTitleBar(
 						)
 						AppMenuItem(text = tr("cmo3.new"), enabled = !isBusy, onClick = { activeMenu = null; activeSubmenu = null; onNewCmo3() })
 						AppMenuItem(text = tr("menu.file.newLayout"), enabled = !isBusy, onClick = { activeMenu = null; activeSubmenu = null; onNewLayout() })
-						AppMenuSeparator()
-						AppMenuItem(text = tr("cmo3.replace"), enabled = !isBusy, onClick = { activeMenu = null; activeSubmenu = null; onReplaceCmo3() })
-						AppMenuItem(
-							text = tr("menu.file.reanalyze"),
-							shortcut = keymap.labelFor(ShortcutAction.REANALYZE),
-							enabled = hasInput && !isBusy,
-							onClick = { activeMenu = null; activeSubmenu = null; onReanalyze() },
-						)
 					}
 
 					AppMenuSeparator()
@@ -544,70 +542,10 @@ fun AppTitleBar(
 						},
 					)
 
-					// 二级菜单: 界面缩放比例 (Interface Scale)
-					val currentUiPercent = (uiScale * 100).toInt()
-					AppSubmenuItem(
-						text = "${tr("menu.view.uiScale")} ($currentUiPercent%)",
-						isOpen = activeSubmenu == "uiScale",
-						onOpen = { activeSubmenu = "uiScale" },
-						onDismiss = { if (activeSubmenu == "uiScale") activeSubmenu = null },
-					) {
-						val uiScales = listOf(1.0f, 1.15f, 1.25f, 1.35f, 1.50f, 1.75f, 2.00f, 2.50f)
-						for (scale in uiScales) {
-							val percent = (scale * 100).toInt()
-							val label = when (scale) {
-								1.0f -> "$percent% (${tr("settings.scale.standard")})"
-								1.25f -> "$percent% (2K)"
-								1.5f -> "$percent% (2K/4K)"
-								1.75f -> "$percent% (4K)"
-								2.0f -> "$percent% (4K)"
-								else -> "$percent%"
-							}
-							val isSelected = kotlin.math.abs(uiScale - scale) < 0.03f
-							AppMenuItem(
-								text = label,
-								isChecked = isSelected,
-								onClick = {
-									activeMenu = null
-									activeSubmenu = null
-									onSetUiScale(scale)
-								},
-							)
-						}
-					}
-
-					// 二级菜单: 字体大小 (Font Size)
-					val currentFontPercent = (fontScale * 100).toInt()
-					AppSubmenuItem(
-						text = "${tr("menu.view.fontScale")} ($currentFontPercent%)",
-						isOpen = activeSubmenu == "fontScale",
-						onOpen = { activeSubmenu = "fontScale" },
-						onDismiss = { if (activeSubmenu == "fontScale") activeSubmenu = null },
-					) {
-						val fontScales = listOf(
-							0.90f to tr("settings.font.compact"),
-							1.00f to tr("settings.font.standard"),
-							1.15f to tr("settings.font.large"),
-							1.30f to tr("settings.font.extraLarge"),
-						)
-						for ((scale, label) in fontScales) {
-							val isSelected = kotlin.math.abs(fontScale - scale) < 0.04f
-							AppMenuItem(
-								text = label,
-								isChecked = isSelected,
-								onClick = {
-									activeMenu = null
-									activeSubmenu = null
-									onSetFontScale(scale)
-								},
-							)
-						}
-					}
-
 				}
 			}
 
-			// 3. Tools Menu
+			// 3. Model menu: operations on the open model as a whole. Its id stays "tools" for the tutorials.
 			TitleBarMenuItem(
 				title = tr("menu.tools"),
 				isOpen = activeMenu == "tools",
@@ -656,90 +594,53 @@ fun AppTitleBar(
 					} else null,
 				) {
 					AppMenuItem(
+						text = tr("menu.file.reanalyze"),
+						shortcut = keymap.labelFor(ShortcutAction.REANALYZE),
+						enabled = hasInput && !isBusy,
+						onHover = { activeSubmenu = null },
+						onClick = { activeMenu = null; activeSubmenu = null; onReanalyze() },
+					)
+					AppMenuItem(
+						text = tr("cmo3.replace"),
+						enabled = !isBusy,
+						onHover = { activeSubmenu = null },
+						onClick = { activeMenu = null; activeSubmenu = null; onReplaceCmo3() },
+					)
+
+					AppMenuSeparator()
+
+					AppMenuItem(
+						text = tr("menu.tools.meshSplit"),
+						enabled = hasInput && !isBusy,
+						onHover = { activeSubmenu = null },
+						onClick = { activeMenu = null; activeSubmenu = null; onMeshSplitScan() },
+					)
+					AppMenuItem(
 						text = tr("menu.tools.textureUpscale"),
 						shortcut = keymap.labelFor(ShortcutAction.TEXTURE_UPSCALE),
 						enabled = hasInput && !isBusy,
 						highlighted = tutorialHighlightTarget == TutorialTargetId.TOOLS_TEXTURE_UPSCALE,
 						modifier = Modifier.tutorialTarget(TutorialTargetId.TOOLS_TEXTURE_UPSCALE),
 						onHover = { activeSubmenu = null },
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onShowTextureUpscale()
-						},
-					)
-					AppMenuItem(
-						text = tr("menu.tools.startScreen"),
-						onHover = { activeSubmenu = null },
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onStartScreen()
-						},
-					)
-					AppMenuItem(
-						text = tr("menu.tools.meshSplit"),
-						enabled = hasInput && !isBusy,
-						onHover = { activeSubmenu = null },
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onMeshSplitScan()
-						},
-					)
-					AppMenuItem(
-						text = tr("menu.tools.updateGeneration"),
-						enabled = hasInput && !isBusy && canUpdateGeneration,
-						onHover = { activeSubmenu = null },
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onUpdateGeneration()
-						},
-					)
-					AppMenuItem(
-						text = tr("menu.tools.previewGenerationUpdate"),
-						enabled = hasInput && !isBusy && canUpdateGeneration,
-						onHover = { activeSubmenu = null },
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onPreviewGenerationUpdate()
-						},
+						onClick = { activeMenu = null; activeSubmenu = null; onShowTextureUpscale() },
 					)
 
 					AppMenuSeparator()
 
 					AppMenuItem(
-						text = tr("menu.agent"),
+						text = tr("menu.tools.updateGeneration"),
+						enabled = hasInput && !isBusy && canUpdateGeneration,
 						onHover = { activeSubmenu = null },
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onShowAgentConnection()
-						},
+						onClick = { activeMenu = null; activeSubmenu = null; onUpdateGeneration() },
+					)
+					AppMenuItem(
+						text = tr("menu.tools.previewGenerationUpdate"),
+						enabled = hasInput && !isBusy && canUpdateGeneration,
+						onHover = { activeSubmenu = null },
+						onClick = { activeMenu = null; activeSubmenu = null; onPreviewGenerationUpdate() },
 					)
 				}
 			}
-
-			// 3. Settings Menu — a direct entry rather than a menu: it opens the preferences
-			// window on click, so it has no dropdown of its own.
-			TitleBarMenuItem(
-				title = tr("menu.settings"),
-				isOpen = false,
-				onToggle = {
-					activeMenu = null
-					activeSubmenu = null
-					onShowSettings()
-				},
-				onHoverWhenActive = {
-					// Sweep an open menu away when the cursor parks here, like the menus do.
-					if (activeMenu != null) {
-						activeMenu = null
-						activeSubmenu = null
-					}
-				},
-			) {}
 
 			// 4. Help Menu
 			TitleBarMenuItem(
@@ -762,75 +663,25 @@ fun AppTitleBar(
 						activeMenu = null
 						activeSubmenu = null
 					},
-					modifier = Modifier.widthIn(min = 180.dp, max = 250.dp),
+					modifier = Modifier.widthIn(min = 160.dp, max = 240.dp),
 				) {
 					AppMenuItem(
-						text = tr("menu.help.tutorial"),
+						text = tr("menu.help.open"),
 						shortcut = keymap.labelFor(ShortcutAction.OPEN_HELP),
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onOpenTutorialCatalog()
-						},
+						onHover = { activeSubmenu = null },
+						onClick = { activeMenu = null; activeSubmenu = null; onOpenHelp() },
 					)
-					AppMenuItem(
-						text = tr("menu.help.psd_spec"),
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onShowHelp(HelpTab.PSD_SPEC)
-						},
-					)
-					AppMenuItem(
-						text = tr("menu.help.shortcuts"),
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onShowHelp(HelpTab.SHORTCUTS)
-						},
-					)
-					AppMenuSeparator()
-					AppMenuItem(
-						text = tr("menu.help.github"),
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onOpenUrl(DesktopUtils.GITHUB_REPO_URL)
-						},
-					)
-					AppMenuItem(
-						text = tr("menu.help.issues"),
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onOpenUrl(DesktopUtils.GITHUB_ISSUES_URL)
-						},
-					)
-					AppMenuItem(
-						text = tr("menu.help.releases"),
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onOpenUrl(DesktopUtils.GITHUB_RELEASES_URL)
-						},
-					)
-					AppMenuItem(
-						text = tr("menu.help.docs"),
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onOpenUrl(DesktopUtils.GITHUB_DOCS_URL)
-						},
-					)
-					AppMenuSeparator()
-					AppMenuItem(
-						text = tr("menu.about"),
-						onClick = {
-							activeMenu = null
-							activeSubmenu = null
-							onShowHelp(HelpTab.ABOUT)
-						},
-					)
+					AppSubmenuItem(
+						text = tr("menu.help.online"),
+						isOpen = activeSubmenu == "online",
+						onOpen = { activeSubmenu = "online" },
+						onDismiss = { if (activeSubmenu == "online") activeSubmenu = null },
+					) {
+						for ((key, url) in HelpLinks) AppMenuItem(
+							text = tr(key),
+							onClick = { activeMenu = null; activeSubmenu = null; onOpenUrl(url) },
+						)
+					}
 				}
 			}
 		}
@@ -936,6 +787,14 @@ fun AppTitleBar(
 			TitleBarThemeToggle(
 				darkTheme = darkTheme,
 				onClick = onToggleTheme,
+			)
+			TitleBarSettingsButton(
+				shown = settingsShown,
+				onClick = {
+					activeMenu = null
+					activeSubmenu = null
+					onShowSettings()
+				},
 			)
 
 			Spacer(modifier = Modifier.width(4.dp))
@@ -1504,10 +1363,11 @@ private fun TitleBarThemeToggle(
 				.clickable(onClick = onClick),
 			contentAlignment = Alignment.Center,
 		) {
-			GridIcon(Modifier.size(14.dp), if (isHovered) colors.textPrimary else colors.textMuted) {
+			// The sidebar toggles' tint when open: a control in plain sight, not a hint that brightens on hover.
+			GridIcon(Modifier.size(14.dp), colors.textPrimary.copy(alpha = if (isHovered) 1f else 0.85f)) {
 				if (darkTheme) {
 					// Sun: switch to the light theme.
-					dot(9f, 9f, 3.8f, soft)
+					dot(9f, 9f, 3.8f, color.copy(alpha = 0.75f))
 					ring(9f, 9f, 3.8f)
 					for (i in 0 until 8) {
 						val angle = i * PI / 4.0
@@ -1519,7 +1379,7 @@ private fun TitleBarThemeToggle(
 					// Moon: switch to the dark theme.
 					val moon = circlePath(8.3f, 9f, 6.6f)
 					val cut = circlePath(11.1f, 7.8f, 5.8f)
-					shape(Path().apply { op(moon, cut, PathOperation.Difference) })
+					shape(Path().apply { op(moon, cut, PathOperation.Difference) }, body = color.copy(alpha = 0.75f))
 				}
 			}
 		}
@@ -1554,5 +1414,50 @@ private fun WindowControlButton(
 		contentAlignment = Alignment.Center,
 	) {
 		icon()
+	}
+}
+
+/** The settings page as a cog beside the language and theme buttons; pressed while the page is shown. */
+@OptIn(ExperimentalComposeUiApi::class, ExperimentalFoundationApi::class)
+@Composable
+private fun TitleBarSettingsButton(shown: Boolean, onClick: () -> Unit) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	var isHovered by remember { mutableStateOf(false) }
+	TooltipArea(
+		tooltip = {
+			Surface(
+				color = colors.panelElevated,
+				shape = RoundedCornerShape(3.dp),
+				border = BorderStroke(1.dp, colors.border),
+				elevation = 4.dp,
+			) {
+				Text(
+					text = tr("menu.settings"),
+					style = typography.caption.copy(fontSize = 10.sp),
+					color = colors.textPrimary,
+					modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+				)
+			}
+		},
+		delayMillis = Motion.TooltipDelay,
+	) {
+		Box(
+			modifier = Modifier
+				.width(30.dp)
+				.fillMaxHeight()
+				.background(if (shown) colors.selection else Color.Transparent)
+				.handCursor()
+				.onPointerEvent(PointerEventType.Enter) { isHovered = true }
+				.onPointerEvent(PointerEventType.Exit) { isHovered = false }
+				.clickable(onClick = onClick),
+			contentAlignment = Alignment.Center,
+		) {
+			PageIcon(
+				AppPage.SETTINGS,
+				tint = if (shown) colors.selectionText else colors.textPrimary.copy(alpha = if (isHovered) 1f else 0.85f),
+				modifier = Modifier.size(14.dp),
+			)
+		}
 	}
 }

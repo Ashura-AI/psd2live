@@ -7,7 +7,7 @@
 ## 接入
 
 1. 启动桌面应用，载入或创建工作区。
-2. 打开 **设置 → MCP**（菜单 **工具 → MCP…** 直达），按宿主复制命令或配置：Claude Code 命令、Codex TOML、通用 `mcpServers` JSON（地址字段因宿主而异）或 Stdio 代理。「复制安装提示词」生成一段让 Agent 自行配置的短提示。
+2. 打开 **设置 → MCP**（标题栏右侧的齿轮），按宿主复制命令或配置：Claude Code 命令、Codex TOML、通用 `mcpServers` JSON（地址字段因宿主而异）或 Stdio 代理。「复制安装提示词」生成一段让 Agent 自行配置的短提示。
 3. 优先使用 Streamable HTTP 和 Bearer 令牌。不要改用已废弃的 `/sse` 端点。
 4. 仅支持 Stdio 的宿主使用 Python 3 运行根目录 `mcp_proxy.py`；代理读取 `PSD2LIVE_MCP_ENDPOINT` 和 `PSD2LIVE_MCP_TOKEN`，未设置时在 Windows 上读取应用保存的端口与令牌。
 5. 列出工具后调用 `workspace_inspect`，读取实际对象 ID、参数、当前 `project_id` 与 `state`。
@@ -552,7 +552,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 
 部件取代原源图层：原图层离开源图（不进入 `deletedLayerIds`），部件成为普通源图层并继承分类、父级、可见性、逐层网格及绘制顺序覆盖。拆分是一次再生成：部件在原图层的位置参与生成，原图层上用户的关键形、通道、混合形、路径、顶点权重与 Glue 经三方合并带到部件上（摆动与模拟生成的轴除外），之后的脸部设置、站姿、骨架与分类变化同样到达部件；模拟的目标、烘焙偏移与连接角色迁移到部件。日志在拆分的 `art_primitive` 记录之后写一个固化点，记录本身不再重放。纹理集与导出不再包含原图层；`layer_restore`（包括省略 `layer_ids` 的恢复全部）不能带回它，只有撤销/历史切换回到拆分前。之后引用原图层或原网格 ID 的请求失败，错误信息列出取代它的部件 ID；`source_get_components` 同样。部件可以再拆分。导入 CMO3 模型仍按旧规则软删除原图层。记录格式见[文档层](../spec/DOCUMENT_LAYER.md#拆分物化画元记录-art_primitive)。普通、拆分、新建及导入 CMO3 网格在单层/全局网格更新及重置时通过有序替换保留绑定和已有模拟偏移，包含已删除网格的恢复；多边形拆分产生的新切点与边界顶点副本以方向 Glue 跟随拥有该原顶点的部件，切口两侧保持贴合。已删除、遮罩（剪切）、带通道遮罩或非普通混合的源图不能拆分。组件查询使用实际纹理地址，支持源图补边、旋转和缩放，已编辑的普通目标可以返回 `can_split:true`。GUI 网格连通块拆分对话框调用同一应用命令，保留检测时状态，多层决策一次用户历史提交；多边形操作目前是 MCP 入口，不能据此声称 GUI 有套索拆分菜单。
 
-`rig_update_generation` 用本程序的生成器重新生成 Rig（对应 GUI 的 **工具 → 更新生成结果**）。日志带固化点的工程保留写下固化点时生成器的输出，升级程序后不会自动改变；此操作取固化点保存的生成快照、本程序现在为同样输入生成的结果与当前作者态 Rig 三方合并：用户没改过的对象跟随新输出，用户的修改保留，未能干净迁移的内容列在 `issues`（同样进入 `workspace_inspect` 的 `quality.regeneration`），结果作为新的固化点追加到日志末尾。日志中较早的再生成固化点若由本程序合并会得出不同的结构（父级、顶点数、关键形轴或混合形不同），先按本程序重新合并，并把修正经三方合并带到之后的固化点与当前作者态 Rig 上（问题 `remerged`，`target` 为 `journal:<序号>`，`detail` 列出结构不同的对象），之后的编辑保留。请求只需 `request_id/project_id/state`，返回后台任务句柄，也是原子批量成员。任务 `result` 为 `state/project_id/history_node_id/revision/applied`、`updated` 与 `issues`（每项 `{kind, target, detail?}`）；生成结果相同且每次合并都一致时 `updated:false`，不追加历史节点。没有固化点的工程每次构建本就由本程序生成，导入 CMO3 的模型没有生成结果，均无需更新（后者拒绝）。
+`rig_update_generation` 用本程序的生成器重新生成 Rig（对应 GUI 的 **模型 → 更新生成结果**）。日志带固化点的工程保留写下固化点时生成器的输出，升级程序后不会自动改变；此操作取固化点保存的生成快照、本程序现在为同样输入生成的结果与当前作者态 Rig 三方合并：用户没改过的对象跟随新输出，用户的修改保留，未能干净迁移的内容列在 `issues`（同样进入 `workspace_inspect` 的 `quality.regeneration`），结果作为新的固化点追加到日志末尾。日志中较早的再生成固化点若由本程序合并会得出不同的结构（父级、顶点数、关键形轴或混合形不同），先按本程序重新合并，并把修正经三方合并带到之后的固化点与当前作者态 Rig 上（问题 `remerged`，`target` 为 `journal:<序号>`，`detail` 列出结构不同的对象），之后的编辑保留。请求只需 `request_id/project_id/state`，返回后台任务句柄，也是原子批量成员。任务 `result` 为 `state/project_id/history_node_id/revision/applied`、`updated` 与 `issues`（每项 `{kind, target, detail?}`）；生成结果相同且每次合并都一致时 `updated:false`，不追加历史节点。没有固化点的工程每次构建本就由本程序生成，导入 CMO3 的模型没有生成结果，均无需更新（后者拒绝）。
 
 `source_split_depth` 对应 GUI 的深度拆分菜单、多选和对话框。传当前网格的原始 `source_id` 和非空、唯一的 `middle_ids`（不带 `mesh:` 前缀，且不包含 source）；可选 `names` 为后层、前层的两个非空唯一名称，可选 `front_layer_id/front_mesh_id/back_layer_id/back_mesh_id/glue_id` 指定新 ID。它用后层、前层两个新图层和网格取代源网格及其图层，两层都带原像素、可独立绘画，中间网格位于两层之间；结果的 `layers` 依次为前层、后层。两层取得源网格当前的父级、几何、通道关键形、混合形、路径和顶点权重；后层接替源网格的 Glue、遮罩和模拟目标，方向 Glue 让前层跟随后层。两层采用固定绘制顺序，替换原绘制顺序动画。嘴部及派生嘴唇只复制所选网格，不生成额外嘴唇；前层擦空也保留拓扑。导入 CMO3 模型沿用旧记录：保留源网格及其图层，在其上复制出前层与方向 Glue（不新建后层）。
 

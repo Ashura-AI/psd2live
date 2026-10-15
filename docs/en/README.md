@@ -150,13 +150,13 @@ Get the latest version from [Releases](https://github.com/tsunehimatoi/psd2live/
 
 ## Quick start
 
-1. **Import a PSD** with **File → Import → New project from PSD…** (`Ctrl+Shift+O`) or drop it on the window. Before importing, pick the model presets (Minimal / Default / Full) under Generate from PSD on the Start page (the inspector on the right sets each one); the model is generated and opened for editing. Split left and right parts drawn on one layer (such as both legs) with **Tools → Split Layers by Mesh…**.
+1. **Import a PSD** with **File → New → New project from PSD…** (`Ctrl+Shift+O`) or drop it on the window. Before importing, pick the model presets (Minimal / Default / Full) under Generate from PSD on the Start page (the inspector on the right sets each one); the model is generated and opened for editing. Split left and right parts drawn on one layer (such as both legs) with **Model → Split Layers by Mesh…**.
 2. **Check the classification** in the Layers table: part type, side and variant settings. Correct anything that was misread.
 3. **Preview and refine** in the Preview workspace, then adjust in the Edit, Rigging, Animation, Physics and Texture workspaces as needed.
 4. **Save and export**: `Ctrl+S` saves a `.psd2live` project; `Ctrl+G` exports `.moc3` / `.cmo3`, and other formats are under **File → Export as**.
 
 > [!TIP]
-> **New to PSD2Live? Open Help → Tutorials… (`F1`).** The interactive tutorials highlight each control and use your current shortcuts, with a beginner path (19 lessons) and a path for Cubism users (14 lessons). The [user guide](guide/USER_GUIDE.md) is the text companion.
+> **New to PSD2Live? Press `F1` for the Tutorials on the Help page.** The interactive tutorials highlight each control and use your current shortcuts, with a beginner path (19 lessons) and a path for Cubism users (14 lessons). The [user guide](guide/USER_GUIDE.md) is the text companion.
 
 ### Preparing artwork
 
@@ -214,7 +214,7 @@ Format and evaluation rules: [runtime](../zh/spec/RUNTIME.md) and [`.p2lrt` 2.0 
 
 ## Connecting an agent (MCP)
 
-1. The MCP server is on by default: it starts with PSD2Live at `http://127.0.0.1:23871/mcp`. Open **Settings → MCP** (**Tools → MCP…** goes straight there) to turn it off or set the port, access token and published tool set (compact by default). The access token is stored in plain text in your local user preferences (Java Preferences).
+1. The MCP server is on by default: it starts with PSD2Live at `http://127.0.0.1:23871/mcp`. Open **Settings → MCP** (the cog at the right of the title bar) to turn it off or set the port, access token and published tool set (compact by default). The access token is stored in plain text in your local user preferences (Java Preferences).
 2. Copy the command or configuration for your host (Claude Code, Codex, generic JSON). Stdio-only hosts use [`mcp_proxy.py`](../../mcp_proxy.py) at the repository root.
 3. Have the agent read the project with `workspace_overview` and single objects with `workspace_inspect`; operations not listed as tools are found with `workspace_list_operations` and called through `workspace_call`.
 

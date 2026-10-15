@@ -75,7 +75,7 @@ import io.github.psd2live.ui.components.ImageLightboxDialog
 import io.github.psd2live.ui.components.ExportDialog
 import io.github.psd2live.ui.components.ExportPsdDialog
 import io.github.psd2live.ui.state.HelpTab
-import io.github.psd2live.ui.state.SettingsTopic
+import io.github.psd2live.ui.state.HELP_CONTENT
 import io.github.psd2live.ui.components.TextureUpscaleDialog
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
@@ -584,8 +584,6 @@ fun FrameWindowScope.PSD2LiveApp(
 						hasInput = hasInput,
 						folders = menuFolders,
 						currentLanguage = currentLanguage,
-						uiScale = state.uiScale,
-						fontScale = state.fontScale,
 						darkTheme = state.darkTheme,
 						keymap = state.keymap,
 						sidebarToggles = sidebarToggles,
@@ -611,11 +609,9 @@ fun FrameWindowScope.PSD2LiveApp(
 						onZoomIn = { viewModel.zoomIn() },
 						onZoomOut = { viewModel.zoomOut() },
 						onResetZoom = { viewModel.resetZoom() },
-						onSetUiScale = { viewModel.setUiScale(it) },
-						onSetFontScale = { viewModel.setFontScale(it) },
 						onToggleTheme = { viewModel.toggleDarkTheme() },
-						onShowSettings = { viewModel.openSettings() },
-						onShowAgentConnection = { viewModel.openSettings(SettingsTopic.MCP) },
+						settingsShown = viewModel.activePage == AppPage.SETTINGS,
+						onShowSettings = { viewModel.togglePage(AppPage.SETTINGS) },
 						onShowTextureUpscale = { viewModel.openTextureUpscaleDialog() },
 						onStartScreen = { viewModel.showStartPage(StartSection.GENERATE) },
 						onMeshSplitScan = { viewModel.requestMeshSplitScan() },
@@ -629,9 +625,7 @@ fun FrameWindowScope.PSD2LiveApp(
 						onCloseTab = { viewModel.closeWorkspace(state.activeWorkspace.id) },
 						onNextTab = { viewModel.cycleWorkspace(1) },
 						onPrevTab = { viewModel.cycleWorkspace(-1) },
-						onShowAbout = { viewModel.showHelp(HelpTab.ABOUT) },
-						onShowHelp = { tab -> viewModel.showHelp(tab) },
-						onOpenTutorialCatalog = { openTutorialCatalog() },
+						onOpenHelp = { viewModel.showPage(AppPage.HELP, HELP_CONTENT) },
 						tutorialMenuForce = if (tutorialShown) tutorial.step.forcesMenu else null,
 						tutorialHighlightTarget = if (tutorialShown) {
 							tutorial.step.effectiveTargetId(state)
