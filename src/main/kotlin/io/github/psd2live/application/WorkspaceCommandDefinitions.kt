@@ -10,6 +10,8 @@ import io.github.psd2live.project.WorkspaceKeyformTargetRef
 import io.github.psd2live.project.WorkspaceLayerInsertion
 import io.github.psd2live.project.WorkspaceLayerSnapshot
 import io.github.psd2live.project.WorkspaceModelViewRequest
+import io.github.psd2live.project.WorkspaceViewReference
+import io.github.psd2live.project.WorkspaceViewReferenceMode
 import io.github.psd2live.project.WorkspaceObjectSnapshot
 import io.github.psd2live.project.WorkspaceParameterSnapshot
 import io.github.psd2live.project.WorkspacePixelRect
@@ -217,6 +219,11 @@ private fun registerCatalogRenderCommands(catalog: WorkspaceCommands, render: Wo
 					frame = request.viewFrame(),
 					background = request.background(),
 					output = request.outputSpec(),
+					reference = request.arguments.get("reference")?.jsonObject?.let { value ->
+						WorkspaceViewReference(WorkspaceViewReferenceMode.valueOf(value.getValue("mode").jsonPrimitive.content.uppercase()),
+							value["opacity"]?.jsonPrimitive?.float)
+					},
+					density = request.arguments.get("density")?.jsonPrimitive?.content == "true",
 				),
 			)
 		}
@@ -739,6 +746,18 @@ private fun modelViewSchema(): WorkspaceCommandSchema = WorkspaceCommandSchema(
 		putJsonObject("annotate_path_hardness") { put("type","boolean"); put("default",false); put("description","Whether to draw hardness boundaries (inner core solid circle) around deform path control points") }
 		putJsonObject("annotate_path_radius") { put("type","boolean"); put("default",false); put("description","Legacy alias for enabling both annotate_path_width and annotate_path_hardness") }
 		putJsonObject("point_indices") { put("type","boolean");put("default",false) }
+		putJsonObject("reference") {
+			put("type", "object"); put("additionalProperties", false)
+			put("description", "Draw the reference image (layout_set_reference) with the model: over it, under it, or difference - black where they match, " +
+				"with referenceDifference the mean difference 0..1 over pixels either covers; opacity overrides the reference's own (over and under)")
+			putJsonObject("properties") {
+				putJsonObject("mode") { put("type", "string"); putJsonArray("enum") { add(JsonPrimitive("over")); add(JsonPrimitive("under")); add(JsonPrimitive("difference")) } }
+				putJsonObject("opacity") { put("type", "number"); put("minimum", 0); put("maximum", 1) }
+			}
+			putJsonArray("required") { add(JsonPrimitive("mode")) }
+		}
+		putJsonObject("density") { put("type", "boolean"); put("default", false)
+			put("description", "Texture density heatmap: tint each layer by its texture pixels per canvas unit - blue at 1/4 or less, green at 1, orange at 4 or more - and list them in texelDensity") }
 		putJsonObject("parameters") {
 			put("type", "object")
 			put("description", "Cubism parameter ID to value, for example {ParamAngleX: 10.0}. Omitted parameters render at their defaults, not at the authored pose; read workspace_inspect scope=preview and pass its values to start from it. Rendering never changes the authored pose.")
@@ -1165,6 +1184,9 @@ internal fun WorkspaceRenderedView.toJson(): JsonObject = buildJsonObject {
 	put("annotatedPathHardness", annotatedPathHardness)
 	put("annotatedPathRadius", annotatedPathRadius)
 	put("pointIndices",pointIndices)
+	referenceMode?.let { put("referenceMode", it.name.lowercase()) }
+	referenceDifference?.let { put("referenceDifference", it) }
+	if (texelDensity.isNotEmpty()) putJsonObject("texelDensity") { texelDensity.forEach { (id, value) -> put(id, value) } }
 	putJsonArray("objectIds") { objectIds.forEach { add(JsonPrimitive(it)) } }
 	putJsonObject("canvasRect") {
 		put("left", canvasRect.left)

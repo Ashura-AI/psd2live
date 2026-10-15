@@ -12,6 +12,8 @@ import io.github.psd2live.project.WorkspaceViewSpatialMetadata
 import io.github.psd2live.core.Bounds
 import io.github.psd2live.core.CanvasDensity
 import io.github.psd2live.core.LayerSpace
+import io.github.psd2live.core.textureLayer
+import io.github.psd2live.project.WorkspaceViewReferenceMode
 import io.github.psd2live.core.PreviewRenderer
 import io.github.psd2live.core.RigPreviewModel
 import io.github.psd2live.core.CanvasViewport
@@ -31,7 +33,29 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
+/** The reference image as a view draws it: its pixels over [rect] on the canvas. */
+class ViewReferenceImage(val image: BufferedImage, val rect: io.github.psd2live.project.LayerCanvasRect,
+                                  val mode: io.github.psd2live.project.WorkspaceViewReferenceMode, val opacity: Float)
+
 object WorkspaceViewRenderer {
+	private val HEAT_LOW = Color(0x3D, 0x7B, 0xE0)
+	private val HEAT_MID = Color(0x4C, 0xB8, 0x6A)
+	private val HEAT_HIGH = Color(0xE5, 0x68, 0x3B)
+
+	/** The heatmap colour of [texelsPerUnit]: blue at a quarter texel per canvas unit or less, green at one, orange at four or more. */
+	fun heatColor(texelsPerUnit: Float): Color {
+		val heat = if (!(texelsPerUnit > 0f)) -1f else (kotlin.math.ln(texelsPerUnit.toDouble()) / kotlin.math.ln(2.0) / 2.0).toFloat().coerceIn(-1f, 1f)
+		val (from, to, t) = if (heat < 0f) Triple(HEAT_MID, HEAT_LOW, -heat) else Triple(HEAT_MID, HEAT_HIGH, heat)
+		fun mix(a: Int, b: Int) = (a + (b - a) * t).roundToInt().coerceIn(0, 255)
+		return Color(mix(from.red, to.red), mix(from.green, to.green), mix(from.blue, to.blue))
+	}
+
+	/** A layer's texture pixels per canvas unit: its own raster over its canvas rectangle, the mean of both axes. */
+	fun texelsPerUnit(layer: SourceLayer): Float {
+		val space = LayerSpace.of(layer.textureLayer)
+		return (space.scaleX + space.scaleY) / 2f
+	}
+
 	fun modelComposite(
 		model: RigPreviewModel,
 		revisionId: String,
@@ -48,6 +72,8 @@ object WorkspaceViewRenderer {
 		annotatePathRadius: Boolean = false,
 		pointIndices: Boolean = false,
 		worldPositions: Map<org.umamo.runtime.model.DrawableId, FloatArray> = emptyMap(),
+		reference: ViewReferenceImage? = null,
+		density: Boolean = false,
 	): WorkspaceRenderedView {
 		validateOutput(output)
 		require(annotateDeformerIds.size <= 16) { "Select at most 16 deformers per View" }
@@ -85,16 +111,30 @@ object WorkspaceViewRenderer {
 			WorkspaceViewBackground.CHECKERBOARD -> checkerboard(target.width, target.height)
 		}
 		var matchedPathIds = emptyList<String>()
+		val densities = if (!density) emptyMap() else model.analysis.layers.filter { it.source.id.raw in includeLayerIds }
+			.associate { it.source.id.raw to texelsPerUnit(it.source) }
+		var difference: Float? = null
+		if (reference?.mode == WorkspaceViewReferenceMode.UNDER) paintReference(image, reference, target.viewport)
 		val graphics = image.createGraphics()
 		try {
 			graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-			RigCanvasSupport.paintTexturedRig(
-				graphics,
-				model,
-				geometry,
-				target.viewport,
-				visibleLayerIds = includeLayerIds,
-			)
+			if (reference?.mode == WorkspaceViewReferenceMode.DIFFERENCE) {
+				val rendered = BufferedImage(target.width, target.height, BufferedImage.TYPE_INT_ARGB)
+				val g = rendered.createGraphics()
+				try { RigCanvasSupport.paintTexturedRig(g, model, geometry, target.viewport, visibleLayerIds = includeLayerIds) } finally { g.dispose() }
+				val referenceImage = BufferedImage(target.width, target.height, BufferedImage.TYPE_INT_ARGB)
+				paintReference(referenceImage, ViewReferenceImage(reference.image, reference.rect, reference.mode, 1f), target.viewport)
+				difference = paintDifference(image, rendered, referenceImage)
+			} else {
+				RigCanvasSupport.paintTexturedRig(
+					graphics,
+					model,
+					geometry,
+					target.viewport,
+					visibleLayerIds = includeLayerIds,
+				)
+			}
+			if (density) paintDensity(graphics, model, geometry, target.viewport, densities)
 			paintLayerAnnotations(graphics, model, drawableBounds, target.viewport, annotateLayerIds, image.width, image.height)
 			io.github.psd2live.core.RigInformationOverlay.paint(graphics, model.rig.puppet, typedParameters,
 				target.viewport, annotateDeformerIds, pointIndices = pointIndices)
@@ -109,6 +149,7 @@ object WorkspaceViewRenderer {
 		} finally {
 			graphics.dispose()
 		}
+		if (reference?.mode == WorkspaceViewReferenceMode.OVER) paintReference(image, reference, target.viewport)
 
 		return encodedView(
 			image = image,
@@ -134,7 +175,65 @@ object WorkspaceViewRenderer {
 			annotatedPathHardness = annotatePathHardness || annotatePathRadius,
 			annotatedPathRadius = annotatePathRadius,
 			pointIndices = pointIndices,
+			referenceMode = reference?.mode,
+			referenceDifference = difference,
+			texelDensity = densities.toSortedMap(),
 		)
+	}
+
+	/** [reference] drawn over [image] at its opacity, where it sits on the canvas. */
+	private fun paintReference(image: BufferedImage, reference: ViewReferenceImage, viewport: CanvasViewport) {
+		val g = image.createGraphics()
+		try {
+			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+			g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, reference.opacity.coerceIn(0f, 1f))
+			val left = viewport.x(reference.rect.left); val top = viewport.offsetY + reference.rect.top * viewport.scale
+			val transform = AffineTransform(reference.rect.width * viewport.scale / reference.image.width, 0.0, 0.0,
+				reference.rect.height * viewport.scale / reference.image.height, left, top)
+			g.drawImage(reference.image, transform, null)
+		} finally { g.dispose() }
+	}
+
+	/**
+	 * The per-channel difference of [rendered] and [reference], each over mid grey, into [out] (black where they match);
+	 * returns the mean difference over pixels either covers.
+	 */
+	private fun paintDifference(out: BufferedImage, rendered: BufferedImage, reference: BufferedImage): Float {
+		var sum = 0.0; var count = 0
+		fun over(c: Int, alpha: Float, shift: Int) = ((c shr shift) and 0xFF) * alpha + 128f * (1f - alpha)
+		for (y in 0 until out.height) for (x in 0 until out.width) {
+			val a = rendered.getRGB(x, y); val b = reference.getRGB(x, y)
+			val aa = (a ushr 24) / 255f; val ba = (b ushr 24) / 255f
+			if (aa <= 0f && ba <= 0f) { out.setRGB(x, y, 0xFF shl 24); continue }
+			val dr = abs(over(a, aa, 16) - over(b, ba, 16)); val dg = abs(over(a, aa, 8) - over(b, ba, 8)); val db = abs(over(a, aa, 0) - over(b, ba, 0))
+			sum += (dr + dg + db) / (3.0 * 255.0); count++
+			out.setRGB(x, y, (0xFF shl 24) or (dr.roundToInt().coerceIn(0, 255) shl 16) or (dg.roundToInt().coerceIn(0, 255) shl 8) or db.roundToInt().coerceIn(0, 255))
+		}
+		return if (count == 0) 0f else (sum / count).toFloat()
+	}
+
+	/** Each drawn layer's mesh filled with the heat colour of its density, over the art. */
+	private fun paintDensity(g: java.awt.Graphics2D, model: RigPreviewModel, geometry: org.umamo.render.eval.DeformedGeometry,
+	                         viewport: CanvasViewport, densities: Map<String, Float>) {
+		val saved = g.composite
+		g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_ATOP, 0.6f)
+		for (drawable in model.rig.puppet.drawables) {
+			val layerId = model.rig.layerIdByDrawableId[drawable.id.raw] ?: continue
+			val value = densities[layerId] ?: continue
+			val mesh = drawable.mesh ?: continue
+			val positions = geometry.worldPositions[drawable.id] ?: continue
+			val path = java.awt.geom.Path2D.Double()
+			for (offset in mesh.indices.indices step 3) {
+				val i = mesh.indices[offset]; val j = mesh.indices[offset + 1]; val k = mesh.indices[offset + 2]
+				path.moveTo(viewport.x(positions[i * 2]), viewport.yFromWorld(positions[i * 2 + 1]))
+				path.lineTo(viewport.x(positions[j * 2]), viewport.yFromWorld(positions[j * 2 + 1]))
+				path.lineTo(viewport.x(positions[k * 2]), viewport.yFromWorld(positions[k * 2 + 1]))
+				path.closePath()
+			}
+			g.color = heatColor(value)
+			g.fill(path)
+		}
+		g.composite = saved
 	}
 
 	fun isolatedLayer(

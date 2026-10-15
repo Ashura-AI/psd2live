@@ -445,6 +445,16 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				add(MenuLine.Action(tr("materials.menu.place"), { close(); vm.placeMaterial(target) }))
 				val layer = state.selectedLayerId
 				if (item != null && layer != null) add(MenuLine.Action(tr("materials.menu.replace"), { close(); vm.replaceLayerWithMaterial(layer, item.id) }))
+				if (item != null) {
+					val reference = state.layout.reference
+					if (reference?.materialId == item.id) {
+						// One row steps the opacity through quarters, so the reference fades without a slider.
+						val next = ((kotlin.math.round(reference.opacity * 4f) % 4f) + 1f) / 4f
+						add(MenuLine.Action(tr("materials.menu.referenceOpacity"), { vm.setLayoutReference(item.id, opacity = next) },
+							trailing = "${kotlin.math.round(reference.opacity * 100f).toInt()}%"))
+						add(MenuLine.Action(tr("materials.menu.clearReference"), { close(); vm.setLayoutReference(null) }))
+					} else add(MenuLine.Action(tr("materials.menu.setReference"), { close(); vm.setLayoutReference(item.id) }))
+				}
 				if (item?.kind == MaterialKind.VECTOR) add(MenuLine.Action(tr("materials.menu.resolution"), { close(); resolution = item.id },
 					trailing = "${item.raster.width}×${item.raster.height}"))
 				val users = references[target].orEmpty()
@@ -464,7 +474,7 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				if (parent != null) add(MenuLine.Action(tr("materials.menu.moveUp"), { close(); vm.moveMaterials(listOf(target), library.folder(parent)?.parentId) }))
 				// A material a layer shows cannot go; the row says how many layers keep it.
 				add(MenuLine.Action(tr("materials.menu.delete"), { close(); vm.deleteMaterials(listOf(target)) },
-					enabled = users.isEmpty(), trailing = if (users.isEmpty()) null else tr("materials.references", users.size)))
+					enabled = users.isEmpty() && state.layout.reference?.materialId != target, trailing = if (users.isEmpty()) null else tr("materials.references", users.size)))
 			}
 		}
 		PressMenu(menuShown && lines.isNotEmpty(), menuAt, onDismissRequest = { menuShown = false }) {

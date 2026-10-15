@@ -229,7 +229,8 @@ internal class WorkspaceDocumentCommands(private val runtime: WorkspaceRuntime<R
                 .plus(before.document.source.layers.map { it.id.raw }.filterNot { id -> result.capture.document.source.layers.any { it.id.raw == id } }
                     .map { "layer:$it" })
                 .plus(result.capture.document.layout.materials.items.map { it.id }.filterNot { id -> before.document.layout.materials.item(id) != null }
-                    .map { "material:$it" }).distinct()
+                    .map { "material:$it" })
+                .plus(listOf("reference").filter { before.document.layout.reference != result.capture.document.layout.reference }).distinct()
             return WorkspaceMutationResult(result.capture.historyHead, result.capture.revision, emptyList(), summary,
                 affectedObjectIds = changed, applied = result.applied, state = result.capture.state, projectId = result.capture.projectId,
                 geometryDiagnostics = result.geometryDiagnostics,

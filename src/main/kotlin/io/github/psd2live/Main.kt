@@ -58,6 +58,10 @@ fun main(arguments: Array<String>) {
 		System.err.println(tr("app.alreadyRunning"))
 		exitProcess(1)
 	}
+	if (command.first() == "mcp") {
+		// A failure to start must end the process: the workspace's threads would keep it alive otherwise.
+		exitProcess(runCatching { HeadlessMcp.run(command) }.getOrElse { it.printStackTrace(); 1 })
+	}
 	if (command.first() == "export" || command.first() == "targets") {
 		exitProcess(ExportCli.run(command))
 	}

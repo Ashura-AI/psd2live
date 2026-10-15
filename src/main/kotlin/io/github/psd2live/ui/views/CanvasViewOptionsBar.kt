@@ -282,6 +282,10 @@ internal fun CanvasViewOptionsBar(
 	showSelectionFocus: Boolean = true,
 	/** Edit canvases can sample layer rasters (source pixels) instead of the atlas. */
 	showSourcePixels: Boolean = false,
+	/** The document has a Layout reference image to lay over the canvas. */
+	hasReference: Boolean = false,
+	/** Edit canvases can tint layers by their texture density. */
+	showDensity: Boolean = false,
 	/** The skin weight wash over the skeleton's meshes: shown, hidden, or null with no skeleton to show it for. */
 	skinWeights: Boolean? = null,
 	onSkinWeightsChange: (Boolean) -> Unit = {},
@@ -303,6 +307,22 @@ internal fun CanvasViewOptionsBar(
 				isChecked = options.sourcePixels,
 				icon = { IconPixelSource(source = options.sourcePixels, tint = it, modifier = Modifier.size(14.dp)) },
 				onClick = { apply(options.copy(sourcePixels = !options.sourcePixels)) },
+			)
+		}
+		if (hasReference) {
+			RailToggle(
+				label = tr("canvas.visibility.reference"),
+				isChecked = options.showReference,
+				icon = { IconReferenceImage(tint = it) },
+				onClick = { apply(options.copy(showReference = !options.showReference)) },
+			)
+		}
+		if (showDensity) {
+			RailToggle(
+				label = tr("canvas.visibility.density"),
+				isChecked = options.densityHeatmap,
+				icon = { io.github.psd2live.ui.views.texture.IconHeatmap() },
+				onClick = { apply(options.copy(densityHeatmap = !options.densityHeatmap)) },
 			)
 		}
 		RailToggle(
@@ -369,6 +389,14 @@ internal fun CanvasViewOptionsBar(
 			)
 		}
 	}
+}
+
+/** The reference image: a picture frame with a figure's head and shoulders. */
+@Composable
+private fun IconReferenceImage(tint: Color) = GridIcon(Modifier.size(14.dp), tint) {
+	box(2f, 2f, 14f, 14f, 1.2f)
+	ring(9f, 7.4f, 2.4f, 1.2f)
+	arc(9f, 15.6f, 4.6f, 180f, 180f, 1.2f)
 }
 
 /** Atlas pixels: a coarse 2x2 grid; source pixels: a fine 4x4 grid. */

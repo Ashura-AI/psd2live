@@ -96,6 +96,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.core.Bounds
@@ -418,6 +420,17 @@ fun CanvasViewportComposable(
 	val sdkFrameAdvanced by remember(frameFlow) { frameFlow.map { it?.advanced == true }.distinctUntilChanged() }
 		.collectAsState(frameFlow.value?.advanced == true)
 	val simulatedFrame by viewModel.simulationFrames.collectAsState()
+	// The Layout reference image and its pixels, laid over Edit canvases; follows only those parts of the state.
+	val layoutReference by remember(viewModel) {
+		viewModel.state.map { s -> s.layout.reference?.let { r -> s.layout.materials.item(r.materialId)?.raster?.let { r to it } } }
+			.distinctUntilChanged()
+	}.collectAsState(null)
+	val referenceImage = remember(layoutReference?.second) {
+		layoutReference?.second?.let { raster -> io.github.psd2live.core.PreviewRenderer.rasterImage(raster.width, raster.height, raster.rgba).toComposeImageBitmap() }
+	}
+	val layerDensity = remember(previewModel) {
+		previewModel?.analysis?.layers?.associate { it.source.id.raw to io.github.psd2live.application.WorkspaceViewRenderer.texelsPerUnit(it.source) }.orEmpty()
+	}
 	val runningSimulation = simulatedFrame?.takeIf { mode == CanvasMode.PREVIEW && it.simulationId == canvasState.simulationPreviewId }
 	// The live simulation replaces its meshes' vertices, which only the software painter can draw; or, laid over the
 	// export, is drawn faded on top of it; or this canvas shows the export alone, beside one showing the reference.
@@ -1438,6 +1451,34 @@ fun CanvasViewportComposable(
 						}
 					}
 
+				// 3a'. Layout reference and density heatmap over the artwork, in canvas units.
+				if (mode == CanvasMode.EDIT && viewOptions.densityHeatmap) {
+					for (drawable in model.rig.puppet.drawables) {
+						val layerId = model.rig.layerIdByDrawableId[drawable.id.raw] ?: continue
+						if (layerId !in effectiveVisible) continue
+						val value = layerDensity[layerId] ?: continue
+						val mesh = drawable.mesh ?: continue
+						val positions = geometry.worldPositions[drawable.id] ?: continue
+						val path = androidx.compose.ui.graphics.Path()
+						for (offset in mesh.indices.indices step 3) {
+							val a = mesh.indices[offset]; val b = mesh.indices[offset + 1]; val c = mesh.indices[offset + 2]
+							path.moveTo(viewport.x(positions[a * 2]).toFloat(), viewport.yFromWorld(positions[a * 2 + 1]).toFloat())
+							path.lineTo(viewport.x(positions[b * 2]).toFloat(), viewport.yFromWorld(positions[b * 2 + 1]).toFloat())
+							path.lineTo(viewport.x(positions[c * 2]).toFloat(), viewport.yFromWorld(positions[c * 2 + 1]).toFloat())
+							path.close()
+						}
+						drawPath(path, io.github.psd2live.ui.views.texture.heatColor(io.github.psd2live.ui.state.TextureDensity.heat(value)).copy(alpha = 0.5f))
+					}
+				}
+				val shownReference = layoutReference?.first?.takeIf { it.visible && viewOptions.showReference && mode == CanvasMode.EDIT }
+				if (shownReference != null && referenceImage != null) {
+					val r = shownReference.rect
+					drawImage(referenceImage, IntOffset.Zero, IntSize(referenceImage.width, referenceImage.height),
+						IntOffset(viewport.x(r.left).roundToInt(), (viewport.offsetY + r.top * viewport.scale).roundToInt()),
+						IntSize((r.width * viewport.scale).roundToInt().coerceAtLeast(1), (r.height * viewport.scale).roundToInt().coerceAtLeast(1)),
+						alpha = shownReference.opacity, filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium)
+				}
+
 				// The Java2D guide pass is the software path's: with the GPU every guide is in its frame.
 				val guideImage = if (gpuReady) null else guideCache.imageFor(guideKey, w, h, panShift(guideKey)) { g ->
 					g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
@@ -1834,6 +1875,8 @@ fun CanvasViewportComposable(
 				showPathGuides = mode == CanvasMode.EDIT,
 				showSelectionFocus = mode == CanvasMode.EDIT,
 				showSourcePixels = mode == CanvasMode.EDIT,
+				hasReference = mode == CanvasMode.EDIT && layoutReference != null,
+				showDensity = mode == CanvasMode.EDIT,
 				// The skin weights belong to the skeleton's meshes, so the toggle comes with an armature.
 				skinWeights = editor.showSkeletonWeights.takeIf { mode == CanvasMode.EDIT && editor.committedSkeleton != null },
 				onSkinWeightsChange = { editor.showSkeletonWeights = it },

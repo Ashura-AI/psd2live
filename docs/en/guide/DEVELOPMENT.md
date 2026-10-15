@@ -57,6 +57,10 @@ Notes:
 - Neural alpha is on by default; `--upscale-neural-alpha` remains only for older commands.
 - Upscaling setup is described in the [texture upscale guide](../../zh/guide/TEXTURE_UPSCALE.md) (Chinese).
 
+### Headless MCP server
+
+`./gradlew run --args="mcp [--port N] [--token T] [--store DIR] [--profile core|full]"` starts only the MCP endpoint, without a window, for an agent working alone; it prints `endpoint`, `token`, `profile` and `store` and serves until the process ends. The workspace store defaults to `psd2live-mcp` in the user's home, apart from the editor's (no shared history or instance lock). `--token` must be 32–256 URL-safe Base64 characters; it is random when omitted.
+
 ## Exporting to other formats
 
 The `export` command exports a `.psd2live` project (its current history state) or a PSD (generated with default settings) to any target through the neutral IR, and writes a loss report:

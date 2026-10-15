@@ -39,6 +39,7 @@ internal object WorkspaceJobResultSchemas {
     ).apply {
         for (id in WorkspaceIntentOperations.batches + WorkspaceLayoutOperations.batches) put(id, batch)
         put(WorkspaceLayoutOperations.EXPORT_PSD, psdExport)
+        put(WorkspaceLayoutOperations.EXPORT_PNG, WorkspaceLayoutOperations.pngSchema)
         put("project_create", lifecycle)
         put("preview_pose", requireNotNull(WorkspaceAuthoringResultSchemas.forOperation("preview_pose")))
         put("paint_session_commit", WorkspacePaintSessionSchemas.commit)

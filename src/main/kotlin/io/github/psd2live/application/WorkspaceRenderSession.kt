@@ -49,13 +49,20 @@ internal class WorkspaceRenderSession(
 
     override suspend fun renderModel(request: WorkspaceModelViewRequest): WorkspaceRenderedView {
         val captured = capture()
+        val reference = request.reference?.let { view ->
+            val set = captured.document.layout.reference ?: throw IllegalArgumentException("No reference image is set; layout_set_reference sets one")
+            val item = requireNotNull(captured.document.layout.materials.item(set.materialId)) { "Reference material not found: ${set.materialId}" }
+            ViewReferenceImage(PreviewRenderer.rasterImage(item.raster.width, item.raster.height, item.raster.rgba), set.rect, view.mode,
+                view.opacity ?: set.opacity)
+        }
         return renderModel(captured.model, captured.revision, request.copy(includeLayerIds =
-            request.includeLayerIds ?: visibleLayerIds ?: captured.document.renderVisibleLayers(captured.model)))
+            request.includeLayerIds ?: visibleLayerIds ?: captured.document.renderVisibleLayers(captured.model)), reference = reference)
     }
 
     /** Historical and sampled views reuse the same validation and captured resource destination. */
     internal suspend fun renderModel(model: RigPreviewModel, revision: String, request: WorkspaceModelViewRequest,
-                                     worldPositions: Map<org.umamo.runtime.model.DrawableId, FloatArray> = emptyMap()): WorkspaceRenderedView {
+                                     worldPositions: Map<org.umamo.runtime.model.DrawableId, FloatArray> = emptyMap(),
+                                     reference: ViewReferenceImage? = null): WorkspaceRenderedView {
         val parameters = model.rig.puppet.parameters.associateBy { it.id.raw }
         val unknown = request.parameters.keys - parameters.keys
         require(unknown.isEmpty()) { "Unknown parameter IDs: ${unknown.sorted().joinToString()}" }
@@ -64,7 +71,7 @@ internal class WorkspaceRenderSession(
         return rendered { WorkspaceViewRenderer.modelComposite(model, revision, applied, requireNotNull(request.includeLayerIds),
             request.annotateLayerIds, request.frame, request.background, request.output,
             request.annotateDeformerIds, request.annotatePathIds, request.annotatePathWidth,
-            request.annotatePathHardness, request.annotatePathRadius, request.pointIndices, worldPositions) }
+            request.annotatePathHardness, request.annotatePathRadius, request.pointIndices, worldPositions, reference, request.density) }
     }
 
     private fun composite(captured: WorkspaceCapture<RigPreviewModel>): BufferedImage {

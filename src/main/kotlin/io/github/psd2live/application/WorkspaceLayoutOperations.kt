@@ -24,6 +24,7 @@ internal object WorkspaceLayoutOperations {
     const val GET = "material_get"
     const val PREVIEW = "material_preview"
     const val EXPORT_PSD = "material_export_psd"
+    const val EXPORT_PNG = "material_export_png"
     val queries = setOf(LIST, GET, PREVIEW)
 
     private fun string() = buildJsonObject { put("type", "string"); put("minLength", 1) }
@@ -68,6 +69,10 @@ internal object WorkspaceLayoutOperations {
             put("items", schema(gesture, listOf("mode")))
         }), listOf("state", "id")),
         WorkspaceMaterialEdits.UNLINK to schema(state + mapOf("layer_ids" to strings(1, 128)), listOf("state", "layer_ids")),
+        WorkspaceMaterialEdits.REFERENCE to schema(state + mapOf("material_id" to nullableString(), "rect" to rect,
+            "opacity" to range(0, 1), "visible" to boolean()), listOf("state")),
+        WorkspaceMaterialEdits.CROP to schema(state + mapOf("id" to string(), "rect" to rect, "canvas_rect" to rect, "name" to string(),
+            "new_id" to string(), "folder_id" to nullableString()), listOf("state", "id")),
         WorkspaceMaterialPixels.SET_PIXELS to schema(state + mapOf("id" to string(), "staging" to string()), listOf("state", "id", "staging")),
         WorkspaceMaterialPixels.ADJUST to schema(state + mapOf("id" to string(), "flip" to choices(*WorkspaceMaterialPixels.flips.toTypedArray()),
             "hue" to range(-180, 180), "saturation" to range(-100, 100), "lightness" to range(-100, 100), "contrast" to range(-100, 100)),
@@ -90,6 +95,14 @@ internal object WorkspaceLayoutOperations {
             "brush, pencil and eraser take points, radius and hardness; bucket a point and tolerance; shape from, to, shape, stroke_width and filled; clear erases everything. color is RGBA bytes (default opaque black), opacity 0..1. " +
             "Every layer showing the item takes the new pixels over its unchanged canvas rectangle, as layer_replace_image does; a vector item becomes a bitmap of its current raster. One history edit.",
         WorkspaceMaterialEdits.UNLINK to "Unlink layers from the materials they show: their pixels stay as they are, become their own, and painting them no longer paints the material. A layer linked to a material shows its pixels; painting it (Paint mode, source_paint_*, paint_session_begin with its layer_id) paints the material and every layer showing it, and an edit that gives it other pixels unlinks it. One history edit.",
+        WorkspaceMaterialEdits.REFERENCE to "Set the reference image: a material item laid over the canvas at opacity (default 0.5) to place layers against and compare the model with. " +
+            "It is not a layer: generation, export and the rig never see it. Without rect a new material is fitted into the canvas and centred (scaled up or down, aspect kept); " +
+            "omitted fields keep their values; material_id null clears it, visible false hides it. view_render_model draws it with reference {mode: over, under or difference}; " +
+            "material_crop takes close-ups from it by canvas rectangle. One history edit.",
+        WorkspaceMaterialEdits.CROP to "Crop a material item into a new item, losslessly: rect in the item's own pixels, or canvas_rect in canvas units when the item is the reference image " +
+            "(or placed on this canvas by its own placement). The new item remembers where its pixels sit on the canvas, so layer_place without rect lands it on the reference; " +
+            "material_export_png writes it to a file, for example to draw a sharper version of the part from it. It keeps the item's tags and folder unless folder_id is given; " +
+            "new_id names it for later batch members. One history edit; the changed list names the new item (material:<id>).",
         WorkspaceMaterialPixels.SET_PIXELS to "Write the pixels a material paint session committed (staging names them; paint_session_commit stages and runs this). The item keeps its size; every layer showing it takes the new pixels over its unchanged canvas rectangle; a vector item becomes a bitmap. One history edit.",
         WorkspaceMaterialPixels.ADJUST to "Adjust a material item's pixels: flip (horizontal or vertical), then hue (-180..180 degrees), saturation, lightness and contrast (-100..100 each, 0 unchanged). " +
             "The item keeps its size; every layer showing it takes the new pixels over its unchanged canvas rectangle; a vector item becomes a bitmap of its current raster. One history edit.",
@@ -108,6 +121,8 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialEdits.RESOLUTION -> "Set vector resolution"
         WorkspaceMaterialEdits.PLACE -> "Placed material ${request.getValue("material_id").jsonPrimitive.content}"
         WorkspaceMaterialPixels.PAINT -> "Painted material ${request.getValue("id").jsonPrimitive.content}"
+        WorkspaceMaterialEdits.REFERENCE -> "Set the reference image"
+        WorkspaceMaterialEdits.CROP -> "Cropped material ${request.getValue("id").jsonPrimitive.content}"
         WorkspaceMaterialEdits.UNLINK -> "Unlinked ${request.getValue("layer_ids").jsonArray.size} layer(s) from their materials"
         WorkspaceMaterialPixels.SET_PIXELS -> "Painted material ${request.getValue("id").jsonPrimitive.content}"
         WorkspaceMaterialPixels.ADJUST -> "Adjusted material ${request.getValue("id").jsonPrimitive.content}"
@@ -124,7 +139,8 @@ internal object WorkspaceLayoutOperations {
             "width" to s.integer(1), "height" to s.integer(1), "tags" to tags, "origin" to s.string(), "placement" to s.vector(4),
             "references" to s.integer(0)), setOf("id", "name", "kind", "width", "height", "tags", "references"))
         s.obj(mapOf("folder_id" to s.handle(), "path" to s.array(s.obj(mapOf("id" to s.handle(), "name" to s.string()))),
-            "total" to s.integer(0), "folders" to s.array(folder), "items" to s.array(item), "next" to s.integer(1)),
+            "total" to s.integer(0), "folders" to s.array(folder), "items" to s.array(item), "next" to s.integer(1),
+            "reference" to s.obj(mapOf("material_id" to s.handle(), "rect" to s.vector(4), "opacity" to s.number(), "visible" to s.boolean()))),
             setOf("path", "total", "folders", "items"))
     }
     val getSchema: JsonObject by lazy {
@@ -138,6 +154,10 @@ internal object WorkspaceLayoutOperations {
     val previewSchema: JsonObject by lazy {
         val s = WorkspaceResultSchema
         s.obj(mapOf("id" to s.handle(), "width" to s.integer(1), "height" to s.integer(1)))
+    }
+    val pngSchema: JsonObject by lazy {
+        val s = WorkspaceResultSchema
+        s.obj(mapOf("state" to s.handle(), "path" to s.handle(), "bytes" to s.integer(0), "width" to s.integer(1), "height" to s.integer(1)))
     }
     val exportSchema: JsonObject by lazy {
         val s = WorkspaceResultSchema
@@ -191,7 +211,7 @@ internal fun registerLayoutOperations(registry: WorkspaceOperationRegistry, port
     }
 
     registry.register(WorkspaceOperationDefinition(WorkspaceLayoutOperations.LIST,
-        "List the material library: the folders and items in folder_id (the top level when omitted), or everywhere below it with recursive. " +
+        "List the material library: the folders and items in folder_id (the top level when omitted), or everywhere below it with recursive, and the reference image when one is set. " +
             "query matches names and tags (an item's folders' tags included), kind filters bitmap or vector items, unused keeps items no layer shows. Paged by offset and limit (default 64).",
         WorkspaceLayoutOperations.schema(mapOf("folder_id" to buildJsonObject { put("type", JsonArray(listOf(JsonPrimitive("string"), JsonPrimitive("null")))) },
             "recursive" to buildJsonObject { put("type", "boolean") }, "query" to buildJsonObject { put("type", "string") },
@@ -218,6 +238,35 @@ internal fun registerLayoutOperations(registry: WorkspaceOperationRegistry, port
         val state = reads.captureQueries().layoutState() ?: throw IllegalStateException("No workspace is loaded")
         val (json, png) = WorkspaceMaterialQueries.preview(state, request.getValue("id").jsonPrimitive.content, request["size"]?.jsonPrimitive?.int ?: 512)
         WorkspaceOperationOutput(json, listOf(png))
+    }
+    registry.register(WorkspaceOperationDefinition(WorkspaceLayoutOperations.EXPORT_PNG,
+        "Write a material item's own pixels to an absolute PNG path, unscaled - a reference crop to draw a sharper part from, for example. Returns a job handle.",
+        WorkspaceLayoutOperations.schema(mapOf("state" to buildJsonObject { put("type", "string"); put("minLength", 1) },
+            "id" to buildJsonObject { put("type", "string"); put("minLength", 1) },
+            "path" to buildJsonObject { put("type", "string"); put("minLength", 1) }), listOf("state", "id", "path")),
+        WorkspaceOperationKind.OUTPUT, jobBacked = true,
+        resultSchema = requireNotNull(WorkspaceJobResultSchemas.operationOutput(WorkspaceLayoutOperations.EXPORT_PNG)),
+        jobResultSchema = WorkspaceJobResultSchemas.result(WorkspaceLayoutOperations.EXPORT_PNG))) { request, _ ->
+        val path = Path.of(request.getValue("path").jsonPrimitive.content)
+        require(path.isAbsolute && path.fileName.toString().endsWith(".png", true)) { "Provide an absolute PNG output path" }
+        val queries = reads.captureQueries()
+        val captured = queries.snapshot().state
+        if (captured != request.getValue("state").jsonPrimitive.content) throw WorkspaceConflict(request.getValue("state").jsonPrimitive.content, captured)
+        val state = queries.layoutState() ?: throw IllegalStateException("No workspace is loaded")
+        startWorkspaceOperationJob(reads, jobs, WorkspaceLayoutOperations.EXPORT_PNG) {
+            val coroutine = currentCoroutineContext()
+            val (bytes, width, height) = runInterruptible(Dispatchers.Default) { WorkspaceMaterialQueries.png(state, request.getValue("id").jsonPrimitive.content) }
+            coroutine.ensureActive()
+            val output = buildJsonObject { put("state", captured); put("path", path.toString()); put("bytes", bytes.size); put("width", width); put("height", height) }
+            withContext(NonCancellable + Dispatchers.IO) {
+                path.parent?.let { Files.createDirectories(it) }
+                val temporary = Files.createTempFile(path.parent, ".material", ".png")
+                try { Files.write(temporary, bytes); Files.move(temporary, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
+                finally { Files.deleteIfExists(temporary) }
+                coroutine[WorkspaceJobCompletion]?.committed(WorkspaceOperationOutput(output))
+            }
+            WorkspaceOperationOutput(output)
+        }
     }
     registry.register(WorkspaceOperationDefinition(WorkspaceLayoutOperations.EXPORT_PSD,
         "Export a material folder to an absolute PSD path: its items as layers where they sit (in a row from the corner when they have no place), its subfolders as groups, " +

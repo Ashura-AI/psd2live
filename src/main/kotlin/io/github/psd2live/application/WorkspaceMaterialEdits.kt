@@ -49,7 +49,9 @@ internal object WorkspaceMaterialEdits {
     const val RESOLUTION = "material_set_resolution"
     const val PLACE = "layer_place"
     const val UNLINK = "material_unlink"
-    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK) + WorkspaceMaterialPixels.supported
+    const val REFERENCE = "layout_set_reference"
+    const val CROP = "material_crop"
+    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, REFERENCE, CROP) + WorkspaceMaterialPixels.supported
     private const val MAX_NAME = 128
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
@@ -71,6 +73,9 @@ internal object WorkspaceMaterialEdits {
             PLACE -> place(document, model, text("material_id"), request["rect"]?.jsonObject?.let(::rect),
                 request["at"]?.jsonArray?.map { it.jsonPrimitive.float }?.also { require(it.size == 2) { "at takes [x, y]" } },
                 optional("layer_id"))
+            REFERENCE -> reference(document, request)
+            CROP -> crop(document, text("id"), request["rect"]?.jsonObject?.let(::rect), request["canvas_rect"]?.jsonObject?.let(::rect),
+                optional("name"), optional("new_id"), if ("folder_id" in request) optional("folder_id") else null, "folder_id" in request)
             else -> throw IllegalArgumentException("Not a material edit: ${operation.operation}")
         }
     }
@@ -193,6 +198,7 @@ internal object WorkspaceMaterialEdits {
         }
         library.items.filter { it.folderId in folders }.mapTo(items) { it.id }
         val used = references(document, items)
+        document.layout.reference?.materialId?.let { require(it !in items) { "The reference image shows $it; clear or change it with layout_set_reference first" } }
         require(used.isEmpty()) {
             "Materials in use cannot be deleted; delete these layers first: " + used.entries.joinToString("; ") { (item, layers) -> "$item by ${layers.joinToString()}" }
         }
@@ -330,6 +336,74 @@ internal object WorkspaceMaterialEdits {
             if (resolution.user.isNotEmpty()) next = next.copy(layout = next.layout.copy(layerTags = next.layout.layerTags + (id to resolution.user)))
         }
         return next
+    }
+
+    /**
+     * The reference image set, changed or cleared ([LayoutReference]). A new material without a rect is fitted
+     * into the canvas and centred, scaled up or down; omitted fields keep their values.
+     */
+    fun reference(document: WorkspaceDocument, request: JsonObject): WorkspaceDocument {
+        val current = document.layout.reference
+        val materialField = request["material_id"]
+        if (materialField is JsonNull) return if (current == null) document else document.copy(layout = document.layout.copy(reference = null))
+        val materialId = materialField?.jsonPrimitive?.content ?: current?.materialId
+            ?: throw IllegalArgumentException("No reference is set; give material_id")
+        val item = document.layout.materials.item(materialId) ?: throw IllegalArgumentException("Material item not found: $materialId")
+        val width = document.source.widthPx.toFloat(); val height = document.source.heightPx.toFloat()
+        val rect = request["rect"]?.jsonObject?.let(::rect)
+            ?: current?.rect?.takeIf { current.materialId == materialId }
+            ?: run {
+                val scale = minOf(width / item.raster.width, height / item.raster.height)
+                val w = item.raster.width * scale; val h = item.raster.height * scale
+                LayerCanvasRect((width - w) / 2f, (height - h) / 2f, w, h)
+            }
+        require(rect.width > 0f && rect.height > 0f && listOf(rect.left, rect.top, rect.width, rect.height).all(Float::isFinite)) { "rect needs a finite positive size" }
+        val opacity = request["opacity"]?.jsonPrimitive?.float ?: current?.opacity ?: 0.5f
+        require(opacity in 0f..1f) { "opacity is 0..1" }
+        val visible = request["visible"]?.jsonPrimitive?.boolean ?: current?.visible ?: true
+        val next = LayoutReference(materialId, rect, opacity, visible)
+        return if (next == current) document else document.copy(layout = document.layout.copy(reference = next))
+    }
+
+    /**
+     * A new item holding the pixels of [rect] (the item's pixels) or of [canvasRect] (canvas units, through where the
+     * item sits as the reference image, else its own placement on this canvas) of item [id], losslessly. The new
+     * item's placement is where those pixels sit on the canvas, so placing it lands on the reference.
+     */
+    fun crop(document: WorkspaceDocument, id: String, rect: LayerCanvasRect?, canvasRect: LayerCanvasRect?, name: String?, newId: String?,
+             folderId: String?, folderGiven: Boolean): WorkspaceDocument {
+        val library = document.layout.materials
+        val item = library.item(id) ?: throw IllegalArgumentException("Material item not found: $id")
+        require((rect == null) != (canvasRect == null)) { "Give rect (material pixels) or canvas_rect (canvas units), not both" }
+        val canvasW = document.source.widthPx; val canvasH = document.source.heightPx
+        // Where the item's pixels sit on this canvas: the reference rectangle, else its own placement made for this canvas.
+        val sits = document.layout.reference?.takeIf { it.materialId == id }?.rect
+            ?: item.placement?.takeIf { item.placementWidth == canvasW && item.placementHeight == canvasH }
+        val sx = sits?.let { it.width / item.raster.width }; val sy = sits?.let { it.height / item.raster.height }
+        val pixels = rect ?: run {
+            val on = requireNotNull(sits) { "canvas_rect needs the item to be the reference image or placed on this canvas; give rect in its pixels" }
+            val c = requireNotNull(canvasRect)
+            LayerCanvasRect((c.left - on.left) / sx!!, (c.top - on.top) / sy!!, c.width / sx, c.height / sy)
+        }
+        val left = floor(pixels.left.toDouble()).toInt().coerceIn(0, item.raster.width - 1)
+        val top = floor(pixels.top.toDouble()).toInt().coerceIn(0, item.raster.height - 1)
+        val right = ceil(pixels.right.toDouble() - 1e-4).toInt().coerceIn(left + 1, item.raster.width)
+        val bottom = ceil(pixels.bottom.toDouble() - 1e-4).toInt().coerceIn(top + 1, item.raster.height)
+        val w = right - left; val h = bottom - top
+        val source = item.raster
+        val rgba = ByteArray(w * h * 4)
+        for (y in 0 until h) System.arraycopy(source.rgba, ((top + y) * source.width + left) * 4, rgba, y * w * 4, w * 4)
+        val raster = LayerRaster(w, h, rgba)
+        val placement = sits?.let { LayerCanvasRect(it.left + left * sx!!, it.top + top * sy!!, w * sx, h * sy) }
+        val folder = if (folderGiven) folderId else item.folderId
+        requireFolder(library, folder)
+        val itemName = requireName(name ?: "${item.name} ${left},${top} ${w}x${h}")
+        val taken = taken(library)
+        val itemId = newId?.also { require(!taken(it) && it.matches(Regex("[A-Za-z0-9_.:-]{1,64}"))) { "new_id is taken or invalid: $it" } }
+            ?: StableIds.fresh(StableIds.stem("mat_", id, left, top, w, h)) { taken(it) }
+        val cropped = MaterialItem(itemId, itemName, folder, MaterialKind.BITMAP, raster, placement, tags = item.tags,
+            origin = "crop:$id#$left,$top,$w,$h", placementWidth = if (placement != null) canvasW else 0, placementHeight = if (placement != null) canvasH else 0)
+        return document.withLibrary(library.copy(items = library.items + cropped))
     }
 
     /** The integer bounds enclosing [rect]. */

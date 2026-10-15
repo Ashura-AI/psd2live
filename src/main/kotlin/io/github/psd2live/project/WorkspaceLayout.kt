@@ -19,6 +19,8 @@ data class WorkspaceLayout(
 	val layerMaterials: Map<String, String> = emptyMap(),
 	val generation: WorkspaceGeneration = WorkspaceGeneration.Generated,
 	val materials: MaterialLibrary = MaterialLibrary.Empty,
+	/** The image laid over the canvas to place layers against; never a layer, so never generated or exported. */
+	val reference: LayoutReference? = null,
 ) {
 	val isEmpty: Boolean get() = this == Empty
 
@@ -60,6 +62,14 @@ data class WorkspaceGeneration(
 		val Generated = WorkspaceGeneration()
 		val NotGenerated = WorkspaceGeneration(generated = false)
 	}
+}
+
+/**
+ * The reference image: material [materialId] shown over [rect] on the canvas at [opacity], to place and compare
+ * layers against. It is view data in the document - saved and undone with it - but no layer.
+ */
+data class LayoutReference(val materialId: String, val rect: LayerCanvasRect, val opacity: Float = 0.5f, val visible: Boolean = true) {
+	init { require(opacity in 0f..1f) { "Reference opacity is 0..1" } }
 }
 
 enum class MaterialKind { BITMAP, VECTOR }
@@ -135,7 +145,7 @@ internal object WorkspaceLayoutCodec {
 	const val MATERIALS = "materials"
 
 	fun encodeLayout(layout: WorkspaceLayout): JsonObject? {
-		if (layout.layerTags.isEmpty() && layout.layerMaterials.isEmpty() && layout.generation == WorkspaceGeneration.Generated) return null
+		if (layout.layerTags.isEmpty() && layout.layerMaterials.isEmpty() && layout.generation == WorkspaceGeneration.Generated && layout.reference == null) return null
 		return buildJsonObject {
 			if (layout.layerTags.isNotEmpty()) putJsonObject("layerTags") {
 				layout.layerTags.toSortedMap().forEach { (id, tags) -> putJsonArray(id) { tags.sorted().forEach { add(JsonPrimitive(it)) } } }
@@ -152,6 +162,12 @@ internal object WorkspaceLayoutCodec {
 				}
 				if (generation.refreshLayerIds.isNotEmpty()) putJsonArray("refreshLayerIds") { generation.refreshLayerIds.sorted().forEach { add(JsonPrimitive(it)) } }
 			}
+			layout.reference?.let { reference -> putJsonObject("reference") {
+				put("materialId", reference.materialId)
+				putJsonArray("rect") { reference.rect.let { listOf(it.left, it.top, it.width, it.height) }.forEach { add(JsonPrimitive(it)) } }
+				put("opacity", reference.opacity)
+				if (!reference.visible) put("visible", false)
+			} }
 		}
 	}
 
@@ -230,6 +246,11 @@ internal object WorkspaceLayoutCodec {
 			layerMaterials = layout?.get("layerMaterials")?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty(),
 			generation = generation,
 			materials = library,
+			reference = layout?.get("reference")?.jsonObject?.let { value ->
+				val rect = value.getValue("rect").jsonArray.map { it.jsonPrimitive.float }
+				LayoutReference(value.getValue("materialId").jsonPrimitive.content, LayerCanvasRect(rect[0], rect[1], rect[2], rect[3]),
+					value["opacity"]?.jsonPrimitive?.float ?: 0.5f, value["visible"]?.jsonPrimitive?.boolean ?: true)
+			},
 		)
 	}
 

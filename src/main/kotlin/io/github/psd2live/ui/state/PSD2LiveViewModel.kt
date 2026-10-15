@@ -5874,6 +5874,13 @@ class PSD2LiveViewModel : AutoCloseable {
 		placeMaterial(drag.id, at.x, at.y)
 	}
 
+	/** Lays material [materialId] over the canvas as the Layout reference image, or clears it with null (`layout_set_reference`). */
+	fun setLayoutReference(materialId: String?, opacity: Float? = null) = layoutEdit(tr("materials.referenceSet"),
+		io.github.psd2live.application.WorkspaceMaterialEdits.REFERENCE, kotlinx.serialization.json.buildJsonObject {
+			put("material_id", materialId?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
+			opacity?.let { put("opacity", kotlinx.serialization.json.JsonPrimitive(it)) }
+		})
+
 	private fun layoutEdit(summary: String, operation: String, request: kotlinx.serialization.json.JsonObject) {
 		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return
 		val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace

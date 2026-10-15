@@ -264,6 +264,11 @@ enum class WorkspaceViewBackground {
 	CHECKERBOARD,
 }
 
+/** How a view draws the document's reference image ([LayoutReference]): over the model, under it, or their difference. */
+enum class WorkspaceViewReferenceMode { OVER, UNDER, DIFFERENCE }
+
+data class WorkspaceViewReference(val mode: WorkspaceViewReferenceMode, val opacity: Float? = null)
+
 /** A camera window expressed in canonical canvas units (origin top-left, Y down). */
 sealed interface WorkspaceViewFrame {
 	/** Observe this exact canvas rectangle. The rectangle may extend beyond the canvas. */
@@ -301,6 +306,10 @@ data class WorkspaceModelViewRequest(
 	val frame: WorkspaceViewFrame,
 	val background: WorkspaceViewBackground = WorkspaceViewBackground.TRANSPARENT,
 	val output: WorkspaceViewOutputSpec = WorkspaceViewOutputSpec(),
+	/** Draw the document's reference image with the model; null leaves it out. */
+	val reference: WorkspaceViewReference? = null,
+	/** Tint each layer by its texture pixels per canvas unit ([WorkspaceRenderedView.texelDensity]). */
+	val density: Boolean = false,
 )
 
 data class WorkspaceRenderedView(
@@ -327,6 +336,12 @@ data class WorkspaceRenderedView(
 	val annotatedPathHardness: Boolean = false,
 	val annotatedPathRadius: Boolean = false,
 	val pointIndices: Boolean = false,
+	/** The reference mode drawn, when the view drew the reference image. */
+	val referenceMode: WorkspaceViewReferenceMode? = null,
+	/** Difference views: the mean absolute colour difference, 0..1, over pixels the model or the reference covers. */
+	val referenceDifference: Float? = null,
+	/** Density views: each drawn layer's texture pixels per canvas unit. */
+	val texelDensity: Map<String, Float> = emptyMap(),
 )
 
 /** Everything required to map generated or edited PNG pixels back into the model without guessing. */

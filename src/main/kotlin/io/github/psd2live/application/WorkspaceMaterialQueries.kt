@@ -58,6 +58,11 @@ internal object WorkspaceMaterialQueries {
             folderId?.let { put("folder_id", it) }
             putJsonArray("path") { library.ancestry(folderId).reversed().forEach { add(buildJsonObject { put("id", it.id); put("name", it.name) }) } }
             put("total", rows.size)
+            state.layout.reference?.let { reference -> putJsonObject("reference") {
+                put("material_id", reference.materialId)
+                putJsonArray("rect") { reference.rect.let { listOf(it.left, it.top, it.width, it.height) }.forEach { add(JsonPrimitive(it)) } }
+                put("opacity", reference.opacity); put("visible", reference.visible)
+            } }
             put("folders", JsonArray(rows.take(folders.size).drop(offset).take(limit)))
             val itemRows = rows.drop(folders.size)
             val itemOffset = (offset - folders.size).coerceAtLeast(0)
@@ -132,6 +137,13 @@ internal object WorkspaceMaterialQueries {
         }
         val png = ByteArrayOutputStream().use { out -> javax.imageio.ImageIO.write(scaled, "png", out); out.toByteArray() }
         return buildJsonObject { put("id", id); put("width", width); put("height", height) } to png
+    }
+
+    /** Item [id]'s own pixels as a PNG, unscaled. */
+    fun png(state: WorkspaceLayoutState, id: String): Triple<ByteArray, Int, Int> {
+        val item = state.layout.materials.item(id) ?: throw IllegalArgumentException("Material item not found: $id")
+        val image = PreviewRenderer.rasterImage(item.raster.width, item.raster.height, item.raster.rgba)
+        return Triple(ByteArrayOutputStream().use { out -> javax.imageio.ImageIO.write(image, "png", out); out.toByteArray() }, item.raster.width, item.raster.height)
     }
 
     /** [art] cropped to the union of its layers, moved to the origin. */

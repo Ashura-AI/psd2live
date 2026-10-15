@@ -1,0 +1,78 @@
+package io.github.psd2live.scenario
+
+import io.github.psd2live.application.WorkspaceMaterialFiles
+import io.github.psd2live.application.WorkspaceMaterialStaging
+import io.github.psd2live.application.WorkspaceRenderSession
+import io.github.psd2live.project.*
+import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.io.TempDir
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlin.test.Test
+
+/**
+ * Laying parts out against a reference image: the reference is set over the canvas without becoming a layer, a
+ * close-up cropped from it by canvas rectangle lands back on it when placed, and views draw the reference over, under
+ * or against the model and tint layers by their texture density.
+ */
+class ReferenceLayoutScenario {
+	@TempDir lateinit var temp: Path
+
+	@Test fun partsAreCroppedFromTheReferenceAndCompared() = Studio.run(temp, Characters.figure()) {
+		val files = Files.createDirectories(temp.resolve("files"))
+		val disc = Characters.disc(files)
+		edit("import the reference", "material_add", req("staging" to WorkspaceMaterialStaging.stage(WorkspaceMaterialFiles.read(listOf(disc)))))
+		val item = now.document.layout.materials.items.single()
+		val width = now.document.source.widthPx.toFloat(); val height = now.document.source.heightPx.toFloat()
+		val layers = now.document.source.layers.size
+
+		edit("set it as the reference", "layout_set_reference", req("material_id" to item.id, "opacity" to 0.4))
+		val reference = requireNotNull(now.document.layout.reference)
+		expect("reference", now.document.source.layers.size == layers) { "the reference became a layer" }
+		val scale = minOf(width / item.raster.width, height / item.raster.height)
+		expect("reference", reference.rect.width == item.raster.width * scale && reference.rect.left == (width - reference.rect.width) / 2f && reference.opacity == 0.4f) {
+			"the reference is not fitted and centred: ${reference.rect} at ${reference.opacity}" }
+		refused("the reference's material cannot be deleted", "material_delete", req("ids" to listOf(item.id)))
+
+		// A close-up of the reference's middle, by canvas rectangle; it keeps where it sits.
+		val cx = reference.rect.left + reference.rect.width / 2f; val cy = reference.rect.top + reference.rect.height / 2f
+		val half = reference.rect.width / 4f
+		edit("crop a close-up from it", "material_crop", req("id" to item.id, "new_id" to "close",
+			"canvas_rect" to mapOf("left" to cx - half, "top" to cy - half, "width" to half * 2, "height" to half * 2)))
+		val close = requireNotNull(now.document.layout.materials.item("close"))
+		val place = requireNotNull(close.placement)
+		val expectedWidth = (close.raster.width * scale)
+		expect("crop", kotlin.math.abs(place.width - expectedWidth) < 1e-3f && kotlin.math.abs(place.left - (cx - half)) <= scale &&
+			close.raster.width in (item.raster.width / 2 - 1)..(item.raster.width / 2 + 2)) { "the crop's pixels or place are off: ${close.raster.width} at $place" }
+		val sx = (place.left - reference.rect.left) / scale; val sy = (place.top - reference.rect.top) / scale
+		val rowFrom = (sy.toInt() + close.raster.height / 2) * item.raster.width + sx.toInt()
+		expect("crop", close.raster.rgba.copyOfRange(close.raster.height / 2 * close.raster.width * 4, (close.raster.height / 2 * close.raster.width + close.raster.width) * 4)
+			.contentEquals(item.raster.rgba.copyOfRange(rowFrom * 4, (rowFrom + close.raster.width) * 4))) { "the crop is not the reference's own pixels" }
+
+		edit("place the close-up", "layer_place", req("material_id" to "close", "layer_id" to "close"))
+		val placed = now.document.source.layers.single { it.id.raw == "close" }
+		expect("placed", placed.canvasRect() == place) { "the close-up did not land on the reference: ${placed.canvasRect()} vs $place" }
+
+		val render = WorkspaceRenderSession(runtime.read(), { it })
+		val frame = WorkspaceViewFrame.CanvasRect(io.github.psd2live.core.Bounds(0f, 0f, width, height))
+		fun view(reference: WorkspaceViewReference?, density: Boolean = false) = runBlocking {
+			render.renderModel(WorkspaceModelViewRequest(includeLayerIds = setOf("close"), frame = frame, reference = reference, density = density,
+				output = WorkspaceViewOutputSpec(targetLongEdge = 256)))
+		}
+		val difference = view(WorkspaceViewReference(WorkspaceViewReferenceMode.DIFFERENCE))
+		val over = view(WorkspaceViewReference(WorkspaceViewReferenceMode.OVER))
+		val plain = view(null)
+		expect("views", difference.referenceMode == WorkspaceViewReferenceMode.DIFFERENCE && difference.referenceDifference != null) { "a difference view gave no difference" }
+		expect("views", !over.png.contentEquals(plain.png) && over.referenceDifference == null) { "the reference was not drawn over the model" }
+		val density = view(null, density = true)
+		val texels = density.texelDensity["close"]
+		expect("density", texels != null && kotlin.math.abs(texels - 1f / scale) < 0.02f) { "the close-up's density is ${density.texelDensity}, not ${1f / scale}" }
+
+		edit("hide and fade it", "layout_set_reference", req("visible" to false, "opacity" to 0.8))
+		expect("reference", now.document.layout.reference?.let { !it.visible && it.opacity == 0.8f && it.rect == reference.rect } == true) { "the change lost the rest" }
+		reopen()
+		expect("saved", now.document.layout.reference?.materialId == item.id && now.document.layout.reference?.opacity == 0.8f) { "the reference did not survive saving" }
+		edit("clear it", "layout_set_reference", req("material_id" to null))
+		expect("cleared", now.document.layout.reference == null) { "the reference is still set" }
+	}
+}

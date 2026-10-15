@@ -30,8 +30,9 @@ internal object WorkspaceObservationResultSchemas {
         "annotatedLayerIds" to ids, "annotatedDeformerIds" to ids, "annotatedPathIds" to ids,
         "annotatedPathWidth" to s.boolean(), "annotatedPathHardness" to s.boolean(), "annotatedPathRadius" to s.boolean(),
         "pointIndices" to s.boolean(), "objectIds" to ids, "canvasRect" to rectangle, "spatial" to spatial,
+        "referenceMode" to s.choices("over", "under", "difference"), "referenceDifference" to s.number(), "texelDensity" to s.dictionary(s.number()),
     )
-    val view = s.obj(viewFields)
+    val view = s.obj(viewFields, viewFields.keys - setOf("referenceMode", "referenceDifference", "texelDensity"))
 
     private fun sheet(versions: Boolean, physics: Boolean): JsonObject {
         val tileFields = linkedMapOf("id" to s.handle(), "viewId" to s.handle(), "imageRect" to s.vector(4),

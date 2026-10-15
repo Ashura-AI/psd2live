@@ -127,6 +127,10 @@ data class TabViewOptions(
 	 * source resolution rather than at the packed density. The native preview always shows atlas pixels.
 	 */
 	val sourcePixels: Boolean = false,
+	/** Edit canvases lay the Layout reference image over the artwork at its opacity, when the document has one. */
+	val showReference: Boolean = true,
+	/** Edit canvases tint each layer by its texture pixels per canvas unit, as the atlas heatmap does. */
+	val densityHeatmap: Boolean = false,
 	/** How a preview canvas shows a running reference simulation against the baked export. */
 	val simulationView: SimulationView = SimulationView.REFERENCE,
 ) {

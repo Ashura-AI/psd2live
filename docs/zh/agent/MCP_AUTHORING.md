@@ -515,6 +515,9 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `material_set_pixels` | `state`、`id`、`staging` | 写入素材绘画会话暂存的像素；由 `paint_session_commit` 发起，一般不直接调用 |
 | `material_adjust` | `state`、`id`，至少一项：`flip`（`horizontal/vertical`）、`hue`（±180）、`saturation`/`lightness`/`contrast`（±100） | 先翻转再调色，尺寸不变；同步图层与 SVG 规则同上 |
 | `material_export_psd` | `state`、`folder_id`、`path`（绝对 `.psd`） | 后台把文件夹写成 PSD：条目按默认位置（无则自左上排开），子文件夹为图层组 |
+| `material_export_png` | `state`、`id`、`path`（绝对 `.png`） | 后台把条目自身像素原样写成 PNG（不缩放），例如把参考图特写交给外部工具画成更清晰的部件 |
+| `layout_set_reference` | `state`，可选 `material_id`（null 清除）、`rect`、`opacity`（0–1，默认 0.5）、`visible` | 参考图：把条目叠在画布上用于摆放与对照。它不是图层，生成、导出与 Rig 都看不到它；新设时不给 `rect` 则等比放大或缩小到画布内并居中，省略的字段保持原值；`material_list` 返回当前参考图 |
+| `material_crop` | `state`、`id`，`rect`（条目像素）或 `canvas_rect`（画布单位，条目须为参考图或按本画布摆放），可选 `name`、`new_id`、`folder_id` | 无损裁出新条目，新条目记住这些像素在画布上的位置，`layer_place` 不给 `rect` 时正好落回参考图上；保留标签与文件夹 |
 | `layer_place` | `state`、`material_id`，可选 `rect`（单个条目）、`at`（[x, y] 中心）、`layer_id`（单个条目的新图层 ID） | 放置条目或整个文件夹为新源图层，画在已有图层之上；默认 PSD 位置（PSD 画布居中映射到工程画布，超出时等比缩小，尺寸相同时原位），否则 1 素材像素 = 1 画布单位并缩入画布；像素不重采样 |
 | `layer_tag` | `state`、`layer_ids`（1–128），`set` 或 `add`/`remove` | 语义标签：部位词与 `left/right` 决定分类（如 `{hair, front}`、`{eye, iris, left}`），其余为用户标签；已生成图层的分类变化等待 `rig_generate` |
 | `layer_set_variant` | `state`、`layer_id`、`variant`（`none/toggle/switch`），可选 `parameter`、`switch_id` | 差分属性，保留标签 |
@@ -523,6 +526,8 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 未生成工程与待生成图层只接受素材、放置、移动缩放镜像（`layer_set_canvas_rect`、`layer_transform`，旋转需生成后）、替换、删除、标签与生成设置；其余 Rig 编辑返回 `not_generated`，导出只包含已生成部分（未生成工程拒绝导出）。导入 PSD 的新工程同样把每个图层登记为素材并关联。
 
 一个典型流程：`project_create` → `material_import` → `material_list` → 若干 `layer_place`（或放置整个 PSD 文件夹）→ `layer_tag` → `rig_generate` → 作者编辑 → 再 `layer_place` → `rig_generate`。
+
+按参考图拆件的流程：`material_import` 参考图 → `layout_set_reference` → `material_crop`（`canvas_rect`）截取特写 → `material_export_png` → 外部放大或重绘、拆成部件 → `material_import` → `layer_place`（`rect` 取特写的位置换算）→ `view_render_model` 的 `reference`（`difference` 看对齐，`referenceDifference` 为平均差值）与 `density`（纹理密度热力图，`texelDensity` 列出各图层每画布单位的纹理像素）检查 → `layer_set_canvas_rect` / `layer_transform` 微调 → `layer_tag` → `rig_generate` → `view_render_poses` 检查动作。
 
 ## 素材工作流（asset_*）
 

@@ -57,6 +57,10 @@ Windows 也可以直接运行根目录的 `run-gui.bat`。不带参数启动 GUI
 - 神经 Alpha 默认开启；`--upscale-neural-alpha` 仅为兼容旧命令保留。
 - 高清化的准备与示例见[纹理高清化](TEXTURE_UPSCALE.md)。
 
+### 无界面 MCP 服务
+
+`./gradlew run --args="mcp [--port N] [--token T] [--store DIR] [--profile core|full]"` 不开窗口，只启动 MCP 端点，供智能体单独工作；启动后打印 `endpoint`、`token`、`profile` 与 `store`，直到进程结束。工作区存储默认在用户目录的 `psd2live-mcp` 下，与编辑器分开（不共用历史与实例锁）。`--token` 须为 32–256 个 URL 安全 Base64 字符，省略时随机生成。
+
 ## 导出到其他格式
 
 `export` 命令从 `.psd2live` 工程（当前历史状态）或 PSD（默认设置生成）经中立 IR 导出到任意目标，并写出损失报告：

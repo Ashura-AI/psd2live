@@ -75,6 +75,8 @@ internal object WorkspaceStateCodec {
             showSelectionBounds = if (legacySelectionBounds) defaults.showSelectionBounds
                                   else booleanOr(obj, "showSelectionBounds", defaults.showSelectionBounds),
             sourcePixels = booleanOr(obj, "sourcePixels", defaults.sourcePixels),
+            showReference = booleanOr(obj, "showReference", defaults.showReference),
+            densityHeatmap = booleanOr(obj, "densityHeatmap", defaults.densityHeatmap),
             simulationView = obj["simulationView"]?.jsonPrimitive?.contentOrNull?.let(SimulationView::parse) ?: defaults.simulationView,
         )
     }
@@ -105,6 +107,8 @@ internal object WorkspaceStateCodec {
         put("showSelectionBounds", options.showSelectionBounds)
         // Written only when on, so workspaces saved before the option keep their bytes.
         if (options.sourcePixels) put("sourcePixels", true)
+        if (!options.showReference) put("showReference", false)
+        if (options.densityHeatmap) put("densityHeatmap", true)
         if (options.simulationView != SimulationView.REFERENCE) put("simulationView", options.simulationView.jsonName)
     }
 
