@@ -197,8 +197,15 @@ private fun registerCatalogRenderCommands(catalog: WorkspaceCommands, render: Wo
 
 	catalog.register(
 		name = "view_render_model",
-		description = "Evaluate a rig pose, composite selected layers into one PNG, and render only an explicit canvas rectangle or a focused object region. Returns reversible pixel-to-canvas placement metadata.",
-		inputSchema = modelViewSchema(),
+		description = "Evaluate a rig pose, composite selected layers into one PNG, and render only an explicit canvas rectangle or a focused object region. Returns reversible pixel-to-canvas placement metadata. " +
+			"To read coordinates off the reference image for drawing, render a canvas_rect with include_layer_ids [], reference {mode: under, opacity: 1} and grid; outline_material_ids lays drawings over it.",
+		inputSchema = modelViewSchema().let { base -> WorkspaceCommandSchema(properties = JsonObject(requireNotNull(base.properties) + buildJsonObject {
+			putJsonObject("grid") { put("type", "number"); put("exclusiveMinimum", 0)
+				put("description", "Draw grid lines every so many canvas units, labelled with canvas coordinates along the top and left; a step too fine for the view is coarsened (x2, x5, x10...) and gridStep says the step drawn") }
+			putJsonObject("outline_material_ids") { put("type", "array"); put("maxItems", 24); putJsonObject("items") { put("type", "string") }
+				put("description", "Material items with a place on this canvas (drawings from material_draw, crops) whose opaque edge is traced over the view where they sit, each in its own colour with its id; " +
+					"compares a drawing's shape with the reference without placing it") }
+		}), required = base.required) },
 		hints = READ_ONLY,
 	) { request ->
 		renderResult {
@@ -224,6 +231,8 @@ private fun registerCatalogRenderCommands(catalog: WorkspaceCommands, render: Wo
 							value["opacity"]?.jsonPrimitive?.float)
 					},
 					density = request.arguments.get("density")?.jsonPrimitive?.content == "true",
+					grid = request.arguments.get("grid")?.jsonPrimitive?.float,
+					outlineMaterialIds = request.arguments.get("outline_material_ids")?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty(),
 				),
 			)
 		}
@@ -1187,6 +1196,8 @@ internal fun WorkspaceRenderedView.toJson(): JsonObject = buildJsonObject {
 	referenceMode?.let { put("referenceMode", it.name.lowercase()) }
 	referenceDifference?.let { put("referenceDifference", it) }
 	if (texelDensity.isNotEmpty()) putJsonObject("texelDensity") { texelDensity.forEach { (id, value) -> put(id, value) } }
+	gridStep?.let { put("gridStep", it) }
+	if (outlinedMaterialIds.isNotEmpty()) putJsonArray("outlinedMaterialIds") { outlinedMaterialIds.forEach { add(JsonPrimitive(it)) } }
 	putJsonArray("objectIds") { objectIds.forEach { add(JsonPrimitive(it)) } }
 	putJsonObject("canvasRect") {
 		put("left", canvasRect.left)

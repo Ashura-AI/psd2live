@@ -310,6 +310,10 @@ data class WorkspaceModelViewRequest(
 	val reference: WorkspaceViewReference? = null,
 	/** Tint each layer by its texture pixels per canvas unit ([WorkspaceRenderedView.texelDensity]). */
 	val density: Boolean = false,
+	/** A labelled grid every so many canvas units, coarsened until its lines are legibly apart ([WorkspaceRenderedView.gridStep]). */
+	val grid: Float? = null,
+	/** Material items (placed drawings and crops) whose pixel edges are traced over the view where they sit on the canvas. */
+	val outlineMaterialIds: List<String> = emptyList(),
 )
 
 data class WorkspaceRenderedView(
@@ -342,6 +346,10 @@ data class WorkspaceRenderedView(
 	val referenceDifference: Float? = null,
 	/** Density views: each drawn layer's texture pixels per canvas unit. */
 	val texelDensity: Map<String, Float> = emptyMap(),
+	/** Grid views: the canvas units between grid lines drawn. */
+	val gridStep: Float? = null,
+	/** The material items outlined, in the colours they were given in order. */
+	val outlinedMaterialIds: List<String> = emptyList(),
 )
 
 /** Everything required to map generated or edited PNG pixels back into the model without guessing. */

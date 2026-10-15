@@ -55,14 +55,20 @@ internal class WorkspaceRenderSession(
             ViewReferenceImage(PreviewRenderer.rasterImage(item.raster.width, item.raster.height, item.raster.rgba), set.rect, view.mode,
                 view.opacity ?: set.opacity)
         }
+        val outlines = request.outlineMaterialIds.map { id ->
+            val item = captured.document.layout.materials.item(id) ?: throw IllegalArgumentException("Material item not found: $id")
+            val place = item.placement?.takeIf { item.placementWidth == captured.document.source.widthPx && item.placementHeight == captured.document.source.heightPx }
+                ?: throw IllegalArgumentException("$id has no place on this canvas to outline; outline drawings and crops")
+            ViewOutline(id, PreviewRenderer.rasterImage(item.raster.width, item.raster.height, item.raster.rgba), place)
+        }
         return renderModel(captured.model, captured.revision, request.copy(includeLayerIds =
-            request.includeLayerIds ?: visibleLayerIds ?: captured.document.renderVisibleLayers(captured.model)), reference = reference)
+            request.includeLayerIds ?: visibleLayerIds ?: captured.document.renderVisibleLayers(captured.model)), reference = reference, outlines = outlines)
     }
 
     /** Historical and sampled views reuse the same validation and captured resource destination. */
     internal suspend fun renderModel(model: RigPreviewModel, revision: String, request: WorkspaceModelViewRequest,
                                      worldPositions: Map<org.umamo.runtime.model.DrawableId, FloatArray> = emptyMap(),
-                                     reference: ViewReferenceImage? = null): WorkspaceRenderedView {
+                                     reference: ViewReferenceImage? = null, outlines: List<ViewOutline> = emptyList()): WorkspaceRenderedView {
         val parameters = model.rig.puppet.parameters.associateBy { it.id.raw }
         val unknown = request.parameters.keys - parameters.keys
         require(unknown.isEmpty()) { "Unknown parameter IDs: ${unknown.sorted().joinToString()}" }
@@ -71,7 +77,8 @@ internal class WorkspaceRenderSession(
         return rendered { WorkspaceViewRenderer.modelComposite(model, revision, applied, requireNotNull(request.includeLayerIds),
             request.annotateLayerIds, request.frame, request.background, request.output,
             request.annotateDeformerIds, request.annotatePathIds, request.annotatePathWidth,
-            request.annotatePathHardness, request.annotatePathRadius, request.pointIndices, worldPositions, reference, request.density) }
+            request.annotatePathHardness, request.annotatePathRadius, request.pointIndices, worldPositions, reference, request.density,
+            request.grid, outlines) }
     }
 
     private fun composite(captured: WorkspaceCapture<RigPreviewModel>): BufferedImage {

@@ -37,7 +37,13 @@ import kotlin.math.sqrt
 class ViewReferenceImage(val image: BufferedImage, val rect: io.github.psd2live.project.LayerCanvasRect,
                                   val mode: io.github.psd2live.project.WorkspaceViewReferenceMode, val opacity: Float)
 
+/** A material item a view outlines: its pixels over [rect] on the canvas. */
+class ViewOutline(val id: String, val image: BufferedImage, val rect: io.github.psd2live.project.LayerCanvasRect)
+
 object WorkspaceViewRenderer {
+	private val OUTLINE_COLORS = listOf(Color(0x00, 0xE5, 0xFF), Color(0xFF, 0x3D, 0xC8), Color(0xFF, 0xD6, 0x00), Color(0x64, 0xFF, 0x5A),
+		Color(0xFF, 0x7A, 0x1A), Color(0x9C, 0x7B, 0xFF))
+	private const val GRID_MIN_PIXELS = 14.0
 	private val HEAT_LOW = Color(0x3D, 0x7B, 0xE0)
 	private val HEAT_MID = Color(0x4C, 0xB8, 0x6A)
 	private val HEAT_HIGH = Color(0xE5, 0x68, 0x3B)
@@ -74,7 +80,11 @@ object WorkspaceViewRenderer {
 		worldPositions: Map<org.umamo.runtime.model.DrawableId, FloatArray> = emptyMap(),
 		reference: ViewReferenceImage? = null,
 		density: Boolean = false,
+		grid: Float? = null,
+		outlines: List<ViewOutline> = emptyList(),
 	): WorkspaceRenderedView {
+		require(grid == null || (grid.isFinite() && grid > 0f)) { "grid is a positive step in canvas units" }
+		require(outlines.size <= 24) { "Outline at most 24 materials per View" }
 		validateOutput(output)
 		require(annotateDeformerIds.size <= 16) { "Select at most 16 deformers per View" }
 		require(annotatePathIds.size <= 32) { "Select at most 32 deform paths per View" }
@@ -150,6 +160,8 @@ object WorkspaceViewRenderer {
 			graphics.dispose()
 		}
 		if (reference?.mode == WorkspaceViewReferenceMode.OVER) paintReference(image, reference, target.viewport)
+		outlines.forEachIndexed { index, outline -> paintOutline(image, outline, target.viewport, OUTLINE_COLORS[index % OUTLINE_COLORS.size]) }
+		val gridStep = grid?.let { paintGrid(image, target.viewport, it) }
 
 		return encodedView(
 			image = image,
@@ -169,7 +181,7 @@ object WorkspaceViewRenderer {
 			includedLayerIds = includeLayerIds.sorted(),
 			annotatedLayerIds = annotateLayerIds.sorted(),
 			identityExtra = listOf(annotateDeformerIds.sorted(), matchedPathIds.sorted(), listOf(annotatePathWidth, annotatePathHardness,
-				annotatePathRadius, pointIndices, reference?.mode, reference?.opacity, density)).joinToString("|"),
+				annotatePathRadius, pointIndices, reference?.mode, reference?.opacity, density, gridStep, outlines.map { it.id })).joinToString("|"),
 		).copy(
 			annotatedDeformerIds = annotateDeformerIds.sorted(),
 			annotatedPathIds = matchedPathIds.sorted(),
@@ -180,7 +192,84 @@ object WorkspaceViewRenderer {
 			referenceMode = reference?.mode,
 			referenceDifference = difference,
 			texelDensity = densities.toSortedMap(),
+			gridStep = gridStep,
+			outlinedMaterialIds = outlines.map { it.id },
 		)
+	}
+
+	/** The edge of [outline]'s opaque pixels where they sit on the canvas, traced in [color], with its id at its corner. */
+	private fun paintOutline(image: BufferedImage, outline: ViewOutline, viewport: CanvasViewport, color: Color) {
+		val left = viewport.x(outline.rect.left); val top = viewport.offsetY + outline.rect.top * viewport.scale
+		val width = outline.rect.width * viewport.scale; val height = outline.rect.height * viewport.scale
+		val x0 = kotlin.math.floor(left).toInt().coerceIn(0, image.width); val y0 = kotlin.math.floor(top).toInt().coerceIn(0, image.height)
+		val x1 = kotlin.math.ceil(left + width).toInt().coerceIn(0, image.width); val y1 = kotlin.math.ceil(top + height).toInt().coerceIn(0, image.height)
+		if (x1 <= x0 || y1 <= y0) return
+		// Each view pixel is inside when the item's raster is opaque at its centre.
+		val w = x1 - x0; val h = y1 - y0
+		val inside = BooleanArray(w * h)
+		val sx = outline.image.width / width; val sy = outline.image.height / height
+		for (y in 0 until h) for (x in 0 until w) {
+			val u = kotlin.math.floor((x0 + x + 0.5 - left) * sx).toInt(); val v = kotlin.math.floor((y0 + y + 0.5 - top) * sy).toInt()
+			if (u in 0 until outline.image.width && v in 0 until outline.image.height) inside[y * w + x] = (outline.image.getRGB(u, v) ushr 24) >= 128
+		}
+		val rgb = (0xFF shl 24) or (color.rgb and 0xFFFFFF)
+		for (y in 0 until h) for (x in 0 until w) {
+			if (!inside[y * w + x]) continue
+			val edge = x == 0 || y == 0 || x == w - 1 || y == h - 1 || !inside[y * w + x - 1] || !inside[y * w + x + 1] || !inside[(y - 1) * w + x] || !inside[(y + 1) * w + x]
+			if (edge) image.setRGB(x0 + x, y0 + y, rgb)
+		}
+		val g = image.createGraphics()
+		try {
+			g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+			g.font = java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.BOLD, 11)
+			label(g, outline.id, left.toInt().coerceIn(0, image.width - 1) + 2, (top.toInt() - 3).coerceIn(12, image.height - 1), color)
+		} finally { g.dispose() }
+	}
+
+	/**
+	 * Grid lines every [requested] canvas units - coarsened by 2, 5, 10... until they are apart enough to read - each
+	 * fifth line stronger and labelled with its canvas coordinate along the top and left. Returns the step drawn.
+	 */
+	private fun paintGrid(image: BufferedImage, viewport: CanvasViewport, requested: Float): Float {
+		val step = generateSequence(1.0) { it * 10.0 }.flatMap { sequenceOf(it, it * 2.0, it * 5.0) }
+			.map { requested * it }.first { it * viewport.scale >= GRID_MIN_PIXELS }
+		val g = image.createGraphics()
+		try {
+			g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+			g.font = java.awt.Font(java.awt.Font.SANS_SERIF, java.awt.Font.PLAIN, 10)
+			val metrics = g.fontMetrics
+			val left = viewport.canvasX(0f); val right = viewport.canvasX(image.width.toFloat())
+			val top = viewport.canvasY(0f); val bottom = viewport.canvasY(image.height.toFloat())
+			fun lines(from: Float, to: Float) = kotlin.math.ceil(from / step).toLong()..kotlin.math.floor(to / step).toLong()
+			fun at(index: Long) = viewport.x((index * step).toFloat()).roundToInt()
+			fun atY(index: Long) = (viewport.offsetY + index * step * viewport.scale).roundToInt()
+			fun stroke(index: Long) = if (index % 5L == 0L) Color(0, 0, 0, 110) to Color(255, 255, 255, 140) else Color(0, 0, 0, 55) to Color(255, 255, 255, 70)
+			for (index in lines(left, right)) {
+				val (dark, light) = stroke(index)
+				g.color = dark; g.drawLine(at(index), 0, at(index), image.height); g.color = light; g.drawLine(at(index) + 1, 0, at(index) + 1, image.height)
+			}
+			for (index in lines(top, bottom)) {
+				val (dark, light) = stroke(index)
+				g.color = dark; g.drawLine(0, atY(index), image.width, atY(index)); g.color = light; g.drawLine(0, atY(index) + 1, image.width, atY(index) + 1)
+			}
+			// Labels on the stronger lines, or on fewer when those crowd.
+			val labelEvery = generateSequence(5L) { it * 2L }.first { it * step * viewport.scale >= metrics.stringWidth(number(right.toDouble())) + 8 }
+			for (index in lines(left, right)) if (index % labelEvery == 0L) label(g, number(index * step), at(index) + 3, metrics.ascent + 2, Color.WHITE)
+			for (index in lines(top, bottom)) if (index % labelEvery == 0L) label(g, number(index * step), 3, atY(index) + metrics.ascent + 3, Color.WHITE)
+		} finally { g.dispose() }
+		return step.toFloat()
+	}
+
+	private fun number(value: Double): String =
+		if (value == kotlin.math.floor(value)) value.toLong().toString() else "%.2f".format(java.util.Locale.ROOT, value)
+
+	/** [text] on a dark plate with its baseline at [x], [y]. */
+	private fun label(g: java.awt.Graphics2D, text: String, x: Int, y: Int, color: Color) {
+		val metrics = g.fontMetrics
+		g.color = Color(0, 0, 0, 170)
+		g.fillRect(x - 2, y - metrics.ascent - 1, metrics.stringWidth(text) + 4, metrics.ascent + metrics.descent + 2)
+		g.color = color
+		g.drawString(text, x, y)
 	}
 
 	/** [reference] drawn over [image] at its opacity, where it sits on the canvas. */

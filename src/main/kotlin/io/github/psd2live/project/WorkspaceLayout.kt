@@ -21,6 +21,8 @@ data class WorkspaceLayout(
 	val materials: MaterialLibrary = MaterialLibrary.Empty,
 	/** The image laid over the canvas to place layers against; never a layer, so never generated or exported. */
 	val reference: LayoutReference? = null,
+	/** What every vector drawing shares: colour tokens, class rules and definitions ([DrawingKit]). */
+	val drawingKit: DrawingKit? = null,
 ) {
 	val isEmpty: Boolean get() = this == Empty
 
@@ -70,6 +72,26 @@ data class WorkspaceGeneration(
  */
 data class LayoutReference(val materialId: String, val rect: LayerCanvasRect, val opacity: Float = 0.5f, val visible: Boolean = true) {
 	init { require(opacity in 0f..1f) { "Reference opacity is 0..1" } }
+}
+
+/**
+ * What the vector drawings of one document share, so their parts read as one painting: [colors] named for
+ * `var(--name)` in any drawing, [styles] class rules (`.line { stroke: var(--line) }`) and [defs] (gradients, filters)
+ * every drawing can refer to. A drawing's own rules and definitions of the same name take precedence.
+ */
+data class DrawingKit(val colors: Map<String, String> = emptyMap(), val styles: String = "", val defs: String = "") {
+	init {
+		colors.forEach { (name, value) ->
+			require(name.matches(NAME)) { "A kit colour name is letters, digits, - and _: $name" }
+			require(value.matches(COLOR)) { "Kit colour $name must be #rgb or #rrggbb: $value" }
+		}
+	}
+	val isEmpty: Boolean get() = colors.isEmpty() && styles.isBlank() && defs.isBlank()
+
+	companion object {
+		val NAME = Regex("[A-Za-z][A-Za-z0-9_-]{0,63}")
+		val COLOR = Regex("#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})")
+	}
 }
 
 enum class MaterialKind { BITMAP, VECTOR }
@@ -145,7 +167,7 @@ internal object WorkspaceLayoutCodec {
 	const val MATERIALS = "materials"
 
 	fun encodeLayout(layout: WorkspaceLayout): JsonObject? {
-		if (layout.layerTags.isEmpty() && layout.layerMaterials.isEmpty() && layout.generation == WorkspaceGeneration.Generated && layout.reference == null) return null
+		if (layout.layerTags.isEmpty() && layout.layerMaterials.isEmpty() && layout.generation == WorkspaceGeneration.Generated && layout.reference == null && layout.drawingKit == null) return null
 		return buildJsonObject {
 			if (layout.layerTags.isNotEmpty()) putJsonObject("layerTags") {
 				layout.layerTags.toSortedMap().forEach { (id, tags) -> putJsonArray(id) { tags.sorted().forEach { add(JsonPrimitive(it)) } } }
@@ -167,6 +189,11 @@ internal object WorkspaceLayoutCodec {
 				putJsonArray("rect") { reference.rect.let { listOf(it.left, it.top, it.width, it.height) }.forEach { add(JsonPrimitive(it)) } }
 				put("opacity", reference.opacity)
 				if (!reference.visible) put("visible", false)
+			} }
+			layout.drawingKit?.let { kit -> putJsonObject("drawingKit") {
+				if (kit.colors.isNotEmpty()) putJsonObject("colors") { kit.colors.toSortedMap().forEach { (name, value) -> put(name, value) } }
+				if (kit.styles.isNotEmpty()) put("styles", kit.styles)
+				if (kit.defs.isNotEmpty()) put("defs", kit.defs)
 			} }
 		}
 	}
@@ -250,6 +277,10 @@ internal object WorkspaceLayoutCodec {
 				val rect = value.getValue("rect").jsonArray.map { it.jsonPrimitive.float }
 				LayoutReference(value.getValue("materialId").jsonPrimitive.content, LayerCanvasRect(rect[0], rect[1], rect[2], rect[3]),
 					value["opacity"]?.jsonPrimitive?.float ?: 0.5f, value["visible"]?.jsonPrimitive?.boolean ?: true)
+			},
+			drawingKit = layout?.get("drawingKit")?.jsonObject?.let { value ->
+				DrawingKit(value["colors"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty(),
+					value["styles"]?.jsonPrimitive?.content.orEmpty(), value["defs"]?.jsonPrimitive?.content.orEmpty())
 			},
 		)
 	}

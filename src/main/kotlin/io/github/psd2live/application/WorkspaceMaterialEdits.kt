@@ -51,13 +51,15 @@ internal object WorkspaceMaterialEdits {
     const val UNLINK = "material_unlink"
     const val REFERENCE = "layout_set_reference"
     const val CROP = "material_crop"
-    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, REFERENCE, CROP) + WorkspaceMaterialPixels.supported
+    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, REFERENCE, CROP) + WorkspaceMaterialPixels.supported +
+        WorkspaceDrawingEdits.supported
     private const val MAX_NAME = 128
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
               work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): WorkspaceDocument {
         val request = operation.request
         if (operation.operation in WorkspaceMaterialPixels.supported) return WorkspaceMaterialPixels.apply(operation, document, model, work)
+        if (operation.operation in WorkspaceDrawingEdits.supported) return WorkspaceDrawingEdits.apply(operation, document, model, work)
         fun text(key: String) = request.getValue(key).jsonPrimitive.content
         fun optional(key: String) = request[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
         fun strings(key: String) = request[key]?.jsonArray?.map { it.jsonPrimitive.content }
@@ -121,7 +123,9 @@ internal object WorkspaceMaterialEdits {
             val folder = folderFor(entry)
             val id = StableIds.fresh(StableIds.stem("mat_", folder, entry.name, WorkspaceRevisions.rasterDigest(entry.raster.rgba), entry.origin)) { it in ids }
             ids += id
-            items += MaterialItem(id, requireName(entry.name), folder, entry.kind, entry.raster, entry.placement, entry.svg,
+            // A drawing renders with the document's drawing kit, which a file read on its own cannot know.
+            val raster = entry.svg?.let { WorkspaceVectorDrawing.render(it, document.layout.drawingKit, entry.raster.width, entry.raster.height) } ?: entry.raster
+            items += MaterialItem(id, requireName(entry.name), folder, entry.kind, raster, entry.placement, entry.svg,
                 origin = entry.origin, opacity = entry.opacity, visible = entry.visible,
                 placementWidth = entry.placementWidth, placementHeight = entry.placementHeight)
         }
@@ -234,7 +238,7 @@ internal object WorkspaceMaterialEdits {
         val item = library.item(id) ?: throw IllegalArgumentException("Material not found: $id")
         require(item.kind == MaterialKind.VECTOR) { "Only a vector material has a resolution: $id" }
         if (item.raster.width == width && item.raster.height == height) return document
-        val raster = WorkspaceMaterialFiles.rasterize(requireNotNull(item.svg), width, height)
+        val raster = WorkspaceVectorDrawing.render(requireNotNull(item.svg), document.layout.drawingKit, width, height)
         var next = document.withLibrary(library.copy(items = library.items.map { if (it.id == id) it.copy(raster = raster) else it }))
         for (layer in references(document, setOf(id))[id].orEmpty()) next = WorkspaceDocumentEdits.replaceImage(next, model, layer, raster)
         return next
