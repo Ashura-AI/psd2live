@@ -1909,7 +1909,7 @@ internal class CanvasEditor(
             return currentSession
         }
         if (currentSession != null) {
-            discardPaintSession()
+            closePaintSession()
         }
         // The session paints in the layer's own frame; the canvas shows it where the layer was moved, scaled or turned to.
         val frame = state.previewModel?.analysis?.source?.layers?.singleOrNull { it.id.raw == targetLid }?.transform
@@ -1953,7 +1953,15 @@ internal class CanvasEditor(
         paintStrokeCurrent = null
     }
 
+    /** Drops the session's strokes and paints on: a fresh session on the same target - a layer, or a material. */
     fun discardPaintSession() {
+        val layerId = paintSession?.layerId ?: return
+        closePaintSession()
+        paintSession = startPaintSession(layerId, forceReload = true)
+    }
+
+    /** Drops the session's strokes and closes it, for a switch to another target or out of painting. */
+    fun closePaintSession() {
         val session = paintSession ?: return
         session.discard()
         paintSession = null
@@ -2801,7 +2809,7 @@ internal class CanvasEditor(
     private fun leavePaintForCreation() {
         deferredMode = null
         cancel()
-        discardPaintSession()
+        closePaintSession()
         hierarchyMode = EditHierarchyMode.SELECT
         selection = emptyMap()
         clearHover()
@@ -3026,7 +3034,7 @@ internal class CanvasEditor(
         // Only Edit edits several meshes; any other mode keeps the primary's slice alone.
         if (next != EditHierarchyMode.EDIT) selection = target()?.id?.let { id -> selection.filterKeys { it == id } }.orEmpty()
         if (prev == EditHierarchyMode.PAINT && next != EditHierarchyMode.PAINT) {
-            discardPaintSession()
+            closePaintSession()
         }
         if (next == EditHierarchyMode.PAINT) {
             startPaintSession(forceReload = true)

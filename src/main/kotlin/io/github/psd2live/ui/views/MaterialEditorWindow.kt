@@ -146,7 +146,7 @@ internal fun MaterialEditor(item: MaterialItem, state: PSD2LiveState, vm: PSD2Li
 			vm.canvasEditor.takePaintSettings(editor)
 			val session = editor.paintSession
 			if (session != null && session.isDirty) vm.savePaintSession(session.handle, false, false, tr("editor.paint.commitSummary", item.name)) {}
-			else editor.discardPaintSession()
+			else editor.closePaintSession()
 		}
 	}
 

@@ -225,7 +225,7 @@ class CanvasPerfTool {
 						SwingUtilities.invokeAndWait {
 							report.appendLine("paint stroke: session ${editor.paintSession != null}, gpu preview ${editor.paintSession?.gpuPreview}")
 							editor.release()
-							editor.discardPaintSession()
+							editor.closePaintSession()
 							editor.setHierarchyMode(io.github.psd2live.ui.EditHierarchyMode.SELECT)
 						}
 					}
