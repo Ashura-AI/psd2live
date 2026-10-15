@@ -66,6 +66,7 @@ import io.github.psd2live.ui.components.IconUndo
 import io.github.psd2live.ui.components.IconWarpDeformer
 import io.github.psd2live.ui.components.PaintFgBgSwatch
 import io.github.psd2live.ui.components.copySheets
+import io.github.psd2live.ui.components.meshPatch
 import io.github.psd2live.ui.components.subdivide
 import io.github.psd2live.ui.components.toHex
 import io.github.psd2live.ui.state.ShortcutAction
@@ -520,6 +521,10 @@ internal fun OptionIconView(icon: OptionIcon, tint: Color) {
         OptionIcon.TOPOLOGY -> GridIcon(modifier, tint) { subdivide() }
         OptionIcon.CREATE -> GridIcon(modifier, tint) { line(9f, 3f, 9f, 15f); line(3f, 9f, 15f, 9f) }
         OptionIcon.GROUP -> GridIcon(modifier, tint) { dot(4.6f, 12.6f, 2f); dot(9f, 7.6f, 2f); dot(13.4f, 12.6f, 2f); ring(9f, 10f, 7.2f, ICON_FINE) }
+        OptionIcon.MESH -> GridIcon(modifier, tint) { meshPatch() }
+        OptionIcon.REBUILD -> GridIcon(modifier, tint) { arcArrow(9f, 9f, 5.8f, -60f, 300f) }
+        OptionIcon.MATERIAL -> GridIcon(modifier, tint) { box(2f, 6.5f, 8f, 5f, 2.5f); box(8f, 6.5f, 8f, 5f, 2.5f) }
+        OptionIcon.UNLINK -> GridIcon(modifier, tint) { box(1f, 6.5f, 6.5f, 5f, 2.5f); box(10.5f, 6.5f, 6.5f, 5f, 2.5f) }
     }
 }
 

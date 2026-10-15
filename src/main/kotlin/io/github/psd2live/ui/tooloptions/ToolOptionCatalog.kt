@@ -278,18 +278,12 @@ private fun MutableList<ToolOption>.addGlue(editor: CanvasEditor) {
 }
 
 /**
- * Object mode: what acts on the part in hand at the top, then everything that can be built on it in one Create
+ * Object mode: the layer in hand's mesh and material submenus, everything that can be built on it in one Create
  * submenu, then the selection.
  */
 private fun MutableList<ToolOption>.addObjectMode(editor: CanvasEditor) {
     val target = editor.target()
-    val split = target?.takeIf { it.kind == "mesh" }?.let { mesh ->
-        editor.model.drawables.firstOrNull { it.id.raw == mesh.id }?.takeIf { editor.viewModel.depthSplitMiddleIds(mesh.id).isNotEmpty() }
-    }
-    if (split != null) {
-        add(ActionOption("object.depthSplit", "editor.depthSplit.quick", { it.editable }, { it.viewModel.requestDepthSplit(split.id.raw) },
-            OptionIcon.DEPTH_SPLIT, labelArgs = { listOf(split.name) }, place = OptionPlace.MENU))
-    }
+    if (target?.kind == "mesh") addLayerActions(editor, editor.targetLayerId(target), target.id)
     if (target?.kind == "mesh" || target?.kind == "warp") {
         add(SectionOption("object.create", "editor.toolbar.create", OptionPlace.MENU, submenu = true, icon = OptionIcon.CREATE, alwaysFolds = true))
         if (target.kind == "mesh") {
@@ -304,6 +298,32 @@ private fun MutableList<ToolOption>.addObjectMode(editor: CanvasEditor) {
             OptionIcon.SWING, place = OptionPlace.MENU))
     }
     addSelectionActions(objectMode = true)
+}
+
+/**
+ * What acts on layer [layerId] as a whole, each in a submenu: its meshes - made again from its pixels, split into one
+ * layer per separate mesh, the front/back split of [meshId] where it covers another part - and the material it shows.
+ */
+private fun MutableList<ToolOption>.addLayerActions(editor: CanvasEditor, layerId: String?, meshId: String? = null) {
+    if (layerId == null) return
+    val rig = editor.state.previewModel?.rig
+    val meshed = rig != null && rig.puppet.drawables.any { rig.layerIdByDrawableId[it.id.raw] == layerId && it.mesh != null }
+    if (meshed) {
+        add(SectionOption("layer.mesh", "editor.menu.mesh", OptionPlace.MENU, submenu = true, icon = OptionIcon.MESH, alwaysFolds = true))
+        add(ActionOption("layer.meshRebuild", "mesh.rebuild", { it.editable }, { it.viewModel.rebuildLayerMesh(layerId) },
+            OptionIcon.REBUILD, place = OptionPlace.MENU))
+        add(ActionOption("layer.meshSplit", "canvas.hierarchy.splitMeshComponents", { it.editable }, { it.viewModel.requestMeshSplit(layerId) },
+            OptionIcon.SPLIT, place = OptionPlace.MENU))
+        val split = meshId?.let { id -> editor.model.drawables.firstOrNull { it.id.raw == id }?.takeIf { editor.viewModel.depthSplitMiddleIds(id).isNotEmpty() } }
+        if (split != null) add(ActionOption("layer.depthSplit", "editor.depthSplit.quick", { it.editable }, { it.viewModel.requestDepthSplit(split.id.raw) },
+            OptionIcon.DEPTH_SPLIT, labelArgs = { listOf(split.name) }, place = OptionPlace.MENU))
+    }
+    val material = editor.state.layout.layerMaterials[layerId]?.let(editor.state.layout.materials::item) ?: return
+    add(SectionOption("layer.material", "editor.menu.material", OptionPlace.MENU, submenu = true, icon = OptionIcon.MATERIAL, alwaysFolds = true))
+    add(ActionOption("layer.materialOpen", "materials.menu.edit", { true }, { it.viewModel.openMaterialEditor(material.id) },
+        OptionIcon.MATERIAL, place = OptionPlace.MENU))
+    add(ActionOption("layer.materialUnlink", "materials.link.unlink", { it.editable }, { it.viewModel.unlinkMaterials(listOf(layerId)) },
+        OptionIcon.UNLINK, place = OptionPlace.MENU))
 }
 
 /** The tree's place-then-confirm create on the mesh in hand, the same entry as the hierarchy tree's Add menu. */
@@ -370,6 +390,8 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
             add(ActionOption("topology.${action.first}", "editor.${action.first}", { it.editable && it.vertices.isNotEmpty() },
                 { it.topology(action.first) }, action.second, danger = action.first == "delete", place = OptionPlace.MENU))
         }
+        // The whole mesh, made again from the layer's pixels, beside the edits to its points.
+        addLayerActions(editor, editor.targetLayerId(target), target?.id)
     }
     if (editor.tool in SELECTION_TOOLS || editor.tool == CanvasTool.TRANSFORM) addSelectionActions(objectMode = false)
 }
@@ -458,4 +480,6 @@ private fun MutableList<ToolOption>.addPaint(editor: CanvasEditor) {
     add(SectionOption("paint.layerActions", "editor.paintTargetLayer", OptionPlace.MENU))
     add(ActionOption("paint.clear", "editor.paintClear", { it.paintSession != null }, { it.clearCurrentLayerPaint() }, OptionIcon.CLEAR,
         danger = true, place = OptionPlace.MENU))
+    // A mesh rebuilt from the pixels just painted, or the material they reach.
+    addLayerActions(editor, editor.paintSession?.layerId?.takeUnless { it.startsWith(io.github.psd2live.application.WorkspacePaintSession.MATERIAL_PREFIX) })
 }
