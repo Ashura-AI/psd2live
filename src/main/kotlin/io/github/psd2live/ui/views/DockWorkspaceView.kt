@@ -340,24 +340,21 @@ internal fun DockWorkspaceView(
                     state,
                     viewModel,
                     layoutModules = session.root?.allModules()?.toSet().orEmpty(),
+                    onResetLayout = {
+                        if (page != null) {
+                            pageSessions[page]?.let { pageSession ->
+                                pageSession.floating.clear()
+                                pageSession.root = pageDockLayout(page)
+                            }
+                            viewModel.resetPageArrangement(page)
+                        } else {
+                            session.floating.clear()
+                            session.root = presetDockLayout(workspace)
+                            viewModel.resetWorkspaceArrangement()
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                 )
-                if (page == AppPage.SETTINGS) TabStripButton(label = tr("dialog.settings.resetDefaults")) {
-                    io.github.psd2live.ui.components.resetAllSettings(viewModel)
-                }
-                TabStripButton(label = tr("dock.reset")) {
-                    if (page != null) {
-                        pageSessions[page]?.let { pageSession ->
-                            pageSession.floating.clear()
-                            pageSession.root = pageDockLayout(page)
-                        }
-                        viewModel.resetPageArrangement(page)
-                    } else {
-                        session.floating.clear()
-                        session.root = presetDockLayout(workspace)
-                        viewModel.resetWorkspaceArrangement()
-                    }
-                }
                 Spacer(Modifier.width(4.dp))
             }
             if (page != null) key(page) {

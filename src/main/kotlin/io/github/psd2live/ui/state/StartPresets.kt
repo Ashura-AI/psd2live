@@ -97,10 +97,11 @@ internal enum class StartQuickPreset(val key: String, val choices: StartPresetCh
 }
 
 /**
- * The start page's sections, as its navigation lists them. It opens on the recent files; the other three start a
- * project: a model generated from a PSD, an empty canvas to lay materials out on, or a Cubism model.
+ * The start page's sections, as its navigation lists them. It opens on the recent files; the next three start a
+ * project: a model generated from a PSD, an empty canvas to lay materials out on, or a Cubism model. The last is
+ * what changed, to read.
  */
-internal enum class StartSection { RECENT, GENERATE, LAYOUT, CMO3 }
+internal enum class StartSection { RECENT, GENERATE, LAYOUT, CMO3, UPDATES }
 
 /** Canvas sizes a Layout project accepts: each side up to 8192, at most 16M pixels. */
 internal fun validLayoutCanvasSize(width: Int?, height: Int?): Boolean =

@@ -72,15 +72,13 @@ import io.github.psd2live.ui.components.IconClose
 import io.github.psd2live.ui.components.ImageLightboxDialog
 import io.github.psd2live.ui.components.ExportDialog
 import io.github.psd2live.ui.components.ExportPsdDialog
-import io.github.psd2live.ui.components.HelpTab
+import io.github.psd2live.ui.state.HelpTab
 import io.github.psd2live.ui.components.TextureUpscaleDialog
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.state.StartSection
 import io.github.psd2live.ui.state.AppPage
-import io.github.psd2live.ui.state.HELP_ABOUT
-import io.github.psd2live.ui.state.HELP_TUTORIALS
 import io.github.psd2live.ui.state.ShortcutScope
 import io.github.psd2live.ui.state.buttonBindingOf
 import io.github.psd2live.ui.state.wheelBindingOf
@@ -179,7 +177,7 @@ fun FrameWindowScope.PSD2LiveApp(
 
 	fun openTutorialCatalog() {
 		stopInteractiveTutorial()
-		viewModel.showPage(AppPage.HELP, HELP_TUTORIALS)
+		viewModel.showHelp(HelpTab.QUICK_START)
 	}
 
 	viewModel.confirmUnsavedChanges = {
@@ -624,8 +622,8 @@ fun FrameWindowScope.PSD2LiveApp(
 						onCloseTab = { viewModel.closeWorkspace(state.activeWorkspace.id) },
 						onNextTab = { viewModel.cycleWorkspace(1) },
 						onPrevTab = { viewModel.cycleWorkspace(-1) },
-						onShowAbout = { viewModel.showPage(AppPage.HELP, HELP_ABOUT) },
-						onShowHelp = { tab -> viewModel.showPage(AppPage.HELP, tab.module) },
+						onShowAbout = { viewModel.showHelp(HelpTab.ABOUT) },
+						onShowHelp = { tab -> viewModel.showHelp(tab) },
 						onOpenTutorialCatalog = { openTutorialCatalog() },
 						tutorialMenuForce = if (tutorialShown) tutorial.step.forcesMenu else null,
 						tutorialHighlightTarget = if (tutorialShown) {

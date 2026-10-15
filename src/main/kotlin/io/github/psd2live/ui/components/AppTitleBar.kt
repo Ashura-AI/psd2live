@@ -84,6 +84,7 @@ import io.github.psd2live.i18n.AppLanguage
 import io.github.psd2live.i18n.I18n
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.theme.LocalToolColors
+import io.github.psd2live.ui.state.HelpTab
 import io.github.psd2live.ui.state.Keymap
 import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.theme.LocalToolTypography

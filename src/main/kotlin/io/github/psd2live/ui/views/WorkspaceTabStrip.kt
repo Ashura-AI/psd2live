@@ -114,6 +114,7 @@ fun WorkspaceStrip(
 	state: PSD2LiveState,
 	viewModel: PSD2LiveViewModel,
 	layoutModules: Set<String>,
+	onResetLayout: () -> Unit,
 	modifier: Modifier = Modifier,
 ) {
 	var showWindowMenu by remember { mutableStateOf(false) }
@@ -230,6 +231,11 @@ fun WorkspaceStrip(
 							onClick = { viewModel.setPageModuleVisible(activePage, module, module in hidden) },
 						)
 					}
+					AppMenuSeparator()
+					AppMenuItem(text = tr("dock.reset"), onClick = {
+						showWindowMenu = false
+						onResetLayout()
+					})
 					return@TabStripDropdown
 				}
 				WINDOW_MODULES.forEach { module ->
@@ -258,6 +264,11 @@ fun WorkspaceStrip(
 					showWindowMenu = false
 					viewModel.addCanvas(CanvasMode.PREVIEW)
 				})
+				AppMenuSeparator()
+				AppMenuItem(text = tr("dock.reset"), onClick = {
+					showWindowMenu = false
+					onResetLayout()
+				})
 			}
 		}
 		Spacer(Modifier.width(2.dp))
@@ -265,8 +276,9 @@ fun WorkspaceStrip(
 }
 
 /**
- * An app page's tab, ahead of the workspaces: never renamed or dragged. Help and settings close from their tab;
- * the start page folds away by itself once a project opens.
+ * An app page's tab, ahead of the workspaces: never renamed or dragged. The start page's says its name; help's and
+ * settings' are icons, named in their tooltip, with a close button while hovered or shown. The start page folds away
+ * by itself once a project opens.
  */
 @Composable
 private fun PageChip(page: AppPage, isActive: Boolean, onSelect: () -> Unit, onClose: (() -> Unit)?) {
@@ -274,42 +286,48 @@ private fun PageChip(page: AppPage, isActive: Boolean, onSelect: () -> Unit, onC
 	val typography = LocalToolTypography.current
 	val interactionSource = remember { MutableInteractionSource() }
 	val isHovered by interactionSource.collectIsHoveredAsState()
-	Row(
-		modifier = Modifier
-			.padding(end = 2.dp)
-			.height(22.dp)
-			.clip(RoundedCornerShape(4.dp))
-			.background(when {
-				isActive -> colors.controlBackground
-				isHovered -> colors.controlHover.copy(alpha = 0.6f)
-				else -> Color.Transparent
-			})
-			.hoverable(interactionSource)
-			.handCursor()
-			.clickable(interactionSource = interactionSource, indication = null, onClick = onSelect)
-			.padding(start = 8.dp, end = if (onClose != null) 4.dp else 8.dp),
-		verticalAlignment = Alignment.CenterVertically,
-	) {
-		PageIcon(page, if (isActive) colors.accent else colors.textMuted, Modifier.size(12.dp))
-		Spacer(Modifier.width(5.dp))
-		Text(
-			text = pageTitle(page),
-			style = typography.body.copy(fontSize = 11.5.sp, fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal),
-			color = if (isActive) colors.textPrimary else colors.textMuted,
-			maxLines = 1,
-		)
-		if (onClose != null) {
-			Spacer(Modifier.width(4.dp))
-			val closeInteraction = remember { MutableInteractionSource() }
-			val closeHovered by closeInteraction.collectIsHoveredAsState()
-			Box(
-				Modifier.size(14.dp).clip(RoundedCornerShape(3.dp))
-					.background(if (closeHovered) colors.controlHover else Color.Transparent)
-					.hoverable(closeInteraction)
-					.clickable(interactionSource = closeInteraction, indication = null, onClick = onClose),
-				contentAlignment = Alignment.Center,
-			) {
-				IconClose(Modifier.size(7.dp), if (closeHovered || isActive) colors.textPrimary else colors.textMuted)
+	val compact = page != AppPage.START
+	val showClose = onClose != null && (isHovered || isActive)
+	io.github.psd2live.ui.views.texture.BarTooltip(if (compact) pageTitle(page) else "") {
+		Row(
+			modifier = Modifier
+				.padding(end = 2.dp)
+				.height(22.dp)
+				.clip(RoundedCornerShape(4.dp))
+				.background(when {
+					isActive -> colors.controlBackground
+					isHovered -> colors.controlHover.copy(alpha = 0.6f)
+					else -> Color.Transparent
+				})
+				.hoverable(interactionSource)
+				.handCursor()
+				.clickable(interactionSource = interactionSource, indication = null, onClick = onSelect)
+				.padding(start = if (compact) 6.dp else 8.dp, end = if (showClose) 3.dp else if (compact) 6.dp else 8.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			PageIcon(page, if (isActive) colors.accent else colors.textMuted, Modifier.size(12.dp))
+			if (!compact) {
+				Spacer(Modifier.width(5.dp))
+				Text(
+					text = pageTitle(page),
+					style = typography.body.copy(fontSize = 11.5.sp, fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal),
+					color = if (isActive) colors.textPrimary else colors.textMuted,
+					maxLines = 1,
+				)
+			}
+			if (showClose) {
+				Spacer(Modifier.width(3.dp))
+				val closeInteraction = remember { MutableInteractionSource() }
+				val closeHovered by closeInteraction.collectIsHoveredAsState()
+				Box(
+					Modifier.size(14.dp).clip(RoundedCornerShape(3.dp))
+						.background(if (closeHovered) colors.controlHover else Color.Transparent)
+						.hoverable(closeInteraction)
+						.clickable(interactionSource = closeInteraction, indication = null, onClick = onClose!!),
+					contentAlignment = Alignment.Center,
+				) {
+					IconClose(Modifier.size(7.dp), if (closeHovered) colors.textPrimary else colors.textMuted)
+				}
 			}
 		}
 	}

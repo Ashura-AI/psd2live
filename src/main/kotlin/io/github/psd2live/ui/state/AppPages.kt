@@ -3,35 +3,44 @@ package io.github.psd2live.ui.state
 /**
  * Pages of the app rather than of a project: each is a tab at the head of the workspace strip that covers the dock
  * with its own dock of [modules]. Their panels move, tab, float and hide like the editor's, and their arrangement is
- * kept in the preferences, never in a project.
+ * kept in the preferences, never in a project. Every page has the same shape: a contents list, the topic it picks,
+ * and on the start page the details of what the topic's action will do.
  */
 internal enum class AppPage(val modules: List<String>) {
-	START(listOf(START_NAV, START_MAIN, START_DETAILS, START_RECENT_PSDS, START_UPDATES)),
-	HELP(listOf(HELP_TUTORIALS, HELP_PSD_SPEC, HELP_SHORTCUTS, HELP_LINKS, HELP_ABOUT)),
-	SETTINGS(listOf(
-		SETTINGS_SCALE, SETTINGS_THEME, SETTINGS_LANGUAGE, SETTINGS_CANVAS, SETTINGS_PROMPTS, SETTINGS_SHORTCUTS, SETTINGS_ENVIRONMENT,
-	)),
+	START(listOf(START_NAV, START_MAIN, START_DETAILS)),
+	HELP(listOf(HELP_NAV, HELP_CONTENT)),
+	SETTINGS(listOf(SETTINGS_NAV, SETTINGS_CONTENT)),
 }
 
 internal const val START_NAV = "start.nav"
 internal const val START_MAIN = "start.main"
 internal const val START_DETAILS = "start.details"
-internal const val START_RECENT_PSDS = "start.recentPsds"
-internal const val START_UPDATES = "start.updates"
 
-internal const val HELP_TUTORIALS = "help.tutorials"
-internal const val HELP_PSD_SPEC = "help.psdSpec"
-internal const val HELP_SHORTCUTS = "help.shortcuts"
-internal const val HELP_LINKS = "help.links"
-internal const val HELP_ABOUT = "help.about"
+internal const val HELP_NAV = "help.nav"
+internal const val HELP_CONTENT = "help.content"
 
-internal const val SETTINGS_SCALE = "settings.scale"
-internal const val SETTINGS_THEME = "settings.theme"
-internal const val SETTINGS_LANGUAGE = "settings.language"
-internal const val SETTINGS_CANVAS = "settings.canvas"
-internal const val SETTINGS_PROMPTS = "settings.prompts"
-internal const val SETTINGS_SHORTCUTS = "settings.shortcuts"
-internal const val SETTINGS_ENVIRONMENT = "settings.environment"
+internal const val SETTINGS_NAV = "settings.nav"
+internal const val SETTINGS_CONTENT = "settings.content"
+
+/** The help page's topics, in its contents' order. */
+enum class HelpTab(internal val labelKey: String) {
+	QUICK_START("help.tab.quickstart"),
+	PSD_SPEC("help.tab.psd_spec"),
+	SHORTCUTS("help.tab.shortcuts"),
+	COMMUNITY_LINKS("help.tab.links"),
+	ABOUT("help.tab.about"),
+}
+
+/** The settings page's topics, in its contents' order: what people come to change first, reference last. */
+internal enum class SettingsTopic(val labelKey: String) {
+	SCALE("dialog.settings.category.scale"),
+	THEME("dialog.settings.category.theme"),
+	LANGUAGE("dialog.settings.category.language"),
+	CANVAS("settings.canvas.title"),
+	PROMPTS("dialog.settings.category.prompts"),
+	SHORTCUTS("dialog.settings.category.shortcuts"),
+	ENVIRONMENT("dialog.settings.category.environment"),
+}
 
 /** The page whose dock holds [module], or null for an editor module. */
 internal fun pageOfModule(module: String): AppPage? = AppPage.entries.firstOrNull { module in it.modules }

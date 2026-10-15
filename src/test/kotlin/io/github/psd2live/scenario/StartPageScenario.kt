@@ -72,7 +72,8 @@ class StartPageScenario {
 	}
 
 	@Test fun helpAndSettingsStayOpenAsTabsUntilClosed() = editor { vm ->
-		vm.showPage(AppPage.HELP, HELP_SHORTCUTS)
+		vm.showHelp(HelpTab.SHORTCUTS)
+		assertEquals(HelpTab.SHORTCUTS, vm.helpTab)
 		vm.showPage(AppPage.SETTINGS)
 		assertEquals(listOf(AppPage.START, AppPage.HELP, AppPage.SETTINGS), vm.openPages, "Pages keep the strip's order")
 		assertEquals(AppPage.SETTINGS, vm.activePage)

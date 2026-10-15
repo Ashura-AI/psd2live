@@ -17,11 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
@@ -40,16 +43,13 @@ import io.github.psd2live.ui.theme.handCursor
 import io.github.psd2live.ui.tutorial.TutorialId
 import io.github.psd2live.ui.utils.DesktopUtils
 
-/** The text column's widest; past it lines get too long to read. */
-private val ReadableWidth = 680.dp
-
 /**
  * What changed, release by release, as text to read: each version's heading stays at the top while its changes
  * scroll under it. A change a tutorial shows ends with a link to it; the whole history is a click away.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun WhatsNewPanel(language: AppLanguage, enabled: Boolean, onStartTutorial: ((TutorialId) -> Unit)?) {
+internal fun WhatsNewPanel(language: AppLanguage, list: LazyListState, enabled: Boolean, onStartTutorial: ((TutorialId) -> Unit)?) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val releases = remember(language) { WhatsNew.releases(language) }
@@ -59,14 +59,14 @@ internal fun WhatsNewPanel(language: AppLanguage, enabled: Boolean, onStartTutor
 			PanelToolButton(tr("whatsnew.full"), showLabel = true, onClick = { DesktopUtils.openBrowser(DesktopUtils.GITHUB_RELEASES_URL) },
 				enabled = true, tooltip = DesktopUtils.GITHUB_RELEASES_URL) {}
 		}
-		LazyColumn(Modifier.weight(1f).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+		LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, horizontalAlignment = Alignment.CenterHorizontally) {
 			releases.forEach { release ->
 				stickyHeader(key = "v:" + release.version) {
 					Row(
 						Modifier.fillMaxWidth().background(colors.panelBackground).padding(horizontal = 14.dp).padding(top = 12.dp, bottom = 6.dp),
 						horizontalArrangement = Arrangement.Center,
 					) {
-						Row(Modifier.widthIn(max = ReadableWidth).fillMaxWidth(), verticalAlignment = Alignment.Bottom,
+						Row(Modifier.widthIn(max = PageReadableWidth).fillMaxWidth(), verticalAlignment = Alignment.Bottom,
 							horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 							Text(if (release.version == WhatsNew.NEXT) tr("whatsnew.next") else release.version,
 								style = typography.header.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold), color = colors.textPrimary)
@@ -77,7 +77,7 @@ internal fun WhatsNewPanel(language: AppLanguage, enabled: Boolean, onStartTutor
 				release.groups.forEach { group ->
 					item(key = "g:${release.version}:${group.title}") {
 						Text(group.title, style = typography.caption.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Medium), color = colors.textMuted,
-							modifier = Modifier.widthIn(max = ReadableWidth).fillMaxWidth().padding(horizontal = 14.dp).padding(top = 6.dp, bottom = 2.dp))
+							modifier = Modifier.widthIn(max = PageReadableWidth).fillMaxWidth().padding(horizontal = 14.dp).padding(top = 6.dp, bottom = 2.dp))
 					}
 					items(group.entries) { entry ->
 						WhatsNewEntry(entry, enabled, onStartTutorial)
@@ -89,11 +89,33 @@ internal fun WhatsNewPanel(language: AppLanguage, enabled: Boolean, onStartTutor
 	}
 }
 
+/** Where each release's heading sits in [WhatsNewPanel]'s list: its heading, each group's title and changes, a gap. */
+private fun releaseIndices(releases: List<WhatsNew.Release>): List<Int> =
+	releases.runningFold(0) { index, release -> index + 2 + release.groups.sumOf { 1 + it.entries.size } }.dropLast(1)
+
+/** The releases as contents: a click scrolls the notes to that version, and the one in view is marked. */
+@Composable
+internal fun WhatsNewVersions(language: AppLanguage, list: LazyListState) {
+	val releases = remember(language) { WhatsNew.releases(language) }
+	val indices = remember(releases) { releaseIndices(releases) }
+	val scope = rememberCoroutineScope()
+	val current = indices.indexOfLast { it <= list.firstVisibleItemIndex }.coerceAtLeast(0)
+	fun go(i: Int) {
+		scope.launch { list.animateScrollToItem(indices[i]) }
+	}
+	PageNavList(onStep = { step -> go((current + step).coerceIn(0, releases.lastIndex)) }) {
+		releases.forEachIndexed { i, release ->
+			PageNavItem(if (release.version == WhatsNew.NEXT) tr("whatsnew.next") else release.version, i == current,
+				trailing = release.date, onClick = { go(i) })
+		}
+	}
+}
+
 @Composable
 private fun WhatsNewEntry(entry: WhatsNew.Entry, enabled: Boolean, onStartTutorial: ((TutorialId) -> Unit)?) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	Row(Modifier.widthIn(max = ReadableWidth).fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp),
+	Row(Modifier.widthIn(max = PageReadableWidth).fillMaxWidth().padding(horizontal = 14.dp, vertical = 3.dp),
 		horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 		Text("•", style = typography.body.copy(fontSize = 11.5.sp), color = colors.textMuted)
 		Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {

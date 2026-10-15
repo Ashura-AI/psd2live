@@ -200,7 +200,7 @@ PSD2LIVE_TOOLS=1 PSD2LIVE_SAMPLE=ds ./gradlew test --tests "io.github.psd2live.t
 
 生成と書き出しのロジックは `core` / `project` / `application` に置き、Compose のコードには書かないでください。
 
-スタート・ヘルプ・設定はアプリのページ（`ui/state/AppPages.kt` の `AppPage`）で、プロジェクトには含まれません。各ページはエディターのドック（`DockWorkspaceView` の `DockSession` と `DockTree`）を再利用し、パネル ID にはページの接頭辞（`start.*`、`help.*`、`settings.*`）が付きます。既定の配置は `pageDockLayout`、配置と閉じたパネルはローカル設定（`AppSettings.pageArrangement`）に保存されます。パネルはドラッグ・フロート・再ドッキングされるため、パネル間で共有する状態は ViewModel か `StartPageModel` に置き、1 つのパネルのコンポジションには置きません。新機能の文章は `src/main/resources/whatsnew/<言語>.md` にあり、4 言語でリリースと項目が一致している必要があります（`WhatsNewTest`）。バージョン番号はビルドが `psd2live/version.properties` に書き込み、コードは `AppVersion` から読みます。
+スタート・ヘルプ・設定はアプリのページ（`ui/state/AppPages.kt` の `AppPage`）で、プロジェクトには含まれません。各ページはエディターのドック（`DockWorkspaceView` の `DockSession` と `DockTree`）を再利用し、各ページは目次パネルと内容パネル（スタートページは詳細パネルも）からなり、パネル ID にはページの接頭辞（`start.*`、`help.*`、`settings.*`）が付き、`PageChrome.kt` の目次行と本文コンテナを共用します。既定の配置は `pageDockLayout`、配置と閉じたパネルはローカル設定（`AppSettings.pageArrangement`）に保存されます。パネルはドラッグ・フロート・再ドッキングされるため、パネル間で共有する状態は ViewModel か `StartPageModel` に置き、1 つのパネルのコンポジションには置きません。新機能の文章は `src/main/resources/whatsnew/<言語>.md` にあり、4 言語でリリースと項目が一致している必要があります（`WhatsNewTest`）。バージョン番号はビルドが `psd2live/version.properties` に書き込み、コードは `AppVersion` から読みます。
 
 ## 基本ルール：再構築と再生
 

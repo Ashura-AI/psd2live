@@ -203,7 +203,7 @@ PSD2LIVE_TOOLS=1 PSD2LIVE_SAMPLE=ds ./gradlew test --tests "io.github.psd2live.t
 
 生成与导出逻辑放在 `core` / `project` / `application`，不要写进 Compose 界面代码。
 
-开始、帮助与设置是应用页面（`ui/state/AppPages.kt` 的 `AppPage`），不进工程：每个页面复用编辑器的停靠框架（`DockWorkspaceView` 中的 `DockSession` 与 `DockTree`），面板 ID 带页面前缀（`start.*`、`help.*`、`settings.*`），默认排列见 `pageDockLayout`，排列与关闭的面板存在本机偏好（`AppSettings.pageArrangement`）。面板会被拖动、浮动和重新停靠，彼此共享的状态放在 ViewModel 或 `StartPageModel` 中，不放在单个面板的组合里。功能更新的文字在 `src/main/resources/whatsnew/<语言>.md`，四种语言的版本与条目须一一对应（`WhatsNewTest`）；版本号由构建写入 `psd2live/version.properties`，代码读 `AppVersion`。
+开始、帮助与设置是应用页面（`ui/state/AppPages.kt` 的 `AppPage`），不进工程：每个页面复用编辑器的停靠框架（`DockWorkspaceView` 中的 `DockSession` 与 `DockTree`），每页都是目录面板加内容面板（开始页另有详情面板），面板 ID 带页面前缀（`start.*`、`help.*`、`settings.*`），共用 `PageChrome.kt` 的目录行与正文容器，默认排列见 `pageDockLayout`，排列与关闭的面板存在本机偏好（`AppSettings.pageArrangement`）。面板会被拖动、浮动和重新停靠，彼此共享的状态放在 ViewModel 或 `StartPageModel` 中，不放在单个面板的组合里。功能更新的文字在 `src/main/resources/whatsnew/<语言>.md`，四种语言的版本与条目须一一对应（`WhatsNewTest`）；版本号由构建写入 `psd2live/version.properties`，代码读 `AppVersion`。
 
 ## 核心约束：重建与重放
 

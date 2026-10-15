@@ -36,15 +36,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.i18n.tr
-import io.github.psd2live.ui.state.HELP_ABOUT
-import io.github.psd2live.ui.state.HELP_LINKS
-import io.github.psd2live.ui.state.HELP_PSD_SPEC
-import io.github.psd2live.ui.state.HELP_SHORTCUTS
-import io.github.psd2live.ui.state.HELP_TUTORIALS
 import io.github.psd2live.ui.state.Keymap
 import io.github.psd2live.ui.views.PanelSearch
 import io.github.psd2live.ui.views.PanelToolbar
-import io.github.psd2live.ui.views.PanelToolbarTitle
+import io.github.psd2live.ui.state.HelpTab
+import io.github.psd2live.ui.views.PageBody
+import io.github.psd2live.ui.views.PageNavItem
+import io.github.psd2live.ui.views.PageNavList
 import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.state.ShortcutCategory
 import io.github.psd2live.ui.theme.LocalToolColors
@@ -54,28 +52,19 @@ import io.github.psd2live.ui.tutorial.TutorialPath
 import io.github.psd2live.ui.utils.DesktopUtils
 import kotlinx.coroutines.delay
 
-/** The help page's panels, as the Help menu names them. */
-enum class HelpTab(internal val module: String) {
-	QUICK_START(HELP_TUTORIALS),
-	PSD_SPEC(HELP_PSD_SPEC),
-	SHORTCUTS(HELP_SHORTCUTS),
-	COMMUNITY_LINKS(HELP_LINKS),
-	ABOUT(HELP_ABOUT),
-}
-
 /**
- * One panel of the help page: [module] picks the topic. Each reads as a document: a toolbar on top, then the text in
- * a column kept to a readable width however wide the panel is docked.
+ * The help page's topic panel: [tab] picks what it shows. A topic reads as a document in a [PageBody]; the shortcuts
+ * and links open with a toolbar for their filter and their copy notice.
  */
 @Composable
 internal fun HelpPanel(
-	module: String,
+	tab: HelpTab,
 	keymap: Keymap,
 	onOpenUrl: (String) -> Unit = { DesktopUtils.openBrowser(it) },
 	onStartInteractiveTutorial: ((TutorialId, TutorialPath) -> Unit)? = null,
 ) {
-	var query by remember(module) { mutableStateOf("") }
-	var copied by remember(module) { mutableStateOf(false) }
+	var query by remember(tab) { mutableStateOf("") }
+	var copied by remember(tab) { mutableStateOf(false) }
 	LaunchedEffect(copied) {
 		if (copied) {
 			delay(2500)
@@ -83,44 +72,40 @@ internal fun HelpPanel(
 		}
 	}
 	Column(Modifier.fillMaxSize()) {
-		when (module) {
-			HELP_SHORTCUTS -> PanelToolbar(search = PanelSearch(query, { query = it }, tr("help.shortcuts.filter"))) {
+		when (tab) {
+			HelpTab.SHORTCUTS -> PanelToolbar(search = PanelSearch(query, { query = it }, tr("help.shortcuts.filter"))) {
 				Spacer(Modifier.weight(1f))
 			}
-			HELP_LINKS -> PanelToolbar {
-				PanelToolbarTitle(tr("help.links.intro"), Modifier.weight(1f))
-				if (copied) Text(tr("help.links.copied"), style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp),
+			HelpTab.COMMUNITY_LINKS -> if (copied) PanelToolbar {
+				Text(tr("help.links.copied"), style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp),
 					color = LocalToolColors.current.accent)
 			}
 			else -> {}
 		}
-		HelpDocument {
-			when (module) {
-				HELP_TUTORIALS -> InteractiveTutorialCatalog(onStartInteractiveTutorial)
-				HELP_PSD_SPEC -> DccPsdSpecContent(onOpenUrl)
-				HELP_SHORTCUTS -> DccShortcutsContent(keymap, query)
-				HELP_LINKS -> DccCommunityLinksContent(
+		PageBody {
+			when (tab) {
+				HelpTab.QUICK_START -> InteractiveTutorialCatalog(onStartInteractiveTutorial)
+				HelpTab.PSD_SPEC -> DccPsdSpecContent(onOpenUrl)
+				HelpTab.SHORTCUTS -> DccShortcutsContent(keymap, query)
+				HelpTab.COMMUNITY_LINKS -> DccCommunityLinksContent(
 					onOpenUrl = onOpenUrl,
 					onCopyLink = { url ->
 						DesktopUtils.copyToClipboard(url)
 						copied = true
 					},
 				)
-				HELP_ABOUT -> DccAboutContent()
+				HelpTab.ABOUT -> DccAboutContent()
 			}
 		}
 	}
 }
 
-/** A help topic's body: scrolling, padded, and no wider than reads comfortably. */
+/** The help page's contents: one row per topic. */
 @Composable
-private fun ColumnScope.HelpDocument(content: @Composable ColumnScope.() -> Unit) {
-	Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), contentAlignment = Alignment.TopCenter) {
-		Column(
-			modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-			verticalArrangement = Arrangement.spacedBy(10.dp),
-			content = content,
-		)
+internal fun HelpNav(selected: HelpTab, onSelect: (HelpTab) -> Unit) {
+	val tabs = HelpTab.entries
+	PageNavList(onStep = { step -> onSelect(tabs[(tabs.indexOf(selected) + step).mod(tabs.size)]) }) {
+		tabs.forEach { tab -> PageNavItem(tr(tab.labelKey), tab == selected, onClick = { onSelect(tab) }) }
 	}
 }
 
@@ -396,6 +381,12 @@ private fun DccCommunityLinksContent(
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
+
+	Text(
+		text = tr("help.links.intro"),
+		style = typography.caption.copy(fontSize = 11.5.sp, lineHeight = 16.sp),
+		color = colors.textPrimary,
+	)
 
 	val links = listOf(
 		Triple(tr("help.links.github.title"), DesktopUtils.GITHUB_REPO_URL, tr("help.links.github.desc")),

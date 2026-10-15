@@ -10,16 +10,13 @@ import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.components.GridIcon
 import io.github.psd2live.ui.components.HelpPanel
 import io.github.psd2live.ui.components.IconInfo
+import io.github.psd2live.ui.components.HelpNav
+import io.github.psd2live.ui.components.SettingsNav
 import io.github.psd2live.ui.components.SettingsPanel
-import io.github.psd2live.ui.state.AppPage
+import io.github.psd2live.ui.components.resetAllSettings
+import io.github.psd2live.ui.state.*
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
-import io.github.psd2live.ui.state.START_DETAILS
-import io.github.psd2live.ui.state.START_MAIN
-import io.github.psd2live.ui.state.START_NAV
-import io.github.psd2live.ui.state.START_RECENT_PSDS
-import io.github.psd2live.ui.state.START_UPDATES
-import io.github.psd2live.ui.state.pageOfModule
 import io.github.psd2live.ui.tutorial.TutorialId
 import io.github.psd2live.ui.tutorial.TutorialPath
 import kotlin.math.PI
@@ -45,24 +42,26 @@ internal class PageActions(
 /** The content of one panel of an app page. */
 @Composable
 internal fun PageModuleContent(id: String, state: PSD2LiveState, viewModel: PSD2LiveViewModel, actions: PageActions) {
-	when (pageOfModule(id)) {
-		AppPage.START -> when (id) {
-			START_NAV -> StartNavPanel(state, viewModel, actions)
-			START_MAIN -> StartMainPanel(state, viewModel, actions)
-			START_DETAILS -> StartDetailsPanel(state, viewModel, actions)
-			START_RECENT_PSDS -> StartRecentPsdsPanel(state, viewModel, actions)
-			START_UPDATES -> WhatsNewPanel(state.currentLanguage, enabled = !state.isBusy, onStartTutorial = actions.onStartTutorial)
-		}
-		AppPage.HELP -> HelpPanel(id, state.keymap, onStartInteractiveTutorial = actions.onStartTutorialPath)
-		AppPage.SETTINGS -> SettingsPanel(id, state, viewModel)
-		null -> {}
+	when (id) {
+		START_NAV -> StartNavPanel(state, viewModel, actions)
+		START_MAIN -> StartMainPanel(state, viewModel, actions)
+		START_DETAILS -> StartDetailsPanel(state, viewModel, actions)
+		HELP_NAV -> HelpNav(viewModel.helpTab, viewModel::setHelpTab)
+		HELP_CONTENT -> HelpPanel(viewModel.helpTab, state.keymap, onStartInteractiveTutorial = actions.onStartTutorialPath)
+		SETTINGS_NAV -> SettingsNav(viewModel.settingsTopic, viewModel::setSettingsTopic, onResetAll = { resetAllSettings(viewModel) })
+		SETTINGS_CONTENT -> SettingsPanel(viewModel.settingsTopic, state, viewModel)
 	}
 }
 
-/** A dock panel's title on an app page; the start page's main and details panels are named after the section shown. */
+/** A dock panel's title on an app page: a topic panel is named after the topic it shows, a contents panel after its page. */
 internal fun pageModuleTitle(id: String, viewModel: PSD2LiveViewModel): String = when (id) {
+	START_NAV -> pageTitle(AppPage.START)
 	START_MAIN -> startSectionTitle(viewModel.startSection)
 	START_DETAILS -> startDetailsTitle(viewModel.startSection)
+	HELP_NAV -> pageTitle(AppPage.HELP)
+	HELP_CONTENT -> tr(viewModel.helpTab.labelKey)
+	SETTINGS_NAV -> pageTitle(AppPage.SETTINGS)
+	SETTINGS_CONTENT -> tr(viewModel.settingsTopic.labelKey)
 	else -> moduleTitle(id)
 }
 

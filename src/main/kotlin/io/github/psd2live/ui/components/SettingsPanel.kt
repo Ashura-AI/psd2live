@@ -56,13 +56,10 @@ import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.state.AppSettings
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
-import io.github.psd2live.ui.state.SETTINGS_CANVAS
-import io.github.psd2live.ui.state.SETTINGS_ENVIRONMENT
-import io.github.psd2live.ui.state.SETTINGS_LANGUAGE
-import io.github.psd2live.ui.state.SETTINGS_PROMPTS
-import io.github.psd2live.ui.state.SETTINGS_SCALE
-import io.github.psd2live.ui.state.SETTINGS_SHORTCUTS
-import io.github.psd2live.ui.state.SETTINGS_THEME
+import io.github.psd2live.ui.state.SettingsTopic
+import io.github.psd2live.ui.views.PageBody
+import io.github.psd2live.ui.views.PageNavItem
+import io.github.psd2live.ui.views.PageNavList
 import io.github.psd2live.ui.state.AppPrompt
 import io.github.psd2live.ui.state.CaptureCheck
 import io.github.psd2live.ui.state.KeyBinding
@@ -90,23 +87,17 @@ import io.github.psd2live.ui.theme.handCursor
  * Compose would skip the recomposition and keep showing the old language after a switch made in this very panel.
  */
 @Composable
-internal fun SettingsPanel(module: String, state: PSD2LiveState, viewModel: PSD2LiveViewModel) {
-	Column(
-		modifier = Modifier
-			.fillMaxSize()
-			.verticalScroll(rememberScrollState())
-			.padding(horizontal = 14.dp, vertical = 12.dp),
-		verticalArrangement = Arrangement.spacedBy(14.dp),
-	) {
-		when (module) {
-			SETTINGS_SCALE -> SettingsScaleSection(
+internal fun SettingsPanel(topic: SettingsTopic, state: PSD2LiveState, viewModel: PSD2LiveViewModel) {
+	Column(Modifier.fillMaxSize()) { PageBody {
+		when (topic) {
+			SettingsTopic.SCALE -> SettingsScaleSection(
 				uiScale = state.uiScale,
 				fontScale = state.fontScale,
 				recommendedScale = DisplayMetricsCache.value.recommendedScale,
 				onUiScaleChange = viewModel::setUiScale,
 				onFontScaleChange = viewModel::setFontScale,
 			)
-			SETTINGS_THEME -> SettingsThemeSection(
+			SettingsTopic.THEME -> SettingsThemeSection(
 				themeId = state.themeId,
 				customThemes = state.customThemes,
 				onSelect = viewModel::setTheme,
@@ -115,17 +106,17 @@ internal fun SettingsPanel(module: String, state: PSD2LiveState, viewModel: PSD2
 				onDelete = viewModel::deleteCustomTheme,
 				onImport = viewModel::importTheme,
 			)
-			SETTINGS_LANGUAGE -> SettingsLanguageSection(
+			SettingsTopic.LANGUAGE -> SettingsLanguageSection(
 				currentLanguage = state.currentLanguage,
 				onLanguageChange = viewModel::setLanguage,
 			)
-			SETTINGS_CANVAS -> SettingsCanvasSection()
-			SETTINGS_PROMPTS -> SettingsPromptsSection(
+			SettingsTopic.CANVAS -> SettingsCanvasSection()
+			SettingsTopic.PROMPTS -> SettingsPromptsSection(
 				mutedPrompts = state.mutedPrompts,
 				onPromptEnabledChange = viewModel::setPromptEnabled,
 				onRestore = viewModel::restorePrompts,
 			)
-			SETTINGS_SHORTCUTS -> SettingsShortcutsSection(
+			SettingsTopic.SHORTCUTS -> SettingsShortcutsSection(
 				keymap = state.keymap,
 				preset = state.keymapPreset,
 				capture = state.keyCapture,
@@ -135,8 +126,20 @@ internal fun SettingsPanel(module: String, state: PSD2LiveState, viewModel: PSD2
 				onResetBinding = viewModel::resetKeyBinding,
 				onPresetChange = viewModel::applyKeymapPreset,
 			)
-			SETTINGS_ENVIRONMENT -> SettingsEnvironmentSection(DisplayMetricsCache.value)
+			SettingsTopic.ENVIRONMENT -> SettingsEnvironmentSection(DisplayMetricsCache.value)
 		}
+	} }
+}
+
+/** The settings page's contents: one row per topic, and beneath them the reset of every setting. */
+@Composable
+internal fun SettingsNav(selected: SettingsTopic, onSelect: (SettingsTopic) -> Unit, onResetAll: () -> Unit) {
+	val topics = SettingsTopic.entries
+	PageNavList(
+		onStep = { step -> onSelect(topics[(topics.indexOf(selected) + step).mod(topics.size)]) },
+		footer = { CompactButton(text = tr("dialog.settings.resetDefaults"), onClick = onResetAll, height = 22.dp, modifier = Modifier.fillMaxWidth()) },
+	) {
+		topics.forEach { topic -> PageNavItem(tr(topic.labelKey), topic == selected, onClick = { onSelect(topic) }) }
 	}
 }
 

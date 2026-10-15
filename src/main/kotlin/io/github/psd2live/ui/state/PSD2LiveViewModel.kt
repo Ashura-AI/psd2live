@@ -171,6 +171,11 @@ class PSD2LiveViewModel : AutoCloseable {
     internal val startPageShown: Boolean get() = activePage == AppPage.START
     /** Each page's arrangement, read from the preferences when first shown and written back as it changes. */
     internal val pageArrangements = androidx.compose.runtime.mutableStateMapOf<AppPage, PageArrangement>()
+    /** The help topic shown, and the settings topic: each page's contents pick one. */
+    internal var helpTab by mutableStateOf(HelpTab.QUICK_START)
+        private set
+    internal var settingsTopic by mutableStateOf(SettingsTopic.SCALE)
+        private set
     /** A page panel to bring forward: its tab selected, shown again if closed. Cleared once the page's dock has. */
     internal var requestedPageModule by mutableStateOf<String?>(null)
         private set
@@ -1372,6 +1377,20 @@ class PSD2LiveViewModel : AutoCloseable {
         if (activePage == AppPage.SETTINGS && page != AppPage.SETTINGS) endSettingsPage()
         activePage = page
         if (module != null && module in page.modules) requestedPageModule = module
+    }
+
+    /** Shows the help page on [tab], its content panel brought forward. */
+    internal fun showHelp(tab: HelpTab) {
+        helpTab = tab
+        showPage(AppPage.HELP, HELP_CONTENT)
+    }
+
+    internal fun setHelpTab(tab: HelpTab) {
+        helpTab = tab
+    }
+
+    internal fun setSettingsTopic(topic: SettingsTopic) {
+        settingsTopic = topic
     }
 
     /** Shows [page], or goes back to the workspace when it already shows: what its shortcut does. */
