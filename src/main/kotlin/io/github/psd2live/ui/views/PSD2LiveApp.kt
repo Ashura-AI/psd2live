@@ -72,13 +72,15 @@ import io.github.psd2live.ui.components.IconClose
 import io.github.psd2live.ui.components.ImageLightboxDialog
 import io.github.psd2live.ui.components.ExportDialog
 import io.github.psd2live.ui.components.ExportPsdDialog
-import io.github.psd2live.ui.components.HelpDialog
 import io.github.psd2live.ui.components.HelpTab
 import io.github.psd2live.ui.components.TextureUpscaleDialog
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.state.StartSection
+import io.github.psd2live.ui.state.AppPage
+import io.github.psd2live.ui.state.HELP_ABOUT
+import io.github.psd2live.ui.state.HELP_TUTORIALS
 import io.github.psd2live.ui.state.ShortcutScope
 import io.github.psd2live.ui.state.buttonBindingOf
 import io.github.psd2live.ui.state.wheelBindingOf
@@ -104,7 +106,6 @@ import io.github.psd2live.ui.tutorial.stop
 import io.github.psd2live.ui.tutorial.tutorialTarget
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material.DropdownMenu
-import io.github.psd2live.ui.components.SettingsDialog
 import io.github.psd2live.ui.state.AppSettings
 import io.github.psd2live.ui.state.AppPrompt
 import io.github.psd2live.ui.components.ModalDialogFrame
@@ -150,14 +151,12 @@ fun FrameWindowScope.PSD2LiveApp(
 	val download by viewModel.modelDownloadState.collectAsState()
 	val projectProgress by viewModel.projectProgress.collectAsState()
 	val task = io.github.psd2live.ui.state.taskProgress(state, baking, download, projectProgress)
-	var helpDialogTab by remember { mutableStateOf<HelpTab?>(null) }
 	var showAgentDialog by remember { mutableStateOf(false) }
 	var tutorial by remember { mutableStateOf(InteractiveTutorialState()) }
 	val tutorialTargets = rememberTutorialTargetRegistry()
 
 	fun startInteractiveTutorial(id: TutorialId = TutorialId.BASIC, path: TutorialPath = TutorialPath.defaultFor(id)) {
-		helpDialogTab = null
-		// The steps point into the dock, which the start page covers.
+		// The steps point into the dock, which the pages cover.
 		viewModel.leaveStartPage()
 		tutorial = InteractiveTutorialState().start(id, path, hasModel = state.previewModel != null)
 	}
@@ -180,7 +179,7 @@ fun FrameWindowScope.PSD2LiveApp(
 
 	fun openTutorialCatalog() {
 		stopInteractiveTutorial()
-		helpDialogTab = HelpTab.QUICK_START
+		viewModel.showPage(AppPage.HELP, HELP_TUTORIALS)
 	}
 
 	viewModel.confirmUnsavedChanges = {
@@ -337,6 +336,11 @@ fun FrameWindowScope.PSD2LiveApp(
 				viewModel.withSavedChanges { viewModel.importCmo3(Path.of(it), io.github.psd2live.core.Cmo3ImportMode.NEW) }
 			}
 		}
+		val onReplaceCmo3Action: () -> Unit = {
+			NativeFilePicker.chooseCmo3File(window, state.inputPath)?.let {
+				viewModel.importCmo3(Path.of(it), io.github.psd2live.core.Cmo3ImportMode.REPLACE)
+			}
+		}
         val onReanalyzeAction = {
 			if (hasInput && !isBusy) {
 				viewModel.withSavedChanges { viewModel.analyze(discardUnsaved = true) }
@@ -352,15 +356,13 @@ fun FrameWindowScope.PSD2LiveApp(
 		// A modal owns the keyboard: the root dispatcher stands down so shortcuts cannot fire behind
 		// a dialog (Ctrl+O with Help open used to raise a file picker behind it). Returning false
 		// rather than true is deliberate — the dialogs keep their own key handling and text input.
-		val modalOpen = helpDialogTab != null ||
-			showAgentDialog ||
+		val modalOpen = showAgentDialog ||
 			state.showTextureUpscaleDialog ||
 			state.lightboxImage != null ||
 			state.showProjectLocationDialog ||
 			state.showExportDialog ||
 			state.showExportPsdDialog ||
 			state.otherExportTarget != null ||
-			state.showSettingsDialog ||
 			state.projectSaveError != null ||
 			state.errorMessage != null ||
 			state.exportSuccess != null ||
@@ -494,8 +496,8 @@ fun FrameWindowScope.PSD2LiveApp(
 				ShortcutAction.ZOOM_IN -> { viewModel.zoomIn(); true }
 				ShortcutAction.ZOOM_OUT -> { viewModel.zoomOut(); true }
 				ShortcutAction.ZOOM_RESET -> { viewModel.resetZoom(); true }
-				ShortcutAction.OPEN_SETTINGS -> { viewModel.openSettingsDialog(); true }
-				ShortcutAction.OPEN_HELP -> { openTutorialCatalog(); true }
+				ShortcutAction.OPEN_SETTINGS -> { viewModel.togglePage(AppPage.SETTINGS); true }
+				ShortcutAction.OPEN_HELP -> { viewModel.togglePage(AppPage.HELP); true }
 				else -> {
 					// The nine tab-jump actions share one body. A null index means this is a
 					// canvas action, which this handler does not own.
@@ -584,11 +586,7 @@ fun FrameWindowScope.PSD2LiveApp(
 						sidebarToggles = sidebarToggles,
 						onToggleSidebar = viewModel::toggleSidebar,
 						onOpenPsd = onOpenPsdAction,
-						onReplaceCmo3 = {
-                            NativeFilePicker.chooseCmo3File(window, state.inputPath)?.let {
-                                viewModel.importCmo3(Path.of(it), io.github.psd2live.core.Cmo3ImportMode.REPLACE)
-                            }
-                        },
+						onReplaceCmo3 = onReplaceCmo3Action,
                         onNewLayout = { viewModel.showStartPage(StartSection.LAYOUT) },
                         onNewCmo3 = onNewCmo3Action,
                         onOpenProject = onOpenProjectAction,
@@ -611,7 +609,7 @@ fun FrameWindowScope.PSD2LiveApp(
 						onSetUiScale = { viewModel.setUiScale(it) },
 						onSetFontScale = { viewModel.setFontScale(it) },
 						onToggleTheme = { viewModel.toggleDarkTheme() },
-						onShowSettings = { viewModel.openSettingsDialog() },
+						onShowSettings = { viewModel.openSettings() },
 						onShowAgentConnection = { showAgentDialog = true },
 						onShowTextureUpscale = { viewModel.openTextureUpscaleDialog() },
 						onStartScreen = { viewModel.showStartPage(StartSection.GENERATE) },
@@ -626,8 +624,8 @@ fun FrameWindowScope.PSD2LiveApp(
 						onCloseTab = { viewModel.closeWorkspace(state.activeWorkspace.id) },
 						onNextTab = { viewModel.cycleWorkspace(1) },
 						onPrevTab = { viewModel.cycleWorkspace(-1) },
-						onShowAbout = { helpDialogTab = HelpTab.ABOUT },
-						onShowHelp = { tab -> helpDialogTab = tab },
+						onShowAbout = { viewModel.showPage(AppPage.HELP, HELP_ABOUT) },
+						onShowHelp = { tab -> viewModel.showPage(AppPage.HELP, tab.module) },
 						onOpenTutorialCatalog = { openTutorialCatalog() },
 						tutorialMenuForce = if (tutorialShown) tutorial.step.forcesMenu else null,
 						tutorialHighlightTarget = if (tutorialShown) {
@@ -666,6 +664,8 @@ fun FrameWindowScope.PSD2LiveApp(
 						onOpenProject = onOpenProjectAction,
 						onOpenPsd = onOpenPsdAction,
 						onOpenCmo3 = onNewCmo3Action,
+						onReplaceCmo3 = onReplaceCmo3Action,
+						onStartTutorialPath = { id, path -> startInteractiveTutorial(id, path) },
 						onRevealFile = ::openFolder,
 						filesDragging = isDraggingOver,
 					)
@@ -739,19 +739,6 @@ fun FrameWindowScope.PSD2LiveApp(
 			)
 		}
 
-		// Help & About Dialog
-		helpDialogTab?.let { tab ->
-			HelpDialog(
-				initialTab = tab,
-				keymap = state.keymap,
-				onDismiss = { helpDialogTab = null },
-				onOpenUrl = { url -> DesktopUtils.openBrowser(url) },
-				onStartInteractiveTutorial = { id, path ->
-					startInteractiveTutorial(id, path)
-				},
-			)
-		}
-
 		if (showAgentDialog && agentMcp != null) {
 			AgentMcpDialog(
 				controller = agentMcp,
@@ -795,44 +782,6 @@ fun FrameWindowScope.PSD2LiveApp(
 				onDismiss = { viewModel.clearProjectSaveError() },
 				isError = true,
 				confirmText = tr("dialog.ok"),
-			)
-		}
-
-		if (state.showSettingsDialog) {
-			SettingsDialog(
-				uiScale = state.uiScale,
-				fontScale = state.fontScale,
-				themeId = state.themeId,
-				customThemes = state.customThemes,
-				mutedPrompts = state.mutedPrompts,
-				keymap = state.keymap,
-				keyPreset = state.keymapPreset,
-				keyCapture = state.keyCapture,
-				currentLanguage = currentLanguage,
-				onUiScaleChange = viewModel::setUiScale,
-				onFontScaleChange = viewModel::setFontScale,
-				onThemeSelect = viewModel::setTheme,
-				onThemeDuplicate = viewModel::duplicateTheme,
-				onCustomThemeChange = viewModel::updateCustomTheme,
-				onCustomThemeDelete = viewModel::deleteCustomTheme,
-				onThemeImport = viewModel::importTheme,
-				onPromptEnabledChange = viewModel::setPromptEnabled,
-				onRestorePrompts = viewModel::restorePrompts,
-				onLanguageChange = viewModel::setLanguage,
-				onKeyCapture = viewModel::beginKeyCapture,
-				onKeyCaptureBinding = viewModel::captureBinding,
-				onKeyRemoveBinding = viewModel::removeKeyBinding,
-				onKeyResetBinding = viewModel::resetKeyBinding,
-				onKeyPresetChange = viewModel::applyKeymapPreset,
-				onCaptureKeyEvent = viewModel::captureKeyEvent,
-				onResetDefaults = {
-					AppSettings.resetToDefaults()
-					viewModel.resetZoom()
-					viewModel.resetInteractionPrefs()
-					viewModel.resetKeymap()
-					viewModel.setTheme(AppSettings.themeId)
-				},
-				onDismiss = { viewModel.closeSettingsDialog() },
 			)
 		}
 
@@ -1030,7 +979,7 @@ private fun StatusBar(
 				AppMenuItem(
 					text = tr("dialog.settings.title") + "…",
 					shortcut = keymap.labelFor(ShortcutAction.OPEN_SETTINGS),
-					onClick = { showZoomMenu = false; viewModel.openSettingsDialog() },
+					onClick = { showZoomMenu = false; viewModel.openSettings() },
 				)
 			}
 		}

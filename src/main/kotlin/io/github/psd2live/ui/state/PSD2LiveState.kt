@@ -607,7 +607,6 @@ data class PSD2LiveState(
 	val toolColors: ToolColors = ThemeCatalog.resolve(themeId, customThemes),
 	/** Shared by every canvas; an application preference, absent from WorkspaceStateCodec. */
 	val canvasBackground: CanvasBackground = AppSettings.canvasBackground,
-	val showSettingsDialog: Boolean = false,
 	/** App-level texture upscale prompt; must not be mounted inside a Column (scrim is fillMaxSize). */
 	val showTextureUpscaleDialog: Boolean = false,
 	/** The texture workspace's page, overlays and drag draft; UI-transient, never saved. */

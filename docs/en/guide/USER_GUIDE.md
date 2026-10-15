@@ -2,7 +2,7 @@
 
 [Documentation](../../README.md) · [中文](../../zh/guide/USER_GUIDE.md) · [日本語](../../ja/guide/USER_GUIDE.md)
 
-Open **Help → Tutorials…** (`F1`) first. Interactive lessons highlight the controls and show your configured shortcuts. This page is a short companion, in the same lesson order.
+Open **Help → Tutorials…** (or press `F1` for the Help page) first. Interactive lessons highlight the controls and show your configured shortcuts. This page is a short companion, in the same lesson order.
 
 ## Basic workflow
 
@@ -10,15 +10,19 @@ Import PSD (`Ctrl+Shift+O`) → inspect classifications and preview → edit →
 
 An existing Cubism model opens from **File → Import**: **Replace the model with a CMO3…** replaces the objects in the file by ID and adds the new ones, keeping what the file does not contain; **New project from CMO3…** clears the current model first, so the model comes from that CMO3 alone. Neither generates presets; the imported parameters, keyforms, deformers, textures and physics are saved with the project.
 
-## Start page
+## Start, Help and Settings pages
 
-The fixed **Start** tab at the left end of the workspace strip is the app's own page: it is not saved with a project and cannot be closed. It shows at launch; opening, importing or creating a project switches to its workspace, and **Start** (or **Tools → Start Page**) brings it back. Like the editor it is made of panels, with splitters between them to drag: the sidebar on the left, the content in the middle, the inspector on the right, and an action bar beneath whose main button `Enter` presses too. The page shows only while it is needed: once a project opens the Start tab folds away, and **File → Start Page**, **Tools → Start Page** or **Go to Start** on an empty canvas bring it back.
+The head of the workspace strip holds the app's own pages: **Start**, **Help** and **Settings**. They are not saved with a project and are not dialogs: their panels behave like the editor's, so you can drag a header to redock it, tab panels together, tear one off into a floating window or close it. The **Windows** menu reopens closed panels and **Reset layout** restores the default arrangement. A page's layout is kept in your local preferences across launches.
 
-- **Generate from PSD**: pick a preset at the top of the inspector (Minimal / Default / Full) and set each value if needed, then drop a PSD anywhere on the window, or click the viewport or **Generate…** to choose one. The model opens in the Edit workspace. In the **Recent PSDs** strip below, a click previews a PSD in the viewport and a double-click (or **Generate** after previewing) generates it with the presets shown; the thumbnails can be resized. The presets are remembered, and PSDs imported from the menu, the recent files or a drop use them too. The **Generate** menu switches presets or applies them to the open model. Split left and right parts drawn on one layer with **Tools → Split Layers by Mesh…**.
-- **Layout project**: the canvas is previewed to scale; double-click a common size to create it, or type a size in the inspector and click **Create Layout Project**.
-- **Import CMO3**: a new project from a Cubism model, the current one cleared first; replacing by ID stays under **File → Import**.
-- **Recent**: where the page opens (with no recent file yet it opens on Generate from PSD instead). Recent projects and PSDs as the Materials panel lists images, a grid or a list, with search, kind filters, thumbnails, modified time and size. A project's thumbnail is written when it is saved; a PSD shows its embedded thumbnail or its composite. Double-click to open; the inspector shows the folder or removes the file from the list.
-- **Quick start** and **What's new**: the tutorial catalog, and an interactive tutorial for each update.
+**Start** shows at launch; opening, importing or creating a project switches to its workspace and the Start tab folds away. **File → Start Page**, **Tools → Start Page** or **Go to Start** on an empty canvas bring it back. It is made of five panels: navigation, the section (named after what is picked, with an action bar whose main button `Enter` presses too), details, recent PSDs and what's new. ↑ / ↓ step through the navigation.
+
+- **Generate from PSD**: pick a preset at the top of the details panel (Minimal / Default / Full) and set each value if needed, then drop a PSD anywhere on the window, or click the viewport or **Generate…** to choose one. The model opens in the Edit workspace. In the **Recent PSDs** panel a click previews a PSD in the viewport and a double-click (or **Generate** after previewing) generates it with the presets shown; the thumbnails can be resized. The presets are remembered, and PSDs imported from the menu, the recent files or a drop use them too. The **Generate** menu switches presets or applies them to the open model. Split left and right parts drawn on one layer with **Tools → Split Layers by Mesh…**.
+- **Layout project**: the canvas preview and its size are set in one panel: the canvas to scale on the left, the common sizes (double-click to create) and the width and height on the right, shown as "Custom" when they match no common size. Click **Create Layout Project** or press `Enter`. The details panel explains the import, place and generate steps and what canvas units mean.
+- **Import CMO3**: a new project from a Cubism model, the current one cleared first. The details panel lists what the import keeps; with a model open it also offers **Replace with a CMO3…**, which replaces the open model's objects by ID.
+- **Recent**: where the page opens (with no recent file yet it opens on Generate from PSD instead). Recent projects and PSDs as the Materials panel lists images, a grid or a list, with search, kind filters, thumbnails, modified time and size. A project's thumbnail is written when it is saved; a PSD shows its embedded thumbnail or its composite. Double-click to open; the details panel shows the folder or removes the file from the list.
+- **What's new**: the release notes, version by version, as text to read. A change with an interactive tutorial links to it, and **Full changelog** opens the releases page.
+
+**Help** (`F1`; press it again to go back to the workspace) has five panels: tutorials, the layer spec, shortcuts (with a filter), community and links, and about. Each part of **Settings** (`Ctrl+,`) is a panel: scale and display, theme, language, canvas interaction, prompts, shortcuts and environment. Changes apply at once; **Reset Defaults** at the right of the tab strip resets every setting.
 
 With no project open, the canvases of other workspaces only show a hint and **Go to Start**.
 
@@ -110,7 +114,7 @@ These are the default (Photoshop-style) bindings. **Settings** can switch to Ble
 | Export model / export PSD | `Ctrl+G` / `Ctrl+Shift+E` |
 | Reanalyze PSD | `Ctrl+R` |
 | Texture upscale | `Ctrl+U` |
-| Tutorials | `F1` |
+| Help / Settings | `F1` / `Ctrl+,` |
 | Zoom / pan | Wheel / middle (or `Shift+MouseMiddle`) drag, or Space + left drag |
 | Zoom by dragging | `Ctrl+MouseMiddle`, drag up / down |
 | Adjust the brush: size·hardness / opacity·angle | Drag with `Alt+MouseRight` / `Shift+Alt+MouseRight` |

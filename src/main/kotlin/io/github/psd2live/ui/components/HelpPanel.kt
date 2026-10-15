@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,7 +36,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.i18n.tr
+import io.github.psd2live.ui.state.HELP_ABOUT
+import io.github.psd2live.ui.state.HELP_LINKS
+import io.github.psd2live.ui.state.HELP_PSD_SPEC
+import io.github.psd2live.ui.state.HELP_SHORTCUTS
+import io.github.psd2live.ui.state.HELP_TUTORIALS
 import io.github.psd2live.ui.state.Keymap
+import io.github.psd2live.ui.views.PanelSearch
+import io.github.psd2live.ui.views.PanelToolbar
+import io.github.psd2live.ui.views.PanelToolbarTitle
 import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.state.ShortcutCategory
 import io.github.psd2live.ui.theme.LocalToolColors
@@ -44,93 +54,73 @@ import io.github.psd2live.ui.tutorial.TutorialPath
 import io.github.psd2live.ui.utils.DesktopUtils
 import kotlinx.coroutines.delay
 
-enum class HelpTab {
-	QUICK_START,
-	PSD_SPEC,
-	SHORTCUTS,
-	COMMUNITY_LINKS,
-	ABOUT,
+/** The help page's panels, as the Help menu names them. */
+enum class HelpTab(internal val module: String) {
+	QUICK_START(HELP_TUTORIALS),
+	PSD_SPEC(HELP_PSD_SPEC),
+	SHORTCUTS(HELP_SHORTCUTS),
+	COMMUNITY_LINKS(HELP_LINKS),
+	ABOUT(HELP_ABOUT),
 }
 
+/**
+ * One panel of the help page: [module] picks the topic. Each reads as a document: a toolbar on top, then the text in
+ * a column kept to a readable width however wide the panel is docked.
+ */
 @Composable
-fun HelpDialog(
-	initialTab: HelpTab = HelpTab.QUICK_START,
-	keymap: Keymap = Keymap.DEFAULT,
-	onDismiss: () -> Unit,
+internal fun HelpPanel(
+	module: String,
+	keymap: Keymap,
 	onOpenUrl: (String) -> Unit = { DesktopUtils.openBrowser(it) },
 	onStartInteractiveTutorial: ((TutorialId, TutorialPath) -> Unit)? = null,
 ) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-
-	var selectedTab by remember { mutableStateOf(initialTab) }
-	var copyNotification by remember { mutableStateOf<String?>(null) }
-
-	LaunchedEffect(copyNotification) {
-		if (copyNotification != null) {
+	var query by remember(module) { mutableStateOf("") }
+	var copied by remember(module) { mutableStateOf(false) }
+	LaunchedEffect(copied) {
+		if (copied) {
 			delay(2500)
-			copyNotification = null
+			copied = false
 		}
 	}
-
-	val tabTitles = listOf(
-		tr("help.tab.quickstart"),
-		tr("help.tab.psd_spec"),
-		tr("help.tab.shortcuts"),
-		tr("help.tab.links"),
-		tr("help.tab.about"),
-	)
-
-	ModalDialogFrame(
-		title = tr("help.dialog.title"),
-		onDismiss = onDismiss,
-		width = 720.dp,
-		maxHeight = 660.dp,
-		scrollable = false,
-		bodySpacing = 12.dp,
-		titleTrailing = {
-			Text(text = "v3.4.5", style = typography.monoSmall.copy(fontSize = 10.sp), color = colors.textMuted)
-		},
-		footerStart = {
-			Text(
-				text = copyNotification ?: "PSD2Live / GPL-3.0 / tsunehimatoi",
-				style = typography.caption.copy(fontSize = 11.sp, fontWeight = if (copyNotification != null) FontWeight.Medium else FontWeight.Normal),
-				color = if (copyNotification != null) colors.accent else colors.textMuted,
-			)
-		},
-		footer = {
-			CompactButton(text = tr("dialog.ok"), onClick = onDismiss, isPrimary = true)
-		},
-	) {
-		CompactTabBar(
-			tabs = tabTitles,
-			selectedIndex = selectedTab.ordinal,
-			onTabSelected = { selectedTab = HelpTab.entries[it] },
-			modifier = Modifier.fillMaxWidth(),
-		)
-		Column(
-			modifier = Modifier
-				.weight(1f, fill = false)
-				.fillMaxWidth()
-				.verticalScroll(rememberScrollState()),
-			verticalArrangement = Arrangement.spacedBy(10.dp),
-		) {
-			when (selectedTab) {
-				HelpTab.QUICK_START -> InteractiveTutorialCatalog(
-					onStartInteractiveTutorial = onStartInteractiveTutorial,
-				)
-				HelpTab.PSD_SPEC -> DccPsdSpecContent(onOpenUrl)
-				HelpTab.SHORTCUTS -> DccShortcutsContent(keymap)
-				HelpTab.COMMUNITY_LINKS -> DccCommunityLinksContent(
+	Column(Modifier.fillMaxSize()) {
+		when (module) {
+			HELP_SHORTCUTS -> PanelToolbar(search = PanelSearch(query, { query = it }, tr("help.shortcuts.filter"))) {
+				Spacer(Modifier.weight(1f))
+			}
+			HELP_LINKS -> PanelToolbar {
+				PanelToolbarTitle(tr("help.links.intro"), Modifier.weight(1f))
+				if (copied) Text(tr("help.links.copied"), style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp),
+					color = LocalToolColors.current.accent)
+			}
+			else -> {}
+		}
+		HelpDocument {
+			when (module) {
+				HELP_TUTORIALS -> InteractiveTutorialCatalog(onStartInteractiveTutorial)
+				HELP_PSD_SPEC -> DccPsdSpecContent(onOpenUrl)
+				HELP_SHORTCUTS -> DccShortcutsContent(keymap, query)
+				HELP_LINKS -> DccCommunityLinksContent(
 					onOpenUrl = onOpenUrl,
 					onCopyLink = { url ->
 						DesktopUtils.copyToClipboard(url)
-						copyNotification = tr("help.links.copied")
+						copied = true
 					},
 				)
-				HelpTab.ABOUT -> DccAboutContent()
+				HELP_ABOUT -> DccAboutContent()
 			}
 		}
+	}
+}
+
+/** A help topic's body: scrolling, padded, and no wider than reads comfortably. */
+@Composable
+private fun ColumnScope.HelpDocument(content: @Composable ColumnScope.() -> Unit) {
+	Box(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), contentAlignment = Alignment.TopCenter) {
+		Column(
+			modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+			verticalArrangement = Arrangement.spacedBy(10.dp),
+			content = content,
+		)
 	}
 }
 
@@ -145,11 +135,6 @@ private fun InteractiveTutorialCatalog(
 		modifier = Modifier.fillMaxWidth(),
 		verticalArrangement = Arrangement.spacedBy(8.dp),
 	) {
-		Text(
-			text = tr("tutorial.catalog.title"),
-			style = typography.body.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
-			color = colors.textPrimary,
-		)
 		Text(
 			text = tr("tutorial.catalog.desc"),
 			style = typography.caption.copy(fontSize = 11.sp),
@@ -304,7 +289,15 @@ private fun DccSpecTable(title: String, rows: List<String>) {
 // 3. DCC Shortcuts Content (Tabular Key-Value)
 // ---------------------------------------------------------------------------
 @Composable
-private fun DccShortcutsContent(keymap: Keymap) {
+private fun DccShortcutsContent(keymap: Keymap, query: String) {
+	val needle = query.trim()
+	// A filter keeps the rows whose action or keys match; a group left empty is not shown.
+	@Composable
+	fun DccShortcutGroup(title: String, shortcuts: List<Pair<String, String>>) {
+		val shown = if (needle.isEmpty()) shortcuts
+			else shortcuts.filter { (action, keys) -> action.contains(needle, ignoreCase = true) || keys.contains(needle, ignoreCase = true) }
+		if (shown.isNotEmpty()) ShortcutGroupTable(title, shown)
+	}
 	// The pointer basics no binding can change stay literal; the rebindable mouse gestures (pan, zoom drag,
 	// brush adjust) are listed with the registry below.
 	DccShortcutGroup(
@@ -344,7 +337,7 @@ private fun DccShortcutsContent(keymap: Keymap) {
 }
 
 @Composable
-private fun DccShortcutGroup(title: String, shortcuts: List<Pair<String, String>>) {
+private fun ShortcutGroupTable(title: String, shortcuts: List<Pair<String, String>>) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 
@@ -403,12 +396,6 @@ private fun DccCommunityLinksContent(
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-
-	Text(
-		text = tr("help.links.intro"),
-		style = typography.caption.copy(fontSize = 11.5.sp, lineHeight = 16.sp),
-		color = colors.textPrimary,
-	)
 
 	val links = listOf(
 		Triple(tr("help.links.github.title"), DesktopUtils.GITHUB_REPO_URL, tr("help.links.github.desc")),
@@ -504,7 +491,7 @@ private fun DccAboutContent() {
 				color = colors.textPrimary,
 			)
 			Text(
-				text = "v3.4.5",
+				text = "v" + io.github.psd2live.AppVersion.value,
 				style = typography.monoSmall.copy(fontSize = 11.sp),
 				color = colors.accent,
 			)

@@ -274,10 +274,10 @@ fun CanvasViewportComposable(
 
 	// A capture in the settings panel swallows key events, including the Space release that
 	// clears the pan latch, so drop it proactively — a stuck pan would look like a hung canvas.
-	LaunchedEffect(mode, canvasState.keyCapture, canvasState.showSettingsDialog, canvasState.showExportDialog) {
+	LaunchedEffect(mode, canvasState.keyCapture, canvasState.showExportDialog) {
 		if (mode == CanvasMode.EDIT &&
-			(canvasState.keyCapture != null || canvasState.showSettingsDialog || canvasState.showExportDialog)) editor.space = false
-        if (canvasState.keyCapture != null || canvasState.showSettingsDialog || canvasState.showExportDialog) {
+			(canvasState.keyCapture != null || canvasState.showExportDialog)) editor.space = false
+        if (canvasState.keyCapture != null || canvasState.showExportDialog) {
             editor.endTemporarySelection()
             temporarySelectKey = null
         }

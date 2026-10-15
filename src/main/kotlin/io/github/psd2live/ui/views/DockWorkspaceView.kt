@@ -70,6 +70,12 @@ private data class DockDrop(val node: String, val side: DockSide, val before: St
 private class DockSession(initial: DockNode) {
     var root by mutableStateOf<DockNode?>(initial)
     var hiddenModules: Set<String> = emptySet()
+    /** Closes or reopens a panel of this dock: the workspace's, or the page's. */
+    var setModuleVisible: (String, Boolean) -> Unit = { _, _ -> }
+    /** The canvases docked here; a page has none. */
+    var canvases: List<CanvasWindowState> = emptyList()
+    /** A panel's name on its header and tab. */
+    var titleOf: (String) -> String = ::moduleTitle
     val visibleRoot: DockNode?
         get() = hiddenModules.fold(root) { layout, module -> layout?.remove(module) }
     val floating = mutableStateMapOf<String, WindowState>()
@@ -227,6 +233,8 @@ internal fun DockWorkspaceView(
 	onOpenProject: (() -> Unit)? = null,
 	onOpenPsd: (() -> Unit)? = null,
 	onOpenCmo3: (() -> Unit)? = null,
+	onReplaceCmo3: (() -> Unit)? = null,
+	onStartTutorialPath: ((TutorialId, io.github.psd2live.ui.tutorial.TutorialPath) -> Unit)? = null,
 	onRevealFile: (String) -> Unit = {},
 	/** A file is being dragged over the window; the start page shows where it will land. */
 	filesDragging: Boolean = false,
@@ -256,6 +264,8 @@ internal fun DockWorkspaceView(
     val visibleRoot = hiddenModules.fold(reconciledRoot) { layout, module -> layout?.remove(module) }
     SideEffect {
         session.hiddenModules = hiddenModules
+        session.setModuleVisible = viewModel::setModuleVisible
+        session.canvases = workspace.canvases
         if (session.root != reconciledRoot) session.root = reconciledRoot
     }
     LaunchedEffect(state.workspaces.map { it.id }) {
@@ -313,7 +323,11 @@ internal fun DockWorkspaceView(
         }
     }
     val colors = LocalToolColors.current
-    val startShown = viewModel.startPageShown
+    val page = viewModel.activePage
+    val pageSessions = remember { mutableMapOf<AppPage, DockSession>() }
+    val startModel = remember { StartPageModel() }
+    val pageActions = PageActions(onOpenTutorialCatalog, onStartTutorial, onStartTutorialPath, onOpenProject, onOpenPsd, onOpenCmo3,
+        onReplaceCmo3, onRevealFile, filesDragging, startModel)
     // Overlay the rebuild prompt on a Box so its fillMaxSize scrim cannot compete for
     // Column height with the dock (which would collapse the workspace to solid black).
     Box(modifier) {
@@ -328,16 +342,27 @@ internal fun DockWorkspaceView(
                     layoutModules = session.root?.allModules()?.toSet().orEmpty(),
                     modifier = Modifier.weight(1f),
                 )
-                if (!startShown) TabStripButton(label = tr("dock.reset")) {
-                    session.floating.clear()
-                    session.root = presetDockLayout(workspace)
-                    viewModel.resetWorkspaceArrangement()
+                if (page == AppPage.SETTINGS) TabStripButton(label = tr("dialog.settings.resetDefaults")) {
+                    io.github.psd2live.ui.components.resetAllSettings(viewModel)
+                }
+                TabStripButton(label = tr("dock.reset")) {
+                    if (page != null) {
+                        pageSessions[page]?.let { pageSession ->
+                            pageSession.floating.clear()
+                            pageSession.root = pageDockLayout(page)
+                        }
+                        viewModel.resetPageArrangement(page)
+                    } else {
+                        session.floating.clear()
+                        session.root = presetDockLayout(workspace)
+                        viewModel.resetWorkspaceArrangement()
+                    }
                 }
                 Spacer(Modifier.width(4.dp))
             }
-            if (startShown) {
-                StartWorkspace(state, viewModel, filesDragging, onOpenTutorialCatalog, onStartTutorial, onOpenProject, onOpenPsd,
-                    onOpenCmo3, onRevealFile, Modifier.weight(1f).fillMaxWidth())
+            if (page != null) key(page) {
+                val pageSession = pageSessions.getOrPut(page) { DockSession(pageDockRoot(page, viewModel.pageArrangement(page))) }
+                PageDock(page, pageSession, Modifier.weight(1f).fillMaxWidth(), mainWindow, state, viewModel, pageActions)
             } else key(workspace.id) {
                 Box(Modifier.weight(1f).fillMaxWidth().tutorialTarget(TutorialTargetId.DOCK_AREA).onGloballyPositioned { coordinates ->
                     session.workspaceBounds = { screenBounds(coordinates, mainWindow) }
@@ -358,7 +383,7 @@ internal fun DockWorkspaceView(
                 }
             }
         }
-        if (!startShown) key(state.projectOpenGeneration, workspace.id) {
+        if (page == null) key(state.projectOpenGeneration, workspace.id) {
             WorkspaceEditPanels(state, viewModel, Modifier.align(Alignment.BottomStart).padding(10.dp))
         }
         viewModel.pendingDepthSplit?.takeIf { it.workspaceId == workspace.id }?.let { offer ->
@@ -389,26 +414,106 @@ internal fun DockWorkspaceView(
     val transparent = state.canvasBackground.windowTransparent
     session.floating.toMap().forEach { (id, windowState) ->
         key(workspace.id, id, transparent) {
-            Window(onCloseRequest = { session.returnToDock(id) }, state = windowState,
-                title = floatingTitle(id, state, viewModel), undecorated = true, transparent = transparent,
-                visible = id !in hiddenModules && !startShown) {
-                DisposableEffect(window) {
-                    session.floatingWindows[id] = window
-                    onDispose { session.floatingWindows.remove(id) }
+            FloatingDockWindow(id, windowState, session, floatingTitle(id, state, viewModel), transparent,
+                visible = id !in hiddenModules && page == null, state, viewModel, content(id))
+        }
+    }
+    // A page's floating panels show while the page does.
+    pageSessions.forEach { (floatingPage, pageSession) ->
+        pageSession.floating.toMap().forEach { (id, windowState) ->
+            key(floatingPage, id) {
+                FloatingDockWindow(id, windowState, pageSession, pageModuleTitle(id, viewModel), transparent = false,
+                    visible = page == floatingPage && id !in viewModel.pageArrangement(floatingPage).hiddenModules, state, viewModel) {
+                    PageModuleContent(id, state, viewModel, pageActions)
                 }
-                // Match the main window's custom density and theme.
-                androidx.compose.runtime.CompositionLocalProvider(LocalAwtWindow provides window) {
-                CompactToolTheme(
-                    colors = state.toolColors,
-                    uiScale = AppSettings.uiScale,
-                    fontScale = AppSettings.fontScale,
-                ) {
-                    Column(Modifier.fillMaxSize().background(LocalToolColors.current.panelBackground)) {
-                        DockHeader(id, session, Modifier.fillMaxWidth(), state, viewModel, floating = true, floatingWindow = window)
-                        Box(Modifier.weight(1f).fillMaxWidth()) { content(id)() }
-                    }
-                }
-                }
+            }
+        }
+    }
+}
+
+/** A panel torn off its dock: an undecorated window holding its header and content, on the main window's theme. */
+@Composable
+private fun FloatingDockWindow(id: String, windowState: WindowState, session: DockSession, title: String, transparent: Boolean,
+                               visible: Boolean, state: PSD2LiveState, viewModel: PSD2LiveViewModel, content: @Composable () -> Unit) {
+    Window(onCloseRequest = { session.returnToDock(id) }, state = windowState,
+        title = title, undecorated = true, transparent = transparent, visible = visible) {
+        DisposableEffect(window) {
+            session.floatingWindows[id] = window
+            onDispose { session.floatingWindows.remove(id) }
+        }
+        // Match the main window's custom density and theme.
+        androidx.compose.runtime.CompositionLocalProvider(LocalAwtWindow provides window) {
+        CompactToolTheme(
+            colors = state.toolColors,
+            uiScale = AppSettings.uiScale,
+            fontScale = AppSettings.fontScale,
+        ) {
+            Column(Modifier.fillMaxSize().background(LocalToolColors.current.panelBackground)) {
+                DockHeader(id, session, Modifier.fillMaxWidth(), state, viewModel, floating = true, floatingWindow = window)
+                Box(Modifier.weight(1f).fillMaxWidth()) { content() }
+            }
+        }
+        }
+    }
+}
+
+/**
+ * An app page's dock: the same tree, tabs, splitters and floating panels as the editor's, over the page's own panels.
+ * Its arrangement goes to the preferences, never to a project.
+ */
+@Composable
+private fun PageDock(page: AppPage, session: DockSession, modifier: Modifier, mainWindow: java.awt.Window?,
+                     state: PSD2LiveState, viewModel: PSD2LiveViewModel, actions: PageActions) {
+    val colors = LocalToolColors.current
+    val hidden = viewModel.pageArrangement(page).hiddenModules
+    SideEffect {
+        session.hiddenModules = hidden
+        session.setModuleVisible = { id, visible -> viewModel.setPageModuleVisible(page, id, visible) }
+        session.canvases = emptyList()
+        session.titleOf = { pageModuleTitle(it, viewModel) }
+    }
+    // The first pass is the layout just read; writing it back would change nothing.
+    var layoutReady by remember { mutableStateOf(false) }
+    LaunchedEffect(session.root, session.floating.keys.toList()) {
+        if (!layoutReady) {
+            layoutReady = true
+            return@LaunchedEffect
+        }
+        delay(400)
+        var saved = session.root
+        session.floating.keys.forEach { saved = dockModule(saved, it, null, DockSide.RIGHT) }
+        saved?.let { viewModel.setPageArrangement(page, viewModel.pageArrangement(page).copy(layoutJson = dockJson.encodeToString(it))) }
+    }
+    LaunchedEffect(viewModel.requestedPageModule) {
+        val module = viewModel.requestedPageModule?.takeIf { it in page.modules } ?: return@LaunchedEffect
+        if (module in viewModel.pageArrangement(page).hiddenModules) viewModel.setPageModuleVisible(page, module, true)
+        if (module in session.floating) session.returnToDock(module)
+        session.root?.containing(module)?.let { node -> session.root = session.root?.update(node.id) { it.copy(selected = module) } }
+        viewModel.clearPageModuleRequest()
+    }
+    LaunchedEffect(session, session.dragging) {
+        while (session.dragging != null) {
+            session.track()
+            delay(16)
+        }
+    }
+    DisposableEffect(session) { onDispose { session.cancel() } }
+    val visibleRoot = hidden.fold(session.root) { layout, module -> layout?.remove(module) }
+    Box(modifier.onGloballyPositioned { coordinates -> session.workspaceBounds = { screenBounds(coordinates, mainWindow) } }) {
+        if (visibleRoot != null) {
+            DockTree(visibleRoot, session, Modifier.fillMaxSize(), mainWindow, state, viewModel) { id ->
+                { key(page, id) { PageModuleContent(id, state, viewModel, actions) } }
+            }
+            DockJunctionOverlay(visibleRoot, session, mainWindow)
+        } else {
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text(tr("dock.empty"), color = colors.textMuted, fontSize = 11.sp)
+                Spacer(Modifier.height(8.dp))
+                io.github.psd2live.ui.components.CompactButton(tr("dock.reset"), {
+                    session.floating.clear()
+                    session.root = pageDockLayout(page)
+                    viewModel.resetPageArrangement(page)
+                })
             }
         }
     }
@@ -594,12 +699,13 @@ private fun DockTabStrip(node: DockNode, session: DockSession, window: java.awt.
                 TabStripDropdown(expanded = listMenu, onDismissRequest = { listMenu = false }) {
                     node.modules.forEach { id ->
                         io.github.psd2live.ui.components.AppMenuItem(
-                            text = dockTabTitle(id, state),
+                            text = session.canvases.firstOrNull { it.id == id }?.let { canvasHeaderTitle(it, state.activeWorkspace) }
+                                ?: session.titleOf(id),
                             isChecked = id == node.selected,
                             onClick = {
                                 listMenu = false
                                 select(id)
-                                state.activeWorkspace.canvases.firstOrNull { it.id == id }?.let { viewModel.focusCanvas(it.id) }
+                                session.canvases.firstOrNull { it.id == id }?.let { viewModel.focusCanvas(it.id) }
                             },
                         )
                     }
@@ -797,14 +903,14 @@ private fun DockHeader(id: String, session: DockSession, modifier: Modifier,
     var viewMenu by remember { mutableStateOf(false) }
     var backgroundMenu by remember { mutableStateOf(false) }
     val workspace = state.activeWorkspace
-    val canvas = workspace.canvases.firstOrNull { it.id == id }
-    val title = canvas?.let { canvasHeaderTitle(it, workspace) } ?: moduleTitle(id)
+    val canvas = session.canvases.firstOrNull { it.id == id }
+    val title = canvas?.let { canvasHeaderTitle(it, workspace) } ?: session.titleOf(id)
     val showCanvasTools = canvas != null && (standalone || floating || selected)
     // Closing (menu or middle-click) hides a panel, which the window menu brings back; it removes a
     // canvas, never the last.
     val canClose = canvas == null || workspace.canvases.size > 1
     val close = {
-        if (canvas != null) viewModel.closeCanvas(canvas.id) else viewModel.setModuleVisible(id, false)
+        if (canvas != null) viewModel.closeCanvas(canvas.id) else session.setModuleVisible(id, false)
     }
     val tab = !standalone && !floating
     Row(modifier.height(22.dp)
@@ -935,7 +1041,7 @@ private fun DockHeader(id: String, session: DockSession, modifier: Modifier,
                 // Other tabs of the group are hidden, not destroyed, so a canvas among them keeps its view.
                 CompactMenuItem(text = tr("dock.closeOthers"), onClick = {
                     menu = false
-                    siblings.filter { it != id }.forEach { viewModel.setModuleVisible(it, false) }
+                    siblings.filter { it != id }.forEach { session.setModuleVisible(it, false) }
                     onSelect()
                 })
             }
@@ -980,10 +1086,6 @@ private fun canvasHeaderTitle(canvas: CanvasWindowState, workspace: EditorWorksp
     val base = tr("dock.canvas")
     return if (workspace.canvases.size > 1 && index >= 0) "$base ${index + 1}" else base
 }
-
-private fun dockTabTitle(id: String, state: PSD2LiveState): String =
-    state.activeWorkspace.canvases.firstOrNull { it.id == id }?.let { canvasHeaderTitle(it, state.activeWorkspace) }
-        ?: moduleTitle(id)
 
 private fun floatingTitle(id: String, state: PSD2LiveState, viewModel: PSD2LiveViewModel): String {
     val canvas = state.activeWorkspace.canvases.firstOrNull { it.id == id }

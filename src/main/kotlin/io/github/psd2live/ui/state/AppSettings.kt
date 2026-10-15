@@ -283,7 +283,27 @@ object AppSettings {
 
 	private const val KEY_START_CHOICES = "start_choices"
 
-	/** The start page's panel sizes in dp, as last dragged: sidebar and inspector widths, the recent PSD strip's height. */
+	/** How [page]'s panels were last arranged; the default arrangement the first time. */
+	internal fun pageArrangement(page: AppPage): PageArrangement = runCatching {
+		val key = "page_${page.name.lowercase()}"
+		PageArrangement(
+			layoutJson = preferences.get("${key}_layout", null),
+			hiddenModules = preferences.get("${key}_hidden", "").split(',').filter { it in page.modules }.toSet(),
+		)
+	}.getOrDefault(PageArrangement())
+
+	internal fun setPageArrangement(page: AppPage, arrangement: PageArrangement) {
+		val key = "page_${page.name.lowercase()}"
+		runCatching {
+			// A preference value holds at most 8 KB; a layout past that is left at its previous arrangement.
+			val layout = arrangement.layoutJson
+			if (layout == null) preferences.remove("${key}_layout")
+			else if (layout.length < java.util.prefs.Preferences.MAX_VALUE_LENGTH) preferences.put("${key}_layout", layout)
+			preferences.put("${key}_hidden", arrangement.hiddenModules.joinToString(","))
+		}
+	}
+
+	/** The start page's sizes in dp, as last set: the recent PSD strip's tiles and the recent files' cards. */
 	internal fun startPanelSize(key: String, default: Float, range: ClosedFloatingPointRange<Float>): Float =
 		runCatching { preferences.getFloat("start_$key", default) }.getOrDefault(default).let { if (it.isFinite()) it.coerceIn(range) else default }
 

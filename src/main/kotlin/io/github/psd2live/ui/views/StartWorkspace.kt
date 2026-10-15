@@ -65,6 +65,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
@@ -96,7 +97,9 @@ import io.github.psd2live.ui.components.IconPhysics
 import io.github.psd2live.ui.components.IconPlay
 import io.github.psd2live.ui.components.IconSkeleton
 import io.github.psd2live.ui.components.document
+import io.github.psd2live.ui.state.AppPage
 import io.github.psd2live.ui.state.AppSettings
+import io.github.psd2live.ui.state.START_UPDATES
 import io.github.psd2live.ui.state.HairMode
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
@@ -129,10 +132,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
-/** Below this width the inspector leaves the row and opens as a drawer over the content. */
-private val InspectorDockWidth = 900.dp
-private val PanelGap = 5.dp
-
 /** Canvas sizes offered for a new Layout project, with the `start.layout.size.<key>` that names each. */
 private val LayoutCanvasSizes = listOf(
 	Triple("square1k", 1024, 1024),
@@ -142,20 +141,11 @@ private val LayoutCanvasSizes = listOf(
 	Triple("landscape", 4096, 2048),
 )
 
-/** The start page's updates: the tutorial each one opens and its `canvas.start.update.<key>` strings. */
-internal val StartCanvasUpdates = listOf(
-	TutorialId.TOOL_DETAILS to "tools",
-	TutorialId.DEFORM_MODE to "deform",
-	TutorialId.WORKSPACE to "texture",
-	TutorialId.PROJECT_HISTORY to "regenerate",
-	TutorialId.LIVE2D_BRIDGE to "export",
-)
-
 private val DateFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault())
 
-/** The canvas size typed for a new Layout project, shared by the content's preview and the inspector's fields. */
+/** The canvas size typed for a new Layout project, shared by the preview, the size list and the fields. */
 @Stable
-private class LayoutDraft {
+internal class LayoutDraft {
 	var width by mutableStateOf("2048")
 	var height by mutableStateOf("2048")
 	val w: Int? get() = width.trim().toIntOrNull()
@@ -170,11 +160,10 @@ private class LayoutDraft {
 
 /** What the page's lists have picked while it shows. */
 @Stable
-private class StartSelection {
+internal class StartSelection {
 	/** The recent PSD the viewport previews; the generate action takes it, or asks for a file without one. */
 	var psdPath by mutableStateOf<String?>(null)
 	var recentPath by mutableStateOf<String?>(null)
-	var update by mutableStateOf(StartCanvasUpdates.first().first)
 	var recentFilter by mutableStateOf("")
 	var showProjects by mutableStateOf(true)
 	var showPsds by mutableStateOf(true)
@@ -182,179 +171,71 @@ private class StartSelection {
 	val open = mutableStateMapOf<String, Boolean>()
 }
 
-/** The panel sizes the splitters drag, in dp, kept in the preferences when a drag ends. */
+/**
+ * What the start page's panels share while the app runs: the canvas being typed, what the lists picked and the picture
+ * sizes. The panels dock, float and redock on their own, so none of it may live in one panel's composition.
+ */
 @Stable
-private class StartPanelSizes {
-	var sidebar by mutableStateOf(AppSettings.startPanelSize("sidebar", 176f, SIDEBAR))
-	var inspector by mutableStateOf(AppSettings.startPanelSize("inspector", 272f, INSPECTOR))
-	var strip by mutableStateOf(AppSettings.startPanelSize("strip", 164f, STRIP))
+internal class StartPageModel {
+	val layout = LayoutDraft()
+	val selection = StartSelection()
 	var tile by mutableStateOf(AppSettings.startPanelSize("tile", 104f, TILE))
 	var card by mutableStateOf(AppSettings.startPanelSize("card", 168f, CARD))
 
-	fun save() {
-		AppSettings.setStartPanelSize("sidebar", sidebar)
-		AppSettings.setStartPanelSize("inspector", inspector)
-		AppSettings.setStartPanelSize("strip", strip)
+	fun saveSizes() {
 		AppSettings.setStartPanelSize("tile", tile)
 		AppSettings.setStartPanelSize("card", card)
 	}
 
 	companion object {
-		val SIDEBAR = 140f..320f
-		val INSPECTOR = 220f..480f
-		val STRIP = 96f..380f
 		val TILE = 64f..200f
 		val CARD = 120f..300f
 	}
 }
 
-/**
- * The start page, shown instead of the dock while the strip's Start tab is active. Like a DCC's project browser it is
- * panels with splitters between them: the sidebar picks a section, the middle shows it, the inspector sets what the
- * section's action will do, and the bar beneath carries that action. Generation stays one gesture: a PSD dropped
- * anywhere on the window, or a recent PSD double-clicked, is generated with the presets the inspector shows.
- */
+/** The files the start page's panels show, read the same way by each. */
+private class StartFiles(val recent: List<RecentFile>?, selection: StartSelection) {
+	val psds = recent.orEmpty().filter { it.kind == RecentFileKind.PSD }
+	val selectedRecent = recent.orEmpty().firstOrNull { it.path == selection.recentPath }
+	val selectedPsd = psds.firstOrNull { it.path == selection.psdPath }
+}
+
 @Composable
-internal fun StartWorkspace(
-	state: PSD2LiveState,
-	viewModel: PSD2LiveViewModel,
-	filesDragging: Boolean,
-	onOpenTutorialCatalog: (() -> Unit)?,
-	onStartTutorial: ((TutorialId) -> Unit)?,
-	onOpenProject: (() -> Unit)?,
-	onOpenPsd: (() -> Unit)?,
-	onOpenCmo3: (() -> Unit)?,
-	onRevealFile: (String) -> Unit,
-	modifier: Modifier = Modifier,
-) {
-	val colors = LocalToolColors.current
-	val enabled = !state.isBusy
+private fun rememberStartFiles(state: PSD2LiveState, viewModel: PSD2LiveViewModel, selection: StartSelection): StartFiles {
 	val recent = rememberExistingRecentFiles(state.recentFiles)
-	val recentPsds = recent.orEmpty().filter { it.kind == RecentFileKind.PSD }
-	val layout = remember { LayoutDraft() }
-	val selection = remember { StartSelection() }
-	val sizes = remember { StartPanelSizes() }
-	val section = viewModel.startSection
-	val focus = remember { FocusRequester() }
-	LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
-	// The recent list opens on its newest file, so the inspector and the action have something to show.
+	// The recent list opens on its newest file, so the details and the action have something to show.
 	LaunchedEffect(recent) {
 		// A first launch has nothing recent to show: it opens where a PSD can be dropped instead.
 		if (recent != null) viewModel.settleStartLanding(recent.isNotEmpty())
 		if (recent != null && recent.none { it.path == selection.recentPath }) selection.recentPath = recent.firstOrNull()?.path
-		if (recent != null && recentPsds.none { it.path == selection.psdPath }) selection.psdPath = null
+		if (recent != null && recent.none { it.kind == RecentFileKind.PSD && it.path == selection.psdPath }) selection.psdPath = null
 	}
-	val selectedRecent = recent.orEmpty().firstOrNull { it.path == selection.recentPath }
-	val selectedPsd = recentPsds.firstOrNull { it.path == selection.psdPath }
-	val generate: () -> Unit = {
-		if (selectedPsd != null) viewModel.openRecentFile(selectedPsd.path) else onOpenPsd?.invoke()
-	}
-	val primary: () -> Unit = {
-		when (section) {
-			StartSection.GENERATE -> generate()
-			StartSection.LAYOUT -> if (layout.valid) viewModel.createLayoutProject(layout.w!!, layout.h!!)
-			StartSection.CMO3 -> onOpenCmo3?.invoke()
-			StartSection.RECENT -> selectedRecent?.let { viewModel.openRecentFile(it.path) }
-			StartSection.UPDATES -> onStartTutorial?.invoke(selection.update)
-		}
-	}
+	return StartFiles(recent, selection)
+}
 
-	BoxWithConstraints(
-		modifier
-			.fillMaxSize()
-			.background(colors.windowBackground)
-			.focusRequester(focus)
-			.focusable()
-			// Fields take Enter first: a typed canvas size reaches here only once its field lets it go.
-			.onKeyEvent { event ->
-				if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter) && enabled) {
-					primary()
-					true
-				} else false
-			}
-			.padding(top = 4.dp),
-	) {
-		val docked = maxWidth >= InspectorDockWidth
-		var drawer by remember { mutableStateOf(false) }
-		val inspector: @Composable (Modifier) -> Unit = { panelModifier ->
-			StartInspector(section, viewModel, layout, selection, selectedRecent, enabled, onRevealFile, panelModifier)
-		}
-		Column(Modifier.fillMaxSize()) {
-			Row(Modifier.weight(1f).fillMaxWidth()) {
-				StartSidebar(
-					section = section,
-					recentCount = recent?.size,
-					enabled = enabled,
-					openProjectShortcut = state.keymap.labelFor(ShortcutAction.OPEN_PROJECT),
-					onSelect = viewModel::setStartSection,
-					onOpenProject = onOpenProject,
-					onQuickStart = onOpenTutorialCatalog,
-					modifier = Modifier.width(sizes.sidebar.dp).fillMaxHeight(),
-				)
-				Splitter(horizontal = true, onDrag = { sizes.sidebar = (sizes.sidebar + it.value).coerceIn(StartPanelSizes.SIDEBAR) }, onDragEnd = sizes::save)
-				Box(Modifier.weight(1f).fillMaxHeight()) {
-					val toggle: (@Composable RowScope.() -> Unit)? = if (docked) null else ({
-						PanelHeaderToggle(tr("start.inspector"), drawer) { drawer = !drawer }
-					})
-					when (section) {
-						StartSection.GENERATE -> Column(Modifier.fillMaxSize()) {
-							GenerateViewport(
-								file = selectedPsd,
-								choices = viewModel.startChoices,
-								enabled = enabled && onOpenPsd != null,
-								dragging = filesDragging,
-								shortcut = state.keymap.labelFor(ShortcutAction.OPEN_PSD),
-								onOpenPsd = { onOpenPsd?.invoke() },
-								onGenerate = generate,
-								onClear = { selection.psdPath = null },
-								trailing = toggle,
-								modifier = Modifier.weight(1f).fillMaxWidth(),
-							)
-							Splitter(horizontal = false, onDrag = { sizes.strip = (sizes.strip - it.value).coerceIn(StartPanelSizes.STRIP) }, onDragEnd = sizes::save)
-							RecentPsdStrip(
-								files = recentPsds,
-								selectedPath = selection.psdPath,
-								tile = sizes.tile,
-								enabled = enabled,
-								onTile = { sizes.tile = it; sizes.save() },
-								onSelect = { selection.psdPath = it },
-								onGenerate = { viewModel.openRecentFile(it) },
-								onBrowse = { onOpenPsd?.invoke() },
-								modifier = Modifier.height(sizes.strip.dp).fillMaxWidth(),
-							)
-						}
-						else -> StartPanel(sectionTitle(section), Modifier.fillMaxSize(), trailing = toggle) {
-							when (section) {
-								StartSection.LAYOUT -> LayoutContent(layout, enabled) { w, h -> viewModel.createLayoutProject(w, h) }
-								StartSection.CMO3 -> Cmo3Content(enabled, onOpenCmo3)
-								StartSection.RECENT -> RecentBrowser(recent, selection, sizes, enabled, viewModel)
-								else -> UpdatesContent(selection, enabled, onStartTutorial)
-							}
-						}
-					}
-					// A file carried over the window lands wherever it is dropped; outside the viewport the page says so.
-					if (filesDragging && section != StartSection.GENERATE) DropHighlight(tr("start.drop.overlay", startPresetName(viewModel.startChoices)))
-					if (!docked && drawer) {
-						Box(Modifier.fillMaxSize().clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { drawer = false })
-						inspector(Modifier.align(Alignment.TopEnd).padding(top = 26.dp, end = 4.dp, bottom = 4.dp).width(sizes.inspector.dp).fillMaxHeight())
-					}
-				}
-				if (docked) {
-					Splitter(horizontal = true, onDrag = { sizes.inspector = (sizes.inspector - it.value).coerceIn(StartPanelSizes.INSPECTOR) }, onDragEnd = sizes::save)
-					inspector(Modifier.width(sizes.inspector.dp).fillMaxHeight())
-				}
-			}
-			StartActionBar(section, viewModel, layout, selection, selectedRecent, selectedPsd, enabled, state, onOpenPsd, onOpenCmo3, onStartTutorial, primary)
-		}
+/** What the main panel's action does for the section shown; Enter does the same. */
+private fun startPrimary(section: StartSection, files: StartFiles, model: StartPageModel, viewModel: PSD2LiveViewModel, actions: PageActions) {
+	when (section) {
+		StartSection.GENERATE -> files.selectedPsd?.let { viewModel.openRecentFile(it.path) } ?: actions.onOpenPsd?.invoke()
+		StartSection.LAYOUT -> if (model.layout.valid) viewModel.createLayoutProject(model.layout.w!!, model.layout.h!!)
+		StartSection.CMO3 -> actions.onOpenCmo3?.invoke()
+		StartSection.RECENT -> files.selectedRecent?.let { viewModel.openRecentFile(it.path) }
 	}
 }
 
-private fun sectionTitle(section: StartSection) = when (section) {
+internal fun startSectionTitle(section: StartSection) = when (section) {
 	StartSection.GENERATE -> tr("start.nav.generate")
 	StartSection.LAYOUT -> tr("start.nav.layout")
 	StartSection.CMO3 -> tr("start.nav.cmo3")
 	StartSection.RECENT -> tr("start.nav.recent")
-	StartSection.UPDATES -> tr("start.nav.updates")
+}
+
+/** The details panel's title, which follows the section: the presets a PSD import applies, or the picked file. */
+internal fun startDetailsTitle(section: StartSection) = when (section) {
+	StartSection.GENERATE -> tr("start.generate.presets")
+	StartSection.LAYOUT -> tr("start.details.layout")
+	StartSection.CMO3 -> tr("start.details.cmo3")
+	StartSection.RECENT -> tr("start.details.file")
 }
 
 /** The quick set [choices] match, or null for a custom set. */
@@ -364,126 +245,151 @@ private fun matchedPreset(choices: StartPresetChoices) = StartQuickPreset.entrie
 internal fun startPresetName(choices: StartPresetChoices) = matchedPreset(choices)?.let { tr(it.key) } ?: tr("start.quick.custom")
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Panels, splitters and sidebar
+// Panels
 // ---------------------------------------------------------------------------------------------------------------------
 
-/** A panel as the dock draws one: a rounded frame on the panel background under a 22 dp title bar. */
+/**
+ * The start page's navigation: where to begin, then where to learn. Picking a section shows it in the main panel;
+ * opening a project, the tutorials, help and settings act at once.
+ */
 @Composable
-private fun StartPanel(
-	title: String,
-	modifier: Modifier = Modifier,
-	trailing: (@Composable RowScope.() -> Unit)? = null,
-	content: @Composable ColumnScope.() -> Unit,
-) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	val shape = RoundedCornerShape(3.dp)
-	Column(modifier.clip(shape).background(colors.panelBackground).border(0.5.dp, colors.divider, shape)) {
-		Row(
-			Modifier.fillMaxWidth().height(22.dp).background(colors.panelElevated)
-				.drawBehind { drawLine(colors.divider, Offset(0f, size.height), Offset(size.width, size.height), 0.5.dp.toPx()) }
-				.padding(horizontal = 8.dp),
-			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(6.dp),
-		) {
-			Text(title, style = typography.body.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium), color = colors.textPrimary,
-				maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-			trailing?.invoke(this)
-		}
-		content()
-	}
-}
-
-/** The gap between two panels, dragged to resize them: across for [horizontal], else up and down. */
-@Composable
-private fun Splitter(horizontal: Boolean, onDrag: (Dp) -> Unit, onDragEnd: () -> Unit) {
-	val colors = LocalToolColors.current
-	val density = LocalDensity.current
-	val interaction = remember { MutableInteractionSource() }
-	val hovered by interaction.collectIsHoveredAsState()
-	var dragging by remember { mutableStateOf(false) }
-	val drag by rememberUpdatedState(onDrag)
-	val end by rememberUpdatedState(onDragEnd)
-	val line by animateColorAsState(when {
-		dragging -> colors.accent
-		hovered -> colors.borderHover
-		else -> Color.Transparent
-	}, tween(Motion.Instant))
-	Box(
-		(if (horizontal) Modifier.width(PanelGap).fillMaxHeight() else Modifier.height(PanelGap).fillMaxWidth())
-			.hoverable(interaction)
-			.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(if (horizontal) Cursor.E_RESIZE_CURSOR else Cursor.N_RESIZE_CURSOR)))
-			.pointerInput(horizontal) {
-				detectDragGestures(
-					onDragStart = { dragging = true },
-					onDragEnd = { dragging = false; end() },
-					onDragCancel = { dragging = false; end() },
-				) { change, amount ->
-					change.consume()
-					drag(with(density) { (if (horizontal) amount.x else amount.y).toDp() })
+internal fun StartNavPanel(state: PSD2LiveState, viewModel: PSD2LiveViewModel, actions: PageActions) {
+	val section = viewModel.startSection
+	val enabled = !state.isBusy
+	val recent = rememberExistingRecentFiles(state.recentFiles)
+	val order = StartSection.entries
+	Column(
+		Modifier.fillMaxSize()
+			.onPreviewKeyEvent { event ->
+				// Up and down step through the sections, as in any list.
+				if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+				val step = when (event.key) {
+					Key.DirectionUp -> -1
+					Key.DirectionDown -> 1
+					else -> return@onPreviewKeyEvent false
 				}
+				viewModel.setStartSection(order[(order.indexOf(section) + step).mod(order.size)])
+				true
 			}
-			.drawBehind {
-				val stroke = 1.dp.toPx()
-				if (horizontal) drawLine(line, Offset(size.width / 2, 0f), Offset(size.width / 2, size.height), stroke)
-				else drawLine(line, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), stroke)
+			.focusable()
+			.verticalScroll(rememberScrollState())
+			.padding(vertical = 4.dp),
+	) {
+		NavGroup(tr("start.nav.group.open"))
+		NavItem(tr("start.nav.openProject"), false, trailing = state.keymap.labelFor(ShortcutAction.OPEN_PROJECT),
+			enabled = enabled && actions.onOpenProject != null, onClick = { actions.onOpenProject?.invoke() }) {
+			IconFolder(modifier = Modifier.size(13.dp), tint = it)
+		}
+		NavItem(tr("start.nav.recent"), section == StartSection.RECENT, trailing = recent?.size?.toString(),
+			onClick = { viewModel.setStartSection(StartSection.RECENT) }) { WorkspacePresetIcon(WorkspacePreset.HISTORY, it, Modifier.size(13.dp)) }
+		NavGroup(tr("start.nav.group.new"))
+		NavItem(tr("start.nav.generate"), section == StartSection.GENERATE, trailing = state.keymap.labelFor(ShortcutAction.OPEN_PSD),
+			onClick = { viewModel.setStartSection(StartSection.GENERATE) }) {
+			WorkspacePresetIcon(WorkspacePreset.EDIT, it, Modifier.size(13.dp))
+		}
+		NavItem(tr("start.nav.layout"), section == StartSection.LAYOUT, badge = true, onClick = { viewModel.setStartSection(StartSection.LAYOUT) }) {
+			WorkspacePresetIcon(WorkspacePreset.LAYOUT, it, Modifier.size(13.dp))
+		}
+		NavItem(tr("start.nav.cmo3"), section == StartSection.CMO3, onClick = { viewModel.setStartSection(StartSection.CMO3) }) {
+			IconDocument(Modifier.size(13.dp), it)
+		}
+		NavGroup(tr("start.nav.group.learn"))
+		NavItem(tr("canvas.start.quickStart"), false, enabled = actions.onOpenTutorialCatalog != null,
+			onClick = { actions.onOpenTutorialCatalog?.invoke() }) { IconPlay(modifier = Modifier.size(12.dp), tint = it) }
+		NavItem(tr("start.nav.updates"), false, onClick = { viewModel.showPage(AppPage.START, START_UPDATES) }) {
+			IconInfo(modifier = Modifier.size(13.dp), tint = it)
+		}
+		NavItem(tr("start.nav.help"), false, trailing = state.keymap.labelFor(ShortcutAction.OPEN_HELP),
+			onClick = { viewModel.showPage(AppPage.HELP) }) { IconInfo(modifier = Modifier.size(13.dp), tint = it) }
+		NavItem(tr("start.nav.settings"), false, trailing = state.keymap.labelFor(ShortcutAction.OPEN_SETTINGS),
+			onClick = { viewModel.showPage(AppPage.SETTINGS) }) { PageIcon(AppPage.SETTINGS, it, Modifier.size(13.dp)) }
+	}
+}
+
+/**
+ * The section picked in the navigation, with its action in a bar beneath. Generation stays one gesture: a PSD dropped
+ * anywhere on the window, or a recent PSD double-clicked, is generated with the presets the details panel shows.
+ */
+@Composable
+internal fun StartMainPanel(state: PSD2LiveState, viewModel: PSD2LiveViewModel, actions: PageActions) {
+	val model = actions.start
+	val section = viewModel.startSection
+	val enabled = !state.isBusy
+	val files = rememberStartFiles(state, viewModel, model.selection)
+	val primary = { startPrimary(section, files, model, viewModel, actions) }
+	val focus = remember { FocusRequester() }
+	LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+	Column(
+		Modifier.fillMaxSize()
+			.focusRequester(focus)
+			.focusable()
+			// Fields take Enter first: a typed canvas size reaches here only once its field lets it go.
+			.onKeyEvent { event ->
+				if (event.type == KeyEventType.KeyDown && (event.key == Key.Enter || event.key == Key.NumPadEnter) && enabled) {
+					primary()
+					true
+				} else false
 			},
-	)
+	) {
+		Box(Modifier.weight(1f).fillMaxWidth()) {
+			when (section) {
+				StartSection.GENERATE -> GenerateViewport(
+					file = files.selectedPsd,
+					choices = viewModel.startChoices,
+					enabled = enabled && actions.onOpenPsd != null,
+					dragging = actions.filesDragging,
+					shortcut = state.keymap.labelFor(ShortcutAction.OPEN_PSD),
+					onOpenPsd = { actions.onOpenPsd?.invoke() },
+					onGenerate = primary,
+					onClear = { model.selection.psdPath = null },
+					modifier = Modifier.fillMaxSize(),
+				)
+				StartSection.LAYOUT -> LayoutContent(model.layout, enabled) { w, h -> viewModel.createLayoutProject(w, h) }
+				StartSection.CMO3 -> Cmo3Content(enabled, actions.onOpenCmo3)
+				StartSection.RECENT -> RecentBrowser(files.recent, model, enabled, viewModel)
+			}
+			// A file carried over the window lands wherever it is dropped; outside the viewport the page says so.
+			if (actions.filesDragging && section != StartSection.GENERATE) DropHighlight(tr("start.drop.overlay", startPresetName(viewModel.startChoices)))
+		}
+		StartActionBar(section, viewModel, model.layout, files, enabled, state, actions, primary)
+	}
 }
 
+/** What the section's action will do, set before it runs: the import presets, the canvas's route, the picked file. */
 @Composable
-private fun PanelHeaderToggle(label: String, active: Boolean, onClick: () -> Unit) {
-	val colors = LocalToolColors.current
-	val interaction = remember { MutableInteractionSource() }
-	val hovered by interaction.collectIsHoveredAsState()
-	Text(
-		label,
-		fontSize = 10.5.sp,
-		color = if (active) colors.selectionText else colors.textMuted,
-		modifier = Modifier.clip(RoundedCornerShape(3.dp))
-			.background(if (active) colors.selection else if (hovered) colors.controlHover else Color.Transparent)
-			.hoverable(interaction)
-			.clickable(interactionSource = interaction, indication = null, onClick = onClick)
-			.handCursor()
-			.padding(horizontal = 6.dp, vertical = 1.dp),
-	)
-}
-
-@Composable
-private fun StartSidebar(
-	section: StartSection,
-	recentCount: Int?,
-	enabled: Boolean,
-	openProjectShortcut: String?,
-	onSelect: (StartSection) -> Unit,
-	onOpenProject: (() -> Unit)?,
-	onQuickStart: (() -> Unit)?,
-	modifier: Modifier,
-) {
-	StartPanel(tr("start.page.tab"), modifier) {
-		Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) {
-			NavItem(tr("start.nav.openProject"), false, trailing = openProjectShortcut, enabled = enabled && onOpenProject != null,
-				onClick = { onOpenProject?.invoke() }) { IconFolder(modifier = Modifier.size(13.dp), tint = it) }
-			NavItem(tr("start.nav.recent"), section == StartSection.RECENT, trailing = recentCount?.toString(),
-				onClick = { onSelect(StartSection.RECENT) }) { WorkspacePresetIcon(WorkspacePreset.HISTORY, it, Modifier.size(13.dp)) }
-			NavGroup(tr("start.nav.group.new"))
-			NavItem(tr("start.nav.generate"), section == StartSection.GENERATE, onClick = { onSelect(StartSection.GENERATE) }) {
-				WorkspacePresetIcon(WorkspacePreset.EDIT, it, Modifier.size(13.dp))
-			}
-			NavItem(tr("start.nav.layout"), section == StartSection.LAYOUT, badge = true, onClick = { onSelect(StartSection.LAYOUT) }) {
-				WorkspacePresetIcon(WorkspacePreset.LAYOUT, it, Modifier.size(13.dp))
-			}
-			NavItem(tr("start.nav.cmo3"), section == StartSection.CMO3, onClick = { onSelect(StartSection.CMO3) }) {
-				IconDocument(Modifier.size(13.dp), it)
-			}
-			NavGroup(tr("start.nav.group.learn"))
-			NavItem(tr("canvas.start.quickStart"), false, enabled = onQuickStart != null,
-				onClick = { onQuickStart?.invoke() }) { IconPlay(modifier = Modifier.size(12.dp), tint = it) }
-			NavItem(tr("start.nav.updates"), section == StartSection.UPDATES, onClick = { onSelect(StartSection.UPDATES) }) {
-				IconInfo(modifier = Modifier.size(13.dp), tint = it)
-			}
+internal fun StartDetailsPanel(state: PSD2LiveState, viewModel: PSD2LiveViewModel, actions: PageActions) {
+	val model = actions.start
+	val enabled = !state.isBusy
+	val files = rememberStartFiles(state, viewModel, model.selection)
+	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+		when (viewModel.startSection) {
+			StartSection.GENERATE -> PresetInspector(viewModel.startChoices, model.selection, enabled, viewModel::setStartChoices)
+			StartSection.LAYOUT -> LayoutDetails()
+			StartSection.CMO3 -> Cmo3Details(enabled && state.previewModel != null, actions.onReplaceCmo3)
+			StartSection.RECENT -> RecentInspector(files.selectedRecent, enabled, viewModel, actions.onRevealFile)
 		}
 	}
+}
+
+/** The recent PSDs as a film strip: a click previews one in the generate viewport, a double click generates it. */
+@Composable
+internal fun StartRecentPsdsPanel(state: PSD2LiveState, viewModel: PSD2LiveViewModel, actions: PageActions) {
+	val model = actions.start
+	val files = rememberStartFiles(state, viewModel, model.selection)
+	RecentPsdStrip(
+		files = files.psds,
+		selectedPath = model.selection.psdPath,
+		tile = model.tile,
+		enabled = !state.isBusy,
+		onTile = { model.tile = it; model.saveSizes() },
+		onSelect = {
+			model.selection.psdPath = it
+			viewModel.setStartSection(StartSection.GENERATE)
+		},
+		onGenerate = { viewModel.openRecentFile(it) },
+		onBrowse = { actions.onOpenPsd?.invoke() },
+		modifier = Modifier.fillMaxSize(),
+	)
 }
 
 @Composable
@@ -583,7 +489,6 @@ private fun GenerateViewport(
 	onOpenPsd: () -> Unit,
 	onGenerate: () -> Unit,
 	onClear: () -> Unit,
-	trailing: (@Composable RowScope.() -> Unit)?,
 	modifier: Modifier,
 ) {
 	val colors = LocalToolColors.current
@@ -591,17 +496,17 @@ private fun GenerateViewport(
 	val details = file?.let { rememberRecentFileDetails(it) }
 	val interaction = remember { MutableInteractionSource() }
 	val hovered by interaction.collectIsHoveredAsState()
-	StartPanel(
-		title = file?.name ?: tr("start.viewport"),
-		modifier = modifier,
-		trailing = {
+	Column(modifier) {
+		if (file != null) PanelToolbar {
+			PanelToolbarTitle(file.name, Modifier.weight(1f, fill = false))
 			if (details?.canvasWidth != null && details.canvasHeight != null) {
 				Text("${details.canvasWidth} × ${details.canvasHeight}", style = typography.monoSmall.copy(fontSize = 10.sp), color = colors.textMuted)
 			}
-			if (file != null) PanelHeaderToggle(tr("start.viewport.clear"), false, onClear)
-			trailing?.invoke(this)
-		},
-	) {
+			Spacer(Modifier.weight(1f))
+			PanelToolButton(tr("start.viewport.clear"), showLabel = true, onClick = onClear, enabled = true, tooltip = tr("start.viewport.clear")) {
+				IconClose(Modifier.size(8.dp), colors.textMuted)
+			}
+		}
 		BoxWithConstraints(
 			Modifier.weight(1f).fillMaxWidth()
 				.background(colors.inputBackground)
@@ -684,10 +589,11 @@ private fun RecentPsdStrip(
 	onBrowse: () -> Unit,
 	modifier: Modifier,
 ) {
-	val colors = LocalToolColors.current
-	StartPanel(tr("start.generate.recent"), modifier, trailing = {
-		CompactSlider(value = tile, onValueChange = onTile, valueRange = StartPanelSizes.TILE, height = 12.dp, modifier = Modifier.width(72.dp))
-	}) {
+	Column(modifier) {
+		PanelToolbar {
+			Spacer(Modifier.weight(1f))
+			CompactSlider(value = tile, onValueChange = onTile, valueRange = StartPageModel.TILE, height = 12.dp, modifier = Modifier.width(72.dp))
+		}
 		Row(Modifier.weight(1f).fillMaxWidth().horizontalScroll(rememberScrollState()).padding(4.dp)) {
 			files.forEach { file ->
 				RecentTile(file, file.path == selectedPath, tile.dp, enabled, onClick = { onSelect(file.path) }, onDoubleClick = { onGenerate(file.path) })
@@ -725,52 +631,97 @@ private fun AddTile(size: Dp, enabled: Boolean, onClick: () -> Unit, label: Stri
 // Layout
 // ---------------------------------------------------------------------------------------------------------------------
 
+/**
+ * A new Layout project's canvas, set in one place: the canvas drawn to scale, and beside it the common sizes over the
+ * width and height they fill in. A size picked from the list or typed shows at once in both.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun LayoutContent(layout: LayoutDraft, enabled: Boolean, onCreate: (Int, Int) -> Unit) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	Column(Modifier.fillMaxSize().padding(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-		Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-			CanvasSizePreview(layout.w, layout.h, layout.valid, Modifier.weight(1f).fillMaxHeight())
-			Column(Modifier.width(200.dp).fillMaxHeight()) {
-				SubHeader(tr("start.layout.sizes"), null)
-				Spacer(Modifier.height(4.dp))
-				Column(Modifier.fillMaxWidth().border(0.5.dp, colors.divider)) {
-					LayoutCanvasSizes.forEach { (key, w, h) ->
-						val interaction = remember { MutableInteractionSource() }
-						val hovered by interaction.collectIsHoveredAsState()
-						val selected = layout.w == w && layout.h == h
-						Row(
-							Modifier.fillMaxWidth().height(26.dp)
-								.background(if (selected) colors.selection else if (hovered && enabled) colors.controlHover.copy(alpha = 0.35f) else Color.Transparent)
-								.hoverable(interaction)
-								.combinedClickable(interactionSource = interaction, indication = null, enabled = enabled,
-									onClick = { layout.set(w, h) }, onDoubleClick = { layout.set(w, h); onCreate(w, h) })
-								.handCursor(enabled)
-								.padding(horizontal = 8.dp),
-							verticalAlignment = Alignment.CenterVertically,
-						) {
-							Text(tr("start.layout.size.$key"), style = typography.body.copy(fontSize = 11.5.sp),
-								color = if (selected) colors.selectionText else colors.textPrimary, modifier = Modifier.weight(1f))
-							Text("$w × $h", style = typography.monoSmall.copy(fontSize = 10.sp), color = if (selected) colors.selectionText else colors.textMuted)
-						}
-					}
+	Row(Modifier.fillMaxSize().padding(10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+		CanvasSizePreview(layout.w, layout.h, layout.valid, Modifier.weight(1f).fillMaxHeight())
+		Column(Modifier.width(240.dp).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+			SubHeader(tr("start.layout.sizes"), null)
+			Column(Modifier.fillMaxWidth().border(0.5.dp, colors.divider)) {
+				val matched = LayoutCanvasSizes.any { (_, w, h) -> layout.w == w && layout.h == h }
+				LayoutCanvasSizes.forEach { (key, w, h) ->
+					SizeRow(tr("start.layout.size.$key"), "$w × $h", layout.w == w && layout.h == h, enabled,
+						onClick = { layout.set(w, h) }, onDoubleClick = { layout.set(w, h); onCreate(w, h) })
 				}
-				Spacer(Modifier.height(6.dp))
-				Text(tr("start.layout.sizes.hint"), style = typography.caption.copy(fontSize = 10.sp, lineHeight = 14.sp), color = colors.textMuted)
+				// What the fields hold while it is none of the above.
+				SizeRow(tr("start.layout.size.custom"), if (matched) "" else "${layout.width.trim()} × ${layout.height.trim()}", !matched,
+					enabled = false, onClick = {}, onDoubleClick = {})
+			}
+			Spacer(Modifier.height(4.dp))
+			SubHeader(tr("start.inspector.canvas"), null)
+			InspectorFormRow(tr("start.layout.width")) {
+				CompactTextField(layout.width, { layout.width = it }, isMono = true, selectAllOnFocus = true, enabled = enabled,
+					height = 22.dp, modifier = Modifier.fillMaxWidth())
+			}
+			InspectorFormRow(tr("start.layout.height")) {
+				CompactTextField(layout.height, { layout.height = it }, isMono = true, selectAllOnFocus = true, enabled = enabled,
+					height = 22.dp, modifier = Modifier.fillMaxWidth())
+			}
+			InspectorFormRow(tr("start.layout.pixels")) {
+				Row(verticalAlignment = Alignment.CenterVertically) {
+					val w = layout.w
+					val h = layout.h
+					Text(if (w != null && h != null) "%.2f M".format(w.toLong() * h / 1_000_000.0) else "—",
+						style = typography.monoSmall.copy(fontSize = 11.sp), color = colors.textPrimary, modifier = Modifier.weight(1f))
+					CompactButton(tr("start.layout.swap"), {
+						val width = layout.width
+						layout.width = layout.height
+						layout.height = width
+					}, enabled = enabled, height = 22.dp)
+				}
+			}
+			if (!layout.valid) Text(tr("start.layout.invalid"), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.warning)
+		}
+	}
+}
+
+/** A row of the canvas size list: its name, its size muted at the end, the selection behind both. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun SizeRow(label: String, size: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit, onDoubleClick: () -> Unit) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val interaction = remember { MutableInteractionSource() }
+	val hovered by interaction.collectIsHoveredAsState()
+	Row(
+		Modifier.fillMaxWidth().height(24.dp)
+			.background(if (selected) colors.selection else if (hovered && enabled) colors.controlHover.copy(alpha = 0.35f) else Color.Transparent)
+			.hoverable(interaction)
+			.combinedClickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick, onDoubleClick = onDoubleClick)
+			.handCursor(enabled)
+			.padding(horizontal = 8.dp),
+		verticalAlignment = Alignment.CenterVertically,
+	) {
+		Text(label, style = typography.body.copy(fontSize = 11.5.sp),
+			color = if (selected) colors.selectionText else colors.textPrimary, modifier = Modifier.weight(1f))
+		Text(size, style = typography.monoSmall.copy(fontSize = 10.sp), color = if (selected) colors.selectionText else colors.textMuted)
+	}
+}
+
+/** The way through a Layout project and what its canvas means, beside the canvas being set. */
+@Composable
+private fun LayoutDetails() {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+		listOf("import", "place", "generate").forEachIndexed { index, step ->
+			Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+				Text("${index + 1}", style = typography.monoSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold), color = colors.accent)
+				Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+					Text(tr("start.layout.step.$step"), style = typography.body.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium), color = colors.textPrimary)
+					Text(tr("start.layout.step.$step.desc"), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
+				}
 			}
 		}
-		// The way through a Layout project, as one line under the preview.
-		Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-			listOf("import", "place", "generate").forEachIndexed { index, step ->
-				if (index > 0) Text("›", fontSize = 11.sp, color = colors.textDisabled)
-				Text("${index + 1}", style = typography.monoSmall.copy(fontSize = 10.sp), color = colors.accent)
-				Text(tr("start.layout.step.$step"), fontSize = 11.sp, color = colors.textPrimary)
-				Text(tr("start.layout.step.$step.desc"), fontSize = 10.sp, color = colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis,
-					modifier = Modifier.weight(1f, fill = false))
-			}
-		}
+		Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.divider))
+		Text(tr("layout.new.hint"), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
 	}
 }
 
@@ -819,29 +770,49 @@ private fun DrawScope.drawChecker(origin: Offset, area: Size, light: Color, dark
 
 @Composable
 private fun Cmo3Content(enabled: Boolean, onOpenCmo3: (() -> Unit)?) {
+	ViewportPrompt(
+		title = tr("start.cmo3.choose"),
+		subtitle = tr("start.cmo3.choose.desc"),
+		enabled = enabled && onOpenCmo3 != null,
+		onClick = { onOpenCmo3?.invoke() },
+		modifier = Modifier.fillMaxSize(),
+	) { IconDocument(Modifier.size(30.dp), it) }
+}
+
+/**
+ * What a Cubism import brings and what it leaves out; beneath, the other way in: replacing the open model's objects
+ * by ID, offered here while a model is open.
+ */
+@Composable
+private fun Cmo3Details(canReplace: Boolean, onReplaceCmo3: (() -> Unit)?) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	Column(Modifier.fillMaxSize()) {
-		ViewportPrompt(
-			title = tr("start.cmo3.choose"),
-			subtitle = tr("start.cmo3.choose.desc"),
-			enabled = enabled && onOpenCmo3 != null,
-			onClick = { onOpenCmo3?.invoke() },
-			modifier = Modifier.weight(1f).fillMaxWidth(),
-		) { IconDocument(Modifier.size(30.dp), it) }
-		Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.divider))
-		Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-			Text(tr("start.cmo3.keeps"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted,
-				modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
-			listOf("parameters", "deformers", "textures", "physics", "presets").forEach { key ->
-				Row(Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
-					horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-					if (key == "presets") IconClose(Modifier.size(8.dp), colors.textMuted) else IconCheck(Modifier.size(10.dp), colors.accent)
-					Text(tr("start.cmo3.keeps.$key"), fontSize = 11.sp, color = if (key == "presets") colors.textMuted else colors.textPrimary)
-				}
+	Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+		SubHeaderRow(tr("start.cmo3.keeps"))
+		listOf("parameters", "deformers", "textures", "physics", "presets").forEach { key ->
+			Row(Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+				if (key == "presets") IconClose(Modifier.size(8.dp), colors.textMuted) else IconCheck(Modifier.size(10.dp), colors.accent)
+				Text(tr("start.cmo3.keeps.$key"), fontSize = 11.sp, color = if (key == "presets") colors.textMuted else colors.textPrimary)
 			}
 		}
+		Spacer(Modifier.height(8.dp))
+		Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.divider))
+		Spacer(Modifier.height(6.dp))
+		SubHeaderRow(tr("start.cmo3.replace"))
+		Text(tr("start.cmo3.replace.desc"), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted,
+			modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+		CompactButton(tr("start.cmo3.replace.action"), { onReplaceCmo3?.invoke() }, enabled = canReplace && onReplaceCmo3 != null, height = 22.dp,
+			modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+		if (!canReplace) Text(tr("start.cmo3.replace.none"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textDisabled,
+			modifier = Modifier.padding(horizontal = 10.dp))
 	}
+}
+
+@Composable
+private fun SubHeaderRow(title: String) {
+	Text(title, style = LocalToolTypography.current.caption.copy(fontSize = 10.sp), color = LocalToolColors.current.textMuted,
+		modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp))
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -856,11 +827,11 @@ private fun Cmo3Content(enabled: Boolean, onOpenCmo3: (() -> Unit)?) {
 @Composable
 private fun RecentBrowser(
 	recent: List<RecentFile>?,
-	selection: StartSelection,
-	sizes: StartPanelSizes,
+	model: StartPageModel,
 	enabled: Boolean,
 	viewModel: PSD2LiveViewModel,
 ) {
+	val selection = model.selection
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val shown = recent.orEmpty().filter { file ->
@@ -880,8 +851,8 @@ private fun RecentBrowser(
 				IconDocument(Modifier.size(12.dp), if (selection.showPsds) colors.accent else colors.textMuted)
 			}
 			Spacer(Modifier.weight(1f))
-			if (selection.recentGrid) CompactSlider(value = sizes.card, onValueChange = { sizes.card = it; sizes.save() },
-				valueRange = StartPanelSizes.CARD, height = 12.dp, modifier = Modifier.width(72.dp))
+			if (selection.recentGrid) CompactSlider(value = model.card, onValueChange = { model.card = it; model.saveSizes() },
+				valueRange = StartPageModel.CARD, height = 12.dp, modifier = Modifier.width(72.dp))
 			PanelToolButton(tr("start.recent.grid"), showLabel = false, onClick = { selection.recentGrid = true }, enabled = true,
 				tooltip = tr("start.recent.grid"), active = selection.recentGrid) { GridGlyph(colors.textPrimary) }
 			PanelToolButton(tr("start.recent.list"), showLabel = false, onClick = { selection.recentGrid = false }, enabled = true,
@@ -898,7 +869,7 @@ private fun RecentBrowser(
 				Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(4.dp),
 			) {
 				shown.forEach { file ->
-					RecentTile(file, file.path == selection.recentPath, sizes.card.dp, enabled,
+					RecentTile(file, file.path == selection.recentPath, model.card.dp, enabled,
 						onClick = { selection.recentPath = file.path }, onDoubleClick = { viewModel.openRecentFile(file.path) })
 				}
 			}
@@ -1016,94 +987,8 @@ private fun formatBytes(bytes: Long): String = when {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Updates
-// ---------------------------------------------------------------------------------------------------------------------
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun UpdatesContent(selection: StartSelection, enabled: Boolean, onStartTutorial: ((TutorialId) -> Unit)?) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-		Text(tr("canvas.start.updates.desc"), style = typography.caption.copy(fontSize = 11.sp, lineHeight = 15.sp), color = colors.textMuted,
-			modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
-		Box(Modifier.fillMaxWidth().height(0.5.dp).background(colors.divider))
-		StartCanvasUpdates.forEach { (tutorial, key) ->
-			val interaction = remember { MutableInteractionSource() }
-			val hovered by interaction.collectIsHoveredAsState()
-			val selected = selection.update == tutorial
-			Row(
-				Modifier.fillMaxWidth()
-					.background(if (selected) colors.selection else if (hovered) colors.controlHover.copy(alpha = 0.35f) else Color.Transparent)
-					.hoverable(interaction)
-					.combinedClickable(interactionSource = interaction, indication = null, onClick = { selection.update = tutorial },
-						onDoubleClick = { if (enabled) onStartTutorial?.invoke(tutorial) })
-					.handCursor()
-					.padding(horizontal = 10.dp, vertical = 7.dp),
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(10.dp),
-			) {
-				UpdateIcon(tutorial, if (selected) colors.selectionText else colors.accent)
-				Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-					Text(tr("canvas.start.update.$key.title"), style = typography.body.copy(fontSize = 11.5.sp, fontWeight = FontWeight.Medium),
-						color = if (selected) colors.selectionText else colors.textPrimary)
-					Text(tr("canvas.start.update.$key.desc"), style = typography.caption.copy(fontSize = 10.sp, lineHeight = 13.sp),
-						color = if (selected) colors.selectionText.copy(alpha = 0.75f) else colors.textMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-				}
-			}
-		}
-	}
-}
-
-@Composable
-private fun UpdateIcon(tutorial: TutorialId, tint: Color) {
-	when (tutorial) {
-		TutorialId.ANIMATION -> IconPlay(modifier = Modifier.size(14.dp), tint = tint)
-		TutorialId.SKELETON -> IconSkeleton(modifier = Modifier.size(15.dp), tint = tint)
-		TutorialId.PROJECT_HISTORY -> WorkspacePresetIcon(WorkspacePreset.HISTORY, tint, Modifier.size(15.dp))
-		TutorialId.WORKSPACE -> WorkspacePresetIcon(WorkspacePreset.TEXTURE, tint, Modifier.size(15.dp))
-		TutorialId.DEFORM_MODE -> ModeIcon(EditHierarchyMode.DEFORM, tint, 15.dp)
-		TutorialId.TOOL_DETAILS -> Box(Modifier.size(15.dp), contentAlignment = Alignment.Center) { ToolIcon(CanvasTool.BRUSH, tint) }
-		TutorialId.PHYSICS -> IconPhysics(active = true, modifier = Modifier.size(15.dp), tint = tint)
-		TutorialId.SIMULATION -> ModeIcon(EditHierarchyMode.SIMULATE, tint, 15.dp)
-		else -> StartIcon(Modifier.size(14.dp), tint)
-	}
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
 // Inspector
 // ---------------------------------------------------------------------------------------------------------------------
-
-@Composable
-private fun StartInspector(
-	section: StartSection,
-	viewModel: PSD2LiveViewModel,
-	layout: LayoutDraft,
-	selection: StartSelection,
-	selectedRecent: RecentFile?,
-	enabled: Boolean,
-	onRevealFile: (String) -> Unit,
-	modifier: Modifier,
-) {
-	val title = when (section) {
-		StartSection.GENERATE -> tr("start.generate.presets")
-		StartSection.LAYOUT -> tr("start.inspector.canvas")
-		StartSection.CMO3 -> tr("start.nav.cmo3")
-		StartSection.RECENT -> selectedRecent?.name ?: tr("start.inspector")
-		StartSection.UPDATES -> tr("start.inspector")
-	}
-	StartPanel(title, modifier) {
-		Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-			when (section) {
-				StartSection.GENERATE -> PresetInspector(viewModel.startChoices, selection, enabled, viewModel::setStartChoices)
-				StartSection.LAYOUT -> LayoutInspector(layout, enabled)
-				StartSection.CMO3 -> InspectorNote(tr("start.cmo3.note"))
-				StartSection.RECENT -> RecentInspector(selectedRecent, enabled, viewModel, onRevealFile)
-				StartSection.UPDATES -> UpdateInspector(selection.update)
-			}
-		}
-	}
-}
 
 /**
  * The presets a PSD import applies: the quick set picked from a list, then every value grouped as the model presets
@@ -1195,38 +1080,6 @@ private fun HairRow(label: String, mode: HairMode, enabled: Boolean, onChange: (
 }
 
 @Composable
-private fun LayoutInspector(layout: LayoutDraft, enabled: Boolean) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-		InspectorFormRow(tr("start.layout.width"), Modifier.padding(end = 8.dp)) {
-			CompactTextField(layout.width, { layout.width = it }, isMono = true, selectAllOnFocus = true, enabled = enabled,
-				height = 22.dp, modifier = Modifier.width(96.dp))
-		}
-		InspectorFormRow(tr("start.layout.height"), Modifier.padding(end = 8.dp)) {
-			CompactTextField(layout.height, { layout.height = it }, isMono = true, selectAllOnFocus = true, enabled = enabled,
-				height = 22.dp, modifier = Modifier.width(96.dp))
-		}
-		InspectorFormRow("", Modifier.padding(end = 8.dp)) {
-			CompactButton(tr("start.layout.swap"), {
-				val w = layout.width
-				layout.width = layout.height
-				layout.height = w
-			}, enabled = enabled, height = 22.dp)
-		}
-		InspectorFormRow(tr("start.layout.pixels"), Modifier.padding(end = 8.dp)) {
-			val w = layout.w
-			val h = layout.h
-			Text(if (w != null && h != null) "%.2f M".format(w.toLong() * h / 1_000_000.0) else "—",
-				style = typography.monoSmall.copy(fontSize = 11.sp), color = colors.textPrimary)
-		}
-		if (!layout.valid) Text(tr("start.layout.invalid"), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.warning,
-			modifier = Modifier.padding(horizontal = 10.dp))
-	}
-	InspectorNote(tr("layout.new.hint"))
-}
-
-@Composable
 private fun RecentInspector(file: RecentFile?, enabled: Boolean, viewModel: PSD2LiveViewModel, onRevealFile: (String) -> Unit) {
 	if (file == null) {
 		InspectorNote(tr("start.recent.pick"))
@@ -1258,21 +1111,6 @@ private fun RecentInspector(file: RecentFile?, enabled: Boolean, viewModel: PSD2
 }
 
 @Composable
-private fun UpdateInspector(tutorial: TutorialId) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	val key = StartCanvasUpdates.firstOrNull { it.first == tutorial }?.second ?: return
-	Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-			UpdateIcon(tutorial, colors.accent)
-			Text(tr("canvas.start.update.$key.title"), style = typography.body.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
-				color = colors.textPrimary)
-		}
-		Text(tr("canvas.start.update.$key.desc"), style = typography.caption.copy(fontSize = 11.sp, lineHeight = 16.sp), color = colors.textMuted)
-	}
-}
-
-@Composable
 private fun InspectorNote(text: String) {
 	Text(text, style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
 		color = LocalToolColors.current.textMuted, modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp))
@@ -1282,35 +1120,32 @@ private fun InspectorNote(text: String) {
 // Action bar
 // ---------------------------------------------------------------------------------------------------------------------
 
-/** The bar under the panels: what the section's action will do on the left, the action itself, solid, on the right. */
+/** The bar under the main panel: what the section's action will do on the left, the action itself, solid, on the right. */
 @Composable
 private fun StartActionBar(
 	section: StartSection,
 	viewModel: PSD2LiveViewModel,
 	layout: LayoutDraft,
-	selection: StartSelection,
-	selectedRecent: RecentFile?,
-	selectedPsd: RecentFile?,
+	files: StartFiles,
 	enabled: Boolean,
 	state: PSD2LiveState,
-	onOpenPsd: (() -> Unit)?,
-	onOpenCmo3: (() -> Unit)?,
-	onStartTutorial: ((TutorialId) -> Unit)?,
+	actions: PageActions,
 	primary: () -> Unit,
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val preset = startPresetName(viewModel.startChoices)
+	val selectedPsd = files.selectedPsd
+	val selectedRecent = files.selectedRecent
 	val hint = when (section) {
 		StartSection.GENERATE -> selectedPsd?.let { tr("start.action.generate.file", it.name, preset) } ?: tr("start.action.generate.hint", preset)
 		StartSection.LAYOUT -> if (layout.valid) tr("start.action.layout.hint", layout.w!!, layout.h!!) else tr("start.layout.invalid")
 		StartSection.CMO3 -> tr("start.action.cmo3.hint")
 		StartSection.RECENT -> selectedRecent?.path ?: tr("start.recent.pick")
-		StartSection.UPDATES -> tr("start.action.updates.hint")
 	}
 	Row(
-		Modifier.fillMaxWidth().height(40.dp).padding(top = 4.dp)
-			.background(colors.panelBackground)
+		Modifier.fillMaxWidth().height(36.dp)
+			.background(colors.panelElevated)
 			.drawBehind { drawLine(colors.divider, Offset(0f, 0f), Offset(size.width, 0f), 0.5.dp.toPx()) }
 			.padding(horizontal = 10.dp),
 		verticalAlignment = Alignment.CenterVertically,
@@ -1320,20 +1155,17 @@ private fun StartActionBar(
 			overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
 		Text("Enter", style = typography.monoSmall.copy(fontSize = 10.sp), color = colors.textDisabled)
 		when (section) {
-			StartSection.GENERATE -> GenerateButton(state, viewModel, selectedPsd != null, enabled && (selectedPsd != null || onOpenPsd != null), primary)
+			StartSection.GENERATE -> GenerateButton(state, viewModel, selectedPsd != null, enabled && (selectedPsd != null || actions.onOpenPsd != null), primary)
 			StartSection.LAYOUT -> AccentButton(tr("start.action.layout"), primary, enabled = enabled && layout.valid, emphasis = true) {
 				WorkspacePresetIcon(WorkspacePreset.LAYOUT, it, Modifier.size(12.dp))
 			}
-			StartSection.CMO3 -> AccentButton(tr("start.action.cmo3"), primary, enabled = enabled && onOpenCmo3 != null, emphasis = true) {
+			StartSection.CMO3 -> AccentButton(tr("start.action.cmo3"), primary, enabled = enabled && actions.onOpenCmo3 != null, emphasis = true) {
 				IconDocument(Modifier.size(12.dp), it)
 			}
 			StartSection.RECENT -> AccentButton(
 				tr(if (selectedRecent?.kind == RecentFileKind.PSD) "start.action.recent.generate" else "start.action.recent.open"),
 				primary, enabled = enabled && selectedRecent != null, emphasis = true,
 			) { IconFolder(modifier = Modifier.size(12.dp), tint = it) }
-			StartSection.UPDATES -> AccentButton(tr("start.action.updates"), primary, enabled = enabled && onStartTutorial != null, emphasis = true) {
-				IconPlay(modifier = Modifier.size(11.dp), tint = it)
-			}
 		}
 	}
 }

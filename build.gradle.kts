@@ -188,6 +188,10 @@ tasks.processResources {
 	if (!includeCubism) {
 		exclude("cubism/**")
 	}
+	// The app reads its own version from here (AppVersion), so the about page cannot disagree with the build.
+	val appVersion = project.version.toString()
+	inputs.property("appVersion", appVersion)
+	filesMatching("psd2live/version.properties") { expand("version" to appVersion) }
 }
 
 tasks.named<Jar>("jar") {

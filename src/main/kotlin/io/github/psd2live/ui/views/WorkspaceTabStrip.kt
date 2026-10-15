@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -68,7 +69,9 @@ import io.github.psd2live.ui.components.AppMenuHeader
 import io.github.psd2live.ui.components.AppMenuItem
 import io.github.psd2live.ui.components.AppMenuSeparator
 import io.github.psd2live.ui.components.IconClose
+import io.github.psd2live.ui.state.AppPage
 import io.github.psd2live.ui.state.CanvasMode
+import io.github.psd2live.ui.state.pageOfModule
 import io.github.psd2live.ui.state.EditorWorkspace
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
@@ -115,6 +118,7 @@ fun WorkspaceStrip(
 ) {
 	var showWindowMenu by remember { mutableStateOf(false) }
 	val workspace = state.activeWorkspace
+	val activePage = viewModel.activePage
 	val chipSpacing = 2.dp
 	val chipSpacingPx = with(LocalDensity.current) { chipSpacing.toPx() }
 	// Left edge and width of each chip in the strip, for dragging past its neighbours.
@@ -158,25 +162,34 @@ fun WorkspaceStrip(
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(chipSpacing),
 		) {
-			val startShown = viewModel.startPageShown
-			// The Start tab lives while the start page shows: it folds away once a project takes over, and opens out again
-			// when the start page is asked for.
-			androidx.compose.animation.AnimatedVisibility(
-				visible = startShown,
-				enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Motion.Fade, delayMillis = Motion.Instant)) +
-					androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(Motion.Expand), expandFrom = Alignment.Start),
-				exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(Motion.Instant)) +
-					androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(Motion.Expand), shrinkTowards = Alignment.Start),
-			) {
-				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(chipSpacing)) {
-					StartChip(isActive = true, onSelect = { viewModel.showStartPage() })
+			// A page's tab lives while the page is open: the start page's folds away once a project takes over, help's
+			// and settings' when closed, and each opens out again when its page is asked for.
+			AppPage.entries.forEach { page ->
+				androidx.compose.animation.AnimatedVisibility(
+					visible = page in viewModel.openPages,
+					enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Motion.Fade, delayMillis = Motion.Instant)) +
+						androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(Motion.Expand), expandFrom = Alignment.Start),
+					exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(Motion.Instant)) +
+						androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(Motion.Expand), shrinkTowards = Alignment.Start),
+				) {
+					PageChip(
+						page = page,
+						isActive = activePage == page,
+						onSelect = { viewModel.showPage(page) },
+						onClose = if (page == AppPage.START) null else ({ viewModel.closePage(page) }),
+					)
 				}
 			}
+			// Keeps the pages apart from the workspaces, which can be reordered among themselves.
+			if (viewModel.openPages.isNotEmpty()) {
+				Box(Modifier.padding(horizontal = 2.dp).width(1.dp).height(14.dp).background(LocalToolColors.current.divider))
+			}
+			val pageShown = activePage != null
 			state.workspaces.forEachIndexed { index, item ->
 				val dragging = draggingId == item.id
 				WorkspaceChip(
 					workspace = item,
-					isActive = !startShown && item.id == state.activeWorkspaceId,
+					isActive = !pageShown && item.id == state.activeWorkspaceId,
 					canClose = state.workspaces.size > 1,
 					canCloseRight = index < state.workspaces.lastIndex,
 					onSelect = { viewModel.setActiveWorkspace(item.id) },
@@ -207,6 +220,18 @@ fun WorkspaceStrip(
 			TabStripButton(label = "${tr("workspace.windows")} \u25BE") { showWindowMenu = true }
 			TabStripDropdown(expanded = showWindowMenu, onDismissRequest = { showWindowMenu = false }) {
 				AppMenuHeader(tr("workspace.windows"))
+				// A page lists its own panels; the editor's belong to the workspaces.
+				if (activePage != null) {
+					val hidden = viewModel.pageArrangement(activePage).hiddenModules
+					activePage.modules.forEach { module ->
+						AppMenuItem(
+							text = pageModuleTitle(module, viewModel),
+							isChecked = module !in hidden,
+							onClick = { viewModel.setPageModuleVisible(activePage, module, module in hidden) },
+						)
+					}
+					return@TabStripDropdown
+				}
 				WINDOW_MODULES.forEach { module ->
 					val shown = module in layoutModules && module !in workspace.hiddenModules
 					AppMenuItem(
@@ -239,15 +264,19 @@ fun WorkspaceStrip(
 	}
 }
 
-/** The start page's tab: first while it shows, never closed by hand, renamed or dragged. */
+/**
+ * An app page's tab, ahead of the workspaces: never renamed or dragged. Help and settings close from their tab;
+ * the start page folds away by itself once a project opens.
+ */
 @Composable
-private fun StartChip(isActive: Boolean, onSelect: () -> Unit) {
+private fun PageChip(page: AppPage, isActive: Boolean, onSelect: () -> Unit, onClose: (() -> Unit)?) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val interactionSource = remember { MutableInteractionSource() }
 	val isHovered by interactionSource.collectIsHoveredAsState()
 	Row(
 		modifier = Modifier
+			.padding(end = 2.dp)
 			.height(22.dp)
 			.clip(RoundedCornerShape(4.dp))
 			.background(when {
@@ -255,22 +284,35 @@ private fun StartChip(isActive: Boolean, onSelect: () -> Unit) {
 				isHovered -> colors.controlHover.copy(alpha = 0.6f)
 				else -> Color.Transparent
 			})
+			.hoverable(interactionSource)
 			.handCursor()
 			.clickable(interactionSource = interactionSource, indication = null, onClick = onSelect)
-			.padding(horizontal = 8.dp),
+			.padding(start = 8.dp, end = if (onClose != null) 4.dp else 8.dp),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
-		StartIcon(tint = if (isActive) colors.accent else colors.textMuted, modifier = Modifier.size(12.dp))
+		PageIcon(page, if (isActive) colors.accent else colors.textMuted, Modifier.size(12.dp))
 		Spacer(Modifier.width(5.dp))
 		Text(
-			text = tr("start.page.tab"),
+			text = pageTitle(page),
 			style = typography.body.copy(fontSize = 11.5.sp, fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal),
 			color = if (isActive) colors.textPrimary else colors.textMuted,
 			maxLines = 1,
 		)
+		if (onClose != null) {
+			Spacer(Modifier.width(4.dp))
+			val closeInteraction = remember { MutableInteractionSource() }
+			val closeHovered by closeInteraction.collectIsHoveredAsState()
+			Box(
+				Modifier.size(14.dp).clip(RoundedCornerShape(3.dp))
+					.background(if (closeHovered) colors.controlHover else Color.Transparent)
+					.hoverable(closeInteraction)
+					.clickable(interactionSource = closeInteraction, indication = null, onClick = onClose),
+				contentAlignment = Alignment.Center,
+			) {
+				IconClose(Modifier.size(7.dp), if (closeHovered || isActive) colors.textPrimary else colors.textMuted)
+			}
+		}
 	}
-	// Keeps the fixed tab apart from the workspaces, which can be reordered among themselves.
-	Box(Modifier.padding(horizontal = 2.dp).width(1.dp).height(14.dp).background(colors.divider))
 }
 
 @Composable
@@ -523,6 +565,7 @@ internal fun TabStripDropdown(
 
 internal fun moduleTitle(id: String): String = when {
 	isCanvasModule(id) -> tr("dock.canvas")
+	pageOfModule(id) != null -> tr("dock.module.$id")
 	else -> tr(when (id) {
 		"hierarchy" -> "dock.hierarchy"
 		"skeleton" -> "dock.skeleton"

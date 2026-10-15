@@ -2,16 +2,8 @@ package io.github.psd2live.ui.views
 
 import kotlinx.serialization.Serializable
 import java.util.UUID
-import io.github.psd2live.ui.state.DEFAULT_DOCK_MODULES
-import io.github.psd2live.ui.state.TEXTURE_DOCK_MODULES
-import io.github.psd2live.ui.state.LAYOUT_DOCK_MODULES
-import io.github.psd2live.ui.state.EditorWorkspace
-import io.github.psd2live.ui.state.SidebarSide
 import kotlinx.serialization.json.Json
-import io.github.psd2live.ui.state.PRIMARY_CANVAS_ID
-import io.github.psd2live.ui.state.WorkspacePreset
-import io.github.psd2live.ui.state.isCanvasModule
-import io.github.psd2live.ui.state.presetEditorWorkspace
+import io.github.psd2live.ui.state.*
 
 internal enum class DockSide { CENTER, LEFT, RIGHT, TOP, BOTTOM }
 
@@ -260,6 +252,30 @@ internal fun presetVisibleLayout(preset: WorkspacePreset): Pair<DockNode?, Edito
 }
 
 internal val dockJson = Json { ignoreUnknownKeys = true }
+
+/** The arrangement [page] starts from and "reset layout" restores; every panel of the page is in it. */
+internal fun pageDockLayout(page: AppPage): DockNode = when (page) {
+    AppPage.START -> row(.17f, leaf(START_NAV),
+        row(.70f, column(.76f, leaf(START_MAIN), leaf(START_RECENT_PSDS)), leaf(START_DETAILS, START_UPDATES)))
+    AppPage.HELP -> row(.40f, leaf(HELP_TUTORIALS), leaf(HELP_SHORTCUTS, HELP_PSD_SPEC, HELP_LINKS, HELP_ABOUT))
+    AppPage.SETTINGS -> row(.5f, leaf(SETTINGS_SCALE, SETTINGS_THEME, SETTINGS_LANGUAGE, SETTINGS_CANVAS),
+        leaf(SETTINGS_SHORTCUTS, SETTINGS_PROMPTS, SETTINGS_ENVIRONMENT))
+}
+
+/**
+ * The dock tree [page] is arranged by: its saved layout when that still decodes and names only the page's own panels,
+ * each once, otherwise its default. A panel the page gained since joins the first group as a tab.
+ */
+internal fun pageDockRoot(page: AppPage, arrangement: PageArrangement): DockNode {
+    val saved = arrangement.layoutJson?.let { raw -> runCatching { dockJson.decodeFromString<DockNode>(raw) }.getOrNull() }
+        ?.takeIf { node -> node.allModules().let { modules -> modules.all { it in page.modules } && modules.size == modules.toSet().size } }
+    val root = saved ?: pageDockLayout(page)
+    return page.modules.filter { it !in root.allModules() }.fold(root) { node, module ->
+        dockModule(node, module, node.firstLeaf().id, DockSide.CENTER)
+    }
+}
+
+private fun DockNode.firstLeaf(): DockNode = first?.firstLeaf() ?: this
 
 /**
  * The dock tree [workspace] is arranged by: its saved layout when that still decodes and names only

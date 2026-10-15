@@ -54,6 +54,15 @@ import io.github.psd2live.i18n.AppLanguage
 import io.github.psd2live.i18n.I18n
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.state.AppSettings
+import io.github.psd2live.ui.state.PSD2LiveState
+import io.github.psd2live.ui.state.PSD2LiveViewModel
+import io.github.psd2live.ui.state.SETTINGS_CANVAS
+import io.github.psd2live.ui.state.SETTINGS_ENVIRONMENT
+import io.github.psd2live.ui.state.SETTINGS_LANGUAGE
+import io.github.psd2live.ui.state.SETTINGS_PROMPTS
+import io.github.psd2live.ui.state.SETTINGS_SCALE
+import io.github.psd2live.ui.state.SETTINGS_SHORTCUTS
+import io.github.psd2live.ui.state.SETTINGS_THEME
 import io.github.psd2live.ui.state.AppPrompt
 import io.github.psd2live.ui.state.CaptureCheck
 import io.github.psd2live.ui.state.KeyBinding
@@ -73,273 +82,79 @@ import kotlin.math.roundToInt
 import io.github.psd2live.ui.theme.handCursor
 
 /**
- * The categories of the settings window, in sidebar order: the options the user came to change
- * first, and the read-only reference material last.
+ * One panel of the settings page: [module] picks the section, as the page's dock arranges them. Every option applies
+ * at once; there is no draft state, since [AppSettings.uiScale] falls back to the detected display scale when the user
+ * has never set one and so has no previous value a Cancel could restore.
  *
- * [CANVAS] reuses the existing `settings.canvas.title` label because that string already names the
- * option in all three bundles.
- */
-private enum class SettingsSection(val labelKey: String) {
-	SCALE("dialog.settings.category.scale"),
-	THEME("dialog.settings.category.theme"),
-	LANGUAGE("dialog.settings.category.language"),
-	CANVAS("settings.canvas.title"),
-	PROMPTS("dialog.settings.category.prompts"),
-	SHORTCUTS("dialog.settings.category.shortcuts"),
-	ENVIRONMENT("dialog.settings.category.environment"),
-}
-
-/** The section shown when the preferences window is next composed. */
-private var lastSettingsSection = SettingsSection.SCALE
-
-/**
- * Preferences window: a category sidebar on the left, the selected category's content on the right.
- *
- * The panel takes its size from the main window rather than a constant, so it grows with the window
- * instead of looking cramped on a large display or overflowing a small one.
- *
- * Every option here applies immediately — there is no draft state and "OK" is just a dismiss. That
- * is deliberate: [AppSettings.uiScale] falls back to the detected display scale when the user has
- * never set one, so there is no previous value a Cancel could restore.
- *
- * [currentLanguage] must be passed from observable state rather than read from [I18n] directly:
- * `tr()` reads a plain `@Volatile` field, so without a changed parameter Compose would skip the
- * recomposition and the window would keep rendering the old language after a switch made *inside*
- * this very window.
+ * The language comes from the state rather than [I18n]: `tr()` reads a plain field, so without a changed parameter
+ * Compose would skip the recomposition and keep showing the old language after a switch made in this very panel.
  */
 @Composable
-fun SettingsDialog(
-	uiScale: Float,
-	fontScale: Float,
-	themeId: String = ThemeCatalog.DARK_ID,
-	customThemes: List<CustomTheme> = emptyList(),
-	mutedPrompts: Set<AppPrompt> = AppSettings.mutedPrompts(),
-	keymap: Keymap = Keymap.DEFAULT,
-	keyPreset: KeymapPreset = KeymapPreset.PHOTOSHOP,
-	keyCapture: KeyCapture? = null,
-	currentLanguage: AppLanguage = I18n.currentLanguage,
-	onUiScaleChange: (Float) -> Unit,
-	onFontScaleChange: (Float) -> Unit,
-	onThemeSelect: (String) -> Unit = {},
-	onThemeDuplicate: (String) -> Unit = {},
-	onCustomThemeChange: (CustomTheme) -> Unit = {},
-	onCustomThemeDelete: (String) -> Unit = {},
-	onThemeImport: (String) -> Boolean = { false },
-	onPromptEnabledChange: (AppPrompt, Boolean) -> Unit = AppSettings::setPromptEnabled,
-	onRestorePrompts: () -> Unit = {},
-	onLanguageChange: (AppLanguage) -> Unit = {},
-	onKeyCapture: (ShortcutAction, Int) -> Unit = { _, _ -> },
-	onKeyCaptureBinding: (KeyBinding) -> Unit = {},
-	onKeyRemoveBinding: (ShortcutAction, Int) -> Unit = { _, _ -> },
-	onKeyResetBinding: (ShortcutAction) -> Unit = {},
-	onKeyPresetChange: (KeymapPreset) -> Unit = {},
-	onCaptureKeyEvent: (androidx.compose.ui.input.key.KeyEvent) -> Unit = {},
-	onResetDefaults: () -> Unit,
-	onDismiss: () -> Unit,
-) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-
-	// Read once per open, and deliberately hoisted out of the sections: the device query touches
-	// GraphicsEnvironment and is slow on multi-monitor Windows setups, so re-running it on every
-	// section switch would be visible. Hoisting also guarantees the "Auto Recommend" button and the
-	// environment readout describe the same snapshot.
-	val displayMetrics = remember { AppSettings.detectDisplayMetrics() }
-
-	// Kept past this composition: a language switch rebuilds the window and this dialog with it,
-	// which should land back on the Language section rather than the first one.
-	var selectedSection by remember { mutableStateOf(lastSettingsSection) }
-	SideEffect { lastSettingsSection = selectedSection }
-	val contentScroll = rememberScrollState()
-	// The scroll state is shared by every section, so without this a switch made while scrolled down
-	// would land the new section mid-scroll.
-	LaunchedEffect(selectedSection) { contentScroll.scrollTo(0) }
-
-	// Follow the main window rather than a fixed size. The bounds matter at the extremes: in a
-	// maximised window an unbounded 78% would stretch every row until each label drifted away
-	// from the control it belongs to, and in a small window 76% of the height is not enough to
-	// show a section plus the action row.
-	ModalDialogFrame(
-		title = tr("dialog.settings.title"),
-		onDismiss = onDismiss,
-		fit = { maxWidth, maxHeight ->
-			DpSize((maxWidth * 0.8f).coerceIn(560.dp, 1100.dp).coerceAtMost(maxWidth),
-				(maxHeight * 0.8f).coerceIn(420.dp, 860.dp).coerceAtMost(maxHeight))
-		},
-		scrollable = false,
-		headerDivider = true,
-		// The dialog holds the keyboard, so a shortcut being recorded is handed over here rather than by the
-		// root dispatcher; while one is, no key closes or confirms the dialog.
-		onKeyDown = { event -> if (keyCapture != null) { onCaptureKeyEvent(event); true } else false },
-		// No padding: the sidebar has to reach the panel edge.
-		bodyPadding = PaddingValues(0.dp),
-		bodySpacing = 0.dp,
-		titleTrailing = {
-			Text(text = "v3.4.5", style = typography.monoSmall.copy(fontSize = 10.sp), color = colors.textMuted)
-		},
-		footerStart = {
-			CompactButton(text = tr("dialog.settings.resetDefaults"), onClick = onResetDefaults)
-		},
-		footer = {
-			CompactButton(text = tr("dialog.ok"), onClick = onDismiss, isPrimary = true)
-		},
-	) {
-		Row(
-			modifier = Modifier
-				.weight(1f)
-				.fillMaxWidth(),
-		) {
-			SettingsSidebar(
-				selected = selectedSection,
-				onSelect = { selectedSection = it },
-			)
-
-			Box(
-				modifier = Modifier
-					.width(1.dp)
-					.fillMaxHeight()
-					.background(colors.divider),
-			)
-
-			Column(
-				modifier = Modifier
-					.weight(1f)
-					.fillMaxHeight()
-					.verticalScroll(contentScroll)
-					.padding(horizontal = 16.dp, vertical = 14.dp),
-				verticalArrangement = Arrangement.spacedBy(14.dp),
-			) {
-				when (selectedSection) {
-					SettingsSection.SCALE -> SettingsScaleSection(
-						uiScale = uiScale,
-						fontScale = fontScale,
-						recommendedScale = displayMetrics.recommendedScale,
-						onUiScaleChange = onUiScaleChange,
-						onFontScaleChange = onFontScaleChange,
-					)
-					SettingsSection.THEME -> SettingsThemeSection(
-						themeId = themeId,
-						customThemes = customThemes,
-						onSelect = onThemeSelect,
-						onDuplicate = onThemeDuplicate,
-						onChange = onCustomThemeChange,
-						onDelete = onCustomThemeDelete,
-						onImport = onThemeImport,
-					)
-					SettingsSection.LANGUAGE -> SettingsLanguageSection(
-						currentLanguage = currentLanguage,
-						onLanguageChange = onLanguageChange,
-					)
-					SettingsSection.CANVAS -> SettingsCanvasSection()
-					SettingsSection.PROMPTS -> SettingsPromptsSection(
-						mutedPrompts = mutedPrompts,
-						onPromptEnabledChange = onPromptEnabledChange,
-						onRestore = onRestorePrompts,
-					)
-					SettingsSection.SHORTCUTS -> SettingsShortcutsSection(
-						keymap = keymap,
-						preset = keyPreset,
-						capture = keyCapture,
-						onBeginCapture = onKeyCapture,
-						onCaptureBinding = onKeyCaptureBinding,
-						onRemoveBinding = onKeyRemoveBinding,
-						onResetBinding = onKeyResetBinding,
-						onPresetChange = onKeyPresetChange,
-					)
-					SettingsSection.ENVIRONMENT -> SettingsEnvironmentSection(displayMetrics)
-				}
-			}
-		}
-	}
-}
-
-/**
- * Vertical category list. Hand-rolled rather than reusing [CompactTabBar], which is horizontal-only:
- * it lays its tabs out in a `Row` that fills the width and draws the selection indicator along the
- * top edge. This mirrors that component's colour language rotated 90° — the indicator moves to the
- * left edge and the selected row uses the same `selection`/`selectionText` pairing as the dropdown
- * and menu bar, so "selected item" reads the same everywhere.
- *
- * The width is fixed on purpose: the whole window sits inside the scaled density, so dragging the UI
- * scale slider rescales this sidebar live, and an intrinsic or fractional width would jitter.
- */
-@Composable
-private fun SettingsSidebar(
-	selected: SettingsSection,
-	onSelect: (SettingsSection) -> Unit,
-) {
-	val colors = LocalToolColors.current
-
+internal fun SettingsPanel(module: String, state: PSD2LiveState, viewModel: PSD2LiveViewModel) {
 	Column(
 		modifier = Modifier
-			.width(160.dp)
-			.fillMaxHeight()
-			.background(colors.windowBackground)
-			.padding(vertical = 6.dp),
-		verticalArrangement = Arrangement.spacedBy(1.dp),
+			.fillMaxSize()
+			.verticalScroll(rememberScrollState())
+			.padding(horizontal = 14.dp, vertical = 12.dp),
+		verticalArrangement = Arrangement.spacedBy(14.dp),
 	) {
-		for (section in SettingsSection.entries) {
-			SettingsSidebarRow(
-				label = tr(section.labelKey),
-				isSelected = section == selected,
-				onClick = { onSelect(section) },
+		when (module) {
+			SETTINGS_SCALE -> SettingsScaleSection(
+				uiScale = state.uiScale,
+				fontScale = state.fontScale,
+				recommendedScale = DisplayMetricsCache.value.recommendedScale,
+				onUiScaleChange = viewModel::setUiScale,
+				onFontScaleChange = viewModel::setFontScale,
 			)
+			SETTINGS_THEME -> SettingsThemeSection(
+				themeId = state.themeId,
+				customThemes = state.customThemes,
+				onSelect = viewModel::setTheme,
+				onDuplicate = viewModel::duplicateTheme,
+				onChange = viewModel::updateCustomTheme,
+				onDelete = viewModel::deleteCustomTheme,
+				onImport = viewModel::importTheme,
+			)
+			SETTINGS_LANGUAGE -> SettingsLanguageSection(
+				currentLanguage = state.currentLanguage,
+				onLanguageChange = viewModel::setLanguage,
+			)
+			SETTINGS_CANVAS -> SettingsCanvasSection()
+			SETTINGS_PROMPTS -> SettingsPromptsSection(
+				mutedPrompts = state.mutedPrompts,
+				onPromptEnabledChange = viewModel::setPromptEnabled,
+				onRestore = viewModel::restorePrompts,
+			)
+			SETTINGS_SHORTCUTS -> SettingsShortcutsSection(
+				keymap = state.keymap,
+				preset = state.keymapPreset,
+				capture = state.keyCapture,
+				onBeginCapture = viewModel::beginKeyCapture,
+				onCaptureBinding = viewModel::captureBinding,
+				onRemoveBinding = viewModel::removeKeyBinding,
+				onResetBinding = viewModel::resetKeyBinding,
+				onPresetChange = viewModel::applyKeymapPreset,
+			)
+			SETTINGS_ENVIRONMENT -> SettingsEnvironmentSection(DisplayMetricsCache.value)
 		}
 	}
 }
 
-@Composable
-private fun SettingsSidebarRow(
-	label: String,
-	isSelected: Boolean,
-	onClick: () -> Unit,
-) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	val interactionSource = remember { MutableInteractionSource() }
-	val isHovered by interactionSource.collectIsHoveredAsState()
+/**
+ * The display readout, taken once: the device query touches GraphicsEnvironment and is slow on multi-monitor Windows
+ * setups, and the "Auto Recommend" button and the environment readout should describe the same snapshot.
+ */
+private object DisplayMetricsCache {
+	val value: AppSettings.DisplayMetrics by lazy { AppSettings.detectDisplayMetrics() }
+}
 
-	val bg = when {
-		isSelected -> colors.selection
-		isHovered -> colors.controlHover
-		else -> Color.Transparent
-	}
-
-	Box(
-		modifier = Modifier
-			.fillMaxWidth()
-			.height(28.dp)
-			.background(bg)
-			.drawBehind {
-				if (isSelected) {
-					drawRect(
-						color = colors.accent,
-						topLeft = Offset.Zero,
-						size = Size(2.dp.toPx(), size.height),
-					)
-				}
-			}
-			.hoverable(interactionSource)
-			.clickable(interactionSource = interactionSource, indication = null, onClick = onClick)
-			.handCursor()
-			.padding(start = 12.dp, end = 8.dp),
-		contentAlignment = Alignment.CenterStart,
-	) {
-		Text(
-			text = label,
-			style = typography.body.copy(
-				fontSize = 11.5.sp,
-				fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-			),
-			color = when {
-				isSelected -> colors.selectionText
-				isHovered -> colors.textPrimary
-				else -> colors.textMuted
-			},
-			maxLines = 1,
-			overflow = TextOverflow.Ellipsis,
-		)
-	}
+/** Every setting back to its default: scale, interaction, shortcuts and theme. */
+internal fun resetAllSettings(viewModel: PSD2LiveViewModel) {
+	AppSettings.resetToDefaults()
+	viewModel.resetZoom()
+	viewModel.resetInteractionPrefs()
+	viewModel.resetKeymap()
+	viewModel.setTheme(AppSettings.themeId)
 }
 
 /** One-line caption under a category's sidebar label, explaining what the section does. */

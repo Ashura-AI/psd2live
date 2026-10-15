@@ -200,6 +200,8 @@ Sources are split into Gradle modules whose dependencies only point downward, wh
 
 Keep generation and export logic in `core` / `project` / `application`, not in Compose code.
 
+Start, Help and Settings are app pages (`AppPage` in `ui/state/AppPages.kt`), never part of a project: each reuses the editor's dock (`DockSession` and `DockTree` in `DockWorkspaceView`), its panel IDs carry the page's prefix (`start.*`, `help.*`, `settings.*`), its default arrangement is `pageDockLayout`, and its arrangement and closed panels are kept in the local preferences (`AppSettings.pageArrangement`). Panels get dragged, floated and redocked, so state they share lives in the ViewModel or `StartPageModel`, never in one panel's composition. The What's new text is `src/main/resources/whatsnew/<language>.md`; the four languages must list the same releases and entries (`WhatsNewTest`). The build stamps the version into `psd2live/version.properties`, which code reads through `AppVersion`.
+
 ## Core rule: rebuild and replay
 
 `PuppetModel` is not persisted. A project stores the source artwork, layer classification and settings, plus a serializable edit record (`RigEditOverlay`). On every open or change:

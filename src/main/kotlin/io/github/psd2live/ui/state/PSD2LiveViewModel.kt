@@ -159,10 +159,20 @@ class PSD2LiveViewModel : AutoCloseable {
         private set
 
     /**
-     * The start page, the fixed first tab of the workspace strip, covers the dock while shown. It belongs to the
-     * app, not the project: nothing about it is saved with one. It shows at launch and goes once a project opens.
+     * The app's pages open as tabs at the head of the workspace strip, in [AppPage] order; the active one covers the
+     * dock. They belong to the app, not the project: nothing about them is saved with one. The start page shows at
+     * launch and goes once a project opens; help and settings stay until closed.
      */
-    internal var startPageShown by mutableStateOf(true)
+    internal var openPages by mutableStateOf(listOf(AppPage.START))
+        private set
+    /** The page covering the dock, or null while the active workspace shows. */
+    internal var activePage by mutableStateOf<AppPage?>(AppPage.START)
+        private set
+    internal val startPageShown: Boolean get() = activePage == AppPage.START
+    /** Each page's arrangement, read from the preferences when first shown and written back as it changes. */
+    internal val pageArrangements = androidx.compose.runtime.mutableStateMapOf<AppPage, PageArrangement>()
+    /** A page panel to bring forward: its tab selected, shown again if closed. Cleared once the page's dock has. */
+    internal var requestedPageModule by mutableStateOf<String?>(null)
         private set
     /** The start page's section; it opens on the recent files each launch, or on generating while there are none. */
     internal var startSection by mutableStateOf(StartSection.RECENT)
@@ -1347,12 +1357,63 @@ class PSD2LiveViewModel : AutoCloseable {
     /** Shows the start page, on [section] when given. */
     internal fun showStartPage(section: StartSection? = null) {
         section?.let(::setStartSection)
-        startPageShown = true
+        showPage(AppPage.START)
     }
 
-    /** Back to the active workspace. */
+    /** Back to the active workspace; the start page folds away, other pages keep their tabs. */
     fun leaveStartPage() {
-        startPageShown = false
+        openPages = openPages - AppPage.START
+        showWorkspace()
+    }
+
+    /** Opens [page] as a tab and shows it, with [module] brought forward when given. */
+    internal fun showPage(page: AppPage, module: String? = null) {
+        if (page !in openPages) openPages = AppPage.entries.filter { it in openPages || it == page }
+        if (activePage == AppPage.SETTINGS && page != AppPage.SETTINGS) endSettingsPage()
+        activePage = page
+        if (module != null && module in page.modules) requestedPageModule = module
+    }
+
+    /** Shows [page], or goes back to the workspace when it already shows: what its shortcut does. */
+    internal fun togglePage(page: AppPage, module: String? = null) {
+        if (activePage == page && module == null) showWorkspace() else showPage(page, module)
+    }
+
+    /** Closes [page]'s tab, showing the workspace if it was the page shown. */
+    internal fun closePage(page: AppPage) {
+        openPages = openPages - page
+        if (activePage == page) activePage = null
+        if (page == AppPage.SETTINGS) endSettingsPage()
+    }
+
+    /** Back to the active workspace, every page keeping its tab. */
+    internal fun showWorkspace() {
+        if (activePage == AppPage.SETTINGS) endSettingsPage()
+        activePage = null
+    }
+
+    internal fun clearPageModuleRequest() {
+        requestedPageModule = null
+    }
+
+    internal fun pageArrangement(page: AppPage): PageArrangement =
+        pageArrangements.getOrPut(page) { AppSettings.pageArrangement(page) }
+
+    internal fun setPageArrangement(page: AppPage, arrangement: PageArrangement) {
+        if (pageArrangement(page) == arrangement) return
+        pageArrangements[page] = arrangement
+        AppSettings.setPageArrangement(page, arrangement)
+    }
+
+    /** Shows or hides one panel of [page]'s dock. */
+    internal fun setPageModuleVisible(page: AppPage, module: String, visible: Boolean) {
+        val current = pageArrangement(page)
+        setPageArrangement(page, current.copy(hiddenModules = if (visible) current.hiddenModules - module else current.hiddenModules + module))
+    }
+
+    /** [page]'s panels back where they start, every one shown. */
+    internal fun resetPageArrangement(page: AppPage) {
+        setPageArrangement(page, PageArrangement())
     }
 
     internal fun setStartSection(section: StartSection) {
@@ -4347,14 +4408,12 @@ class PSD2LiveViewModel : AutoCloseable {
 		updateState { it.copy(mutedPrompts = emptySet()) }
 	}
 
-	fun openSettingsDialog() {
-		updateState { it.copy(showSettingsDialog = true) }
-	}
+	fun openSettings() = showPage(AppPage.SETTINGS)
 
-	fun closeSettingsDialog() {
+	/** Leaving the settings page: a shortcut being recorded is dropped and the canvas takes the keys again. */
+	private fun endSettingsPage() {
 		updateState {
 			it.copy(
-				showSettingsDialog = false,
 				// A capture left dangling would swallow every key from here on.
 				keyCapture = null,
 				focusCanvasRequest = it.focusCanvasRequest + 1,

@@ -71,6 +71,26 @@ class StartPageScenario {
 		assertFalse(vm.startPageShown)
 	}
 
+	@Test fun helpAndSettingsStayOpenAsTabsUntilClosed() = editor { vm ->
+		vm.showPage(AppPage.HELP, HELP_SHORTCUTS)
+		vm.showPage(AppPage.SETTINGS)
+		assertEquals(listOf(AppPage.START, AppPage.HELP, AppPage.SETTINGS), vm.openPages, "Pages keep the strip's order")
+		assertEquals(AppPage.SETTINGS, vm.activePage)
+		// Going to a workspace folds the start page away; help and settings keep their tabs.
+		vm.setActiveWorkspace(vm.state.value.activeWorkspace.id)
+		assertNull(vm.activePage)
+		assertEquals(listOf(AppPage.HELP, AppPage.SETTINGS), vm.openPages)
+		// A page's shortcut shows it, and pressed again goes back to the workspace.
+		vm.togglePage(AppPage.HELP)
+		assertEquals(AppPage.HELP, vm.activePage)
+		vm.togglePage(AppPage.HELP)
+		assertNull(vm.activePage)
+		vm.showPage(AppPage.SETTINGS)
+		vm.closePage(AppPage.SETTINGS)
+		assertNull(vm.activePage)
+		assertEquals(listOf(AppPage.HELP), vm.openPages)
+	}
+
 	@Test fun aLayoutProjectLeavesTheStartPageForTheLayoutWorkspace() = editor { vm ->
 		vm.showStartPage(StartSection.LAYOUT)
 		vm.createLayoutProject(1024, 768)
