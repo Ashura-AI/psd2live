@@ -168,6 +168,8 @@ object WorkspaceViewRenderer {
 			outOfRangeParameters = outOfRangeParameters,
 			includedLayerIds = includeLayerIds.sorted(),
 			annotatedLayerIds = annotateLayerIds.sorted(),
+			identityExtra = listOf(annotateDeformerIds.sorted(), matchedPathIds.sorted(), listOf(annotatePathWidth, annotatePathHardness,
+				annotatePathRadius, pointIndices, reference?.mode, reference?.opacity, density)).joinToString("|"),
 		).copy(
 			annotatedDeformerIds = annotateDeformerIds.sorted(),
 			annotatedPathIds = matchedPathIds.sorted(),
@@ -432,6 +434,8 @@ object WorkspaceViewRenderer {
 		outOfRangeParameters: List<WorkspaceParameterRangeDiagnostic> = emptyList(),
 		includedLayerIds: List<String> = emptyList(),
 		annotatedLayerIds: List<String> = emptyList(),
+		/** Whatever else the stored view record holds that the pixels may not show. */
+		identityExtra: String = "",
 	): WorkspaceRenderedView {
 		val (rendered, png) = encodeWithinBudget(image, output.maxBytes)
 		val scale = rendered.width.toFloat() / image.width.toFloat()
@@ -459,6 +463,10 @@ object WorkspaceViewRenderer {
 			append(',').append(requestedCanvasRect.right).append(',').append(requestedCanvasRect.bottom)
 			append('|').append(focusLayerIds.sorted().joinToString(","))
 			append('|').append(objectScale)
+			// Two requests can draw the same pixels - a parameter nothing reads - yet record different views.
+			append('|').append(appliedParameters.toSortedMap().entries.joinToString(",") { "${it.key}=${it.value}" })
+			append('|').append(includedLayerIds.sorted().joinToString(",")).append('|').append(annotatedLayerIds.sorted().joinToString(","))
+			append('|').append(identityExtra)
 		}
 		val viewDigest = MessageDigest.getInstance("SHA-256").digest(identity.encodeToByteArray()).toHex()
 		return WorkspaceRenderedView(

@@ -64,6 +64,10 @@ class ReferenceLayoutScenario {
 		val plain = view(null)
 		expect("views", difference.referenceMode == WorkspaceViewReferenceMode.DIFFERENCE && difference.referenceDifference != null) { "a difference view gave no difference" }
 		expect("views", !over.png.contentEquals(plain.png) && over.referenceDifference == null) { "the reference was not drawn over the model" }
+		// The placed close-up waits for generation and ignores the head, so these draw the same pixels as different views.
+		val turned = runBlocking { render.renderModel(WorkspaceModelViewRequest(includeLayerIds = setOf("close"), frame = frame,
+			parameters = mapOf(now.model.rig.puppet.parameters.first().id.raw to 10f), output = WorkspaceViewOutputSpec(targetLongEdge = 256))) }
+		expect("views", turned.png.contentEquals(plain.png) && turned.viewId != plain.viewId) { "views of different requests share an ID" }
 		val density = view(null, density = true)
 		val texels = density.texelDensity["close"]
 		expect("density", texels != null && kotlin.math.abs(texels - 1f / scale) < 0.02f) { "the close-up's density is ${density.texelDensity}, not ${1f / scale}" }
