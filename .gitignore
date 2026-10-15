@@ -41,3 +41,6 @@ examples/star_lan/psd-input/
 examples/star_lan/moc3-cmo3-output/
 examples/star_lan/prj/
 examples/star_lan/webp-output/
+
+# Local archive of outdated docs, finished plans and abandoned attempts (not committed).
+/archive/

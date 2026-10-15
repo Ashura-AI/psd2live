@@ -49,11 +49,9 @@ For hands-on learning, open the **Tutorials** on the Help page (`F1`). Chinese i
 | 文档层 | 生成器依赖图、生成结果覆盖、缓存、逐层尺寸与拆分物化 | [打开](zh/spec/DOCUMENT_LAYER.md) | [中文参考](zh/spec/DOCUMENT_LAYER.md) | [中国語参考](zh/spec/DOCUMENT_LAYER.md) |
 | 固化 Rig | 按修订保存的固化 Rig、检查点、再生成合并与实现进度 | [打开](zh/spec/MATERIALIZED_RIG.md) | [中文参考](zh/spec/MATERIALIZED_RIG.md) | [中国語参考](zh/spec/MATERIALIZED_RIG.md) |
 | 运行时与导出边界 | 数据流、格式支持范围、交付检查 | [打开](zh/spec/RUNTIME_EXPORT_ARCHITECTURE_AND_GAPS.md) | [中文参考](zh/spec/RUNTIME_EXPORT_ARCHITECTURE_AND_GAPS.md) | [中国語参考](zh/spec/RUNTIME_EXPORT_ARCHITECTURE_AND_GAPS.md) |
-| 图层、纹理与网格（重新设计） | 图片导入与变换、图层像素与纹理集、网格触发点与密度、图层身份与删除的新设计（未实现） | [打开](zh/spec/LAYER_PIPELINE.md) | [中文参考](zh/spec/LAYER_PIPELINE.md) | [中国語参考](zh/spec/LAYER_PIPELINE.md) |
 | 网格拓扑与图层拆分 | 自适应网格生成、填充算法、图层拆分 | [打开](zh/spec/MESH_TOPOLOGY_AND_SPLIT.md) | [中文参考](zh/spec/MESH_TOPOLOGY_AND_SPLIT.md) | [中国語参考](zh/spec/MESH_TOPOLOGY_AND_SPLIT.md) |
 | 绘画系统 | 绘画会话、组件分工、坐标与提交 | [打开](zh/spec/PAINT_SYSTEM_ARCHITECTURE_AND_PRD.md) | [中文参考](zh/spec/PAINT_SYSTEM_ARCHITECTURE_AND_PRD.md) | [中国語参考](zh/spec/PAINT_SYSTEM_ARCHITECTURE_AND_PRD.md) |
 | 画布渲染器 | 编辑画布、纹理集页面与预览的渲染架构，播放与跟踪会话 | [打开](zh/spec/CANVAS_RENDERER.md) | [中文参考](zh/spec/CANVAS_RENDERER.md) | [中国語参考](zh/spec/CANVAS_RENDERER.md) |
-| 归档 | 已完成的计划、调研与盘点（默认动画重构、人体关节蒙皮调研、骨骼工具盘点），不代表当前实现 | [打开](zh/spec/archive/) | [中文参考](zh/spec/archive/) | [中国語参考](zh/spec/archive/) |
 
 ## Agent（MCP）
 
@@ -62,7 +60,6 @@ For hands-on learning, open the **Tutorials** on the Help page (`F1`). Chinese i
 | [MCP 使用与接口](zh/agent/MCP_AUTHORING.md) | 接入方式、190 项公开操作、原子批量与试运行、调用示例、状态与历史 |
 | [Agent 设计与验收](zh/agent/AGENT_DESIGN.md) | 分工边界、工具设计原则、任务验收步骤 |
 | [能力实测](zh/STATUS.md) | 真实任务的实测记录与记录格式 |
-| [归档](zh/agent/archive/) | 2026-09-13 调研、应用层重构记录与 UI / MCP 对照表，历史背景，不代表当前接口 |
 
 ## 其他
 

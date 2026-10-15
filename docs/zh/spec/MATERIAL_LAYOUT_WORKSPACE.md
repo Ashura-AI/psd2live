@@ -1,6 +1,6 @@
 # 素材与 Layout 工作区
 
-[文档目录](../../README.md) · [PSD 素材与命名](PSD_LAYER_SPEC.md) · [文档层](DOCUMENT_LAYER.md) · [图层流水线](LAYER_PIPELINE.md) · [工程格式](PROJECT_FORMAT.md) · [使用指南](../guide/LAYOUT.md) · [路线图](../ROADMAP.md)
+[文档目录](../../README.md) · [PSD 素材与命名](PSD_LAYER_SPEC.md) · [文档层](DOCUMENT_LAYER.md) · [工程格式](PROJECT_FORMAT.md) · [使用指南](../guide/LAYOUT.md) · [路线图](../ROADMAP.md)
 
 本页说明基础 Layout 的实现：素材库、摆放、语义标签，以及"先摆放、再生成、可以反复添加和再生成"的 Rig 生成流程。对齐、抠图、补全等依赖外部 AI 的功能不在其中，见 [Layout 的 AI 辅助](LAYOUT_AI_ASSIST.md)（设计中）。操作的使用方法见[使用指南](../guide/LAYOUT.md)，MCP 契约见 [MCP_AUTHORING.md](../agent/MCP_AUTHORING.md)。
 
