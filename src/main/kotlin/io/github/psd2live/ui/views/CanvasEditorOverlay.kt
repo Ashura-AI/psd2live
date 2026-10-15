@@ -1427,11 +1427,17 @@ internal fun BoxScope.CanvasEditorOverlay(
         onWidth = { modeBarWidth = it },
     )
 
-    // Top centre: the paint session, in the bar the atlas's edit session shows.
-    PaintSessionBar(editor, modeBarWidth, focus)
+    // Top centre: the paint session, in the bar the atlas's edit session shows, between the mode bar and the
+    // generation bar.
+    var generationBarWidth by remember { mutableStateOf(0) }
+    PaintSessionBar(editor, modeBarWidth, generationBarWidth, focus)
 
-    // Top right: what waits for generation, and the button that generates the rig.
-    LayoutGenerationBar(viewModel, focus)
+    // Top right: what waits for generation, and the button that generates the rig; only the button where the
+    // canvas leaves little room beside the mode bar.
+    BoxWithConstraints(Modifier.matchParentSize()) {
+        val room = maxWidth - with(LocalDensity.current) { modeBarWidth.toDp() }
+        LayoutGenerationBar(viewModel, focus, compact = room < 440.dp, onWidth = { generationBarWidth = it })
+    }
 }
 
 /**
@@ -1439,7 +1445,7 @@ internal fun BoxScope.CanvasEditorOverlay(
  * undo, redo, discard and apply - the atlas session's bar, so both sessions read and work alike.
  */
 @Composable
-internal fun BoxScope.PaintSessionBar(editor: CanvasEditor, modeBarWidth: Int, focus: () -> Unit) {
+internal fun BoxScope.PaintSessionBar(editor: CanvasEditor, modeBarWidth: Int, endBarWidth: Int, focus: () -> Unit) {
     val session = editor.paintSession
     // Read for their state: the stroke list and the step in it are what undo and redo change.
     val strokes = session?.strokeRecords?.size ?: 0
@@ -1469,6 +1475,7 @@ internal fun BoxScope.PaintSessionBar(editor: CanvasEditor, modeBarWidth: Int, f
         apply = SessionAction(tr("texture.session.apply"), { editor.promptCommitPaintSession(); focus() }, dirty && !editor.busy,
             tr("editor.paint.applyHint")),
         startInset = with(density) { (modeBarWidth + 8.dp.roundToPx()).toDp() },
+        endInset = with(density) { if (endBarWidth > 0) (endBarWidth + 8.dp.roundToPx()).toDp() else 0.dp },
     )
 }
 

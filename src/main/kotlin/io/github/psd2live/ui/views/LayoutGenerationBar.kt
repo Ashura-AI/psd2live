@@ -23,6 +23,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.i18n.tr
@@ -81,7 +82,8 @@ internal fun CanvasSizeDialog(onDismiss: () -> Unit, onConfirm: (Int, Int) -> Un
  * replaced images mesh again from their new pixels.
  */
 @Composable
-internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: () -> Unit) {
+internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: () -> Unit, compact: Boolean = false,
+                                          onWidth: (Int) -> Unit = {}) {
 	val generation by remember(viewModel) { viewModel.state.map { it.layout.generation }.distinctUntilChanged() }
 		.collectAsState(viewModel.state.value.layout.generation)
 	val busy by remember(viewModel) { viewModel.state.map { it.canvasEditBusy || it.workspaceEditBusy }.distinctUntilChanged() }
@@ -92,7 +94,9 @@ internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: (
 	var menu by remember { mutableStateOf(false) }
 	AnimatedVisibility(
 		visible = visible,
-		modifier = Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 8.dp),
+		// Its width, 0 once gone, keeps the session bar between it and the mode bar.
+		modifier = Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 8.dp)
+			.onSizeChanged { onWidth(it.width) },
 		enter = slideInVertically(tween(Motion.Expand, easing = FastOutSlowInEasing)) { -it } + fadeIn(tween(Motion.Fold)),
 		exit = slideOutVertically(tween(Motion.Fold, easing = FastOutSlowInEasing)) { -it } + fadeOut(tween(Motion.Fade)),
 	) {
@@ -103,8 +107,11 @@ internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: (
 				waiting > 0 -> tr("layout.status.pending", waiting)
 				else -> tr("layout.status.refreshable", generation.refreshLayerIds.size)
 			}
-			Text(status, color = colors.textMuted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 6.dp))
-			BarDivider()
+			// Where room is short the status moves into the button's tooltip.
+			if (!compact) {
+				Text(status, color = colors.textMuted, fontSize = 11.sp, maxLines = 1, modifier = Modifier.padding(horizontal = 6.dp))
+				BarDivider()
+			}
 			Box(Modifier.onGloballyPositioned { MaterialsPanelProbe.generateButton = it.boundsInRoot() }) {
 				AccentSplitButton(
 					label = if (generation.generated) tr("layout.generate.again") else tr("layout.generate"),
@@ -113,7 +120,8 @@ internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: (
 					open = menu,
 					onMenu = { menu = !menu },
 					enabled = !busy && layers > 0,
-					tooltip = if (generation.generated) tr("layout.generate.again.tip") else tr("layout.generate.tip"),
+					tooltip = (if (compact) "$status\n" else "") +
+						if (generation.generated) tr("layout.generate.again.tip") else tr("layout.generate.tip"),
 					menuTooltip = tr("layout.generate.options"),
 				)
 				FloatingMenu(expanded = menu, onDismiss = { menu = false }, width = 250.dp, alignment = Alignment.TopEnd) {

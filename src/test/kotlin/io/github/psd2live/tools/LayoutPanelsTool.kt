@@ -55,7 +55,7 @@ class LayoutPanelsTool {
 						Row(Modifier.fillMaxSize().background(LocalToolColors.current.windowBackground)) {
 							Box(Modifier.width(620.dp).fillMaxHeight()) { MaterialsPanel(state, vm) }
 							Column(Modifier.width(660.dp).fillMaxHeight()) {
-								Box(Modifier.fillMaxWidth().height(60.dp)) { LayoutGenerationBar(vm) {} }
+								Box(Modifier.fillMaxWidth().height(60.dp)) { LayoutGenerationBar(vm, focus = {}) }
 								Box(Modifier.fillMaxWidth().height(660.dp)) { LayersTableView(state, vm) }
 							}
 						}

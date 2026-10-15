@@ -320,12 +320,14 @@ internal fun MaterialEditor(item: MaterialItem, state: PSD2LiveState, vm: PSD2Li
 
 		// The Paint mode's own bars: the tools down the left, the session at the top, the tool's values at the bottom.
 		CanvasToolBar(editor = editor, keymap = keymap, focus = refocus)
-		PaintSessionBar(editor, modeBarWidth = 0, focus = refocus)
+		// Between the info bar at the top left and the window's right edge.
+		var infoBarWidth by remember { mutableStateOf(0) }
+		PaintSessionBar(editor, modeBarWidth = infoBarWidth, endBarWidth = 0, focus = refocus)
 		ToolOptionsBar(editor, refocus)
 		menuAt?.let { at -> CanvasContextMenu(editor, expanded = true, clickOffset = at, onDismissRequest = { menuAt = null; refocus() }, onAction = refocus) }
 
 		// What the material is, and its adjustments, at the top left.
-		FloatingBar(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp)) {
+		FloatingBar(Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp).onSizeChanged { infoBarWidth = it.width }) {
 			Text(item.name, color = colors.textPrimary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
 				modifier = Modifier.widthIn(max = 200.dp).padding(start = 6.dp))
 			val details = listOfNotNull("${base.width}×${base.height}", if (item.kind == MaterialKind.VECTOR) "SVG" else null,
