@@ -1277,7 +1277,6 @@ internal class CanvasEditor(
     var paintSession by mutableStateOf<PaintSession?>(null)
     /** Where the live paint gesture was last seen: the far end of the segment still to be drawn. */
     private var lastPaintPoint: Offset? = null
-    var showRebuildMeshDialog by mutableStateOf(false)
 
     // Level 2 Bezier Deformer state
     var bezierState by mutableStateOf<BezierDeformerState?>(null)
@@ -1952,7 +1951,6 @@ internal class CanvasEditor(
         isPainting = false
         paintStrokeStart = null
         paintStrokeCurrent = null
-        showRebuildMeshDialog = false
     }
 
     fun discardPaintSession() {
@@ -1972,31 +1970,12 @@ internal class CanvasEditor(
     fun promptCommitPaintSession() {
         val session = paintSession ?: return
         if (!session.isDirty) return
-        // A material has no mesh of its own to rebuild: the layers showing it keep theirs.
-        if (session.handle.materialId != null || DepthSplit.isFrontLayer(state.previewModel, session.layerId)) {
-            commitPaintSession(rebuildMesh = false)
-            return
-        }
-        showRebuildMeshDialog = true
-    }
-
-    fun commitPaintSession(
-        rebuildMesh: Boolean,
-        summary: String? = null,
-        preserveSourceRaster: Boolean = false,
-    ) {
-        val session = paintSession ?: return
-        val currentPreview = state.previewModel ?: return
-        val rebuild = rebuildMesh && !DepthSplit.isFrontLayer(currentPreview, session.layerId)
-        showRebuildMeshDialog = false
-        viewModel.savePaintSession(session.handle, rebuild, preserveSourceRaster,
-            summary ?: tr("editor.paint.commitSummary", session.layerName)) {
-            if (rebuild) viewModel.offerMeshSplit(listOf(session.layerId))
+        // The layer keeps its meshes: the commit cuts the paint along them, what lies off them a new layer of its own.
+        viewModel.savePaintSession(session.handle, false, false, tr("editor.paint.commitSummary", session.layerName)) {
             paintSession = startPaintSession(session.layerId, forceReload = true)
             isPainting = false
             paintStrokeStart = null
             paintStrokeCurrent = null
-            showRebuildMeshDialog = false
         }
     }
 

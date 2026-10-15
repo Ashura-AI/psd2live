@@ -99,7 +99,7 @@ internal fun registerPaintSessionOperations(registry: WorkspaceOperationRegistry
         WorkspaceOperationOutput(buildJsonObject { put("sessions", JsonArray(port.listPaintSessions())) })
     }
     registry.register(WorkspaceOperationDefinition("paint_session_begin",
-        "Begin an isolated multi-stroke paint candidate from a committed layer (layer_id), capturing its workspace state, or from a material item of the library (material_id). Canvas X points right and Y down; gesture points, radii, widths and sample positions are canvas units. The candidate raster is the layer's own pixel grid (width x height pixels covering canvas_rect [left, top, width, height]), so strokes on a dense layer paint at its raster density; a material's is its own pixels, one per unit. " +
+        "Begin an isolated multi-stroke paint candidate from a committed layer (layer_id), capturing its workspace state, or from a material item of the library (material_id). Canvas X points right and Y down; gesture points, radii, widths and sample positions are canvas units. The candidate raster is the layer's own pixel grid (width x height pixels covering canvas_rect [left, top, width, height]), so strokes on a dense layer paint at its raster density, anywhere on the canvas; a material's is its own pixels, one per unit. A layer showing a material paints like any layer and reports its material_id; its commit writes the material. " +
             "A material session stays open while other edits commit (only a change to the material's pixels ends it) and its commit writes the pixels with material_set_pixels, every layer showing the material following; rebuild_mesh does not apply. Edits, sampling and undo never alter project history until commit.",
         s.obj(mapOf("state" to s.handle(), "layer_id" to s.handle(), "material_id" to s.handle()), setOf("state")), WorkspaceOperationKind.SESSION,
         resultSchema = WorkspacePaintSessionSchemas.result)) { request, _ ->
@@ -117,7 +117,7 @@ internal fun registerPaintSessionOperations(registry: WorkspaceOperationRegistry
         WorkspaceOperationOutput(result.metadata, result.images)
     }
     registry.register(WorkspaceOperationDefinition("paint_session_commit",
-        "Commit all candidate strokes once as one raster/mesh history node. Defaults to retaining mesh and authored bindings; rebuild_mesh migrates existing rig bindings. Both the captured workspace and session revision must match. A successful session cannot publish twice.",
+        "Commit all candidate strokes once as one raster/mesh history node. Defaults to retaining mesh and authored bindings and cutting the paint along the layer's meshes: what lands on them stays the layer's (a layer showing a material writes the material, every layer showing it following), what lands off them becomes a new layer just above with its own mesh under the same parent; off the meshes erasing changes nothing. rebuild_mesh instead grows the layer to all its pixels and migrates existing rig bindings onto the new mesh. Both the captured workspace and session revision must match. A successful session cannot publish twice.",
         s.obj(mapOf("state" to s.handle()) + ids + mapOf("rebuild_mesh" to s.boolean(), "preserve_source_raster" to s.boolean()),
             setOf("state", "session_id", "session_state")), WorkspaceOperationKind.DOCUMENT,
         jobBacked = true, resultSchema = WorkspaceJobResultSchemas.snapshot("paint_session_commit"), jobResultSchema = WorkspacePaintSessionSchemas.commit)) { request, context ->

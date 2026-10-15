@@ -352,14 +352,6 @@ internal fun DockWorkspaceView(
         key(state.projectOpenGeneration, workspace.id) {
             WorkspaceEditPanels(state, viewModel, Modifier.align(Alignment.BottomStart).padding(10.dp))
         }
-        val pendingPaint = viewModel.canvasAwaitingMeshRebuild()
-        if (pendingPaint != null) {
-            io.github.psd2live.ui.components.RebuildMeshPromptDialog(
-                layerName = pendingPaint.paintSession?.layerName.orEmpty(),
-                onConfirmRebuild = { pendingPaint.commitPaintSession(rebuildMesh = true) },
-                onKeepExisting = { pendingPaint.commitPaintSession(rebuildMesh = false) },
-                onDismiss = { pendingPaint.showRebuildMeshDialog = false })
-        }
         viewModel.pendingDepthSplit?.takeIf { it.workspaceId == workspace.id }?.let { offer ->
             io.github.psd2live.ui.components.DepthSplitDialog(offer,
                 onConfirm = viewModel::confirmDepthSplit, onDismiss = viewModel::dismissDepthSplit)

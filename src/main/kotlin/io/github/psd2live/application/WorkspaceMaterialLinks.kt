@@ -1,7 +1,5 @@
 package io.github.psd2live.application
 
-import io.github.psd2live.core.LayerSpace
-import io.github.psd2live.core.PaintSpace
 import io.github.psd2live.project.MaterialItem
 import io.github.psd2live.project.WorkspaceDocument
 import org.umamo.format.art.SourceLayer
@@ -9,8 +7,8 @@ import org.umamo.format.art.LayerRaster
 
 /**
  * A layer linked to a material ([io.github.psd2live.project.WorkspaceLayout.layerMaterials]) shows the material's own
- * pixels: the material is their one source. Painting such a layer paints the material, and every layer showing it
- * follows ([WorkspaceMaterialPixels]); any other edit that leaves the layer with pixels of its own - a split, an image
+ * pixels: the material is their one source. Painting such a layer paints the material where the layer's meshes show
+ * it, and every layer showing it follows ([WorkspacePaintOverflow]); any other edit that leaves the layer with pixels of its own - a split, an image
  * from elsewhere - unlinks it ([reconcile]), and `material_unlink` does so on request. So the document never holds a
  * linked layer whose pixels and material differ.
  */
@@ -27,11 +25,6 @@ internal object WorkspaceMaterialLinks {
         val layer = document.source.layers.singleOrNull { it.id.raw == layerId } ?: return null
         return (item to layer).takeIf { shows(layer.raster, item.raster) }
     }
-
-    /** [layer]'s canvas rectangle over [item]'s pixels, one image pixel per material pixel: where its strokes land. */
-    fun space(layer: SourceLayer, item: MaterialItem): PaintSpace =
-        PaintSpace(LayerSpace.of(layer).copy(rasterWidth = item.raster.width, rasterHeight = item.raster.height), 0, 0,
-            item.raster.width, item.raster.height)
 
     /**
      * [after] with the links of layers no longer showing their material removed: an edit from [before] gave them

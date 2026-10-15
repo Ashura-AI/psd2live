@@ -10,7 +10,6 @@ import io.github.psd2live.project.WorkspaceSourceLayer
 import io.github.psd2live.ui.components.DepthSplitDialog
 import io.github.psd2live.ui.components.DrawOrderInputDialog
 import io.github.psd2live.ui.components.HelpDialog
-import io.github.psd2live.ui.components.RebuildMeshPromptDialog
 import io.github.psd2live.ui.components.SettingsDialog
 import io.github.psd2live.ui.components.TextureUpscaleDialog
 import io.github.psd2live.ui.state.PSD2LiveViewModel
@@ -21,7 +20,7 @@ import kotlin.test.Test
 
 /**
  * The app's modal dialogs on the shared frame (ModalDialogFrame), in Chinese: PSD2LIVE_TOOLS=1 ./gradlew test --tests
- * '*ModalDialogTool'. [renderDialogs] writes the settings, help, texture upscale, draw order and rebuild mesh dialogs
+ * '*ModalDialogTool'. [renderDialogs] writes the settings, help, texture upscale, and draw order dialogs
  * in the dark theme to build/tools/modal-dialog/<dialog>.png; [depthSplit] the depth split dialog in the dark and light
  * themes and with large text to depth-split-{dark,light,large-text}.png.
  */
@@ -39,9 +38,6 @@ class ModalDialogTool {
 			}
 			renderPng(File(directory, "draw-order.png"), 520, 420) {
 				DrawOrderInputDialog("layer", "前发", 500f, 480f, isOverridden = true, onConfirm = {}, onReset = {}, onDismiss = {})
-			}
-			renderPng(File(directory, "rebuild-mesh.png"), 560, 360) {
-				RebuildMeshPromptDialog("前发", onConfirmRebuild = {}, onKeepExisting = {}, onDismiss = {})
 			}
 		}
 	}

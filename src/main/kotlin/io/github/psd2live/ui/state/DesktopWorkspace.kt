@@ -1269,7 +1269,7 @@ class DesktopWorkspace(
     override suspend fun commitPaintSession(state: String, sessionId: String, sessionState: String,
         rebuildMesh: Boolean, preserveSourceRaster: Boolean, author: MutationAuthor): WorkspaceMutationResult {
         // A material session commits as a document edit of the library, against the state now current.
-        if (paintSessions.get(sessionId).materialId != null) return paintSessions.commitMaterial(sessionId, sessionState) { materialId, raster ->
+        if (paintSessions.get(sessionId).paintsMaterial) return paintSessions.commitMaterial(sessionId, sessionState) { materialId, raster ->
             applyDocumentEdits(state, "Painted material $materialId", listOf(WorkspaceDocumentOperation(
                 io.github.psd2live.application.WorkspaceMaterialPixels.SET_PIXELS, kotlinx.serialization.json.buildJsonObject {
                     put("id", materialId); put("staging", io.github.psd2live.application.WorkspaceMaterialPixels.stage(raster))

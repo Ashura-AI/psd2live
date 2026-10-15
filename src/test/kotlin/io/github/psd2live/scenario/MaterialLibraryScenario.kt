@@ -160,18 +160,24 @@ class MaterialLibraryScenario {
 			"color" to listOf(255, 0, 0, 255)))
 		expect("linked", !material().rgba.contentEquals(item.raster.rgba) && allShowTheMaterial() &&
 			now.document.layout.layerMaterials.keys.containsAll(listOf("a", "b"))) { "painting a linked layer did not paint its material" }
+		// A stroke out past the disc: the part on the layer's mesh paints the material, the rest is a layer of its own.
+		val count = now.document.source.layers.size
+		edit("paint a out past its edge", "source_paint_brush", req("layer_id" to "a", "points" to listOf(listOf(125, 120), listOf(170, 120)), "radius" to 2,
+			"color" to listOf(0, 255, 0, 255)))
+		val off = now.document.source.layers.singleOrNull { it.id.raw.startsWith("painted_") }
+		expect("cut", off != null && now.document.source.layers.size == count + 1 && off.bounds.left >= 135 && off.bounds.left + off.bounds.width >= 170 &&
+			allShowTheMaterial() && now.document.layout.layerMaterials.keys.containsAll(listOf("a", "b"))) {
+			"a stroke off a linked layer is not a layer of its own: ${off?.bounds}" }
+		expect("cut", (material().rgba[(20 * 40 + 30) * 4 + 1].toInt() and 255) == 255) { "the stroke on the layer did not reach its material" }
+
+		// A paint session on a linked layer reaches anywhere on the canvas; its commit writes the material.
 		val sessions = io.github.psd2live.application.WorkspacePaintSessions(runtime)
 		val session = sessions.begin(now.state, "b")
-		expect("linked", session.materialId == item.id && session.layerId == "b") { "a paint session on a linked layer does not paint its material" }
+		expect("linked", session.materialId == item.id && !session.paintsMaterial && session.width == now.document.source.widthPx) {
+			"a paint session on a linked layer does not cover the canvas" }
 		session.gesture(req("mode" to "brush", "points" to listOf(listOf(205, 110), listOf(235, 110)), "radius" to 2, "color" to listOf(0, 0, 255, 255)))
-		val image = session.image()
-		val argb = image.getRGB(0, 0, image.width, image.height, null, 0, image.width)
-		val painted = org.umamo.format.art.LayerRaster(image.width, image.height, ByteArray(argb.size * 4).also { out ->
-			argb.forEachIndexed { i, p -> if (p ushr 24 != 0) { out[i * 4] = (p shr 16).toByte(); out[i * 4 + 1] = (p shr 8).toByte(); out[i * 4 + 2] = p.toByte(); out[i * 4 + 3] = (p ushr 24).toByte() } }
-		})
-		expect("linked", painted.width == 40 && painted.rgba[(10 * 40 + 20) * 4 + 2].toInt() and 255 == 255) { "the session's stroke did not land in the material's pixels under the layer" }
-		edit("apply the session", "material_set_pixels", req("id" to item.id, "staging" to io.github.psd2live.application.WorkspaceMaterialPixels.stage(painted)))
-		expect("linked", allShowTheMaterial()) { "the session's pixels did not reach both layers" }
+		step("apply the session") { sessions.commit(session.id, session.sessionState, false, false, MutationAuthor.USER) }
+		expect("linked", allShowTheMaterial() && (material().rgba[(10 * 40 + 20) * 4 + 2].toInt() and 255) == 255) { "the session's pixels did not reach both layers" }
 
 		// Rebuilding a mesh keeps the material's raster and the link.
 		edit("rebuild b's mesh", "layer_mesh_rebuild", req("layer_id" to "b"))

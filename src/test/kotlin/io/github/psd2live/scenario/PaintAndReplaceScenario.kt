@@ -45,4 +45,35 @@ class PaintAndReplaceScenario {
 		edit("export moc3 too", "settings_update", req("changes" to mapOf("exportMoc3" to true)))
 		exportMatchesEditor(this)
 	}
+
+	/** A paint reaching off a layer's meshes is cut along them: the part off them is a new layer just above, with its own mesh. */
+	@Test fun paintOffTheMeshesBecomesItsOwnLayer() = Studio.run(temp, Characters.figure()) {
+		val face = now.document.source.layers.single { it.id.raw == "face" }
+		val faceMesh = mesh("face")
+		val drawn = bounds(faceMesh)
+		val count = now.document.source.layers.size
+		val y = ((drawn[1] + drawn[3]) / 2).toInt()
+		val outside = (drawn[2] + 30f).toInt()
+		edit("paint from the face out past its edge", "source_paint_brush", req("layer_id" to "face", "radius" to 3, "color" to listOf(0, 0, 255, 255),
+			"points" to listOf(listOf(((drawn[0] + drawn[2]) / 2).toInt(), y), listOf(outside, y))))
+		val layers = now.document.source.layers
+		val added = layers.singleOrNull { it.id.raw.startsWith("painted_") }
+		expect("cut", added != null && layers.size == count + 1 && added.name == face.name + "+" &&
+			layers.indexOf(added) == layers.indexOfFirst { it.id.raw == "face" } + 1) { "the paint off the face is not a new layer just above it: ${layers.map { it.id.raw }}" }
+		added!!
+		val kept = layers.single { it.id.raw == "face" }
+		val (fb, kb) = face.bounds to kept.bounds
+		expect("cut", kb.left >= fb.left && kb.top >= fb.top && kb.left + kb.width <= fb.left + fb.width && kb.top + kb.height <= fb.top + fb.height) {
+			"the face grew: $fb -> $kb" }
+		expect("cut", mesh("face") == faceMesh && bounds(faceMesh).contentEquals(drawn)) { "the face's mesh changed: ${drawn.toList()} -> ${bounds(faceMesh).toList()}" }
+		val space = LayerSpace.of(added)
+		val x = space.canvasToRasterX(outside + 0.5f).toInt(); val row = space.canvasToRasterY(y + 0.5f).toInt()
+		val at = (row * added.raster.width + x) * 4
+		expect("cut", x in 0 until added.raster.width && (added.raster.rgba[at + 2].toInt() and 255) == 255 && added.raster.rgba[at + 3].toInt() != 0) {
+			"the new layer does not hold the stroke off the face" }
+		val parent = puppet.drawables.single { it.id.raw == faceMesh }.parentDeformerId
+		expect("cut", puppet.drawables.single { it.id.raw == mesh(added.id.raw) }.parentDeformerId == parent) { "the new layer's mesh is not under the face's parent" }
+		reopen()
+		expect("reopened", now.document.source.layers.any { it.id == added.id } && mesh(added.id.raw).isNotEmpty()) { "the new layer did not survive a save" }
+	}
 }

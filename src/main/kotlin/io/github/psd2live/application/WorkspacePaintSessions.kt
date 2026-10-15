@@ -27,10 +27,15 @@ class WorkspacePaintSession internal constructor(
     val canvasWidth: Int = image.width, val canvasHeight: Int = image.height,
     private val validateWorkspace: () -> Unit,
     /**
-     * The material item painted, when the session paints a material of the library rather than a layer: its raster at
-     * one pixel per canvas unit, [layerId] [MATERIAL_PREFIX] and the id. Its commit is `material_set_pixels`.
+     * The material item painted: the one the layer shows (the paint on its meshes reaches the material), or the item
+     * itself when [paintsMaterial].
      */
     val materialId: String? = null,
+    /**
+     * Whether the session paints material item [materialId] of the library rather than a layer: its raster at one
+     * pixel per canvas unit, [layerId] [MATERIAL_PREFIX] and the id. Its commit is `material_set_pixels`.
+     */
+    val paintsMaterial: Boolean = false,
 ) {
     private val lock = Any()
     private val buffer = PaintRasterSession(layerId, layerName, image, copy(image))
@@ -188,8 +193,6 @@ internal class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigP
     fun begin(state: String, layerId: String): WorkspacePaintSession = synchronized(sessions) {
         val captured = runtime.capture()
         if (captured.state != state) throw WorkspaceConflict(state, captured.state)
-        // A layer showing a material paints the material, through the layer's rectangle.
-        WorkspaceMaterialLinks.linked(captured.document, layerId)?.let { (item, _) -> return beginMaterial(item.id, layerId) }
         val layer = RasterPaintCommit.sourceLayerFor(captured.model, captured.model.analysis, layerId)
             ?: throw IllegalArgumentException("Paint layer not found: $layerId")
         val painting = captured.document.layerPaintImage(layer.id.raw)
@@ -200,22 +203,17 @@ internal class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigP
             captured.document.source.widthPx, captured.document.source.heightPx, validateWorkspace = {
             val now = runtime.capture()
             if (now.projectId != captured.projectId || now.state != state) throw WorkspaceConflict(state, now.state)
-        })
+        }, materialId = WorkspaceMaterialLinks.linked(captured.document, layer.id.raw)?.first?.id, paintsMaterial = false)
         sessions[session.id] = session
         session
     }
     /**
-     * A session painting material item [materialId] at its own pixels: through [layerId]'s canvas rectangle when it
-     * paints a layer showing the material, else at one pixel per unit. It stays open while other edits commit: only a
-     * change to the material's own pixels or to that layer's place, or another project, ends it.
+     * A session painting material item [materialId] at its own pixels, one pixel per unit. It stays open while other
+     * edits commit: only a change to the material's own pixels, or another project, ends it.
      */
-    fun beginMaterial(materialId: String, layerId: String? = null): WorkspacePaintSession = synchronized(sessions) {
+    fun beginMaterial(materialId: String): WorkspacePaintSession = synchronized(sessions) {
         val captured = runtime.capture()
         val item = captured.document.layout.materials.item(materialId) ?: throw IllegalArgumentException("Material not found: $materialId")
-        val layer = layerId?.let { id -> WorkspaceMaterialLinks.linked(captured.document, id)?.second?.takeIf { captured.document.layout.layerMaterials[id] == materialId }
-            ?: throw IllegalArgumentException("Layer $id does not show material $materialId") }
-        val space = layer?.let { WorkspaceMaterialLinks.space(it, item) } ?: PaintSpace.canvas(item.raster.width, item.raster.height)
-        val place = layer?.let { io.github.psd2live.core.LayerSpace.of(it) }
         val image = BufferedImage(item.raster.width, item.raster.height, BufferedImage.TYPE_INT_ARGB)
         val rgba = item.raster.rgba
         image.setRGB(0, 0, item.raster.width, item.raster.height, IntArray(item.raster.width * item.raster.height) { i ->
@@ -226,25 +224,17 @@ internal class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigP
         sessions.entries.removeIf { it.value.finished }
         var pixels = item.raster
         val session = WorkspacePaintSession(UUID.randomUUID().toString(), captured.projectId, captured.state,
-            layerId ?: (WorkspacePaintSession.MATERIAL_PREFIX + materialId), item.name, image, space,
-            if (layer != null) captured.document.source.widthPx else item.raster.width,
-            if (layer != null) captured.document.source.heightPx else item.raster.height, validateWorkspace = {
+            WorkspacePaintSession.MATERIAL_PREFIX + materialId, item.name, image, validateWorkspace = {
                 val now = runtime.capture()
                 val current = now.document.layout.materials.item(materialId)?.raster
                 if (now.projectId != captured.projectId || current == null) throw WorkspaceConflict(captured.state, now.state)
-                if (layerId != null) {
-                    val shown = now.document.source.layers.singleOrNull { it.id.raw == layerId }
-                    if (now.document.layout.layerMaterials[layerId] != materialId || shown == null || io.github.psd2live.core.LayerSpace.of(shown).let {
-                            it.left != place!!.left || it.top != place.top || it.width != place.width || it.height != place.height })
-                        throw WorkspaceConflict(captured.state, now.state)
-                }
                 // The same pixels under a new object (an undo back to them) still match.
                 if (current !== pixels) {
                     if (current.width != pixels.width || current.height != pixels.height || !current.rgba.contentEquals(pixels.rgba))
                         throw WorkspaceConflict(captured.state, now.state)
                     pixels = current
                 }
-            }, materialId = materialId)
+            }, materialId = materialId, paintsMaterial = true)
         sessions[session.id] = session
         session
     }
@@ -255,7 +245,7 @@ internal class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigP
      */
     suspend fun commitMaterial(id: String, sessionState: String, apply: suspend (String, org.umamo.format.art.LayerRaster) -> WorkspaceMutationResult): WorkspaceMutationResult {
         val session = get(id)
-        val materialId = requireNotNull(session.materialId) { "Not a material paint session: $id" }
+        val materialId = session.materialId?.takeIf { session.paintsMaterial } ?: throw IllegalArgumentException("Not a material paint session: $id")
         session.completed()?.let { return it }
         currentCoroutineContext().ensureActive()
         val image = session.freezeImage(sessionState)

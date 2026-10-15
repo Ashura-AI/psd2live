@@ -60,13 +60,6 @@ internal object WorkspaceRasterEdits {
     private val pipeline = PSD2LivePipeline()
     fun paint(document: WorkspaceDocument, model: RigPreviewModel, arguments: JsonObject,
               work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): WorkspaceDocument {
-        // A layer showing a material paints the material, and every layer showing it follows.
-        WorkspaceMaterialLinks.linked(document, arguments.getValue("layer_id").jsonPrimitive.content)?.let { (item, layer) ->
-            val image = WorkspaceMaterialPixels.image(item.raster)
-            paintRasterGesture(image, arguments, work, space = WorkspaceMaterialLinks.space(layer, item))
-            val raster = WorkspaceMaterialPixels.raster(image)
-            return if (WorkspaceMaterialLinks.shows(raster, item.raster)) document else WorkspaceMaterialPixels.replace(document, model, item, raster)
-        }
         val (painting, touched) = document.paintLayerImage(arguments, work)
         val region = painting.space.layerArea().let { area -> touched?.let { if (area.isEmpty) it else area.union(it) } ?: area }
         return prepare(document, model, WorkspacePaintRaster.capture(arguments.getValue("layer_id").jsonPrimitive.content,
@@ -100,8 +93,10 @@ internal object WorkspaceRasterEdits {
 
     fun prepare(document: WorkspaceDocument, model: RigPreviewModel, request: WorkspacePaintRaster,
                 work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): WorkspaceDocument =
-        // Pixels written to a layer showing a material make them its own, unless they are the material's.
-        WorkspaceMaterialLinks.reconcile(document, prepareLayer(document, model, request, work))
+        // Cut along the layer's meshes, the paint off them a layer of its own ([WorkspacePaintOverflow]); pixels then
+        // written to a layer showing a material make them its own, unless they are the material's.
+        WorkspaceMaterialLinks.reconcile(document, WorkspacePaintOverflow.cut(document, model, request, work) { next, kept ->
+            prepareLayer(next, model, kept, work) } ?: prepareLayer(document, model, request, work))
 
     private fun prepareLayer(document: WorkspaceDocument, model: RigPreviewModel, request: WorkspacePaintRaster,
                              work: WorkspaceRasterWork): WorkspaceDocument {

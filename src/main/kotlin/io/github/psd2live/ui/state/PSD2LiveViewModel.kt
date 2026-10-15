@@ -1147,10 +1147,6 @@ class PSD2LiveViewModel : AutoCloseable {
     internal val canvasEditor: CanvasEditor get() = canvasEditorFor(uiState.value.activeCanvas.id)
 
     /** Paint confirm for whichever canvas still has the dialog open, not only the focused one. */
-    internal fun canvasAwaitingMeshRebuild(): CanvasEditor? =
-        uiState.value.activeWorkspace.canvases.firstNotNullOfOrNull { canvas ->
-            canvasEditorFor(canvas.id).takeIf { it.showRebuildMeshDialog }
-        }
     private fun resetCanvasPaintSessions() {
         pendingDepthSplit = null
         editorsSnapshot().forEach { it.resetPaintSession() }
@@ -1190,7 +1186,7 @@ class PSD2LiveViewModel : AutoCloseable {
         val backend = workspaceBackend ?: run { setErrorMessage("Project workspace unavailable"); return }
         val sessionState = session.sessionState
         // A material session outlives the edits made while it was open: it commits against the state now current.
-        val state = if (session.materialId != null) backend.snapshot().state ?: session.workspaceState else session.workspaceState
+        val state = if (session.paintsMaterial) backend.snapshot().state ?: session.workspaceState else session.workspaceState
         updateState { it.copy(canvasEditBusy = true) }
         scope.launch {
             try {
