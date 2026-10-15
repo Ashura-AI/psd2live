@@ -94,16 +94,20 @@ internal fun WorkspaceQueries.inspect(a: JsonObject): JsonObject {
                 } }))
             }
             "settings" -> put("settings", queries.projectSettings())
-            "generation" -> queries.layoutState()?.let { layout ->
-                val generation = layout.layout.generation
-                put("generated", generation.generated)
-                putJsonArray("pending_layers") { layout.pendingLayerIds.sorted().forEach { add(JsonPrimitive(it)) } }
-                putJsonArray("pending_classifications") { generation.pendingClassifications.toSortedMap().forEach { (id, value) -> addJsonObject {
-                    put("layer_id", id); put("role", value.tag.name.lowercase()); put("side", value.side.name.lowercase())
-                    put("type", value.type.name.lowercase()); put("parameter", value.parameter); put("switch_id", value.switchId)
-                } } }
-                putJsonArray("refreshable") { generation.refreshLayerIds.sorted().forEach { add(JsonPrimitive(it)) } }
-            } ?: put("generated", false)
+            // put returns the key's previous value (null), so the absent case cannot hang off the last put with ?:.
+            "generation" -> when (val layout = queries.layoutState()) {
+                null -> put("generated", false)
+                else -> {
+                    val generation = layout.layout.generation
+                    put("generated", generation.generated)
+                    putJsonArray("pending_layers") { layout.pendingLayerIds.sorted().forEach { add(JsonPrimitive(it)) } }
+                    putJsonArray("pending_classifications") { generation.pendingClassifications.toSortedMap().forEach { (id, value) -> addJsonObject {
+                        put("layer_id", id); put("role", value.tag.name.lowercase()); put("side", value.side.name.lowercase())
+                        put("type", value.type.name.lowercase()); put("parameter", value.parameter); put("switch_id", value.switchId)
+                    } } }
+                    putJsonArray("refreshable") { generation.refreshLayerIds.sorted().forEach { add(JsonPrimitive(it)) } }
+                }
+            }
             "preview" -> put("preview", queries.previewSession())
             else -> {
                 val items = when (scope) {

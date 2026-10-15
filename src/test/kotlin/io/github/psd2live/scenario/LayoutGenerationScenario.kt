@@ -31,6 +31,8 @@ class LayoutGenerationScenario {
 			edit("generate", "rig_generate", req())
 			expect("generated", !now.model.layoutPreview && hash() == direct) { "the first generation differs from a direct build" }
 			expect("generated", now.document == figure) { "the generated document is not the imported one" }
+			val state = inspect("generation")
+			expect("generated", state.getValue("generated").jsonPrimitive.boolean) { "inspect still reports the project ungenerated: $state" }
 		}
 	}
 
