@@ -110,6 +110,8 @@ interface WorkspaceSourcePort {
     /** Import a complete file batch as editable artwork in one history node. */
     suspend fun importImages(state: String, paths: List<java.nio.file.Path>, parentDeformerId: String?): WorkspaceMutationResult
     suspend fun importPsd(path: String, discardUnsaved: Boolean = false): WorkspaceMutationResult
+    /** A new Layout project, not generated yet, from a layout manifest or a zip holding one ([LayoutManifest]). */
+    suspend fun importLayout(path: String, discardUnsaved: Boolean = false): WorkspaceMutationResult
     suspend fun importCmo3(path: java.nio.file.Path, mode: Cmo3ImportMode,
                            discardUnsaved: Boolean = false): WorkspaceMutationResult
     suspend fun createArtwork(arguments: JsonObject): WorkspaceMutationResult

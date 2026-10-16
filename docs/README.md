@@ -44,6 +44,7 @@ For hands-on learning, open the **Tutorials** on the Help page (`F1`). Chinese i
 | 导出目标 | 中立绑定 IR、各导出格式与损失报告、模块许可证 | [打开](zh/spec/EXPORT_TARGETS.md) | [中文参考](zh/spec/EXPORT_TARGETS.md) | [中国語参考](zh/spec/EXPORT_TARGETS.md) |
 | 运行时 | Rust 运行时、`.p2lrt` 格式、网页播放器与 Godot 节点 | [打开](zh/spec/RUNTIME.md) | [中文参考](zh/spec/RUNTIME.md) | [中国語参考](zh/spec/RUNTIME.md) |
 | `.p2lrt` 2.0 格式 | 分块容器、核心层与扩展层、演进规则 | [打开](zh/spec/P2LRT_V2.md) | [中文参考](zh/spec/P2LRT_V2.md) | [中国語参考](zh/spec/P2LRT_V2.md) |
+| Layout 清单 | 分层素材的 JSON / zip 交换格式：图片、矩形、上下顺序、组、标签、差分 | [打开](zh/spec/LAYOUT_MANIFEST.md) | [中文参考](zh/spec/LAYOUT_MANIFEST.md) | [中国語参考](zh/spec/LAYOUT_MANIFEST.md) |
 | 素材与 Layout 实现 | 生成视图与待生成图层、素材库存储、语义标签映射、操作表 | [打开](zh/spec/MATERIAL_LAYOUT_WORKSPACE.md) | [中文参考](zh/spec/MATERIAL_LAYOUT_WORKSPACE.md) | [中国語参考](zh/spec/MATERIAL_LAYOUT_WORKSPACE.md) |
 | 无窗口宿主 | 不依赖界面的应用层工作区宿主、桌面与无窗口适配、外部工具接入 | [打开](zh/spec/HEADLESS_HOST.md) | [中文参考](zh/spec/HEADLESS_HOST.md) | [中国語参考](zh/spec/HEADLESS_HOST.md) |
 | Layout 的 AI 辅助（设计中） | 对齐、抠图、补全 | [打开](zh/spec/LAYOUT_AI_ASSIST.md) | [中文参考](zh/spec/LAYOUT_AI_ASSIST.md) | [中国語参考](zh/spec/LAYOUT_AI_ASSIST.md) |

@@ -44,6 +44,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.isAltPressed
 import io.github.psd2live.ui.state.isPrimaryPressed
+import io.github.psd2live.ui.state.ShortcutAction
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -501,7 +502,8 @@ internal fun LayersTableView(
 	val typography = LocalToolTypography.current
 	val analysis = state.analysis
 
-	val layers = analysis?.layers.orEmpty()
+	// Back to front, as the source lists its layers and Cubism numbers its drawing order: the stack `layer_reorder` changes.
+	val layers = analysis?.layers.orEmpty().sortedByDescending { it.source.order }
 	val recognized = layers.count { layer ->
 		val override = state.layerOverrides[layer.source.id.raw]
 		val type = override?.type ?: layer.semantic.type
@@ -524,8 +526,12 @@ internal fun LayersTableView(
 	Column(modifier = Modifier.fillMaxSize()) {
 		// Visibility for every layer at once, then what the panel lists.
 		val restoreLabel = tr("layers.restoreAll", state.deletedLayerIds.size)
-		val labels = listOf(tr("layers.popup.showAll"), tr("layers.popup.hideAll"), tr("layers.popup.invertVisibility")) +
+		val labels = listOf(tr("layers.popup.showAll"), tr("layers.popup.hideAll"), tr("layers.popup.invertVisibility"),
+			tr("layers.reorder.forward"), tr("layers.reorder.backward")) +
 			if (state.deletedLayerIds.isNotEmpty()) listOf(restoreLabel) else emptyList()
+		// Only layers the generator has not read move in the stack; a generated layer's drawing order is the ruler's.
+		val movable = viewModel.reorderableSelection(state).isNotEmpty()
+		fun withKey(label: String, action: ShortcutAction) = state.keymap.labelFor(action)?.let { "$label ($it)" } ?: label
 		PanelToolbar(labels = labels, iconCount = labels.size, reservedWidth = 120.dp) { labelsShown ->
 			PanelToolButton(labels[0], showLabel = labelsShown > 0, onClick = { viewModel.setAllLayersVisibility(true) },
 				enabled = layers.isNotEmpty(), tooltip = labels[0]) {
@@ -539,9 +545,18 @@ internal fun LayersTableView(
 				enabled = layers.isNotEmpty(), tooltip = labels[2]) {
 				IconPaintColorSwap(modifier = Modifier.size(11.dp), tint = colors.textPrimary)
 			}
+			PanelToolbarSeparator()
+			PanelToolButton(labels[3], showLabel = labelsShown > 3, onClick = { viewModel.reorderSelectedLayers("forward") },
+				enabled = movable, tooltip = withKey(labels[3], ShortcutAction.LAYER_FORWARD)) {
+				IconArrowVertical(up = true, tint = colors.textPrimary)
+			}
+			PanelToolButton(labels[4], showLabel = labelsShown > 4, onClick = { viewModel.reorderSelectedLayers("backward") },
+				enabled = movable, tooltip = withKey(labels[4], ShortcutAction.LAYER_BACKWARD)) {
+				IconArrowVertical(up = false, tint = colors.textPrimary)
+			}
 			if (state.deletedLayerIds.isNotEmpty()) {
 				PanelToolbarSeparator()
-				PanelToolButton(restoreLabel, showLabel = labelsShown > 3, onClick = { viewModel.restoreAllDeletedLayers() },
+				PanelToolButton(restoreLabel, showLabel = labelsShown > 5, onClick = { viewModel.restoreAllDeletedLayers() },
 					enabled = true, tooltip = restoreLabel) {
 					IconUndo(modifier = Modifier.size(11.dp), tint = colors.textPrimary)
 				}

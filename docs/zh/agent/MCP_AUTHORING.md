@@ -64,6 +64,7 @@
 | `project_import_psd` | `path`，可选 `discard_unsaved` | 从绝对 PSD 路径后台创建新工程；已加载时可切换，默认拒绝未保存修改 |
 | `project_create_artwork` | `width`、`height`、`layers`，可选 `discard_unsaved` | 从本地 PNG/WebP/TIFF/BMP 按位置创建新工程，图层自底向顶；后台任务，切换须保存或显式放弃 |
 | `project_create` | `width`、`height`，可选 `discard_unsaved` | 后台新建未生成的空工程，用于先导入素材、摆放再生成，见[素材与 Layout](#素材与-layout) |
+| `project_import_layout` | `path`，可选 `discard_unsaved` | 从 [Layout 清单](../spec/LAYOUT_MANIFEST.md)（绝对路径的 `.json`，或根目录放着清单的 `.zip`）后台新建未生成的 Layout 工程 |
 | `project_import_cmo3` | `path`、`mode`（`new/replace`），可选 `discard_unsaved` | 后台导入绝对路径的 CMO3；新建默认拒绝未保存切换；替换按对象 ID 更新、保留未出现对象，并作为一次历史编辑提交 |
 | `project_open` | `path`，可选 `discard_unsaved` | 后台打开绝对路径的工程归档；未保存默认拒绝，先保存或显式放弃；可从空工作区调用 |
 | `project_save` / `project_save_as` | 保存无需额外字段；另存为要求 `path` | 后台保存工程；首次保存用另存为指定绝对路径，后续保存使用当前路径；无变更不追加历史节点 |
@@ -500,7 +501,8 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | 工具 | 主要参数 | 说明 |
 | --- | --- | --- |
 | `project_create` | `width`、`height`，可选 `discard_unsaved` | 新建未生成的空工程 |
-| `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的分层图片（没有时取纹理页）、SVG（按自身尺寸栅格化）或文件夹（保留嵌套结构，子文件夹成为素材文件夹，跳过隐藏项），作为一个历史节点加入素材库；每张图不超过 16MP |
+| `project_import_layout` | `path`（清单 `.json` 或含清单的 `.zip` 的绝对路径），可选 `discard_unsaved` | 按 [Layout 清单](../spec/LAYOUT_MANIFEST.md) 新建未生成的工程：图片保留原像素铺在 `rect` 上，图层保持清单的上下顺序、组、标签、差分、可见性与不透明度，同时登记为素材并关联；结果同 `project_create` |
+| `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的分层图片（没有时取纹理页）、SVG（按自身尺寸栅格化）、Layout 清单或含清单的 zip（组成为子文件夹，每层以 `rect` 为默认位置并带上标签）或文件夹（保留嵌套结构，子文件夹成为素材文件夹，跳过隐藏项与其中的清单、zip），作为一个历史节点加入素材库；每张图不超过 16MP |
 | `material_add` | `state`、`staging`，可选 `folder_id` | `material_import` 读取后实际提交的成员；`staging` 为进程内暂存的内容摘要，一般不直接调用 |
 | `material_list` | 可选 `folder_id`、`recursive`、`query`、`kind`、`unused`、`offset`、`limit`（≤256） | 列出文件夹与条目；`query` 匹配名称和标签（含文件夹标签），`references` 为使用它的图层数；读自 PSD / CMO3 的文件夹带 `origin` 文件名 |
 | `material_get` | `id`，可选 `include_svg` | 条目或文件夹详情；条目返回使用它的 `layers`，SVG 另有 `vector_size`，`include_svg` 时附存储的 SVG 原文 |
@@ -528,11 +530,12 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `layer_place` | `state`、`material_id`，可选 `rect`（单个条目）、`at`（[x, y] 中心）、`layer_id`（单个条目的新图层 ID） | 放置条目或整个文件夹为新源图层，画在已有图层之上；默认 PSD 位置（PSD 画布居中映射到工程画布，超出时等比缩小，尺寸相同时原位），否则 1 素材像素 = 1 画布单位并缩入画布；像素不重采样 |
 | `layer_tag` | `state`、`layer_ids`（1–128），`set` 或 `add`/`remove` | 语义标签：部位词与 `left/right` 决定分类（如 `{hair, front}`、`{eye, iris, left}`），其余为用户标签；已生成图层的分类变化等待 `rig_generate` |
 | `layer_set_variant` | `state`、`layer_id`、`variant`（`none/toggle/switch`），可选 `parameter`、`switch_id` | 差分属性，保留标签 |
+| `layer_reorder` | `state`、`layer_ids`（1–128）、`to`（`front/back/forward/backward/above/below`），`above/below` 需 `target` | 调整上下顺序（即基础绘制顺序）：移到最前或最后、越过一个未移动图层、或移到 `target` 正上方或正下方，被移动的图层之间保持原先后。只接受生成器未读过的图层（未生成工程的图层、待生成图层）；已生成图层返回错误，其描画顺序用 `layer_draw_order` 调整 |
 | `rig_generate` | `state`，可选 `refresh_geometry` | 生成或重新生成：未生成工程按当前全部图层构建；已生成工程并入上次生成后放置的图层与等待的分类，按三方合并保留用户编辑，未能干净迁移的内容见 `quality.regeneration`。`refresh_geometry` 列出按当前像素重建网格的已生成图层，省略为全部替换过图片的图层，`[]` 全部保留 |
 
-未生成工程与待生成图层只接受素材、放置、移动缩放镜像（`layer_set_canvas_rect`、`layer_transform`，旋转需生成后）、替换、删除、标签与生成设置；其余 Rig 编辑返回 `not_generated`，导出只包含已生成部分（未生成工程拒绝导出）。导入 PSD 的新工程同样把每个图层登记为素材并关联。
+未生成工程与待生成图层只接受素材、放置、移动缩放镜像（`layer_set_canvas_rect`、`layer_transform`，旋转需生成后）、调整上下顺序（`layer_reorder`）、替换、删除、标签与生成设置；其余 Rig 编辑返回 `not_generated`，导出只包含已生成部分（未生成工程拒绝导出）。导入 PSD 的新工程同样把每个图层登记为素材并关联。
 
-一个典型流程：`project_create` → `material_import` → `material_list` → 若干 `layer_place`（或放置整个 PSD 文件夹）→ `layer_tag` → `rig_generate` → 作者编辑 → 再 `layer_place` → `rig_generate`。
+一个典型流程：`project_create` → `material_import` → `material_list` → 若干 `layer_place`（或放置整个 PSD 文件夹）→ `layer_tag` → `layer_reorder` → `rig_generate` → 作者编辑 → 再 `layer_place` → `rig_generate`。外部工具已经拆好部件时，写出 Layout 清单，用 `project_import_layout` 一步得到摆好的未生成工程，检查后 `rig_generate`。
 
 `view_render_model` 另有 `grid`（每隔若干画布单位画带坐标标注的网格线，过密时按 ×2、×5、×10… 放宽，结果的 `gridStep` 为实际间距）与 `outline_material_ids`（把有画布位置的条目——绘制与裁出的特写——的不透明边缘按各自颜色描在视图上，附 id），用来读取坐标、对照绘制与参考图。只看参考图时给 `include_layer_ids: []` 与 `reference: {mode: under, opacity: 1}`。
 

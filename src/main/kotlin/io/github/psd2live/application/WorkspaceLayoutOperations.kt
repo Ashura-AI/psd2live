@@ -161,6 +161,7 @@ internal object WorkspaceLayoutOperations {
     fun summary(id: String, request: JsonObject): String = when (id) {
         WorkspaceLayoutEdits.TAG -> "Tagged ${request.getValue("layer_ids").jsonArray.size} layer(s)"
         WorkspaceLayoutEdits.VARIANT -> "Set variant of ${request.getValue("layer_id").jsonPrimitive.content}"
+        WorkspaceLayoutEdits.REORDER -> "Moved ${request.getValue("layer_ids").jsonArray.size} layer(s) ${request.getValue("to").jsonPrimitive.content}"
         WorkspaceGenerationEdits.GENERATE -> "Generated the rig"
         WorkspaceMaterialEdits.ADD -> "Imported materials"
         WorkspaceMaterialEdits.FOLDER -> "Created material folder ${request.getValue("name").jsonPrimitive.content}"

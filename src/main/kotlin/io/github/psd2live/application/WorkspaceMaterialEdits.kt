@@ -25,6 +25,7 @@ internal object WorkspaceMaterialStaging {
             entry.placement?.let { put("placement", "${it.left},${it.top},${it.width},${it.height} on ${entry.placementWidth}x${entry.placementHeight}") }
             entry.svg?.let { put("svg", WorkspaceRevisions.sha256(it.encodeToByteArray())) }
             put("origin", entry.origin); put("opacity", entry.opacity); put("visible", entry.visible)
+            if (entry.tags.isNotEmpty()) put("tags", JsonArray(entry.tags.map(::JsonPrimitive)))
         } }))
         synchronized(staged) { staged[token] = entries }
         return token
@@ -128,21 +129,21 @@ internal object WorkspaceMaterialEdits {
             val raster = entry.svg?.let { WorkspaceVectorDrawing.render(it, document.layout.drawingKit, entry.raster.width, entry.raster.height) } ?: entry.raster
             items += MaterialItem(id, requireName(entry.name), folder, entry.kind, raster, entry.placement, entry.svg,
                 origin = entry.origin, opacity = entry.opacity, visible = entry.visible,
-                placementWidth = entry.placementWidth, placementHeight = entry.placementHeight)
+                placementWidth = entry.placementWidth, placementHeight = entry.placementHeight, tags = entry.tags)
         }
         library = MaterialLibrary(folders, items)
         return document.withLibrary(library)
     }
 
     /**
-     * [document] with its source layers added as materials in a folder named after [fileName] (its groups as
-     * subfolders), each layer linked to its own material ([WorkspaceLayout.layerMaterials]). The materials share the
-     * layers' pixels.
+     * [document] with its source layers added as materials in a folder named [folderName], after [fileName] unless
+     * given (its groups as subfolders), each layer linked to its own material ([WorkspaceLayout.layerMaterials]). The
+     * materials share the layers' pixels.
      */
-    fun addLinked(document: WorkspaceDocument, fileName: String): WorkspaceDocument {
+    fun addLinked(document: WorkspaceDocument, fileName: String,
+                  folderName: String = fileName.substringBeforeLast('.').ifEmpty { fileName }): WorkspaceDocument {
         val layers = document.source.layers.filter { it.raster.width > 0 && it.raster.height > 0 }
         if (layers.isEmpty()) return document
-        val folderName = fileName.substringBeforeLast('.').ifEmpty { fileName }
         val entries = WorkspaceMaterialFiles.layered(document.source, listOf(WorkspaceMaterialFiles.name(folderName, "source")), fileName)
             .map { it.copy(fileFolder = 0) }
         val before = document.layout.materials.items.size

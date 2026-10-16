@@ -6106,6 +6106,22 @@ class PSD2LiveViewModel : AutoCloseable {
 				})), MutationAuthor.USER) }
 	}
 
+	/** The selected layers the stack can move: every layer before the first generation, the layers placed since. */
+	fun reorderableSelection(state: PSD2LiveState = _state.value): List<String> {
+		val generation = state.layout.generation
+		return (listOfNotNull(state.selectedLayerId) + state.selectedLayerIds).distinct()
+			.filter { !generation.generated || it in generation.pendingLayerIds }
+	}
+
+	/** Moves the selected layers in the stack ([to]: front, forward, backward, back) with `layer_reorder`; false when none can move. */
+	fun reorderSelectedLayers(to: String): Boolean {
+		val ids = reorderableSelection()
+		if (ids.isEmpty()) return false
+		layoutEdit(tr("layers.reorder.summary", ids.size), io.github.psd2live.application.WorkspaceLayoutEdits.REORDER,
+			kotlinx.serialization.json.buildJsonObject { put("layer_ids", strings(ids)); put("to", to) })
+		return true
+	}
+
 	/** A layer's variant (none, toggle, switch): the same `layer_set_variant` edit MCP makes. */
 	fun setLayerVariant(layerId: String, variant: io.github.psd2live.core.LayerVariant) {
 		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return
@@ -6656,14 +6672,18 @@ class PSD2LiveViewModel : AutoCloseable {
         val rawInput = _state.value.inputPath.trim()
         if (rawInput.isEmpty()) { updateState { it.copy(errorMessage = tr("dialog.inputRequired")) }; return }
         val input = Path.of(rawInput)
-        if (!Files.isRegularFile(input) || !input.fileName.toString().endsWith(".psd", true)) {
+        val name = input.fileName.toString()
+        // A layout manifest (or a zip holding one) opens as a Layout project to arrange before generating.
+        val layout = name.endsWith(".json", true) || name.endsWith(".zip", true)
+        if (!Files.isRegularFile(input) || !(layout || name.endsWith(".psd", true))) {
             updateState { it.copy(errorMessage = tr("dialog.inputInvalid", input)) }; return
         }
+        val path = input.toAbsolutePath().normalize().toString()
         startWorkspaceImport(discardUnsaved, tr("status.analyzing"), afterImport = {
-            applyStartPresets(startChoices)
+            if (!layout) applyStartPresets(startChoices)
             leaveStartPage()
-            openWorkspacePreset(WorkspacePreset.EDIT)
-        }) { it.importPsd(input.toAbsolutePath().normalize().toString(), discardUnsaved) }
+            openWorkspacePreset(if (layout) WorkspacePreset.LAYOUT else WorkspacePreset.EDIT)
+        }) { if (layout) it.importLayout(path, discardUnsaved) else it.importPsd(path, discardUnsaved) }
     }
 
     /** Both adapters invoke the same application source capability; only this entry owns GUI confirmation. */
