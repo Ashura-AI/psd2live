@@ -527,9 +527,11 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `reference_sample` | `points`（≤256 个 [x, y]）、`radius`（画布单位，取均值）、`rect`、`colors`（1–16，默认 6）至少给一项 | 读参考图颜色：各点的颜色与 alpha；`rect` 内不透明像素的主色（按明度从暗到亮，附占比），用来定套件颜色 |
 | `reference_trace` | `seed`（[x, y]），可选 `tolerance`（Lab 距离，默认 12）、`compare`（`seed`/`neighbor`）、`simplify`（画布单位，默认 0.6） | 魔棒：从种子扩展到与种子颜色（`neighbor` 为与相邻像素，可越过柔和的阴影直到线条）相近的不透明像素，返回外轮廓的简化多边形 `polygon` 与经过它的平滑闭合路径 `path`（画布坐标，可直接作绘制的起稿），以及面积、包围盒、平均色、内部孔洞数；`touches_edge` 表示漫到了参考图边缘；`holes`（0–16）另返回最大的若干个孔洞轮廓 `hole_outlines`——从背景取时即人物剪影（人物碰到图像边缘时剪影在外轮廓里） |
 | `reference_snap` | `points`（1–256），可选 `radius`（画布单位，默认 4） | 把点吸到 `radius` 内最近一条线的中心（取明显比周围暗的像素中最近的，再取其附近最暗处）；附近没有线条的点保持不动、`snapped` 为 false |
-| `layer_place` | `state`、`material_id`，可选 `rect`（单个条目）、`at`（[x, y] 中心）、`layer_id`（单个条目的新图层 ID） | 放置条目或整个文件夹为新源图层，画在已有图层之上；默认 PSD 位置（PSD 画布居中映射到工程画布，超出时等比缩小，尺寸相同时原位），否则 1 素材像素 = 1 画布单位并缩入画布；像素不重采样 |
+| `layer_place` | `state`、`material_id`，可选 `rect`（单个条目）、`at`（[x, y] 中心）、`layer_id`（单个条目的新图层 ID）、`reference`（`true` / `false` 全部放置为参考或模型图层，省略按各条目的标记） | 放置条目或整个文件夹为新源图层，画在已有图层之上；默认 PSD 位置（PSD 画布居中映射到工程画布，超出时等比缩小，尺寸相同时原位），否则 1 素材像素 = 1 画布单位并缩入画布；像素不重采样 |
 | `layer_tag` | `state`、`layer_ids`（1–128），`set` 或 `add`/`remove` | 语义标签：部位词与 `left/right` 决定分类（如 `{hair, front}`、`{eye, iris, left}`），其余为用户标签；已生成图层的分类变化等待 `rig_generate` |
 | `layer_set_variant` | `state`、`layer_id`、`variant`（`none/toggle/switch`），可选 `parameter`、`switch_id` | 差分属性，保留标签 |
+| `layer_mark_reference` | `state`、`layer_ids`（1–128）、`reference` | 设为参考图层（`true`）或恢复为模型图层（`false`）：参考图层留在画布与上下顺序里，但不被生成读取，Rig 与导出都不含它；只接受未生成、待生成与参考图层，已生成图层返回错误；恢复的图层在已生成工程里等待 `rig_generate`。`workspace_inspect scope=generation` 的 `reference_layers` 列出它们 |
+| `material_mark_reference` | `state`、`ids`（条目或文件夹，1–1024）、`reference` | 条目（文件夹则为其中全部条目）在 `layer_place` 未指定时是否放置为参考图层 |
 | `layer_reorder` | `state`、`layer_ids`（1–128）、`to`（`front/back/forward/backward/above/below`），`above/below` 需 `target` | 调整上下顺序（即基础绘制顺序）：移到最前或最后、越过一个未移动图层、或移到 `target` 正上方或正下方，被移动的图层之间保持原先后。只接受生成器未读过的图层（未生成工程的图层、待生成图层）；已生成图层返回错误，其描画顺序用 `layer_draw_order` 调整 |
 | `rig_generate` | `state`，可选 `refresh_geometry` | 生成或重新生成：未生成工程按当前全部图层构建；已生成工程并入上次生成后放置的图层与等待的分类，按三方合并保留用户编辑，未能干净迁移的内容见 `quality.regeneration`。`refresh_geometry` 列出按当前像素重建网格的已生成图层，省略为全部替换过图片的图层，`[]` 全部保留 |
 
