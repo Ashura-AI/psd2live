@@ -172,10 +172,63 @@ class LayoutManifestScenario {
 	}
 
 	/**
-	 * The figure as a manifest: tight crops listed back to front, the face at three times its pixels, the top a quarter
-	 * pixel off the grid and tagged with a user word, the skirt a toggle at 80% opacity, the head and arms in groups.
+	 * A reference layer stays on the canvas and in the stack but out of every generation, so out of the rig and exports;
+	 * given back, it waits for the next generation like a layer placed since. A generated layer stays a model layer.
 	 */
-	private fun manifest(directory: Path): Path {
+	@Test fun referenceLayersStayOutOfTheRig() = Studio.run(temp) {
+		val path = manifest(Files.createDirectories(temp.resolve("out")), references = setOf("back_hair"))
+		step("open the manifest") { WorkspaceSourceImporter(runtime).importLayout(path, null, runtime.state.value.state, initialConfig = config) }
+		val hair = now.document.source.layers.single { it.name == "back hair" }.id.raw
+		fun generated() = now.model.generated.rig.layerIdByDrawableId.values.toSet()
+		fun shown() = now.model.rig.layerIdByDrawableId.values.toSet()
+		fun listed(key: String) = inspect("generation").getValue(key).jsonArray.map { it.jsonPrimitive.content }
+		expect("marked", now.document.layout.referenceLayerIds == setOf(hair) &&
+			now.document.layout.materials.items.single { it.name == "back hair" }.reference) { "references ${now.document.layout.referenceLayerIds}" }
+		expect("listed", listed("reference_layers") == listOf(hair) && hair !in listed("pending_layers")) { "${inspect("generation")}" }
+
+		edit("generate", "rig_generate", req())
+		expect("out of the rig", hair !in generated() && hair in shown() && "face" in generated()) { "generated ${generated()}, shown ${shown()}" }
+		expect("never waits", inspect("generation").let { it.getValue("pending_layers").jsonArray.isEmpty() && listed("reference_layers") == listOf(hair) }) {
+			"${inspect("generation")}" }
+		edit("the reference moves to the front", WorkspaceLayoutEdits.REORDER, req("layer_ids" to listOf(hair), "to" to "front"))
+		expect("front", stack(now.document.source).first() == "back hair") { "${stack(now.document.source)}" }
+		refused("a generated layer stays a model layer", WorkspaceLayoutEdits.MARK_REFERENCE, req("layer_ids" to listOf("face"), "reference" to true))
+		reopen()
+		expect("kept", now.document.layout.referenceLayerIds == setOf(hair) && hair !in generated()) { "after reopening ${now.document.layout.referenceLayerIds}" }
+
+		edit("give it back", WorkspaceLayoutEdits.MARK_REFERENCE, req("layer_ids" to listOf(hair), "reference" to false))
+		expect("waits", listed("pending_layers") == listOf(hair) && listed("reference_layers").isEmpty()) { "${inspect("generation")}" }
+		edit("generate it", "rig_generate", req())
+		expect("in the rig", hair in generated()) { "generated ${generated()}" }
+		refused("now generated", WorkspaceLayoutEdits.MARK_REFERENCE, req("layer_ids" to listOf(hair), "reference" to true))
+	}
+
+	/** A manifest's reference layers import as marked materials; placing follows the mark unless the placement says. */
+	@Test fun referenceMaterialsPlaceAsReference() = Studio.run(temp, emptyLayout()) {
+		val path = manifest(Files.createDirectories(temp.resolve("out")), references = setOf("face"))
+		assertEquals(listOf("face"), WorkspaceMaterialFiles.read(listOf(path)).filter { it.reference }.map { it.name })
+		edit("import the manifest", "material_add", req("staging" to WorkspaceMaterialStaging.stage(WorkspaceMaterialFiles.read(listOf(path)))))
+		val library = now.document.layout.materials
+		val face = library.items.single { it.name == "face" }
+		edit("place the face", "layer_place", req("material_id" to face.id))
+		val placed = now.document.source.layers.single().id.raw
+		expect("as reference", now.document.layout.referenceLayerIds == setOf(placed)) { "${now.document.layout.referenceLayerIds}" }
+		refused("only a reference to generate from", "rig_generate", req())
+		edit("place it as a model layer", "layer_place", req("material_id" to face.id, "reference" to false))
+		expect("as model", now.document.layout.referenceLayerIds == setOf(placed)) { "${now.document.layout.referenceLayerIds}" }
+		val root = library.folders.single { it.parentId == null }.id
+		edit("mark the folder", "material_mark_reference", req("ids" to listOf(root), "reference" to true))
+		expect("all marked", now.document.layout.materials.items.all { it.reference }) { "unmarked ${now.document.layout.materials.items.filterNot { it.reference }.map { it.name }}" }
+		edit("place the folder", "layer_place", req("material_id" to root))
+		expect("all reference", now.document.layout.referenceLayerIds.size == 1 + names.size) { "${now.document.layout.referenceLayerIds.size} references" }
+	}
+
+	/**
+	 * The figure as a manifest: tight crops listed back to front, the face at three times its pixels, the top a quarter
+	 * pixel off the grid and tagged with a user word, the skirt a toggle at 80% opacity, the head and arms in groups;
+	 * the layers named in [references] are reference layers.
+	 */
+	private fun manifest(directory: Path, references: Set<String> = emptySet()): Path {
 		val layers = WorkspaceLayoutEdits.stack(figure).reversed().map { layer ->
 			val name = names.getValue(layer.name)
 			val b = opaqueBox(layer.raster)
@@ -190,6 +243,7 @@ class LayoutManifestScenario {
 				put("image", buildJsonObject { put("path", file); put("width", b.width * scale); put("height", b.height * scale) })
 				put("rect", buildJsonObject { put("left", b.left + shift); put("top", b.top + shift); put("width", b.width); put("height", b.height) })
 				groups[layer.name]?.let { put("group", it) }
+				if (layer.name in references) put("reference", true)
 				when (layer.name) {
 					"top" -> put("tags", JsonArray(listOf("top", "coat").map(::JsonPrimitive)))
 					"leg_l" -> put("tags", JsonArray(listOf("leg", "left").map(::JsonPrimitive)))

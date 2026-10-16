@@ -15,9 +15,10 @@ internal object WorkspaceLayoutEdits {
     const val TAG = "layer_tag"
     const val VARIANT = "layer_set_variant"
     const val REORDER = "layer_reorder"
+    const val MARK_REFERENCE = "layer_mark_reference"
     /** Where `layer_reorder` moves layers in the stack. */
     val reorderTargets = listOf("front", "back", "forward", "backward", "above", "below")
-    val supported = setOf(TAG, VARIANT, REORDER, WorkspaceGenerationEdits.GENERATE)
+    val supported = setOf(TAG, VARIANT, REORDER, MARK_REFERENCE, WorkspaceGenerationEdits.GENERATE)
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel): WorkspaceDocument {
         val request = operation.request
@@ -33,6 +34,8 @@ internal object WorkspaceLayoutEdits {
                 request["switch_id"]?.jsonPrimitive?.int ?: 0))
             REORDER -> reorder(document, request.strings("layer_ids").also { require(it.size in 1..128) { "Give 1..128 layer_ids" } },
                 request.getValue("to").jsonPrimitive.content, request["target"]?.jsonPrimitive?.content)
+            MARK_REFERENCE -> markReference(document, request.strings("layer_ids").also { require(it.size in 1..128) { "Give 1..128 layer_ids" } },
+                request.getValue("reference").jsonPrimitive.boolean)
             WorkspaceGenerationEdits.GENERATE -> WorkspaceGenerationEdits.generate(document, model,
                 request["refresh_geometry"]?.jsonArray?.mapTo(LinkedHashSet()) { it.jsonPrimitive.content })
             else -> throw IllegalArgumentException("Not a layout edit: ${operation.operation}")
@@ -96,9 +99,36 @@ internal object WorkspaceLayoutEdits {
     fun classify(document: WorkspaceDocument, model: RigPreviewModel, id: String, value: LayerClassificationOverride): WorkspaceDocument =
         WorkspaceDocumentEdits.classify(document, model, id, value)
 
-    /** Whether `layer_reorder` moves [id]: the generator has not read it - a project not generated yet, or a layer placed since. */
+    /**
+     * Whether `layer_reorder` moves [id] and `layer_mark_reference` changes it: the generator has not read it - a project
+     * not generated yet, a layer placed since, or a reference layer.
+     */
     fun reorderable(document: WorkspaceDocument, id: String): Boolean =
-        document.layout.generation.let { !it.generated || id in it.pendingLayerIds }
+        id in document.layout.referenceLayerIds || document.layout.generation.let { !it.generated || id in it.pendingLayerIds }
+
+    /**
+     * [ids] kept as reference layers ([reference] true) or given back to the model. A reference layer stays in the
+     * stack and on the canvas, but no generation reads it, so the rig and exports leave it out. Given back in a
+     * generated project, it waits for the next generation as a layer placed since. A layer the generator has read
+     * stays a model layer.
+     */
+    fun markReference(document: WorkspaceDocument, ids: List<String>, reference: Boolean): WorkspaceDocument {
+        require(ids.distinct().size == ids.size) { "layer_ids repeats a layer" }
+        val layout = document.layout
+        val generation = layout.generation
+        for (id in ids) {
+            require(document.source.layers.any { it.id.raw == id } && id !in document.deletedLayerIds) { "Layer not found: $id" }
+            require(reorderable(document, id)) { "$id was generated: the rig reads it, so it stays a model layer" }
+        }
+        val marked = if (reference) layout.referenceLayerIds + ids else layout.referenceLayerIds - ids.toSet()
+        if (marked == layout.referenceLayerIds) return document
+        val pending = when {
+            !generation.generated -> generation.pendingLayerIds
+            reference -> generation.pendingLayerIds - ids.toSet()
+            else -> generation.pendingLayerIds + ids.filter { it in layout.referenceLayerIds }
+        }
+        return document.copy(layout = layout.copy(referenceLayerIds = marked, generation = generation.copy(pendingLayerIds = pending)))
+    }
 
     /**
      * The source layers top-most first: the stack the generator draws in, by `order` and then by place in the list
@@ -176,6 +206,8 @@ internal object WorkspaceLayoutEdits {
             REORDER to schema(mapOf("state" to state, "layer_ids" to array(buildJsonObject { put("type", "string"); put("minLength", 1) }, 1, 128),
                 "to" to buildJsonObject { put("type", "string"); put("enum", JsonArray(reorderTargets.map(::JsonPrimitive))) },
                 "target" to buildJsonObject { put("type", "string"); put("minLength", 1) }), listOf("state", "layer_ids", "to")),
+            MARK_REFERENCE to schema(mapOf("state" to state, "layer_ids" to array(buildJsonObject { put("type", "string"); put("minLength", 1) }, 1, 128),
+                "reference" to buildJsonObject { put("type", "boolean") }), listOf("state", "layer_ids", "reference")),
             WorkspaceGenerationEdits.GENERATE to WorkspaceGenerationEdits.schema,
         )
     }
@@ -193,6 +225,11 @@ internal object WorkspaceLayoutEdits {
             "backward past the next layer not moved, or directly above or below target. The moved layers keep their order among themselves. Only layers the " +
             "generator has not read move: every layer of a project not generated yet, and the layers placed since the last generation (they draw in front " +
             "until rig_generate, then take their place in the stack); a generated layer is refused - its drawing order is set with layer_draw_order. " +
+            "One history edit; no change adds none.",
+        MARK_REFERENCE to "Keep 1..128 source layers as reference layers (reference true), or give them back to the model (false). A reference layer stays in the " +
+            "stack and on the canvas - to trace, place and compare against - but no generation reads it, and the rig and every export leave it out; it moves, " +
+            "reorders, takes tags and is deleted like a layer placed since the last generation. Given back in a generated project, it waits for rig_generate. " +
+            "Only layers the generator has not read change: a generated layer is refused. workspace_inspect lists them (layout.reference_layers). " +
             "One history edit; no change adds none.",
         WorkspaceGenerationEdits.GENERATE to WorkspaceGenerationEdits.DESCRIPTION,
     )

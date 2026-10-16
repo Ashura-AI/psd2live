@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.i18n.tr
@@ -393,7 +394,7 @@ internal fun CanvasViewOptionsBar(
 
 /** The reference image: a picture frame with a figure's head and shoulders. */
 @Composable
-private fun IconReferenceImage(tint: Color) = GridIcon(Modifier.size(14.dp), tint) {
+internal fun IconReferenceImage(tint: Color, size: Dp = 14.dp) = GridIcon(Modifier.size(size), tint) {
 	box(2f, 2f, 14f, 14f, 1.2f)
 	ring(9f, 7.4f, 2.4f, 1.2f)
 	arc(9f, 15.6f, 4.6f, 180f, 180f, 1.2f)

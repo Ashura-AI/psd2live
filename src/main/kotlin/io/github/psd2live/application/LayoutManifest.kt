@@ -24,17 +24,19 @@ internal object LayoutManifest {
     const val VERSION = 1
     private const val MAX_MANIFEST_BYTES = 16L * 1024 * 1024
     private const val MAX_LAYERS = 4096
-    private const val MAX_IMAGE_BYTES = 256L * 1024 * 1024
+    /** One image file's bytes; the images together are bounded only by what the decoded layers take, as a PSD's are. */
+    private const val MAX_IMAGE_BYTES = 1024L * 1024 * 1024
     private const val MAX_ARCHIVE_ENTRIES = 16384
     private val ID = Regex("[A-Za-z0-9_.:#-]{1,96}")
 
     data class Layer(val id: String?, val name: String, val raster: LayerRaster, val rect: LayerCanvasRect, val group: String,
-                     val tags: Set<String>?, val variant: LayerVariant, val visible: Boolean, val opacity: Float)
+                     val tags: Set<String>?, val variant: LayerVariant, val visible: Boolean, val opacity: Float, val reference: Boolean = false)
     data class Group(val path: String, val visible: Boolean, val opacity: Float)
     /** A manifest read with its images: [layers] back to front, [groups] the properties it gives group paths. */
     data class Layout(val name: String, val width: Int, val height: Int, val layers: List<Layer>, val groups: Map<String, Group>)
-    /** A new project's source from a manifest: the art, the classifications its tags and variants give, the user's own tags. */
-    data class Source(val art: WorkspaceSourceArt, val overrides: Map<String, LayerClassificationOverride>, val userTags: Map<String, Set<String>>)
+    /** A new project's source from a manifest: the art, the classifications its tags and variants give, the user's own tags, the reference layers. */
+    data class Source(val art: WorkspaceSourceArt, val overrides: Map<String, LayerClassificationOverride>, val userTags: Map<String, Set<String>>,
+                      val references: Set<String> = emptySet())
 
     /** Whether [path] is a manifest, or a zip archive holding one. */
     fun matches(path: Path): Boolean = runCatching {
@@ -51,20 +53,20 @@ internal object LayoutManifest {
             "json" -> {
                 require(Files.size(path) <= MAX_MANIFEST_BYTES) { "A layout manifest is at most ${MAX_MANIFEST_BYTES / (1024 * 1024)} MiB" }
                 val directory = path.toAbsolutePath().normalize().parent
-                parse(Files.readString(path), path.nameWithoutExtension, checkCancelled) { image, budget ->
+                parse(Files.readString(path), path.nameWithoutExtension, checkCancelled) { image ->
                     val file = directory.resolve(image).normalize()
                     require(file.startsWith(directory) && Files.isRegularFile(file)) { "Image not found beside the manifest: $image" }
-                    require(Files.size(file) <= budget) { imagesTooLarge() }
+                    require(Files.size(file) <= MAX_IMAGE_BYTES) { imageTooLarge(image) }
                     Files.readAllBytes(file)
                 }
             }
             "zip" -> ZipFile(path.toFile()).use { zip ->
                 val manifest = requireNotNull(manifestEntry(zip)) { "No layout manifest at the root of ${path.name}" }
                 val root = manifest.name.substringBeforeLast('/', "")
-                parse(text(zip, manifest), path.nameWithoutExtension, checkCancelled) { image, budget ->
+                parse(text(zip, manifest), path.nameWithoutExtension, checkCancelled) { image ->
                     val entry = zip.getEntry(if (root.isEmpty()) image else "$root/$image")?.takeUnless { it.isDirectory }
                         ?: throw IllegalArgumentException("Image not found in ${path.name}: $image")
-                    zip.getInputStream(entry).use { capped(it, budget, ::imagesTooLarge) }
+                    zip.getInputStream(entry).use { capped(it, MAX_IMAGE_BYTES) { imageTooLarge(image) } }
                 }
             }
             else -> throw IllegalArgumentException("A layout manifest is a .json file or a .zip archive: ${path.name}")
@@ -81,11 +83,13 @@ internal object LayoutManifest {
         val taken = layout.layers.mapNotNullTo(HashSet()) { it.id }
         val overrides = LinkedHashMap<String, LayerClassificationOverride>()
         val userTags = LinkedHashMap<String, Set<String>>()
+        val references = LinkedHashSet<String>()
         val count = layout.layers.size
         val layers = layout.layers.mapIndexed { index, layer ->
             val id = layer.id ?: StableIds.fresh(StableIds.stem("layer_", index, layer.name)) { it in taken }.also { taken += it }
             classification(layer)?.let { overrides[id] = it }
             layer.tags?.let(LayerTags::resolve)?.user?.takeIf { it.isNotEmpty() }?.let { userTags[id] = it }
+            if (layer.reference) references += id
             val bounds = WorkspaceMaterialEdits.enclosing(layer.rect)
             // Listed back to front; the source counts its order from the top-most layer.
             WorkspaceSourceLayer(LayerId(id), layer.name, layer.group, SourceLayerKind.Raster, layer.visible, count - 1 - index, bounds,
@@ -96,7 +100,7 @@ internal object LayoutManifest {
             val group = layout.groups[path]
             WorkspaceSourceGroup(path, path.substringAfterLast('/'), group?.visible ?: true, group?.opacity ?: 1f, false, LayerBlend.Normal, true)
         }
-        return Source(WorkspaceSourceArt(layout.width, layout.height, layers, groups), overrides, userTags)
+        return Source(WorkspaceSourceArt(layout.width, layout.height, layers, groups), overrides, userTags, references)
     }
 
     /**
@@ -108,7 +112,7 @@ internal object LayoutManifest {
             val hidden = prefixes(layer.group).any { layout.groups[it]?.visible == false }
             WorkspaceMaterialFiles.Entry(layer.name, folder + layer.group.split('/').filter { it.isNotEmpty() }, MaterialKind.BITMAP,
                 layer.raster, layer.rect, origin = "$origin#$index", opacity = layer.opacity, visible = layer.visible && !hidden,
-                placementWidth = layout.width, placementHeight = layout.height, tags = layer.tags.orEmpty())
+                placementWidth = layout.width, placementHeight = layout.height, tags = layer.tags.orEmpty(), reference = layer.reference)
         }
 
     private fun classification(layer: Layer): LayerClassificationOverride? {
@@ -121,7 +125,7 @@ internal object LayoutManifest {
             layer.variant.parameter, layer.variant.switchId)
     }
 
-    private fun parse(text: String, fallbackName: String, checkCancelled: () -> Unit, load: (String, Long) -> ByteArray): Layout {
+    private fun parse(text: String, fallbackName: String, checkCancelled: () -> Unit, load: (String) -> ByteArray): Layout {
         val root = runCatching { Json.parseToJsonElement(text) }.getOrNull() as? JsonObject
             ?: throw IllegalArgumentException("A layout manifest is a JSON object")
         require(root.text("format") == FORMAT) { "Not a PSD2Live layout manifest: format must be \"$FORMAT\"" }
@@ -139,7 +143,6 @@ internal object LayoutManifest {
         require(groups.size == groupList.size) { "groups lists a path twice" }
         val entries = root["layers"]?.jsonArray ?: throw IllegalArgumentException("The layout manifest has no layers")
         require(entries.size in 1..MAX_LAYERS) { "A layout manifest lists 1..$MAX_LAYERS layers" }
-        var budget = MAX_IMAGE_BYTES
         val images = HashMap<String, LayerRaster>()
         val ids = HashSet<String>()
         val layers = entries.mapIndexed { index, element ->
@@ -151,11 +154,8 @@ internal object LayoutManifest {
             val id = layer.text("id")?.also { require(it.matches(ID) && ids.add(it)) { "$at: id must be unique and match ${ID.pattern}" } }
             val image = layer.objectAt("image", at)
             val path = imagePath(image.text("path") ?: throw IllegalArgumentException("$at: image has no path"), at)
-            val raster = images.getOrPut(path) {
-                val bytes = load(path, budget)
-                budget -= bytes.size
-                WorkspaceMaterialFiles.bitmap(bytes, path)
-            }
+            // Each file is decoded as it is read, so only the decoded layers stay in memory.
+            val raster = images.getOrPut(path) { WorkspaceMaterialFiles.bitmap(load(path), path) }
             val pixelsWide = image.integer("width", "$at.image"); val pixelsHigh = image.integer("height", "$at.image")
             require(raster.width == pixelsWide && raster.height == pixelsHigh) {
                 "$at: $path is ${raster.width}x${raster.height} pixels, the manifest says ${pixelsWide}x$pixelsHigh" }
@@ -165,7 +165,8 @@ internal object LayoutManifest {
             val tags = layer["tags"]?.jsonArray?.mapTo(LinkedHashSet()) { LayerTags.normalize(it.jsonPrimitive.content).also(LayerTags::requireValid) }
             require(tags == null || !(LayerTags.LEFT in tags && LayerTags.RIGHT in tags)) { "$at: a layer is left or right, not both" }
             Layer(id, name, raster, rect, layer.text("group")?.let(::groupPath).orEmpty(), tags,
-                layer["variant"]?.let { variant(it.jsonObject, at) } ?: LayerVariant.NONE, layer.flag("visible") ?: true, layer.opacity(at))
+                layer["variant"]?.let { variant(it.jsonObject, at) } ?: LayerVariant.NONE, layer.flag("visible") ?: true, layer.opacity(at),
+                layer.flag("reference") ?: false)
         }
         return Layout(root.text("name")?.let { WorkspaceMaterialFiles.name(it, fallbackName) } ?: fallbackName, width, height, layers, groups)
     }
@@ -232,7 +233,7 @@ internal object LayoutManifest {
         return bytes
     }
 
-    private fun imagesTooLarge() = "A layout manifest's images are at most ${MAX_IMAGE_BYTES / (1024 * 1024)} MiB together"
+    private fun imageTooLarge(image: String) = "An image file is at most ${MAX_IMAGE_BYTES / (1024 * 1024)} MiB: $image"
 
     private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
     private fun JsonObject.flag(key: String): Boolean? = this[key]?.jsonPrimitive?.booleanOrNull

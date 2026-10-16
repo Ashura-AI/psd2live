@@ -19,11 +19,15 @@ import org.umamo.runtime.model.withDerivedRenderRoot
 internal object WorkspaceLayoutPreview {
     private val pipeline = PSD2LivePipeline()
 
-    /** The source layers [document] shows without generating them: all of them before the first generation, else those placed since. */
+    /**
+     * The source layers [document] shows without generating them: all of them before the first generation, else those
+     * placed since and the reference layers, which no generation reads.
+     */
     fun pendingIds(document: WorkspaceDocument): Set<String> {
         val generation = document.layout.generation
         val ids = document.source.layers.mapTo(LinkedHashSet()) { it.id.raw }
-        return if (!generation.generated) ids - document.deletedLayerIds else generation.pendingLayerIds.filterTo(LinkedHashSet()) { it in ids }
+        if (!generation.generated) return ids - document.deletedLayerIds
+        return (generation.pendingLayerIds + document.layout.referenceLayerIds).filterTo(LinkedHashSet()) { it in ids }
     }
 
     /** Whether [document] shows layers the generators do not read. */

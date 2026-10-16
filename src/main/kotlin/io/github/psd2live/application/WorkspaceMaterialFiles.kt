@@ -69,6 +69,8 @@ internal object WorkspaceMaterialFiles {
         val placementHeight: Int = 0,
         /** Semantic and user tags the item carries ([io.github.psd2live.core.LayerTags]). */
         val tags: Set<String> = emptySet(),
+        /** Placed as a reference layer by default ([io.github.psd2live.project.MaterialItem.reference]). */
+        val reference: Boolean = false,
     )
 
     /**

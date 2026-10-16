@@ -728,6 +728,7 @@ fun CanvasViewportComposable(
 			ShortcutAction.LAYER_FORWARD -> viewModel.reorderSelectedLayers("forward")
 			ShortcutAction.LAYER_BACKWARD -> viewModel.reorderSelectedLayers("backward")
 			ShortcutAction.LAYER_TO_BACK -> viewModel.reorderSelectedLayers("back")
+			ShortcutAction.LAYER_TOGGLE_REFERENCE -> viewModel.toggleSelectedLayersReference()
 			ShortcutAction.PICK_OPTION_1, ShortcutAction.PICK_OPTION_2, ShortcutAction.PICK_OPTION_3,
 			ShortcutAction.PICK_OPTION_4, ShortcutAction.PICK_OPTION_5 -> editor.pickVariant(action.pickIndex!!)
 			ShortcutAction.CANCEL -> {

@@ -66,7 +66,7 @@ internal object WorkspaceInspectionResultSchemas {
                 "side" to s.choices(*Side.entries.map { it.name.lowercase() }.toTypedArray()),
                 "type" to s.choices(*LayerType.entries.map { it.name.lowercase() }.toTypedArray()),
                 "parameter" to s.string(), "switch_id" to s.integer(0)))),
-            "refreshable" to s.array(s.handle())), setOf("generated")),
+            "refreshable" to s.array(s.handle()), "reference_layers" to s.array(s.handle())), setOf("generated")),
         page("objects", s.obj(objectRowFields, objectRowFields.keys - "layerId")), page("layers", layer), page("parameters", parameter),
         page("paths", s.obj(pathFields + ("target" to s.handle()))), page("vertex_groups", group),
     ))

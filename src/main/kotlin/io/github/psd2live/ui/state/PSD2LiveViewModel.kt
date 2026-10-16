@@ -6013,11 +6013,17 @@ class PSD2LiveViewModel : AutoCloseable {
 		kotlinx.serialization.json.buildJsonObject { put("id", id); put("width", width); put("height", height) })
 
 	/** Places material [id] on the canvas, centred at ([x], [y]) in canvas units, or at its own place when null. */
-	fun placeMaterial(id: String, x: Float? = null, y: Float? = null) = layoutEdit(tr("materials.placed"), io.github.psd2live.application.WorkspaceMaterialEdits.PLACE,
+	fun placeMaterial(id: String, x: Float? = null, y: Float? = null, reference: Boolean? = null) = layoutEdit(tr("materials.placed"), io.github.psd2live.application.WorkspaceMaterialEdits.PLACE,
 		kotlinx.serialization.json.buildJsonObject {
 			put("material_id", id)
 			if (x != null && y != null) put("at", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive(x)); add(kotlinx.serialization.json.JsonPrimitive(y)) })
+			if (reference != null) put("reference", reference)
 		})
+
+	/** Marks material items or folders to place as reference layers, or not (`material_mark_reference`). */
+	fun markMaterialsReference(ids: Collection<String>, reference: Boolean) = layoutEdit(
+		tr(if (reference) "materials.referenceMarked" else "materials.referenceUnmarked"), io.github.psd2live.application.WorkspaceMaterialEdits.MARK_REFERENCE,
+		kotlinx.serialization.json.buildJsonObject { put("ids", strings(ids)); put("reference", reference) })
 
 	/** Layer [layerId] shows material [materialId] over its unchanged rectangle: `layer_replace_image` with the material. */
 	fun replaceLayerWithMaterial(layerId: String, materialId: String) = layoutEdit(tr("materials.replaced"), "layer_replace_image",
@@ -6106,11 +6112,33 @@ class PSD2LiveViewModel : AutoCloseable {
 				})), MutationAuthor.USER) }
 	}
 
-	/** The selected layers the stack can move: every layer before the first generation, the layers placed since. */
+	/**
+	 * The selected layers the stack can move and that can be kept as reference: every layer before the first
+	 * generation, the layers placed since, the reference layers.
+	 */
 	fun reorderableSelection(state: PSD2LiveState = _state.value): List<String> {
 		val generation = state.layout.generation
 		return (listOfNotNull(state.selectedLayerId) + state.selectedLayerIds).distinct()
-			.filter { !generation.generated || it in generation.pendingLayerIds }
+			.filter { !generation.generated || it in generation.pendingLayerIds || it in state.layout.referenceLayerIds }
+	}
+
+	/** Keeps [layerIds] as reference layers or gives them back to the model (`layer_mark_reference`). */
+	fun markLayersReference(layerIds: Collection<String>, reference: Boolean) {
+		if (layerIds.isEmpty()) return
+		layoutEdit(tr(if (reference) "layers.reference.marked" else "layers.reference.unmarked", layerIds.size),
+			io.github.psd2live.application.WorkspaceLayoutEdits.MARK_REFERENCE,
+			kotlinx.serialization.json.buildJsonObject { put("layer_ids", strings(layerIds)); put("reference", reference) })
+	}
+
+	/**
+	 * Toggles the selected layers between reference and model: all of them back to the model when every one is a
+	 * reference, else all of them to reference. False when none can change.
+	 */
+	fun toggleSelectedLayersReference(): Boolean {
+		val ids = reorderableSelection()
+		if (ids.isEmpty()) return false
+		markLayersReference(ids, !ids.all { it in _state.value.layout.referenceLayerIds })
+		return true
 	}
 
 	/** Moves the selected layers in the stack ([to]: front, forward, backward, back) with `layer_reorder`; false when none can move. */

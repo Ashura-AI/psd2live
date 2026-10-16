@@ -51,7 +51,8 @@ internal class WorkspaceSourceImporter(
             require(path.isAbsolute && Files.isRegularFile(path)) { "Provide an absolute local layout manifest path" }
             val layout = readLayout(path)
             val source = LayoutManifest.source(layout)
-            Prepared(source.art, source.overrides, source.userTags, materials = path.fileName.toString(), materialFolder = layout.name)
+            Prepared(source.art, source.overrides, source.userTags, materials = path.fileName.toString(), materialFolder = layout.name,
+                references = source.references)
         }, project, layout = true)
 
     suspend fun createArtwork(arguments: JsonObject, projectId: String?, state: String, discardUnsaved: Boolean = false,
@@ -73,7 +74,8 @@ internal class WorkspaceSourceImporter(
      * whose layers also become materials (in a folder named [materialFolder], else after the file).
      */
     private class Prepared(val source: SourceArt, val overrides: Map<String, LayerClassificationOverride>,
-                           val userTags: Map<String, Set<String>> = emptyMap(), val materials: String? = null, val materialFolder: String? = null)
+                           val userTags: Map<String, Set<String>> = emptyMap(), val materials: String? = null, val materialFolder: String? = null,
+                           val references: Set<String> = emptySet())
 
     private suspend fun install(projectId: String?, state: String, discardUnsaved: Boolean, initialConfig: PipelineConfig,
                                 summary: String, prepare: suspend () -> Prepared,
@@ -97,7 +99,8 @@ internal class WorkspaceSourceImporter(
             rigEdits = RigEditOverlay.Empty, generationSource = null, meshSource = null, hairSimulationFront = false, hairSimulationBack = false)
         val created = WorkspaceDocument(source, emptyMap(), emptySet(), overrides, emptyMap(), RigEditOverlay.Empty,
             WorkspaceSettingsCodec.encode(config),
-            layout = if (layout) WorkspaceLayout(generation = WorkspaceGeneration.NotGenerated, layerTags = input.userTags) else WorkspaceLayout.Empty)
+            layout = if (layout) WorkspaceLayout(generation = WorkspaceGeneration.NotGenerated, layerTags = input.userTags,
+                referenceLayerIds = input.references) else WorkspaceLayout.Empty)
         // An imported file's layers are also materials of the new project, each layer showing its own: they can be
         // replaced, placed again or exported from the material browser. The rig reads only the source, as before.
         val document = input.materials?.let { file ->
