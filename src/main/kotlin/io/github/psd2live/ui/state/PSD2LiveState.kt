@@ -129,6 +129,8 @@ data class TabViewOptions(
 	val sourcePixels: Boolean = false,
 	/** Edit canvases lay the Layout reference image over the artwork at its opacity, when the document has one. */
 	val showReference: Boolean = true,
+	/** Edit canvases draw the reference layers over the model instead of under it. */
+	val referenceLayersOver: Boolean = false,
 	/** Edit canvases tint each layer by its texture pixels per canvas unit, as the atlas heatmap does. */
 	val densityHeatmap: Boolean = false,
 	/** How a preview canvas shows a running reference simulation against the baked export. */

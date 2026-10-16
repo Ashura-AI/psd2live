@@ -285,6 +285,7 @@ internal fun CanvasViewOptionsBar(
 	showSourcePixels: Boolean = false,
 	/** The document has a Layout reference image to lay over the canvas. */
 	hasReference: Boolean = false,
+	hasReferenceLayers: Boolean = false,
 	/** Edit canvases can tint layers by their texture density. */
 	showDensity: Boolean = false,
 	/** The skin weight wash over the skeleton's meshes: shown, hidden, or null with no skeleton to show it for. */
@@ -316,6 +317,14 @@ internal fun CanvasViewOptionsBar(
 				isChecked = options.showReference,
 				icon = { IconReferenceImage(tint = it) },
 				onClick = { apply(options.copy(showReference = !options.showReference)) },
+			)
+		}
+		if (hasReferenceLayers) {
+			RailToggle(
+				label = tr("canvas.visibility.referenceLayersOver"),
+				isChecked = options.referenceLayersOver,
+				icon = { IconReferenceImage(tint = it) },
+				onClick = { apply(options.copy(referenceLayersOver = !options.referenceLayersOver)) },
 			)
 		}
 		if (showDensity) {

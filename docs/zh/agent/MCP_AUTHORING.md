@@ -539,7 +539,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 
 一个典型流程：`project_create` → `material_import` → `material_list` → 若干 `layer_place`（或放置整个 PSD 文件夹）→ `layer_tag` → `layer_reorder` → `rig_generate` → 作者编辑 → 再 `layer_place` → `rig_generate`。外部工具已经拆好部件时，写出 Layout 清单，用 `project_import_layout` 一步得到摆好的未生成工程，检查后 `rig_generate`。
 
-`view_render_model` 另有 `grid`（每隔若干画布单位画带坐标标注的网格线，过密时按 ×2、×5、×10… 放宽，结果的 `gridStep` 为实际间距）与 `outline_material_ids`（把有画布位置的条目——绘制与裁出的特写——的不透明边缘按各自颜色描在视图上，附 id），用来读取坐标、对照绘制与参考图。只看参考图时给 `include_layer_ids: []` 与 `reference: {mode: under, opacity: 1}`。
+`view_render_model` 把参考图层（`layer_mark_reference`）垫在模型之下画出（`reference.mode` 为 `difference` 时只比较模型）。`view_render_model` 另有 `grid`（每隔若干画布单位画带坐标标注的网格线，过密时按 ×2、×5、×10… 放宽，结果的 `gridStep` 为实际间距）与 `outline_material_ids`（把有画布位置的条目——绘制与裁出的特写——的不透明边缘按各自颜色描在视图上，附 id），用来读取坐标、对照绘制与参考图。只看参考图时给 `include_layer_ids: []` 与 `reference: {mode: under, opacity: 1}`。
 
 按参考图绘制部件的流程：`layout_set_reference` → `reference_sample` 取色，`layout_set_drawing_kit` 定颜色与线条类 → 带 `grid` 的 `view_render_model` 放大看部件，`reference_trace` 取轮廓、`reference_snap` 校正线条上的点 → `material_draw`（被遮挡部分按形体画完整，原画的缺陷不照描）→ `outline_material_ids` 或放置后用 `reference` 对照 → 反复修改 → `layer_place`、`layer_tag` → `rig_generate` → `view_render_poses` 检查转动时露出的部分。
 

@@ -1403,6 +1403,12 @@ fun CanvasViewportComposable(
 						}
 					}
 
+					// 3a''. Reference layers under the model: drawn before the artwork, whose frame clears to transparent.
+					val referenceLayersShown = mode == CanvasMode.EDIT && showTexture && model.referenceLayerIds.isNotEmpty()
+					if (referenceLayersShown && !viewOptions.referenceLayersOver) drawIntoCanvas { target ->
+						ReferenceLayerPainter.paint(target.nativeCanvas, model, geometry, viewport, targetVisibleLayerIds)
+					}
+
 					// 3a. Texture Channel. The artwork always renders opaque; legibility of the
 					// overlays comes from the focus/dim options instead of a global transparency.
 					val paintLayerId = paintSession?.layerId
@@ -1455,6 +1461,11 @@ fun CanvasViewportComposable(
 							)
 						}
 					}
+
+				// 3a''. Reference layers over the model, when the view asks for them there.
+				if (mode == CanvasMode.EDIT && showTexture && viewOptions.referenceLayersOver && model.referenceLayerIds.isNotEmpty()) drawIntoCanvas { target ->
+					ReferenceLayerPainter.paint(target.nativeCanvas, model, geometry, viewport, targetVisibleLayerIds)
+				}
 
 				// 3a'. Layout reference and density heatmap over the artwork, in canvas units.
 				if (mode == CanvasMode.EDIT && viewOptions.densityHeatmap) {
@@ -1881,6 +1892,7 @@ fun CanvasViewportComposable(
 				showSelectionFocus = mode == CanvasMode.EDIT,
 				showSourcePixels = mode == CanvasMode.EDIT,
 				hasReference = mode == CanvasMode.EDIT && layoutReference != null,
+				hasReferenceLayers = mode == CanvasMode.EDIT && canvasState.previewModel?.referenceLayerIds?.isNotEmpty() == true,
 				showDensity = mode == CanvasMode.EDIT,
 				// The skin weights belong to the skeleton's meshes, so the toggle comes with an armature.
 				skinWeights = editor.showSkeletonWeights.takeIf { mode == CanvasMode.EDIT && editor.committedSkeleton != null },

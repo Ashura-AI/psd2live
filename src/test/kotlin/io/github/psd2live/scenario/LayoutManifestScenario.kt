@@ -185,9 +185,21 @@ class LayoutManifestScenario {
 		expect("marked", now.document.layout.referenceLayerIds == setOf(hair) &&
 			now.document.layout.materials.items.single { it.name == "back hair" }.reference) { "references ${now.document.layout.referenceLayerIds}" }
 		expect("listed", listed("reference_layers") == listOf(hair) && hair !in listed("pending_layers")) { "${inspect("generation")}" }
+		// A reference shows as a bare quad over its rectangle, drawn apart from the artwork: no atlas holds its pixels.
+		fun quad() = now.model.rig.puppet.drawables.single { now.model.rig.layerIdByDrawableId[it.id.raw] == hair }
+		fun corners() = quad().mesh!!.positions.toList()
+		fun apart(stage: String) = expect(stage, now.model.referenceLayerIds == setOf(hair) && hair !in now.model.atlas.placementByLayerId &&
+			quad().mesh!!.vertexCount == 4 && now.model.analysis.layers.any { it.source.id.raw == hair }) {
+			"references ${now.model.referenceLayerIds}, atlas ${now.model.atlas.placementByLayerId.keys}, ${quad().mesh!!.vertexCount} vertices" }
+		apart("apart before generating")
+		val r = now.document.source.layers.single { it.id.raw == hair }.canvasRect()
+		expect("over its rectangle", corners() == listOf(r.left, -r.top, r.right, -r.top, r.right, -r.bottom, r.left, -r.bottom)) { "corners ${corners()} for $r" }
+		edit("move the reference", "layer_transform", req("layer_id" to hair, "translate" to listOf(10, 4)))
+		expect("the quad follows", corners().let { it[0] == r.left + 10 && it[1] == -(r.top + 4) }) { "corners ${corners()}" }
 
 		edit("generate", "rig_generate", req())
 		expect("out of the rig", hair !in generated() && hair in shown() && "face" in generated()) { "generated ${generated()}, shown ${shown()}" }
+		apart("apart after generating")
 		expect("never waits", inspect("generation").let { it.getValue("pending_layers").jsonArray.isEmpty() && listed("reference_layers") == listOf(hair) }) {
 			"${inspect("generation")}" }
 		edit("the reference moves to the front", WorkspaceLayoutEdits.REORDER, req("layer_ids" to listOf(hair), "to" to "front"))
