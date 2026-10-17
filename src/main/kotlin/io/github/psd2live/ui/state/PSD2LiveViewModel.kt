@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.state
 
+import io.github.psd2live.core.withRigEdits
 import io.github.psd2live.application.SessionRecovery
 
 import io.github.psd2live.application.PendingPoseCommit
@@ -132,6 +133,16 @@ import io.github.psd2live.ui.theme.ThemeCodec
 import kotlin.math.sin
 
 class PSD2LiveViewModel : AutoCloseable {
+	internal val interior by lazy {
+		InteriorController(
+			state = { _state.value },
+			backend = { workspaceBackend },
+			scope = scope,
+			editorFor = ::canvasEditorFor,
+			editVisibility = { editCanvasVisibility(it) },
+			setView = { zoom, x, y, canvas, mode -> setCanvasView(zoom, x, y, canvas, mode) },
+		)
+	}
     /** Transient hover input; changing it invalidates the canvas without writing document state. */
     private var parameterSnapshotHover by mutableStateOf<ParameterSnapshotPreview?>(null)
 
@@ -346,12 +357,19 @@ class PSD2LiveViewModel : AutoCloseable {
      * Playback, swing and stale panel values can name parameters the model no longer has or sit past a range, and the
      * shared geometry commands reject both, so the pose is kept to the model.
      */
-    internal fun canvasPose(current: PSD2LiveState, live: Map<ParameterId, Float> = livePose.value): Map<ParameterId, Float> {
-        val pose = shownPose(current, live) + swingPreviewValues
-        val parameters = current.previewModel?.rig?.puppet?.parameters ?: return pose
-        val known = parameters.mapTo(HashSet()) { it.id }
-        return io.github.psd2live.core.boundedPreviewPose(pose.filterKeys { it in known }, parameters)
-    }
+	internal fun canvasPose(
+		current: PSD2LiveState,
+		live: Map<ParameterId, Float> = livePose.value,
+	): Map<ParameterId, Float> {
+		val trial = interior.poseFor(current)
+		val pose = shownPose(current, live) + swingPreviewValues + trial
+		val parameters =
+			interior.modelFor(current)?.parameters
+				?: current.previewModel?.rig?.puppet?.parameters
+				?: return pose
+		val known = parameters.mapTo(HashSet()) { it.id }
+		return io.github.psd2live.core.boundedPreviewPose(pose.filterKeys { it in known }, parameters)
+	}
 
     internal fun applySwingPreview(preview: io.github.psd2live.application.WorkspaceSwingPreview) {
         val current = _state.value
@@ -3540,14 +3558,14 @@ class PSD2LiveViewModel : AutoCloseable {
 	/** Every physics group of the current model, as export sees it; see [PhysicsCatalog.groups]. */
 	fun physicsGroups(state: PSD2LiveState = _state.value): List<PhysicsGroup> {
 		val model = state.previewModel ?: return emptyList()
-		val key = listOf(model.analysis, model.rig.puppet.parameters, state.rigEdits.physicsEdits, state.rigEdits.disabledPhysicsIds, state.rigEdits.physicsOrder,
+		val key = listOf(model.analysis, model.rig.puppet, state.rigEdits.interiorEffects, state.rigEdits.physicsEdits, state.rigEdits.disabledPhysicsIds, state.rigEdits.physicsOrder,
 			state.rigEdits.skeleton, state.rigEdits.swingEdits, state.physicsFrontHair, state.physicsBackHair, state.physicsEyeJelly,
 			state.hairSimulationFront, state.hairSimulationBack, state.rigEdits.importedCmo3)
 		physicsCatalogCache?.let { (k, groups) -> if (k == key) return groups }
 		val groups = PhysicsCatalog.groups(if (state.rigEdits.importedCmo3 != null) PhysicsGenerator.Presets(false, false, false)
 			else PhysicsGenerator.Presets.present(model.analysis, state.hairSimulationFront, state.hairSimulationBack),
 			PhysicsGenerator.Presets(state.physicsFrontHair, state.physicsBackHair, state.physicsEyeJelly),
-			state.rigEdits, model.rig.puppet.parameters.mapTo(HashSet()) { it.id.raw })
+			state.rigEdits, model.rig.puppet.parameters.mapTo(HashSet()) { it.id.raw }, model.rig.puppet)
 		physicsCatalogCache = key to groups
 		return groups
 	}
@@ -7623,6 +7641,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	override fun close() {
 		if (!isClosed.compareAndSet(false, true)) return
+        interior.close()
         meshSplitCheck.cancel()
 		motionJob?.cancel()
 		previewRebuildJob?.cancel()
