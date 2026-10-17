@@ -1,3 +1,16 @@
+## v3.5.1 · 2026-10-17
+
+### New
+
+- **Interior shaping**: give a mesh outline-preserving surface changes inside it (bulge, press, folds), try them with the pointer; saved with the project and exported.
+- **Unity prefab export**: Export → Unity Prefab… bakes parameters and motions into blend shapes and an Animator, so the character folder drops into a Unity project.
+- **Reference layers**: keep a layer as reference (Ctrl+Alt+R): it stays on the canvas but out of the rig and exports.
+- **Layout manifest**: open a Layout project from a psd2live-layout manifest; layers not generated yet move to the front or back, or a step forward or backward.
+
+### Fixed
+
+- Fractional draw orders in CMO3 export, CMO3 imports that hung or drifted in draw order, 3.5.0 material and generation regressions, and a crash in the Animation workspace.
+
 ## v3.5.0 · 2026-10-15
 
 ### New
