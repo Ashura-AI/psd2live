@@ -232,9 +232,16 @@ class WindowGpu internal constructor(
 		}
 	}
 
-	/** Runs the posted tasks now if this thread is rendering the window. */
+	/**
+	 * Runs the posted tasks now if this thread is rendering the window. A task's own failure is caught in
+	 * [runTasks]; this also catches the turn's setup and state restores, which run inside the window's draw too.
+	 */
 	fun drain() {
-		if (tasks.isNotEmpty()) turn { }
+		if (tasks.isNotEmpty()) try {
+			turn { }
+		} catch (failure: Exception) {
+			System.err.println("GPU turn failed: $failure")
+		}
 	}
 
 	/** Queues [task] for the next turn and asks the window to render one; any thread. */
@@ -301,7 +308,7 @@ class WindowGpu internal constructor(
 				if (compositor !== composer) return inner.onRender(canvas, width, height, nanoTime)
 				pacing.frame(System.nanoTime())
 				resumeFrameWaiters(nanoTime)
-				if (tasks.isNotEmpty()) turn { }
+				drain()
 				if (compositor !== composer) return inner.onRender(canvas, width, height, nanoTime)
 				val skia = if (COMPOSITING && makeCurrent()) directContext() else null
 				val composited = skia != null && runCatching { composer.render(canvas, width, height, nanoTime, skia) }
@@ -358,14 +365,14 @@ internal class MultisampledWindow(private val gpu: WindowGpu) {
 
 	/** Records [draw] and draws it into [canvas] through the multisampled target; false when it did not. */
 	fun render(canvas: org.jetbrains.skia.Canvas, width: Int, height: Int, draw: (org.jetbrains.skia.Canvas) -> Unit): Boolean {
-		if (samples <= 1 || failed || width <= 0 || height <= 0) return false
+		if (samples <= 1 || failed || !supported || width <= 0 || height <= 0) return false
 		if (!gpu.isCurrentContext()) return false
 		val context = gpu.directContext() ?: return false
 		var surface = surface
 		if (surface == null || surface.width != width || surface.height != height) {
 			surface?.close()
-			surface = org.jetbrains.skia.Surface.makeRenderTarget(context, false, org.jetbrains.skia.ImageInfo.makeN32Premul(width, height),
-				samples, org.jetbrains.skia.SurfaceOrigin.TOP_LEFT, org.jetbrains.skia.SurfaceProps(pixelGeometry = gpu.pixelGeometry ?: org.jetbrains.skia.PixelGeometry.UNKNOWN), false)
+			surface = target(context, org.jetbrains.skia.ImageInfo.makeN32Premul(width, height),
+				org.jetbrains.skia.SurfaceProps(pixelGeometry = gpu.pixelGeometry ?: org.jetbrains.skia.PixelGeometry.UNKNOWN))
 			this.surface = surface
 			if (surface == null) { failed = true; return false }
 		}
@@ -385,6 +392,26 @@ internal class MultisampledWindow(private val gpu: WindowGpu) {
 	companion object {
 		/** The window's samples, also those of the compositor's cached picture ([WindowCompositor]). */
 		val SAMPLES = System.getProperty("psd2live.msaa")?.toIntOrNull() ?: 4
+
+		/**
+		 * False once a multisampled target could not be made. Some drivers (Intel UHD on Windows) report no sample
+		 * counts for any format, and Skiko throws rather than returning null then: uncaught on the frame, that ends
+		 * Skiko's frame loop and the window stops drawing.
+		 */
+		@Volatile var supported = true
+			private set
+
+		/** A [SAMPLES]-sampled target, or null when MSAA is off or the GPU cannot make one. */
+		fun target(context: org.jetbrains.skia.DirectContext, info: org.jetbrains.skia.ImageInfo, props: org.jetbrains.skia.SurfaceProps): org.jetbrains.skia.Surface? {
+			if (SAMPLES <= 1 || !supported) return null
+			return try {
+				org.jetbrains.skia.Surface.makeRenderTarget(context, false, info, SAMPLES, org.jetbrains.skia.SurfaceOrigin.TOP_LEFT, props, false)
+			} catch (failure: Exception) {
+				supported = false
+				System.err.println("Multisampled window target unavailable, drawing without MSAA: $failure")
+				null
+			}
+		}
 	}
 }
 
