@@ -1,3 +1,9 @@
+## v3.5.2 · 2026-10-18
+
+### Fixes
+
+- The window no longer freezes or goes black when the GPU cannot multisample or a canvas GPU draw fails; it falls back to a compatible way of drawing (#48).
+
 ## v3.5.1 · 2026-10-17
 
 ### New
