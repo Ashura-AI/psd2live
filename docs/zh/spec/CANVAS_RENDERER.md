@@ -21,8 +21,10 @@
 
 - Windows 上 `SkiaGpu.requestOpenGl()` 在创建窗口前让 Skiko 使用 OpenGL（默认是 Direct3D）；用户显式设置的 `skiko.renderApi` / `SKIKO_RENDER_API` 保持不变。Linux 上 Skiko 本来就用 OpenGL。窗口不是 OpenGL（macOS、软件渲染）时画布走软件路径，预览报告原因。
 - `SkiaGpu.of(window)` 从窗口的 `SkiaLayer` 读出 Skiko OpenGL 重绘器的上下文句柄与绘制它的 `DirectContext`（反射，Skiko 未公开），得到 `WindowGpu`。每个窗口（主窗口、浮动停靠窗口）各有一个，资源互不共享。
+- `SkiaLayer.PropertyKind.Renderer` 变化后刷新主窗口 GPU、状态与所有画布的上下文查询；软件回退和重新建立 OpenGL 都会生效，浮动窗口同样受监听。旧 `WindowGpu` 不再执行 GL 工作，等待旧帧的协程被唤醒，由画布取消或换用新窗口状态。
 - **轮次**（`WindowGpu.turn`）：只在该上下文正当前时执行（`wglGetCurrentContext` / `glXGetCurrentContext` 比对），开始和结束都把 Skia 留下而绘制方不会自己复位的状态恢复为 GL 默认值（模板裁剪测试、采样器对象、像素缓冲、行长度、默认顶点数组上的缓冲与属性等），结束时 `DirectContext.resetGLAll()` 让 Skia 重新设置自己的状态。
 - 轮次出现在两处：画布绘制时（`CanvasGpu.draw`、预览画布的 `drain`），以及包在窗口渲染委托外层、每帧 Compose 绘制之前执行的投递任务（`WindowGpu.post`，用于加载、释放和不由画布触发的工作）。
+- 默认 VAO 的索引缓冲、属性和 divisor 只在兼容配置下清理；核心配置只解绑 VAO 与数组缓冲，由绘制器绑定自己的 VAO，避免修改 VAO 0 产生 `GL_INVALID_OPERATION`。
 - `GpuTarget`：每个视图一张只增不减的纹理（Skia 以 `Image.adoptTextureFrom`、`TOP_LEFT` 接管）加深度模板缓冲。内容在左上角、首行在上；按 GL 习惯自下而上绘制的（Cubism）先画进场景缓冲，再用 `glBlitFramebuffer` 垂直翻转拷入。每帧覆盖同一张纹理：上一帧对它的采样在同一上下文中更早提交，GPU 按序执行，无需围栏。
 
 ### 10.2 编辑画布与纹理集页面
@@ -43,7 +45,7 @@
 
 - 两者都只渲染工作区时钟给出的完整姿势，不运行自己的动作或拖动；p2lrt 的扩展（高级）模式在每个视图的模型上开启 `p2l_set_advanced` 的功能。实时模拟与碰撞由**物理开关**控制，与播放无关：物理开启时以 `p2l_update_stages(dt, P2L_STAGE_SIM)` 按帧时间只推进实时模拟（暂停时也继续摆动，帧泵不进入静止等待），工作区已合成的物理结果保持原值；物理关闭时关掉模拟与碰撞，显示烘焙的摆动，只保留蒙皮与精确链接，以 `p2l_evaluate` 求值。
 - p2lrt 后台编译读取一次共享模型，并准备其蒙皮权重；各视图持有独立的姿势与模拟状态，开启扩展时复用拟合结果。渲染任务执行期间的新请求与编译完成通知会保留一次后续唤醒，暂停视图也会更新到新模型。没有适用扩展、或仅有模拟扩展但物理未开启时，状态胶囊说明原因。
-- `PreviewSessions` 把两者放在同一个接口后：Cubism 库起不来时自动改用 p2lrt 并写日志；两者都不可用时，画布才用编辑画布的绘制路径兜底。
+- `PreviewSessions` 把两者放在同一个接口后：Cubism 库、模型加载或绘制失败时自动改用 p2lrt 并写日志；两者都不可用时，画布才用编辑画布的绘制路径兜底。核心配置在加载原生库之前被拒绝；已有绑定也不能在替换后的上下文中使用旧模型句柄。
 - 原生调用都是 `GpuExecutor` 的任务：应用里在窗口轮次中执行（`PrimaryGpuExecutor`、`WindowGpu.post`），测试里在普通线程上执行。帧泵每帧请求一帧后递增画布读取的计数，画布绘制时先 `drain` 执行本帧的渲染任务，再画该视图的纹理，所以显示的是刚请求的那一帧。
 - Cubism 在主窗口上下文中以 `Live2D_Init` 初始化，以 `Live2D_Draw` 画进当前帧缓冲。框架的着色器等状态只存在于一个上下文，所以浮动窗口里的预览画布由 p2lrt 绘制。Cubism 的渲染器从客户端内存取顶点，需要兼容配置的上下文（Skia 在 Windows 上是传统兼容上下文）；核心配置下报告错误而不绘制。
 - 原生桥接：旧版 `Live2D_CreateModelFromMemory` 总是切换到桥接自己的隐藏上下文，模型会落到错误的上下文里。重新构建的桥接导出 `Live2D_UsesCallerContext`，`Live2D_Init` 之后内存加载也使用调用方上下文；旧桥接在此模式下改为从临时文件加载（`Live2D_CreateModel`），每次重载都完整重建。
@@ -59,6 +61,7 @@
 
 - **窗口合成器**（`WindowCompositor`，装在 `WindowGpu` 的渲染委托里）：每帧先唤醒预览帧泵并执行 GPU 任务（渲染预览纹理），再让 Compose 照常运行并录制到一张廉价的 Picture；只有场景的 `SnapshotInvalidationTracker` 报告过重绘或重排请求（其回调被包了一层计数）或窗口尺寸变化时，才把录制回放进缓存纹理；缓存纹理与上面的窗口目标一样是多重采样的（`psd2live.msaa`），不合成时窗口仍走 `MultisampledWindow`。窗口画面是各 `CompositedView`（预览背景、画布边框与最新帧）之上叠缓存纹理。Compose 内部经反射取得；拿不到、或窗口上下文不是当前上下文时按原方式绘制（`WindowGpu.composited` 为假）。`-Dpsd2live.compositor=false` 关闭。
 - **预览画布挖洞**：合成时，使用原生帧的预览画布登记 `CompositedView` 并以 `BlendMode.Clear` 清掉自己的区域，其后绘制的工具栏、菜单仍在缓存画面里、位于预览之上。画布的绘制与组合都不读逐帧状态：帧泵在挖洞时不递增 `previewTick`，组合只读后端、扩展模式这类少变的值。
+- MSAA 关闭或分配失败时，窗口缓存和编辑画布合成层都改用零采样纹理；仅在内容失效时重画的缓存规则不变。`GpuCompatibilityTool` 检查两种 GL profile 的状态清理、无 MSAA 时的缓存命中和失效后的像素，以及主窗口与浮动窗口的后端替换。
 - **帧泵**等 `WindowGpu.awaitFrame` 而不是 Compose 的帧时钟（帧时钟上有等待者，Compose 每帧都要重画），在 `Dispatchers.Main.immediate` 上运行，于该帧开头内联请求预览帧。
 - 播放中写入文档状态的预览姿势降到每 0.5 秒一次：每次写入都会让读取状态的面板重新组合、窗口整幅重画。面板读 `livePoseShown`（最多约 60 Hz）；参数行只在轨道与二维面板的绘制、数值文本和重置按钮状态处读取实时值，数值框获得焦点前是文本；不显示姿势的面板（层级树、骨骼、历史、日志、模型预设、图层表）在只有姿势（预览姿势或作者姿势）变化时保留原状态实例（`withoutPose`，逐字段换入新姿势后比较，相同的子对象按引用短路，不做整份拷贝）。停靠树本身（分栏、标签、面板头）同样只拿不含姿势的状态，各模块在自己的组合作用域里读取实时状态，姿势变化时只有画布与参数等读姿势的模块重组。
 - 拖动参数滑块时每个指针采样都写入作者姿势。参数行经 `ParameterRowState` 分别订阅作者姿势、锁定集合与可编辑状态，不随整个状态重组；作者姿势属于持久内容，但拖动期间不逐采样通知恢复检查点（每次都要编码整份文档并重写检查点），松手时通知一次。

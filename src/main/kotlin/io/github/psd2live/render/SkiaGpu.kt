@@ -12,6 +12,7 @@ import java.awt.Container
 import java.awt.Window
 import java.lang.reflect.Field
 import java.lang.reflect.Method
+import java.lang.ref.WeakReference
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.coroutines.resume
@@ -40,6 +41,11 @@ object SkiaGpu {
 	private val isWindows = System.getProperty("os.name").orEmpty().contains("windows", ignoreCase = true)
 	private val isLinux = System.getProperty("os.name").orEmpty().contains("linux", ignoreCase = true)
 	private val windows = WeakHashMap<Window, WindowGpu?>()
+	private val observedLayers = WeakHashMap<SkiaLayer, Boolean>()
+	private var primaryWindow = WeakReference<Window>(null)
+	private val _contextChanges = MutableStateFlow(0L)
+	/** Invalidates per-window lookups when Skiko replaces a renderer, including floating windows. */
+	val contextChanges: StateFlow<Long> = _contextChanges.asStateFlow()
 
 	private val _primary = MutableStateFlow<WindowGpu?>(null)
 	/** The main window's GPU; runtimes whose state lives in one context (Cubism) draw there. */
@@ -57,7 +63,7 @@ object SkiaGpu {
 	}
 
 	internal fun refreshStatus(gpu: WindowGpu) {
-		if (_status.value is Status.Ready) _status.value = Status.Ready(gpu.description)
+		if (gpu === primary) _status.value = Status.Ready(gpu.description)
 	}
 
 	private val primaryWaiters = ConcurrentLinkedQueue<(WindowGpu) -> Unit>()
@@ -71,6 +77,7 @@ object SkiaGpu {
 
 	/** Makes [window] the main window once it draws; retries while Skiko is still creating its redrawer. */
 	fun capturePrimary(window: Window) {
+		primaryWindow = WeakReference(window)
 		fun attempt(remaining: Int) {
 			val gpu = of(window)
 			if (gpu != null) {
@@ -92,9 +99,9 @@ object SkiaGpu {
 	fun of(window: Window?): WindowGpu? {
 		window ?: return null
 		synchronized(windows) {
-			windows[window]?.let { if (it.valid()) return it }
+			windows[window]?.let { if (it.valid()) return it else it.rendererLost() }
 			val made = runCatching { resolve(window) }.getOrNull()
-			if (made != null) windows[window] = made
+			windows[window] = made
 			return made
 		}
 	}
@@ -118,6 +125,7 @@ object SkiaGpu {
 
 	private fun resolve(window: Window): WindowGpu? {
 		val layer = findLayer(window) ?: return null
+		observeRenderer(window, layer)
 		val redrawer = redrawerGetter?.invoke(layer) ?: return null
 		val type = redrawer.javaClass
 		if (type.simpleName != "WindowsOpenGLRedrawer" && type.simpleName != "LinuxOpenGLRedrawer") return null
@@ -128,6 +136,25 @@ object SkiaGpu {
 		// The window's HDC, to make its context current outside Skiko's own draw (Windows only).
 		val device = if (isLinux) 0L else runCatching { type.getDeclaredField("device").apply { isAccessible = true }.getLong(redrawer) }.getOrDefault(0L)
 		return WindowGpu(layer, redrawer, context, device, handler, field, if (isLinux) Platform.GLX else Platform.WGL)
+	}
+
+	private fun observeRenderer(window: Window, layer: SkiaLayer) {
+		if (observedLayers.put(layer, true) != null) return
+		val owner = WeakReference(window)
+		layer.onStateChanged(SkiaLayer.PropertyKind.Renderer) {
+			// The callback can precede the replacement redrawer's initialization. Resolve after it completes.
+			javax.swing.SwingUtilities.invokeLater {
+				val currentWindow = owner.get() ?: return@invokeLater
+				val replacement = of(currentWindow)
+				if (primaryWindow.get() === currentWindow) {
+					_primary.value = replacement
+					_status.value = replacement?.let { Status.Ready(it.description) } ?: Status.Unavailable(failure(currentWindow))
+					if (replacement != null) while (true) { val next = primaryWaiters.poll() ?: break; next(replacement) }
+				}
+				_contextChanges.value += 1
+				currentWindow.repaint()
+			}
+		}
 	}
 
 	private fun findLayer(root: java.awt.Component): SkiaLayer? {
@@ -193,6 +220,11 @@ class WindowGpu internal constructor(
 
 	internal fun valid(): Boolean = SkiaGpu.sameRedrawer(layer, redrawer)
 
+	internal fun rendererLost() {
+		_composited.value = false
+		resumeFrameWaiters(System.nanoTime())
+	}
+
 	/** The `DirectContext` that draws the window; null before its first frame. */
 	internal fun directContext(): DirectContext? = runCatching { contextField.get(handler) as? DirectContext }.getOrNull()
 
@@ -210,7 +242,7 @@ class WindowGpu internal constructor(
 	 * null when the calling thread is not rendering this window (the block does not run).
 	 */
 	fun <T> turn(block: (GpuResources) -> T): T? {
-		if (!isCurrent()) return null
+		if (!valid() || !isCurrent()) return null
 		if (javax.swing.SwingUtilities.isEventDispatchThread()) ensureInstalled()
 		val skia = directContext() ?: return null
 		if (capabilities == null) {
@@ -299,6 +331,7 @@ class WindowGpu internal constructor(
 
 	/** Runs posted tasks at the start of every frame the window renders, then draws it through the compositor. */
 	private fun ensureInstalled() {
+		if (!valid()) return
 		val current = layer.renderDelegate ?: return
 		if (current === installed) return
 		val inner = current
@@ -307,6 +340,7 @@ class WindowGpu internal constructor(
 		compositor = composer
 		val wrapper = object : SkikoRenderDelegate {
 			override fun onRender(canvas: org.jetbrains.skia.Canvas, width: Int, height: Int, nanoTime: Long) {
+				if (!valid()) return inner.onRender(canvas, width, height, nanoTime)
 				// Replaced by a wrapper around this one (another delegate wrapped it meanwhile): that one does the work.
 				if (compositor !== composer) return inner.onRender(canvas, width, height, nanoTime)
 				pacing.frame(System.nanoTime())

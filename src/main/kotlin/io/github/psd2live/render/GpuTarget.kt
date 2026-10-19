@@ -26,7 +26,7 @@ class GpuFrame internal constructor(val image: Image, val width: Int, val height
  * of the same context, so the GPU finishes that before this frame's draw lands. It only grows, so a dock drag
  * that resizes every frame allocates nothing.
  */
-internal class GpuTarget {
+internal class GpuTarget(private val coreProfile: Boolean) {
 	private var texture = 0
 	private var depthStencil = 0
 	private var framebuffer = 0
@@ -57,7 +57,7 @@ internal class GpuTarget {
 		GL11.glClear(GL11.GL_COLOR_BUFFER_BIT or GL11.GL_DEPTH_BUFFER_BIT or GL11.GL_STENCIL_BUFFER_BIT)
 		// The default vertex array, emptied of what Skia left on it: Cubism's renderer draws from client-side arrays
 		// there, and a buffer still bound (or an attribute still enabled) would make it read Skia's buffers instead.
-		cleanDefaultVertexArray()
+		cleanDefaultVertexArray(coreProfile)
 		GL20.glUseProgram(0)
 		draw()
 		if (bottomUp) {
@@ -182,10 +182,12 @@ internal fun clearGlErrors() {
 	repeat(8) { if (GL11.glGetError() == GL11.GL_NO_ERROR) return }
 }
 
-/** Binds vertex array 0 with no array or index buffer and every attribute array off. */
-internal fun cleanDefaultVertexArray() {
+/** Unbinds the VAO and array buffer; clears VAO 0's state only where a compatibility profile permits it. */
+internal fun cleanDefaultVertexArray(coreProfile: Boolean) {
 	GL30.glBindVertexArray(0)
 	GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, 0)
+	// VAO 0 has no editable element/attribute state in a core profile. Our core renderers bind their own VAOs.
+	if (coreProfile) return
 	GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, 0)
 	for (attribute in 0 until 16) {
 		GL20.glDisableVertexAttribArray(attribute)
@@ -209,7 +211,7 @@ class GpuResources internal constructor(private val gpu: WindowGpu) {
 
 	/** Draws [viewId]'s frame with [draw] (see [GpuTarget.render]). */
 	fun render(viewId: String, width: Int, height: Int, bottomUp: Boolean, draw: () -> Unit): GpuFrame? =
-		targets.getOrPut(viewId) { GpuTarget() }.render(skia, width, height, bottomUp, draw)
+		targets.getOrPut(viewId) { GpuTarget(coreProfile) }.render(skia, width, height, bottomUp, draw)
 
 	/** What [viewId] drew last. */
 	fun frame(viewId: String): GpuFrame? = targets[viewId]?.last
@@ -241,7 +243,7 @@ class GpuResources internal constructor(private val gpu: WindowGpu) {
 	 * Runs at the start and the end of every turn.
 	 */
 	internal fun restoreDefaults() {
-		cleanDefaultVertexArray()
+		cleanDefaultVertexArray(coreProfile)
 		GL20.glUseProgram(0)
 		for (unit in 0 until 8) {
 			GL13.glActiveTexture(GL13.GL_TEXTURE0 + unit)

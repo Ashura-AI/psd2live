@@ -146,6 +146,8 @@ class CubismSdkPreviewSession internal constructor(
 	private var binding: CubismNativeBinding? = null
 	/** The context's resources while a task runs; null in tests. */
 	private var resources: io.github.psd2live.render.GpuResources? = null
+	/** Native renderer objects belong to the context that initialized the binding. */
+	private var bindingResources: io.github.psd2live.render.GpuResources? = null
 	/** How the session renders, for the log; null until the library is loaded. */
 	@Volatile var renderPath: String? = null
 		private set
@@ -637,6 +639,8 @@ class CubismSdkPreviewSession internal constructor(
 	 * have none (tests).
 	 */
 	private fun initializeBinding(stage: (String) -> Unit): CubismNativeBinding {
+		check(resources?.coreProfile != true) { "Cubism needs a compatibility OpenGL context; the window's is a core profile" }
+		bindingResources = resources
 		stage("load native library")
 		val loaded = nativeLoader()
 		val native = loaded.api
@@ -705,6 +709,10 @@ class CubismSdkPreviewSession internal constructor(
 	/** Queues [task] as a GPU task; false once the executor is closed. */
 	private fun onNativeThread(task: () -> Unit): Boolean =
 		gpu.execute { context ->
+			if (binding != null && bindingResources !== context) {
+				postStatus("Cubism cannot reuse a model after its OpenGL context was replaced")
+				return@execute
+			}
 			resources = context
 			try { task() } finally { resources = null }
 		}

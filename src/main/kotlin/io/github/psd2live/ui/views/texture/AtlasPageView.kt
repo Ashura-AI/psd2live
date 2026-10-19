@@ -254,7 +254,8 @@ private fun AtlasPageCanvas(state: PSD2LiveState, vm: PSD2LiveViewModel, snapsho
 	val softwareCanvas by AppSettings.softwareCanvasFlow.collectAsState()
 	val awtWindow = io.github.psd2live.ui.views.LocalAwtWindow.current
 	val gpuPrimary by io.github.psd2live.render.SkiaGpu.primaryFlow.collectAsState()
-	val gpuAvailable = remember(gpuPrimary, awtWindow) { CanvasGpu.available(awtWindow) }
+	val gpuContextChanges by io.github.psd2live.render.SkiaGpu.contextChanges.collectAsState()
+	val gpuAvailable = remember(gpuPrimary, gpuContextChanges, awtWindow) { CanvasGpu.available(awtWindow) }
 	val livePage = remember(state.previewModel, snapshot, page) {
 		if (!snapshot.upscaled) null else state.previewModel?.atlas?.takeIf(snapshot::matches)?.pages?.getOrNull(page)?.image
 	}

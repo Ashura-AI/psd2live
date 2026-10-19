@@ -175,7 +175,8 @@ internal class WindowCompositor(private val gpu: WindowGpu, private val inner: S
 			layers.remove(name)?.close()
 			val info = ImageInfo(w, h, ColorType.RGBA_8888, ColorAlphaType.PREMUL, ColorSpace.sRGB)
 			val props = SurfaceProps(gpu.pixelGeometry ?: PixelGeometry.UNKNOWN)
-			val surface = MultisampledWindow.target(skia, info, props) ?: return null
+			val surface = MultisampledWindow.target(skia, info, props)
+				?: runCatching { Surface.makeRenderTarget(skia, false, info, 0, props) }.getOrNull() ?: return null
 			layer = Layer(surface, w, h).also { layers[name] = it }
 			redraw = true
 		}

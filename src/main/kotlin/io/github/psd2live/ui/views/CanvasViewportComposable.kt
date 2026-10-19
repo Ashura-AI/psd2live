@@ -408,7 +408,9 @@ fun CanvasViewportComposable(
 	val awtWindow = LocalAwtWindow.current
 	val softwareCanvas by AppSettings.softwareCanvasFlow.collectAsState()
 	val gpuPrimary by SkiaGpu.primaryFlow.collectAsState()
-	val gpuAvailable = remember(gpuPrimary, awtWindow) { CanvasGpu.available(awtWindow) }
+	val gpuContextChanges by SkiaGpu.contextChanges.collectAsState()
+	val previewGpu = remember(gpuPrimary, gpuContextChanges, awtWindow) { SkiaGpu.of(awtWindow) }
+	val gpuAvailable = previewGpu != null
 	val gpuReady = !softwareCanvas && !sourcePixels && gpuAvailable && !CanvasGpu.failed
 	// One GPU view per canvas whatever its mode: a switch keeps its meshes and page textures on the GPU.
 	val gpuKey = viewModel.canvasRenderKey(canvasId, CanvasMode.EDIT)
@@ -631,7 +633,6 @@ fun CanvasViewportComposable(
 				?.takeIf { editor.layerCandidates(at, viewport).isEmpty() }
 	}
 
-	val previewGpu = remember(gpuPrimary, awtWindow) { SkiaGpu.of(awtWindow) }
 	// The GPU edit canvas and its overlay are composited together: the overlay paints over the artwork's hole.
 	val editComposited = mode == CanvasMode.EDIT && gpuReady && previewModel != null
 	// Read where the canvas draws: each requested frame redraws it, and the draw runs the GPU work first. Not while
@@ -1390,7 +1391,7 @@ fun CanvasViewportComposable(
 			// The preview runtimes' GPU work for this frame runs here, in the window's Skia context, so the
 			// texture drawn below is the frame just requested.
 			previewTick.intValue
-			val previewDrawn = if (mode == CanvasMode.PREVIEW) previewGpu?.let { gpu -> gpu.drain(); gpu.resources.frame(renderKey) } else null
+			val previewDrawn = if (mode == CanvasMode.PREVIEW) previewGpu?.takeIf { it.valid() }?.let { gpu -> gpu.drain(); gpu.resources.frame(renderKey) } else null
 			// Path guides never paint outside the Edit tab (see 3e), so they cannot force the
 			// preview off its native SDK frame.
 			val canUseNativeSdk = mode == CanvasMode.PREVIEW &&

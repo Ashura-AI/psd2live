@@ -104,8 +104,8 @@ class PreviewSessions(
 
 	private fun cubismStatus(status: String?) {
 		if (active != PreviewBackend.CUBISM) return
-		// The library or its context could not start: no Cubism frame will come, so p2lrt draws instead.
-		if (status != null && status != "ready" && cubism.renderPath == null && p2lrtAvailable()) {
+		// Initialization can succeed before model creation or drawing reveals an incompatible context/driver.
+		if (status != null && status != "ready" && p2lrtAvailable()) {
 			cubismFailure = status
 			activate(PreviewBackend.P2LRT)
 			return
