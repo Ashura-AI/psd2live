@@ -1,7 +1,6 @@
 package io.github.psd2live.ui.state
 
 import io.github.psd2live.i18n.AppLanguage
-import io.github.psd2live.ui.tutorial.TutorialPath
 
 /**
  * The help page's manual and tutorials, laid out like the Cubism Editor manual and tutorial site: the same folders in
@@ -11,10 +10,7 @@ import io.github.psd2live.ui.tutorial.TutorialPath
  * A language without a page reads the English, then the Chinese.
  */
 internal object Manual {
-	/** The step-by-step tutorials for newcomers: where the tutorial catalog opens. */
-	const val FIRST_TUTORIAL = "interactive-beginner"
-
-	/** The manual's first page. */
+	/** The manual's first page; it also holds both step-by-step tutorial paths, so the tutorial catalog opens on it. */
 	const val FIRST_MANUAL = "workflow"
 
 	/** How a page's feature compares with Cubism Editor. */
@@ -41,16 +37,12 @@ internal object Manual {
 
 	data class Folder(override val id: String, val children: List<Node>) : Node
 
-	/**
-	 * A page. [cubism] is the slug of its Cubism counterpart, [path] makes it a step-by-step tutorial path, [embed]
-	 * shows one of the help page's generated tables under its text.
-	 */
+	/** A page. [cubism] is the slug of its Cubism counterpart; [embed] shows one of the help page's generated tables under its text. */
 	data class Page(
 		override val id: String,
 		val root: Root,
 		val status: Status,
 		val cubism: String? = null,
-		val path: TutorialPath? = null,
 		val embed: String? = null,
 	) : Node {
 		val opens: Boolean get() = status != Status.MISSING
@@ -104,6 +96,17 @@ internal object Manual {
 			chinese + english + own
 		}
 	}
+
+	/**
+	 * The MCP operations each page covers, from `manual/mcp.txt`: one `page-id: operation operation…` line per page. The
+	 * page shows each operation's call and request fields as the running registry describes them.
+	 */
+	val operations: Map<String, List<String>> by lazy { parseOperations(resource("/manual/mcp.txt") ?: "") }
+
+	fun parseOperations(text: String): Map<String, List<String>> = text.lineSequence()
+		.map { it.substringBefore('#').trim() }
+		.filter { it.contains(':') }
+		.associate { line -> line.substringBefore(':').trim() to line.substringAfter(':').trim().split(Regex("\\s+")).filter { it.isNotEmpty() } }
 
 	/** One language's own texts, nothing filled in from another. */
 	fun read(tag: String): Map<String, Text> =
@@ -168,7 +171,6 @@ internal object Manual {
 						root = currentRoot,
 						status = Status.valueOf(words[1].uppercase()),
 						cubism = options["cubism"],
-						path = options["path"]?.let { TutorialPath.valueOf(it) },
 						embed = options["embed"],
 					)
 				}

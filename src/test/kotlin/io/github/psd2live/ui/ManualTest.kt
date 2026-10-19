@@ -1,6 +1,10 @@
 package io.github.psd2live.ui
 
+import io.github.psd2live.agent.agentOperationDocs
+import io.github.psd2live.application.WorkspaceBackend
+import io.github.psd2live.application.WorkspaceOperations
 import io.github.psd2live.i18n.AppLanguage
+import java.lang.reflect.Proxy
 import io.github.psd2live.ui.components.ManualBlock
 import io.github.psd2live.ui.components.NoteKind
 import io.github.psd2live.ui.components.parseManualBlocks
@@ -20,8 +24,7 @@ class ManualTest {
 		assertEquals(Manual.Root.entries.toSet(), Manual.trees.keys)
 		val ids = nodes.map { it.id }
 		assertEquals(ids.size, ids.toSet().size, "duplicate ids: ${ids.groupBy { it }.filter { it.value.size > 1 }.keys}")
-		listOf(Manual.FIRST_MANUAL, Manual.FIRST_TUTORIAL).forEach { assertTrue(assertNotNull(Manual.page(it), it).opens, it) }
-		assertEquals(TutorialPath.entries.toSet(), Manual.pages.mapNotNull { it.path }.toSet(), "every step-by-step path has a page")
+		assertTrue(assertNotNull(Manual.page(Manual.FIRST_MANUAL)).opens)
 		Manual.pages.mapNotNull { it.embed }.forEach { assertTrue(it in setOf("shortcuts", "psd_spec"), it) }
 	}
 
@@ -50,8 +53,33 @@ class ManualTest {
 				Regex("""\{tutorial=([^}]*)}""").findAll(text.body).forEach { match ->
 					assertTrue(TutorialId.entries.any { it.name == match.groupValues[1] }, "${language.tag}/$id: ${match.value}")
 				}
+				Regex("""\{path=([^}]*)}""").findAll(text.body).forEach { match ->
+					assertTrue(TutorialPath.entries.any { it.name == match.groupValues[1] }, "${language.tag}/$id: ${match.value}")
+				}
 			}
 		}
+	}
+
+	@Test fun everyStepByStepChapterAndPathSitsInAnArticle() {
+		val text = Manual.read(AppLanguage.CHINESE.tag).values.joinToString("\n") { it.body }
+		TutorialId.entries.forEach { assertTrue("{tutorial=${it.name}}" in text, "no article starts $it") }
+		TutorialPath.entries.forEach { assertTrue("{path=${it.name}}" in text, "no article holds the $it path") }
+		assertTrue("{path=" in Manual.read(AppLanguage.CHINESE.tag).getValue(Manual.FIRST_MANUAL).body, "the catalog page holds the paths")
+	}
+
+	@Test fun everyMcpEntryNamesAnOpenPageAndARealOperation() {
+		val workspace = Proxy.newProxyInstance(WorkspaceBackend::class.java.classLoader, arrayOf(WorkspaceBackend::class.java)) { _, method, _ ->
+			error("Unexpected workspace access: ${method.name}")
+		} as WorkspaceBackend
+		val known = WorkspaceOperations(workspace).use { operations -> agentOperationDocs(operations.registry.definitions()).associateBy { it.id } }
+		assertTrue(Manual.operations.isNotEmpty())
+		Manual.operations.forEach { (page, operations) ->
+			assertTrue(Manual.page(page)?.opens == true, "mcp.txt: $page is not a page that opens")
+			assertTrue(operations.isNotEmpty(), "mcp.txt: $page lists nothing")
+			operations.forEach { assertTrue(it in known, "mcp.txt: $page names unknown operation $it") }
+		}
+		val glue = known.getValue("canvas_glue")
+		assertTrue(glue.fields.isNotEmpty() && glue.fields.none { it.name == "request_id" || it.name == "project_id" })
 	}
 
 	@Test fun theIndexNestsByIndentation() {
@@ -63,14 +91,14 @@ class ManualTest {
 			    - p2 missing
 			- p3 exclusive embed=shortcuts # comment
 			[tutorials]
-			- t1 different path=BEGINNER
+			- t1 different
 		""".trimIndent())
 		val manual = trees.getValue(Manual.Root.MANUAL)
 		val a = manual[0] as Manual.Folder
 		assertEquals(listOf("p1", "b"), a.children.map { it.id })
 		assertEquals("p2", ((a.children[1] as Manual.Folder).children.single() as Manual.Page).id)
 		assertEquals(Manual.Page("p3", Manual.Root.MANUAL, Manual.Status.EXCLUSIVE, embed = "shortcuts"), manual[1])
-		assertEquals(TutorialPath.BEGINNER, (trees.getValue(Manual.Root.TUTORIALS).single() as Manual.Page).path)
+		assertEquals("t1", trees.getValue(Manual.Root.TUTORIALS).single().id)
 	}
 
 	@Test fun pageTextReadsItsBlocks() {
@@ -90,6 +118,7 @@ class ManualTest {
 			!> still careful
 			{tutorial=GLUE_NOT_A_TUTORIAL}
 			{tutorial=SKELETON}
+			{path=EXPERIENCED}
 		""".trimIndent())
 		assertEquals(listOf(
 			ManualBlock.Paragraph("Intro."),
@@ -99,6 +128,8 @@ class ManualTest {
 			ManualBlock.Table(listOf(listOf("h1", "h2"), listOf("c1", "c2"))),
 			ManualBlock.Note(NoteKind.CAUTION, "careful\nstill careful"),
 			ManualBlock.Tutorial(TutorialId.SKELETON),
+			ManualBlock.Path(TutorialPath.EXPERIENCED),
 		), blocks)
+		assertEquals(mapOf("glue" to listOf("canvas_glue", "canvas_glue_edit")), Manual.parseOperations("# x\nglue: canvas_glue  canvas_glue_edit\n"))
 	}
 }

@@ -1,0 +1,115 @@
+# MCP operations each manual or tutorial page covers: `page-id: operation…`. The page shows each one's calls and request
+# fields as the running server describes them (AgentOperationDoc). Ids are checked by ManualTest.
+workflow: project_import_psd rig_generate workspace_overview project_save_as project_export_model
+file-type-and-extension: project_open project_save_as project_import_cmo3 project_export_model project_export_target project_export_psd
+fault-map: job_list job_get workspace_overview
+performance: atlas_get layer_mesh_update atlas_set_budget layer_set_pixel_density project_export_model
+home: project_import_psd project_create project_import_cmo3 project_open
+target-version-selection: project_export_model settings_update
+file-menu: project_open project_save project_save_as project_import_psd project_export_model project_export_target
+modeling-menu: rig_update_generation workspace_preview_regeneration project_import_cmo3 source_split_components rig_generate
+mesh-edit-menu: canvas_topology layer_mesh_rebuild layer_mesh_update source_split_components source_split_depth
+about-viewarea: view_render_model view_render_context
+preview-canvas: preview_set preview_playback preview_playback_get preview_physics view_sample_motion
+solo: canvas_visibility canvas_visibility_get
+edit-level: warp_get_controls warp_bezier_divisions warp_bezier_anchor warp_bezier_handle warp_bezier_reset
+inspector-palette: rig_edit_structure object_edit_appearance layer_draw_order workspace_inspect
+partspalatte: workspace_overview object_edit_appearance layer_import_images layer_delete
+deformerpalatte: canvas_warp canvas_rotation rig_create_warp object_edit_appearance rig_edit_structure
+palametorpalatte: parameter_create parameter_update parameter_delete preview_set author_axis keyform_apply
+layers-palette: layer_classify layer_tag layer_set_variant layer_mark_reference layer_reorder layer_restore
+timelinepalatte: motion_list motion_get motion_create motion_set_key motion_pose motion_put
+history-palette: history_list history_checkout history_annotation_put history_checkpoint view_compare_history
+divide-the-material: layer_tag layer_classify source_split_components
+reimport-psd: project_import_psd layer_classify layer_tag layer_set_variant
+precautions-for-psd-data: layer_classify layer_tag
+split-by-mesh: source_get_components source_split_components source_split_polygon
+depth-split: source_split_depth paint_session_begin paint_session_commit
+layout-project: project_create material_import layer_place layer_tag rig_generate layer_reorder
+psd-import: project_import_psd layer_classify layer_set_variant project_save_as
+psd-re-import: material_import layer_replace_image rig_generate layer_mesh_rebuild
+model-presets: model_apply_preset settings_update workspace_preview_regeneration
+update-generated-rig: rig_update_generation workspace_preview_regeneration
+cmo3-import: project_import_cmo3
+texture-atlas-edit: atlas_get atlas_set_tile atlas_pack atlas_set_budget layer_set_pixel_density atlas_render_page
+png-file-export-replacement: atlas_render_page layer_replace_image project_export_psd material_export_psd
+texture-upscale: settings_update
+paint-mode: paint_session_begin paint_session_control paint_session_commit source_paint_brush source_paint_eraser layer_mesh_rebuild
+parts: workspace_overview workspace_inspect rig_edit_structure
+edit-parts: rig_edit_structure object_edit_appearance
+edit-parts-sketch: layer_mark_reference layer_pin_reference
+variants: layer_set_variant
+draworder: layer_draw_order rig_edit_structure
+concept-of-artmesh: workspace_inspect view_render_layer
+mesh-edit: layer_mesh_update layer_mesh_rebuild
+mesh-edit-manual: canvas_topology
+clipping-mask: rig_edit_structure
+reversed-mask: rig_edit_structure
+sketch: material_mark_reference layer_place layer_mark_reference layer_pin_reference reference_place_grid layout_set_reference
+blend-mode: rig_edit_structure
+interior-shape: interior_put interior_delete
+deformer: workspace_overview workspace_inspect canvas_warp canvas_rotation
+making-and-placement-of-warp-deformer: canvas_warp rig_create_warp warp_set_topology warp_get_controls warp_bezier_divisions warp_bezier_reset
+making-and-rotation-of-rotationdeformer: canvas_rotation rig_deform workspace_inspect
+system-of-parent-child-relation: workspace_inspect workspace_overview
+setting-of-parent-child-relation: object_edit_appearance rig_edit_structure workspace_inspect
+combintion-of-parent-child-relation: workspace_overview workspace_inspect
+auto-generation-of-deformer: rig_generate settings_update rig_update_generation workspace_preview_regeneration
+convenient-function-deformer: workspace_inspect workspace_overview view_render_model
+parameter: workspace_inspect preview_set preview_reset parameter_create
+edit-parameters: parameter_update author_axis keyform_apply parameter_create
+parameter-modifyication: parameter_update parameter_create parameter_delete rig_edit_structure
+standard-parameter-list: workspace_overview workspace_inspect
+copy-and-paste-parameter-values: snapshot_create snapshot_apply snapshot_list snapshot_update snapshot_delete snapshot_get
+how-to-choose: workspace_inspect workspace_overview
+how-to-edit: rig_deform canvas_deform_stroke keyform_apply author_axis
+keyform-parent-chilid-relation: workspace_inspect rig_deform keyform_apply
+keyform-xydirection: author_axis rig_deform keyform_apply view_render_poses
+face-auto-edit: settings_update model_apply_preset view_render_poses
+auto-generation-of-sway-motion: swing_put swing_preview swing_preview_commit swing_delete swing_preview_render swing_preview_get
+edit-vertices: rig_deform keyform_apply
+glue: canvas_glue canvas_glue_edit
+deformpath: path_put path_deform path_get path_list path_preview path_delete
+skinning: skeleton_draft_open skeleton_draft_edit skeleton_draft_preview_transfer skeleton_draft_commit skeleton_bind
+skeleton: skeleton_auto skeleton_get skeleton_draft_open skeleton_draft_commit skeleton_pose preview_pose
+generated-overrides: workspace_inspect rig_update_generation workspace_preview_regeneration swing_delete
+motion-mirroring: keyform_apply author_axis
+deform-brush: canvas_deform_stroke
+blend-shape: parameter_create keyform_apply rig_deform
+multiply-color-screen-color: rig_edit_structure keyform_apply workspace_inspect
+animation-preparation: motion_list motion_create motion_get motion_pose preview_playback
+builtin-motions: motion_preset motion_seed_builtin motion_duplicate motion_list
+eye-blink-settings: motion_preset settings_update
+timeline-basic-operation-timelinepalette: motion_pose motion_set_key motion_properties motion_remove_curve preview_pose preview_playback
+timeline-basic-operation-dopesheet: motion_move_keys motion_delete_keys motion_paste_keys motion_set_key motion_delete_key
+grapheditor: motion_replace_keys motion_set_key motion_sample motion_get
+about-fade: motion_properties
+fade-setting: motion_properties
+notes-for-sdk: project_export_model view_sample_motion motion_list
+exporting-images: project_export_target view_sample_motion
+export-moc3-motion3-files: project_export_model settings_update job_wait
+other-formats: project_export_target project_export_psd job_wait
+userdata: rig_edit_structure workspace_inspect project_export_model
+switch-viewer-setting: physics_config preview_physics
+physics-operation: physics_simulate preview_physics workspace_overview
+physical-operation-setting: physics_put physics_fit author_physics physics_apply_preset physics_audition physics_preset_list
+physics-group-information: physics_put physics_delete physics_config physics_import swing_put
+simulation: simulation_put simulation_bake model_apply_preset vertex_group_paint simulation_preview simulation_compare
+external-application-integration: workspace_inspect workspace_overview workspace_list_operations
+external-application-integration-api: workspace_list_operations workspace_get_operation workspace_apply_edits workspace_preview_edits job_wait job_get
+external-application-integration-api-list: workspace_list_operations workspace_get_operation
+t-eye-blink: settings_update rig_deform canvas_deform_stroke keyform_apply layer_tag preview_set
+t-mouth-aiueo: settings_update rig_deform canvas_deform_stroke keyform_apply preview_set
+t-psd: project_import_psd layer_tag layer_classify source_split_components
+t-import: project_import_psd project_import_cmo3 layer_classify layer_mesh_update project_save workspace_overview
+t-expression: rig_deform keyform_apply canvas_deform_stroke settings_update layer_set_variant
+t-deformer: rig_create_warp canvas_warp canvas_rotation rig_edit_structure settings_update skeleton_auto
+t-xy: rig_deform keyform_apply warp_bezier_anchor settings_update preview_set
+t-animator: motion_create motion_set_key motion_pose motion_properties motion_preset motion_list
+t-preparing-the-model: workspace_inspect parameter_update atlas_get atlas_set_budget view_render_model
+t-physical-calculation-settings: physics_put physics_fit physics_import physics_apply_preset swing_put physics_simulate
+t-prepare-motions-and-expressions: motion_list motion_preset motion_properties motion_create layer_set_variant
+t-exporting-data-for-embedding: project_export_model project_export_target job_wait
+t-motion-hint: motion_get motion_move_keys view_sample_motion
+t-function: rig_update_generation snapshot_create history_list skeleton_auto
+t-model-introduction: project_export_target motion_create motion_set_key view_sample_motion

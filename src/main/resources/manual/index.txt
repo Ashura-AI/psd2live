@@ -1,7 +1,9 @@
 # The help page's manual and tutorials, in the Cubism Editor manual's and tutorial site's folders and order.
 # `+ id` is a folder, `- id status key=value…` a page; two spaces nest one level. Status: same, different, exclusive
 # (PSD2Live's own, placed where it fits among the Cubism pages) or missing (in Cubism, not yet here).
-# cubism= names the Cubism page, path= makes a page a step-by-step tutorial path, embed= adds a generated table.
+# Only what means something for PSD2Live is listed: Cubism pages about Cubism itself (activation, its Viewer apps, its
+# menus PSD2Live has no counterpart for) are left out. cubism= names the Cubism page, embed= adds a generated table.
+# MCP operations for a page: manual/mcp.txt.
 # Titles and text: manual/<language>/manual.md and tutorials.md.
 
 [manual]
@@ -9,10 +11,8 @@
   - new-feature-introduction-title different cubism=new-feature-introduction-title
 + before
   - workflow different cubism=workflow
-  - cubism-editor-activation different cubism=cubism-editor-activation
   - file-type-and-extension different cubism=file-type-and-extension
   - fault-map different cubism=fault-map
-  - convert-data-cubism-2-to-3 missing cubism=convert-data-cubism-2-to-3
   - performance different cubism=performance
 + editor
   - glossary different cubism=glossary
@@ -22,11 +22,8 @@
   - environment-settings different cubism=environment-settings
   + menus
     - file-menu different cubism=file-menu
-    - edit-menu different cubism=edit-menu
     - display-menu different cubism=display-menu
     - modeling-menu different cubism=modeling-menu
-    - animation-menu different cubism=animation-menu
-    - formanimation-menu missing cubism=formanimation-menu
     - window-menu different cubism=window-menu
     - help-menu different cubism=help-menu
     - mesh-edit-menu different cubism=mesh-edit-menu
@@ -75,8 +72,6 @@
     - update-generated-rig exclusive
     - cmo3-import different
   + texture
-    - original-picture missing cubism=original-picture
-    - psd-link missing cubism=psd-link
     - texture-atlas-edit different cubism=texture-atlas-edit
     - png-file-export-replacement different cubism=png-file-export-replacement
     - texture-upscale exclusive
@@ -185,7 +180,6 @@
     - template-making-and-management missing cubism=template-making-and-management
     - about-fade same cubism=about-fade
     - fade-setting different cubism=fade-setting
-    - lightweight-playback missing cubism=lightweight-playback
     - notes-for-sdk different cubism=notes-for-sdk
   + parameter-controller
     - about-the-parameter-controller missing cubism=about-the-parameter-controller
@@ -200,8 +194,6 @@
   - limited-animation missing cubism=limited-animation
   - physics-operation-bake missing cubism=physics-operation-bake
   - motion-sync-bake missing cubism=motion-sync-bake
-  - gather-up-files missing cubism=gather-up-files
-  - runtime-model-track missing cubism=runtime-model-track
   - loop-editing-support missing cubism=loop-editing-support
 + export
   - exporting-images different cubism=exporting-images
@@ -221,20 +213,11 @@
   - external-application-integration-api different cubism=external-application-integration-api
   - external-application-integration-api-list different cubism=external-application-integration-api-list
 + viewer
-  - selection-of-viewer different cubism=selection-of-viewer
-  + viewer-ow
-    - cubism3-viewer-for-ow different cubism=cubism3-viewer-for-ow
-    - load-model-and-motion different cubism=load-model-and-motion
-    - motion-setting different cubism=motion-setting
-    - pose-setting missing cubism=pose-setting
-    - facial-expression-system missing cubism=facial-expression-system
-    - create-facial-expressions missing cubism=create-facial-expressions
-    - setting-and-exporting-facial-expressions missing cubism=setting-and-exporting-facial-expressions
-    - userdata-event-information missing cubism=userdata-event-information
-    - export-model3-json different cubism=export-model3-json
-    - check-the-physics different cubism=check-the-physics
-    - motion-sync-setting-ow missing cubism=motion-sync-setting-ow
-    - texture-setting missing cubism=texture-setting
+  - pose-setting missing cubism=pose-setting
+  - facial-expression-system missing cubism=facial-expression-system
+  - create-facial-expressions missing cubism=create-facial-expressions
+  - setting-and-exporting-facial-expressions missing cubism=setting-and-exporting-facial-expressions
+  - userdata-event-information missing cubism=userdata-event-information
 
 [tutorials]
 + t-beginner
@@ -260,14 +243,7 @@
   - t-physical-calculation-settings different cubism=physical-calculation-settings
   - t-prepare-motions-and-expressions different cubism=prepare-motions-and-expressions
   - t-exporting-data-for-embedding different cubism=exporting-data-for-embedding
-  - t-operation-of-viewer different cubism=operation-of-viewer-original-workflow-version
-  - t-operation-of-the-viewer-unity missing cubism=operation-of-the-viewer-unity-version
 + t-tips
   - t-motion-hint same cubism=motion-hint
   - t-function different cubism=function
-  - t-natori-making missing cubism=natori_making
   - t-model-introduction different cubism=model-introduction
-  - t-tracking missing cubism=cubism-ae-plugin-tracking
-+ t-interactive
-  - interactive-beginner exclusive path=BEGINNER
-  - interactive-experienced exclusive path=EXPERIENCED

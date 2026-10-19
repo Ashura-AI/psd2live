@@ -1,1179 +1,959 @@
 @@ new-features | Introducing new features
 @@ new-feature-introduction-title | Release History
-Release notes for each version appear directly under **What's new** on the Start page, listing the changes you will notice version by version, newest first.
+To see what an upgrade added, open **What's new** on the Start page: it lists new features, improvements and fixes by version, newest first. It ships with the program and can be read offline.
 ## Viewing the release notes
-1. Open the Start page (**File → Start Page**, or **Go to Start** on the canvas when no project is open).
-2. In the "Learn" group of the left-hand list, select **What's new**.
-3. The middle lists new features, improvements and fixes by version; the details panel on the right lists the versions, and clicking one jumps to it.
-4. Entries that have a matching interactive tutorial carry **Show me in a tutorial**, which opens that tutorial chapter directly.
-5. Click **Full changelog** to open the releases page with the complete notes for every version.
-## Differences from Cubism
-- Cubism's release history is on the manual pages of the official website, listing features and fixes by version.
-- PSD2Live's release notes ship with the program, appear on the Start page and can open interactive tutorials directly from an entry; the full log is on the GitHub releases page.
-*> For where the Start page is and what else it contains, see [[home]].
+1. Open the Start page: **File → Start Page**, or click **Go to Start** on the canvas when no project is open.
+2. In the "Learn" group of the list on the left, select **What's new**.
+3. In the details panel on the right, click a version and the content jumps to it.
+4. When an entry carries **Show me in a tutorial**, click it to open the interactive tutorial for that feature.
+For the complete notes entry by entry, click **Full changelog** to open the releases page. For the rest of the Start page, see [[home]].
 
 @@ before | Before you begin
 @@ workflow | Production Flow
-PSD2Live automatically generates a first working model from a layered PSD, then lets you refine shapes, rig, add physics and simulation and animate in the same workspace, and finally export to Cubism or other formats. Unlike Cubism, where you build everything by hand before it moves, the very first step here already gives you complete meshes, deformers, parameters, motions and physics.
-## Basic flow
-1. **Prepare the PSD**: split parts into layers and give layers recognizable names where possible (see [[precautions-for-psd-data]]).
-2. **Choose presets and generate**: under **Generate from PSD** on the Start page, pick a preset (Minimal / Default / Full), then drop the PSD onto the window or press {key:OPEN_PSD}. After generation you enter the editing workspace automatically (see [[psd-import]], [[model-presets]]).
-3. **Check the recognition results**: in the **Layers** panel, check each layer's tags (part, side) and variant settings, and correct any that are wrong (see [[layers-palette]]).
-4. **Preview**: choose **Preview** from the canvas mode menu, or switch to the "Preview" workspace, and check motions such as idle and blinking, plus physics (see [[preview-canvas]]).
-5. **Edit as needed**: on the edit canvas, change keyforms, meshes and pixels with the Deform, Edit, Skeleton, Paint and other modes; adjust sway in the Physics and Simulation panels (see [[canvas-modes]]).
-6. **Save the project**: {key:SAVE_PROJECT} saves a `.psd2live`, which contains the source image, all edits and the branching history.
-7. **Export**: {key:GENERATE} opens **Export Live2D model…** to export `.moc3` / `.cmo3`; other formats are under **File → Export as**.
-{tutorial=BASIC}
-## Two other starting points
-- **Layout project**: start from an empty canvas, import image, PSD or SVG materials, place and tag them, then generate (see [[layout-project]]).
-- **Import from CMO3**: open an existing Cubism model and keep editing it; no presets are generated (see [[cmo3-import]]).
-## Regeneration and edits
-Changes made on the canvas are saved as replayable edits. When you later change layer tags or model presets, or upgrade the program, the model is regenerated from the source image and your edits are replayed in order, so regeneration never loses your edits. To adopt the results of a newer generator, use **Model → Update Generated Rig** (see [[update-generated-rig]]).
-## Differences from Cubism
-- Cubism: split the material → create meshes, deformers and parameters by hand in the Editor and build keyforms → animate in the Animator → export.
-- PSD2Live: after the material is split, the generator produces a first version in one go; modeling, physics and animation happen in one program and one project, and what is saved is the replayable edits and history rather than the final model itself.
-- When delivering to Cubism, export `.cmo3` to keep refining in Cubism Editor; if you only need the runtime, export the `.moc3` file set.
-*> If you have Cubism experience, start with the terminology chapter of the interactive tutorials.
-{tutorial=LIVE2D_BRIDGE}
-
-@@ cubism-editor-activation | Launch Cubism Editor
-PSD2Live is open-source software: once downloaded and installed, every feature is available. There is no license activation and no split between free and pro editions.
-## Installing and launching
-1. Download the package for your platform from the GitHub releases page (**Help → On the web → Releases**).
-2. The Windows installer and portable build bundle a Java runtime, so just install or unpack and run; Linux packages are provided as Deb and tar.gz.
-3. The first launch shows the Start page; press {key:OPEN_HELP} to open the tutorials on the Help page.
-## Cubism SDK preview
-Editing, previewing and exporting `.moc3` / `.cmo3` do not depend on the Live2D SDK. The preview canvas can additionally play the exported model through the Cubism SDK, to compare rendering and physics with the official runtime; this needs the Cubism SDK native libraries, and when no usable library is available (for example on Windows ARM64) the preview uses the PSD2Live runtime.
-## Differences from Cubism
-- Cubism Editor needs you to sign in or enter a license to activate it, and the FREE edition has feature limits.
-- PSD2Live has no activation step and no feature tiers; the Cubism SDK is only an optional way to preview.
-!> Live2D, Cubism, .cmo3 and .moc3 are trademarks of Live2D Inc. PSD2Live is not affiliated with Live2D Inc. **About** on the Help page shows the version and runtime environment.
+PSD2Live turns a layered PSD directly into a model that moves: after import, the meshes, deformers, parameters, idle and blink motions and physics are all generated in one go, and you refine shapes and add motions on top of that, then export for Cubism or another runtime. You can finish a model with or without opening Cubism.
+## Choose a learning path
+The interactive tutorials in the Help page highlight the relevant controls in your current workspace and use your own shortcuts in the prompts. If Live2D is new to you, start with this path, which goes from layered PSDs, parts and parameters all the way to export:
+{path=BEGINNER}
+If you have used Cubism, this path first maps ArtMesh, deformers and parameters onto PSD2Live, then focuses on automatic generation, canvas modes, skeletons, animation and physics:
+{path=EXPERIENCED}
+## From PSD to export
+1. **Prepare the PSD**: put each moving part on its own layer and name layers after the part where you can (see [[precautions-for-psd-data]]).
+2. **Generate**: on the Start page, pick a preset under **Generate from PSD** (Minimal / Default / Complete), then drop the PSD into the window or press {key:OPEN_PSD}. When generation finishes you land in the editing workspace (see [[psd-import]], [[model-presets]]).
+3. **Check the recognition**: in the **Layers** panel look at each layer's tags (part, side) and variants, and fix anything misrecognized right there (see [[layers-palette]]).
+4. **Preview**: choose **Preview** in the canvas mode menu and check that idle, blinking, mouse tracking and physics look natural (see [[preview-canvas]]).
+5. **Edit as needed**: on the editing canvas use the Deform, Edit, Skeleton, Paint and other modes to fix keyforms, meshes and pixels; adjust sway in the Physics and Simulation panels (see [[canvas-modes]]).
+6. **Save**: {key:SAVE_PROJECT} saves a `.psd2live` file, which holds the source images, all edits and the branching history.
+7. **Export**: {key:GENERATE} opens **Export Live2D model…**, which exports `.moc3` runtime files or a `.cmo3` project; other formats are under **File → Export as**.
+You do not have to start from a PSD: a **Layout project** lets you place images, PSDs or SVGs on an empty canvas first and then generate (see [[layout-project]]), and **Import CMO3** lets you carry on editing an existing Cubism model (see [[cmo3-import]]).
+## Edits survive regeneration
+Every change on the canvas is recorded as a replayable edit. After you change layer tags or the model preset, the model is regenerated from the source images and your edits are applied again in their original order. Upgrading PSD2Live never quietly changes an existing project; to use a newer generator, run **Model → Update Generated Rig** (see [[update-generated-rig]]).
+*> To keep refining in Cubism Editor, export a `.cmo3`. A model you changed in Cubism can be brought back into the project by ID with **Model → Replace the model with a CMO3…** (see [[modeling-menu]]).
 
 @@ file-type-and-extension | File Types and Extensions
-The main files PSD2Live reads and writes are listed below. The project itself is `.psd2live`; the rest are mostly imported materials or exported deliverables.
-## Projects and reports
+In daily use you only need to remember one file type: `.psd2live` is the project itself; the rest are either imported materials or exported deliverables.
+## Project
 | Extension | Description |
 |---|---|
-| `.psd2live` | PSD2Live project. An unencrypted ZIP containing the source PSD or CMO3, materials, settings, all edits and the branching history; it does not depend on the original PSD path |
-| `.psd2live.json` | Report written alongside an export (can be turned off in the export window) recording losses and warnings; it is not a project |
+| `.psd2live` | Project. An unencrypted ZIP holding the source PSD or CMO3, materials, settings, all edits and the branching history; it does not depend on the original PSD's path |
+| `.psd2live.json` | Report written alongside an export (can be turned off in the export window) that records losses and warnings; it is not a project file |
 ## Import
 | Extension | Description |
 |---|---|
-| `.psd` | Layered PSD, the source image for generating a model |
+| `.psd` | Layered PSD, the source for generating a model |
 | `.cmo3` | Cubism Editor model project; can create a new project or replace the current model |
-| `.png` `.webp` `.tiff` `.bmp` | Added as a single layer by dropping onto the hierarchy or with **Import Layer…** |
-| `.svg` and other images | Imported into a Layout project's material library |
+| `.png` `.webp` `.tiff` `.bmp` | Drag onto the hierarchy tree or use **Import Layer…** to add as a single layer |
+| `.svg` and other images | Import into a Layout project's material library |
 ## Export
 | Extension | Description |
 |---|---|
-| `.cmo3` / `.can3` | Cubism Editor model project; when there are motions, a `.can3` (Animator project) with the same name is also written, and the two must stay in the same folder |
-| `.moc3` `.model3.json` etc. | Cubism runtime file set: model, settings, physics, motions, display info and textures, loaded from `.model3.json` |
-| `.vtube.json` | Exported together with the `.moc3` file set for VTube Studio |
+| `.cmo3` / `.can3` | Cubism Editor model project; when there are motions, a `.can3` (Animator project) with the same name is written too, in the same folder |
+| `.moc3` `.model3.json` etc. | The Cubism runtime file family: model, settings, physics, motions, display info and textures, loaded from `.model3.json` |
+| `.vtube.json` | Exported together with the `.moc3` file family, for VTube Studio to read |
 | `.p2lrt` | PSD2Live runtime model, also used by the web player |
 | `.p2lunity` | Model data exported for a Unity prefab |
 | `.psd` | Layered PSD in a given pose, or the source PSD with generated layers |
 | `.png` `.gif` `.apng` `.webp` `.mp4` `.webm` `.mov` | Image sequences, sprite sheets, animated images and video |
-## Differences from Cubism
-- In Cubism the model project is `.cmo3` and the animation project is `.can3`; PSD2Live saves projects in its own `.psd2live`, and `.cmo3` / `.can3` are only import or export formats.
-- Exporting `.cmo3` does not write generator settings or the edit history; to keep editing in PSD2Live, save a `.psd2live`.
-*> For the contents and limits of each export format, see [[export-moc3-motion3-files]] and [[exporting-images]].
+!> A `.cmo3` does not contain generator settings or edit history. To go back to PSD2Live and keep editing, keep the `.psd2live`.
+For what each format contains and its limits, see [[export-moc3-motion3-files]] and [[exporting-images]].
 
 @@ fault-map | What to Check When the Editor/Viewer Does Not Start Properly
-If PSD2Live fails to start, shows a broken display or errors while running, work through the table below.
+When the display is wrong, the preview will not open or the program exits unexpectedly, check this table first; most cases can be fixed without reinstalling.
 ## Common cases
-| Symptom | What to check |
+| Symptom | What to do |
 |---|---|
-| The edit canvas is black, flickers or draws incorrectly | In **Settings → Canvas Interaction**, tick "Draw the editing canvas and the atlas page in software"; the same place shows whether GPU or software rendering is in use. If the graphics card does not support multisampling or GPU drawing fails, the program switches to a compatible path automatically |
-| The preview canvas cannot use the Cubism SDK | Without usable Cubism SDK native libraries, switch to the PSD2Live runtime under **Preview runtime** on the preview canvas; on Linux, pure Wayland without XWayland, or musl systems, fall back automatically |
-| A panel has disappeared | Show it again from the **Windows** menu at the right of the workspace tab bar, or choose **Reset layout** |
-| The model is not visible on the canvas | Press {key:FRAME_VIEW} to frame the selection or {key:RESET_CAMERA} to reset the camera, then check layer visibility |
-| The program quit unexpectedly | On the next launch it asks whether to restore unsaved edits (see [[autosave]]) |
-| Settings or interface state look wrong | Click **Reset Defaults** at the bottom of the Settings list; or, with the program closed, run it once with the `--clear-user-data` argument to clear settings and local data |
-## Collecting information
-1. Open the **Logs** panel, filter errors by level and source, and click **Copy Log**.
-2. In **Settings → Files & data**, find the location of the **Error logs**; here you can also clean up leftovers that earlier crashes left in the system temp folder.
-3. **About** on the Help page shows the version and runtime environment.
-4. Report the problem via **Help → On the web → Report an issue**, including the version, operating system, steps to reproduce and relevant materials.
-## Differences from Cubism
-- Cubism's checklist is mainly about licenses, graphics drivers and OpenGL settings.
-- PSD2Live has no license; display problems are diagnosed with the software rendering option, and if the Cubism SDK preview is unavailable you can use the bundled runtime instead.
-
-@@ convert-data-cubism-2-to-3 | Convert Data From Up to Cubism 2.1 to Cubism 3 or Later Format
+| The editing canvas is black, flickers or is garbled | Turn on "Draw the editing canvas and the atlas page in software" under **Settings → Canvas Interaction**; the same place shows whether GPU or software rendering is in use. If the graphics card lacks multisampling or GPU drawing fails, the program switches to a compatible mode on its own |
+| The preview canvas cannot use the Cubism SDK | If no usable native Cubism SDK library is present, switch **Preview runtime** on the preview canvas to the PSD2Live runtime; on Linux, pure Wayland without XWayland and musl systems fall back automatically |
+| A panel has disappeared | Tick it again in the **Windows** menu at the right of the workspace tab bar, or choose **Reset layout** |
+| The model is not visible on the canvas | Press {key:FRAME_VIEW} to frame the selection, or {key:RESET_CAMERA} to reset the camera, then check layer visibility |
+| The program exited abnormally | At the next launch it asks whether to restore unsaved edits (see [[autosave]]) |
+| Settings or UI state are corrupted | Click **Reset Defaults** at the bottom of the settings page's list; if that does not help, close the program and run it once with the `--clear-user-data` argument to clear settings and local data |
+## Before reporting a problem
+1. Open the **Log** panel, filter for errors by level and source, and click **Copy Log**.
+2. **Settings → Files & data** shows the location of the **Error logs**; it can also clean up leftovers that an abnormal exit left in the system temp folder.
+3. **About** in the Help page shows the version and runtime environment.
+4. Submit it from **Help → On the web → Report an issue**, with the version, operating system, steps to reproduce and any related materials.
 
 @@ performance | Performance When Working With Models in the SDK
-The runtime cost of an exported model comes mainly from mesh vertices, the number of keyforms, texture size and masks. PSD2Live offers several places to inspect and control these factors during generation and export.
-## Checking and adjusting
-| Factor | Where to see or adjust it |
+How fast an exported model runs mainly depends on mesh vertex count, keyform count, texture size and masks. The generator produces most of these from its settings, so to control them you change the settings rather than deleting points object by object.
+## Where to check and adjust
+| Factor | Where |
 |---|---|
-| Mesh vertex count | The **Mesh** panel shows the vertex count and edge length of the selected layer and lets you change the global defaults or per-layer mesh overrides; **Layers** info also shows the vertex count |
-| Texture size and video memory | "Texture" workspace: with no layer selected, the Texture panel lists each page's size, tile count, usage and video memory (RGBA); set the atlas budget (page size, maximum pages and padding) at the top right, and adjust texture density per layer (see [[texture-atlas-edit]]) |
-| Number of keyforms | When baked simulation modes are written as keyform axes, a mesh's keyform count is multiplied by the number of key points in the mode; choosing "Blend shape" (Cubism 4.2+) avoids this, and "Auto" uses blend shapes when there would be more than 64 keyforms (see [[simulation]]) |
-| Target version | On export, features the chosen SDK target does not support are stripped and the downgrades are listed (see [[target-version-selection]]) |
-## Preview cost inside the editor
-The preview canvas can limit its frame rate under **Frame rate cap** (or follow the display); "Advanced mode" in the preview menu applies only to the PSD2Live runtime and runs cloth and hair simulation live, which costs more.
-## Differences from Cubism
-- Cubism's manual explains the factors that affect performance in the SDK, and authors control meshes and textures themselves in the Editor.
-- In PSD2Live, meshes, atlases and simulation bakes are produced by the generator from settings, and the performance-related numbers are gathered in the Mesh panel, the Texture workspace and the Simulation panel; the export report `.psd2live.json` records downgrades and losses.
+| Mesh vertex count | The **Mesh** panel shows the vertex count and edge length of the selected layer, and you can change the global defaults or override per layer; the vertex count is also in the **Layers** info |
+| Texture size and video memory | The Texture workspace: with no layer selected, the Texture panel lists each page's size, tile count, usage and video memory (RGBA); the atlas budget at the top right sets page size, maximum page count and spacing, and you can also tune the texture density per layer (see [[texture-atlas-edit]]) |
+| Keyform count | When a simulation is baked into keyform axes, a mesh's keyform count is multiplied by the number of key points of the modes; choosing blend shapes (Cubism 4.2+) avoids this, and "Auto" switches to blend shapes when keyforms would exceed 64 (see [[simulation]]) |
+| Target version | On export, features the chosen SDK target does not support are removed and the downgrades are listed (see [[target-version-selection]]) |
+The export report `.psd2live.json` records downgrades and losses and is worth a look before delivery.
+## Preview load in the editor
+The preview canvas's **Frame rate cap** can limit the frame rate or follow the monitor. **Advanced mode** in the preview menu works only with the PSD2Live runtime and runs cloth and hair simulation live; turn it off first if the machine struggles.
 
 @@ editor | About the Editor
 @@ glossary | Live2D Glossary
-PSD2Live keeps most Live2D terms, but some names differ in the interface and there are a few concepts unique to this program. The tables below list the common correspondences.
-## Cubism terms
+PSD2Live mostly uses Live2D's common terms; a few are named differently in the interface, and a few are new concepts that come with automatic generation. When you meet an unfamiliar word, look it up here first.
+## Name comparison
 | Cubism | PSD2Live | Description |
 |---|---|---|
-| ArtMesh | Drawable / layer | A PSD layer becomes a drawable with a mesh on import |
-| Warp Deformer | Warp deformer / Warp | Deforms its children with a grid of control points |
-| Rotation Deformer | Rotation deformer / Rotation | Rotates its children around an origin |
+| ArtMesh | Art mesh / layer | A PSD layer becomes an art mesh with a mesh on import |
+| Warp Deformer | Mesh deformer / Warp | Deforms children with a grid of control points |
+| Rotation Deformer | Rotation deformer / Rotation | Rotates children around an origin |
 | Parameter | Parameter | A value that drives deformation and variants |
-| Key | Parameter key | A position on a parameter where a shape is recorded, shown as a dot in the Parameters panel |
-| Form (shape at a key) | Keyform | The shape recorded at one key; shapes between keys are interpolated |
-| Blend shape | Blend shape key | Shown as a square dot in the Parameters panel; adds a shape difference on top of the base shape |
+| Key | Parameter key | A position on a parameter where a shape is recorded; shown as a round dot in the Parameter panel |
+| Form | Keyform | The shape recorded at a key; interpolated between keys |
+| Blend shape | Blend shape key | Shown as a square dot in the Parameter panel; adds a shape difference on top of the base shape |
 | Glue | Glue | Points shared by two meshes |
-| Parts / Deformer palette | Hierarchy | The parent-child structure of deformers and drawables |
-| Model project (.cmo3) | Project (.psd2live) | `.cmo3` is only an import and export format |
-## Concepts unique to PSD2Live
+| Parts / Deformer palette | Hierarchy | The parent-child structure of deformers and art meshes |
+| Model project (.cmo3) | Project (.psd2live) | `.cmo3` is only an import/export format |
+{tutorial=LIVE2D_BRIDGE}
+## Concepts that come with automatic generation
 | Term | Meaning |
 |---|---|
-| Model presets | Settings that control the generator's deformation ranges, mouth shapes, motions, physics, simulation and more (see [[model-presets]]) |
-| Tags | A layer's part, side and so on, which the generator uses to recognize parts |
-| Variant | None, Toggle Variant (one parameter shows or hides it) or Switch Variant (one of several on the same parameter) (see [[variants]]) |
-| Generated rig | The model generated automatically from the source image and presets; your edits are replayed on top of it |
+| Model presets | Control the deformation amounts, mouth shapes, motions, physics and simulation that are generated (see [[model-presets]]) |
+| Tags | A layer's part, side and so on; the generator uses them to recognize parts |
+| Variants | None, Toggle Variant (one parameter shows or hides a layer), Switch Variant (one parameter picks one of several) (see [[variants]]) |
+| Generated rig | The model generated automatically from the source images and presets; your edits are replayed on top of it |
 | Canvas modes | Object, Deform, Edit, Simulate, Skeleton, Paint, Preview (see [[canvas-modes]]) |
-| Workspace | A tab at the top, each with its own canvas and panel layout (see [[workspace]]) |
-| Deform path | A tool that deforms meshes along a curve, baked into mesh keyforms on export |
-| Skeleton / simulation | Bones and cloth and hair simulation, baked into parameters, keyforms and pendulums on export |
-| Bake | Converting features Cubism lacks into native deformers, keyforms or pendulums |
-| Atlas | Texture pages packing each layer's pixels, with texture density settable per layer |
+| Workspace | The tabs at the top, each with its own canvas and panel layout (see [[workspace]]) |
+| Deform path | A tool that deforms a mesh along a curve; baked into mesh keyforms on export |
+| Skeleton / Simulation | A bone skeleton and cloth/hair simulation, baked into parameters, keyforms and pendulums on export |
+| Baking | Converting features Cubism does not have into native deformers, keyforms or pendulums |
+| Texture atlas | The texture pages that pack each layer's pixels; texture density can be set per layer |
 | Reference layer | A layer shown on the canvas that takes no part in generation or export |
-{tutorial=LIVE2D_BRIDGE}
 
 @@ shortcut | List of shortcut keys
-The table below lists every shortcut and its current binding. The default is Photoshop-style; under "Presets" in **Settings → Shortcuts** you can switch to Blender-style or Live2D Cubism-style, or rebind items one by one.
-## Changing shortcuts
-1. Press {key:OPEN_SETTINGS} to open Settings and select **Shortcuts**.
-2. Click a key cell and press the new key combination; you can also scroll the wheel or press a mouse button over the cell. {kbd:Esc} cancels recording.
-3. If another action already uses it, a conflict is shown; you can add an alternate shortcut for the same action, or restore it with "Reset this shortcut".
-!> Switching presets replaces all custom bindings.
-## Differences from Cubism
-- Cubism's shortcuts are customized in "Shortcut settings".
-- PSD2Live provides three presets; the Live2D Cubism-style one adds Cubism Editor's keys on top of the Photoshop layout (such as A for the select tool and Ctrl+E for mesh editing); the wheel with modifiers, the middle mouse button and side buttons can also be bound.
-*> Keys shown on every page of this manual follow your current bindings.
+The table below lists every shortcut and your current binding. The default is Photoshop style; under **Settings → Shortcuts** the "Preset" can be switched to Blender style or Live2D Cubism style, and you can also rebind individual keys. The Cubism style adds the commonly used Cubism Editor keys to the Photoshop layout, so it feels closer when you come from Cubism.
+## Rebinding keys
+1. Press {key:OPEN_SETTINGS} to open Settings and choose **Shortcuts**.
+2. Click a key cell and press the new combination; scrolling the wheel over the cell or pressing a mouse button also records. {kbd:Esc} cancels recording.
+3. A conflict with another action is reported; one action can have extra alternate keys, and "Reset this shortcut" restores a single entry.
+!> Switching presets overwrites all custom keys.
+The keys shown in this manual and in the interactive tutorials follow your current bindings.
 
 @@ home | Home
-The Start page is shown at launch and is used to create and open projects and see what's new. After you open, import or create a project, the corresponding workspace opens and the "Start" tab folds away; reopen it from **File → Start Page** or **Go to Start** on an empty canvas.
-## Page layout
-The Start page is laid out like the Help and Settings pages: a list on the left, the selected content in the middle, and a details panel on the right explaining what the current action will do. The action bar at the bottom of the content holds the main button, which {kbd:Enter} also triggers; the arrow keys move through the list. These panels can be dragged, merged or closed like the editor's panels, and **Reset layout** in the **Windows** menu restores the default.
-## List
-| Group | Item | What it does |
+The Start page is the first page you see after launching the program: creating and opening projects and reading updates all start here. Opening or creating a project switches to the matching workspace automatically; to come back, use **File → Start Page**, or click **Go to Start** on an empty canvas.
+## What you can do
+| Group | Item | Purpose |
 |---|---|---|
-| Open | Open Project… | Opens a `.psd2live` ({key:OPEN_PROJECT}) |
+| Open | Open project… | Opens a `.psd2live` ({key:OPEN_PROJECT}) |
 | Open | Recent | Lists recent projects and PSDs as a grid or list, with filtering and search; double-click to open |
-| New | Generate from PSD | Choose a preset (Minimal / Default / Full) in the details panel and adjust as needed, then drop a PSD onto the window or click **Generate…** to choose a file; under **Recent PSDs** below, click to preview and double-click to generate |
-| New | Layout project | Pick a common size or enter width and height, then click **Create Layout Project** for an empty canvas |
-| New | Import CMO3 | Clears the current model and creates one from a `.cmo3`; when a model is open you can also **Replace with a CMO3…** |
+| New | Generate from PSD | Choose a preset (Minimal / Default / Complete) in the details panel and adjust as needed, then drop a PSD into the window or click **Generate…**; below it, **Recent PSDs**: single-click to preview, double-click to generate |
+| New | Layout project | Choose a common size or enter a width and height, then click **Create Layout Project** |
+| New | Import CMO3 | Creates a new project from a `.cmo3`; when a model is already open you can also **Replace with a CMO3…** |
 | Learn | What's new | Release notes for each version (see [[new-feature-introduction-title]]) |
-| Learn | Get started, Help, Settings | Open the interactive tutorial list, the Help page ({key:OPEN_HELP}) or the Settings page ({key:OPEN_SETTINGS}) |
-*> The chosen preset is remembered, and PSDs imported from the menu, recent files or by dropping are all generated with it.
-## Differences from Cubism
-- Cubism's Home is the window shown at launch, used to create or open files, choose Modeler / Animator and read news.
-- PSD2Live's Start page is the first page in the tab bar and is not saved with the project; you choose the model presets here before generating from a PSD.
+| Learn | Quick start, Help, Settings | Opens the interactive tutorial list, the Help page ({key:OPEN_HELP}) or the Settings page ({key:OPEN_SETTINGS}) |
+*> The preset chosen here is remembered: PSDs imported later from the menu, recent files or by drag and drop are all generated with it.
+The list is on the left, the content in the middle, and the details panel on the right explains what the current action will do; the action bar at the bottom holds the main button, which {kbd:Enter} also triggers. These panels can be dragged, merged or closed like the editor's panels, and **Windows → Reset layout** restores them.
 
 @@ target-version-selection | Select Target Version
-The target version decides which Cubism features the exported `.moc3` / `.cmo3` may use. In PSD2Live you choose it in the export window, not when creating the model.
-## How to choose
+The target version decides which Cubism features the exported `.moc3` / `.cmo3` can use. In PSD2Live it is an export option: while editing you can use every feature freely, and when exporting to an older version the program downgrades for you, so one project can be exported for different versions.
+## Choose a target
 1. Press {key:GENERATE} to open **Export Live2D model…**.
-2. Under **SDK target**, choose Cubism 3.0, 3.3, 4.0, 4.2, 5.0 or 5.3 (default 5.0).
-3. When the current model uses features the target does not support, the window shows "Used features downgraded on export:" with the format, feature and object for each item.
-## Features that may be downgraded (examples)
+2. In the **SDK target** drop-down choose Cubism 3.0, 3.3, 4.0, 4.2, 5.0 or 5.3 (default 5.0).
+3. If the model uses features the target does not support, the window shows "Used features downgraded on export:" and lists each one by format, feature and object.
+## Common downgrades
 | Feature | Description |
 |---|---|
-| Four-corner deformation | Older targets do not support the newer warp deformation method |
+| Quad warp method | Earlier targets do not support the new warp method |
 | Inverted mask | Needs a newer target |
-| Blend shapes | Blend-shape features are tiered by version |
-| Multiply color / screen color | Not supported by older targets |
+| Blend shapes | Blend-shape features are graded by version |
+| Multiply color / screen color | Not supported by earlier targets |
 | Extended blend modes, part offscreen compositing | Need a newer target |
-The target version also affects generation: for example, when the target has no blend shapes, simulation modes are written as keyform axes.
-## Differences from Cubism
-- Cubism chooses the target version in a dialog when creating a model or later, and features the target does not support cannot be used while editing.
-- PSD2Live chooses it at export, strips unsupported features for the target and lists them in the report; the same project can be exported to different versions.
+The target version also affects generation: for example, when the target does not support blend shapes, simulation modes are written as keyform axes.
 
 @@ environment-settings | Environment settings
-The Settings page stores local preferences that do not belong to a project. Open it with {key:OPEN_SETTINGS} or the gear at the right of the title bar; changes take effect immediately.
-## List
+The Settings page stores machine-level preferences unrelated to any project: interface size, theme, language, shortcuts and so on. Open it with {key:OPEN_SETTINGS} or the gear at the right of the title bar; changes take effect immediately.
+## Settings
 | Item | Contents |
 |---|---|
-| Scale & Display | Interface scale and font size; one click applies the scale recommended for the display, and the current display's resolution and system scale are shown |
-| Theme | Choose a color theme, or duplicate one and adjust its colors |
-| Language | Interface language (中文, English, 日本語, 한국어) |
-| Canvas Interaction | Whether the edit canvas and atlas page use software rendering, and the current rendering method |
-| Prompts | The list of windows with "Don't show again"; re-enable them one by one or **Show all prompts again** |
-| Shortcuts | Presets and per-item customization (see [[shortcut]]) |
-| Files & data | Recent files and the last export folder, plus the location and size of the install folder, workspace storage, downloaded runtimes, upscale cache, error logs and more |
-| MCP | Status and settings of the local MCP service; ports, tokens and the like need **Apply and restart** |
-**Reset Defaults** at the bottom of the list resets all settings.
-## Differences from Cubism
-- Cubism's environment settings are a dialog with categories such as interface, performance and automatic backup.
-- PSD2Live's settings are a page at the front of the tab bar whose panels can be docked; display problems are diagnosed with the software rendering option under "Canvas Interaction".
-*> Settings, layouts and shortcuts are stored in local preferences and are not saved with the project.
+| Scale and display | UI scale and font size; one click adopts the scale recommended for the monitor, and the current monitor's resolution and system scale are shown |
+| Theme | Choose a color theme, or duplicate one and adjust the colors yourself |
+| Language | 中文, English, 日本語, 한국어 |
+| Canvas Interaction | Whether the editing canvas and atlas page render in software, and the rendering method currently in use |
+| Prompts | The list of windows for which "Don't show again" was ticked; re-enable them one by one or **Show all prompts again** |
+| Shortcuts | Presets and per-key rebinding (see [[shortcut]]) |
+| Files & data | Recent files, the last export folder, and the locations and sizes of the install, workspace storage, downloaded runtimes, upscale cache, error logs and so on |
+| MCP | Status and settings of the local MCP service; after changing the port, token and so on, click **Apply and restart** |
+**Reset Defaults** at the bottom of the list resets all settings. Settings, layouts and shortcuts are stored on this machine and do not travel with the project.
 
 @@ menus | Menu
 @@ file-menu | File menu
-The **File** menu gathers creating, opening, saving and exporting projects.
+The **File** menu manages projects coming and going: new, open, save, and all export formats.
 ## Menu items
-| Item | What it does |
+| Item | Purpose |
 |---|---|
 | Start Page | Opens the Start page (see [[home]]) |
-| Open Project | Opens a `.psd2live` ({key:OPEN_PROJECT}) |
-| Open Recent | Recent projects and PSDs; **Clear Recent Files** at the bottom |
-| Save project | {key:SAVE_PROJECT} |
-| Save project as | {key:SAVE_PROJECT_AS} |
+| Open project | Opens a `.psd2live` ({key:OPEN_PROJECT}) |
+| Open recent | Recent projects and PSDs; **Clear Recent Files** at the bottom |
+| Save project / Save project as | {key:SAVE_PROJECT} / {key:SAVE_PROJECT_AS} |
 | New → New project from PSD… | Generates with the preset chosen on the Start page ({key:OPEN_PSD}) |
-| New → New project from CMO3… | Clears the current model and imports a Cubism model (see [[cmo3-import]]) |
+| New → New project from CMO3… | Imports a Cubism model as a new project (see [[cmo3-import]]) |
 | New → New Layout project… | Creates a Layout project (see [[layout-project]]) |
 | Export Live2D model… | Exports `.moc3` / `.cmo3` ({key:GENERATE}) |
-| Export as | Runtimes and players (VTube Studio, PSD2Live runtime model, web player, Unity prefab), images and video, layered PSD, and **Source PSD…** ({key:REEXPORT_PSD}) |
+| Export as | Runtimes and players (VTube Studio, PSD2Live runtime model, web player, Unity prefab), images and video, layered PSD, and **Source PSD…** (with generated layers) ({key:REEXPORT_PSD}) |
 | Open folder | The folders of the project, source files and output, plus workspace storage and app data |
-| Exit | Closes the program (Alt+F4) |
-## Differences from Cubism
-- Cubism's File menu also contains loading PSDs, model settings, exporting embedded files and so on; motions are exported from the Animator side.
-- In PSD2Live, importing is generating: the New submenu generates the model directly; every export format is in the File menu, and motions are exported with the model.
-
-@@ edit-menu | Edit menu
-PSD2Live has no separate **Edit** menu. Undo, redo and history operations come from shortcuts and the **History** panel, and object operations such as copy and delete are in the context menus of the canvas and panels.
-## Where things are
-| Cubism Edit menu | Where it is in PSD2Live |
-|---|---|
-| Undo / Redo | {key:UNDO} / {key:REDO}; "Undo" and "Redo / choose branch" in the History panel |
-| Undo history | **History** panel (see [[history-palette]]) |
-| Select all | {key:SELECT_ALL} on the canvas |
-| Delete | {key:DELETE_SELECTION} on the canvas, or **Delete Layer** in the hierarchy context menu |
-| Environment settings, shortcut settings | The gear at the right of the title bar opens the Settings page (see [[environment-settings]]) |
-## Differences from Cubism
-- Cubism gathers undo, copy and paste and settings in the Edit menu.
-- PSD2Live's history branches: editing after an undo creates a new branch, and the old branch can still be checked out in the History panel.
-*> Painting and atlas adjustments have their own in-session undo and enter the project history as one step only when applied.
+| Exit | Closes the program |
+Importing is generating: a new project from a PSD gives you a model that moves right away, and motions are exported along with the model, so there is no separate animation project to open.
+{tutorial=BASIC}
 
 @@ display-menu | Show menu
-The **View** menu in the title bar corresponds to Cubism's View menu and manages workspaces and interface zoom. Display options for the canvas itself are set on each canvas.
+The **View** menu in the title bar manages workspace tabs and the scale of the whole interface. The display toggles on the canvas, such as mesh wireframe and deformers, are not here but on each canvas itself.
 ## Menu items
-| Group | Item | What it does |
+| Group | Item | Shortcut |
 |---|---|---|
-| Workspaces | New Workspace | {key:NEW_EDIT_TAB} |
-| Workspaces | Add Preview Canvas | {key:NEW_PREVIEW_TAB} |
-| Workspaces | Show History | {key:OPEN_HISTORY_TAB} |
-| Workspaces | Duplicate Workspace / Close Workspace | {key:DUPLICATE_TAB} / {key:CLOSE_TAB} |
-| Workspaces | Next Workspace / Previous Workspace | {key:NEXT_TAB} / {key:PREV_TAB} |
-| Interface & Zoom | Zoom in interface / Zoom out interface / Reset zoom | {key:ZOOM_IN} / {key:ZOOM_OUT} / {key:ZOOM_RESET}, scaling the whole interface |
-## Canvas display
-Toggles for mesh wireframe, deformers, rotation deformers, deform paths, skeleton, texture density, source pixels, reference images and more are in the display bar at the bottom right of the canvas; the background (checkerboard / solid color / transparent) is under "View ▾" in the canvas title bar. Each canvas keeps its own (see [[about-viewarea]]).
-## Differences from Cubism
-- Cubism's View menu toggles global display items such as the mesh, guides and grid.
-- PSD2Live saves display items per canvas, so two canvases in the same workspace can show different things.
+| Workspace | New workspace | {key:NEW_EDIT_TAB} |
+| Workspace | Add Preview Canvas | {key:NEW_PREVIEW_TAB} |
+| Workspace | Show History | {key:OPEN_HISTORY_TAB} |
+| Workspace | Duplicate workspace / Close workspace | {key:DUPLICATE_TAB} / {key:CLOSE_TAB} |
+| Workspace | Next workspace / Previous workspace | {key:NEXT_TAB} / {key:PREV_TAB} |
+| Interface and scale | Zoom in UI / Zoom out UI / Reset zoom | {key:ZOOM_IN} / {key:ZOOM_OUT} / {key:ZOOM_RESET} |
+## Display toggles on the canvas
+Toggles for mesh wireframe, deformers, rotation deformers, deform paths, skeleton, texture density, source pixels, reference images and so on are in the display bar at the lower right of the canvas; the background (checkerboard / solid / transparent) is under "View ▾" in the canvas title bar. They are stored per canvas, so two canvases in the same workspace can show wireframe on one and the finished result on the other (see [[about-viewarea]]).
 
 @@ modeling-menu | Modeling Menu
-The **Model** menu in the title bar gathers operations on the whole model. Modeling operations on single objects are in the canvas modes, the hierarchy and the canvas context menu.
+The **Model** menu in the title bar holds commands that act on the whole model. Modeling for a single object (creating deformers, editing meshes, making keyforms) is done on the canvas; see [[canvas-modes]].
 ## Menu items
-| Item | What it does |
+| Item | Purpose |
 |---|---|
-| Reanalyze PSD | Reads the source PSD again and generates with the current settings ({key:REANALYZE}) |
-| Replace the model with a CMO3… | Replaces objects in the current model with those of a CMO3 by ID, adds new objects, and keeps what the file does not contain |
-| Split Layers by Mesh… | Splits separate parts drawn on one layer (such as left and right legs) into their own layers |
+| Reanalyze PSD | Re-reads the source PSD with the current settings and generates ({key:REANALYZE}) |
+| Replace the model with a CMO3… | Replaces objects in the current model with those in the CMO3 by ID, adds new objects, and keeps what the file does not have |
+| Split Layers by Mesh… | Splits parts drawn on one layer but separate from each other (such as the left and right legs) into independent layers |
 | Texture Upscale… | Upscales layer pixels 2× / 4× ({key:TEXTURE_UPSCALE}, see [[texture-upscale]]) |
-| Update Generated Rig | Adopts the results of the current generator version and merges your edits (see [[update-generated-rig]]) |
-| Preview Generated Rig Update | Only checks what an update would change; the project stays as is |
-## Differences from Cubism
-- Cubism's Modeling menu contains many object-level commands for meshes, deformers, parameters, keys and so on.
-- PSD2Live puts object-level commands on the canvas: deformers are created from the Object mode toolbar and "Create" in the context menu, mesh topology in Edit mode, and keyforms in Deform mode (see [[canvas-modes]]).
-
-@@ animation-menu | Animation menu
-PSD2Live has no separate **Animation** menu and no separate Animator. Motions are made in the same project with the **Animation** panel and the **Animation Editor**.
-## Where things are
-| Purpose | Where it is in PSD2Live |
-|---|---|
-| Motion list, new and duplicate motions | **Animation** panel: preset motions (idle, nod, head shake and so on) and custom motions |
-| Timeline, keyframes, curves | **Animation Editor**: dope sheet and curve view (see [[timelinepalatte]]) |
-| Play / set a keyframe | {key:MOTION_PLAY_PAUSE} / {key:MOTION_KEY_POSE} (when the timeline has focus) |
-| Video and animated image output | Images and video under **File → Export as** (see [[exporting-images]]) |
-Switch to the "Animation" workspace to see the motion list, a preview canvas and the Animation Editor together.
-{tutorial=ANIMATION}
-## Differences from Cubism
-- Cubism edits scenes in the Animator, and its Animation menu manages scenes, tracks and export.
-- PSD2Live's motions are saved with the model in the project; exporting `.cmo3` also writes a `.can3`, and exporting `.moc3` writes `.motion3.json`.
-
-@@ formanimation-menu | Form Animation (FA) menu
+| Update Generated Rig | Switches to the result of the current generator version and merges your edits (see [[update-generated-rig]]) |
+| Preview Generated Rig Update | Shows only what an update would change; the project stays as it is |
+*> After upgrading the program, first use **Preview Generated Rig Update** to see the difference, and run **Update Generated Rig** when you are satisfied.
 
 @@ window-menu | Window Menu
-The **Windows** menu at the right of the workspace tab bar shows or hides panels and canvases. When the Start, Help or Settings page is open, the menu lists only that page's panels.
+Panels that were closed, or an extra canvas you want, are handled in the **Windows** menu at the right of the workspace tab bar. When the Start, Help or Settings page is open, the menu lists only that page's panels.
 ## Menu items
-| Item | What it does |
+| Item | Purpose |
 |---|---|
-| Panel list | Hierarchy, Skeleton, History, Log, Animation Editor, Model presets, Layers, Parameters, Tool Details, Mesh, Inspector, Animation, Physics, Simulation, Atlas, Texture, Materials; a tick means it is shown in the current workspace |
-| Canvases | Lists this workspace's canvases, each of which can be shown or hidden |
+| Panel list | Hierarchy, Skeleton, History, Log, Animation Editor, Model presets, Layers, Parameters, Tool Details, Mesh, Inspector, Animation, Physics, Simulation, Atlas, Texture, Materials; a tick means shown in the current workspace |
+| Canvas | This workspace's canvases, which can be shown or hidden one by one |
 | Add Edit Canvas / Add Preview Canvas | Adds a canvas to this workspace (see [[multiview]]) |
-| Reset layout | Restores the current workspace's preset layout without touching the model |
-## Differences from Cubism
-- Cubism's Window menu toggles each palette and saves or loads window layouts.
-- PSD2Live saves layouts per workspace: each workspace has its own set of panels, and **Reset layout** restores only the current workspace (see [[workspace]]).
-*> The sidebar buttons at the top right of the title bar fold or unfold all panels on one side at once.
+| Reset layout | Restores the current workspace's preset layout without affecting the model |
+Each workspace has its own set of panels, and **Reset layout** acts only on the current workspace too (see [[workspace]]). If you only want more room, use the sidebar buttons at the upper right of the title bar to collapse all the panels on one side, and click again to restore them.
 
 @@ help-menu | Help Menu
-The **Help** menu in the title bar opens the Help page and online resources.
+The **Help** menu in the title bar opens the built-in Help page and the online resources.
 ## Menu items
-| Item | What it does |
+| Item | Purpose |
 |---|---|
 | Help | Opens the Help page ({key:OPEN_HELP}; press again to return to the workspace) |
 | On the web → GitHub repository | The source repository |
-| On the web → Documentation | The online documentation |
-| On the web → Example repository | Example PSDs and projects |
-| On the web → Releases | Downloads for each version |
-| On the web → Report an issue | Submit an issue |
-## Help page
-The Help page lists **Manual**, **Tutorials**, Examples, community and links, third-party licenses and About. The Manual and Tutorials follow the structure of Cubism Editor's manual and tutorial site, and each page is marked as same as Cubism, works differently, unique to this program, or not implemented. The step-by-step tutorials highlight controls in the current workspace and prompt with your own shortcuts.
-## Differences from Cubism
-- Cubism's Help menu opens the online manual, checks for updates and shows license information.
-- PSD2Live's manual and interactive tutorials are built into the program and can be read offline.
+| On the web → Online documentation | Online documentation |
+| On the web → Sample repository | Sample PSDs and projects |
+| On the web → Releases | Download each version |
+| On the web → Report an issue | Submit a problem (see [[fault-map]]) |
+## The Help page
+The Help page contains the **Manual**, **Tutorials**, **Examples**, **Community & Links**, **Third-party licenses** and **About**; everything is inside the program and readable offline. The manual follows the contents of the Cubism Editor manual, and each page carries a tag saying whether it is the same as Cubism, works differently, is unique to this program or is not implemented yet, so coming from Cubism you can look things up in the chapters you know. On a tutorial card in a page, click **Start** to be walked through it step by step in your current workspace.
 
 @@ mesh-edit-menu | Mesh Edit mode menu
-Cubism's mesh edit mode has its own menu; in PSD2Live, mesh operations are in the canvas's **Edit** mode, the "Mesh" submenu of the canvas context menu and the **Mesh** panel.
-## Where things are
+Every layer already gets a mesh automatically when generated, so most of the time you will not touch meshes; when you need to add density at joints or cut apart parts that are joined, switch the canvas to **Edit** mode, where all mesh operations are available, in the canvas right-click "Mesh" submenu and in the **Mesh** panel.
+## Where the operations are
 | Operation | Where |
 |---|---|
-| Subdivide, cut, merge, delete vertices | Edit mode toolbar and context menu (Subdivide {key:TOOL_SUBDIVIDE}, Knife {key:TOOL_KNIFE}, delete {key:DELETE_SELECTION}) |
-| Vertex / edge / face selection | The Edit mode mode bar ({key:PICK_OPTION_1}–{key:PICK_OPTION_3}) |
-| Rebuild from pixels | The "Mesh" submenu of the context menu, or the Mesh panel |
-| Split disconnected meshes… | The "Mesh" submenu of the context menu, or the hierarchy context menu |
-| Front/back layers | The "Mesh" submenu of the context menu (when available) |
-| Automatic mesh outline, vertex spacing, topology, etc. | **Mesh** panel: global defaults or per-layer overrides |
+| Subdivide, cut, delete vertices | Edit mode toolbar and right-click menu: subdivide {key:TOOL_SUBDIVIDE}, knife {key:TOOL_KNIFE}, delete {key:DELETE_SELECTION} |
+| Point / edge / face selection | The Edit mode bar ({key:PICK_OPTION_1}–{key:PICK_OPTION_3}) |
+| Rebuild from current pixels | The right-click "Mesh" submenu, or the Mesh panel |
+| Split disconnected meshes… | The right-click "Mesh" submenu, or right-click in the hierarchy tree |
+| Front/back layers | The right-click "Mesh" submenu (when available) |
+| Auto mesh outline, point density, topology | **Mesh** panel: change the global defaults or override per layer |
 {tutorial=EDIT_MODE}
-## Differences from Cubism
-- In Cubism, you enter mesh edit mode and generate meshes manually or automatically with its dedicated menu and toolbar.
-- In PSD2Live, meshes are built automatically at generation and Edit mode only changes topology; a topology change also migrates keyforms, blend shapes and glue references (see [[mesh-edit-manual]]).
+When you change the topology, existing keyforms, blend shapes and glue references migrate to the new mesh together, so nothing has to be redone (see [[mesh-edit-manual]]).
 
 @@ workspace | Workspace
-Workspaces are the tabs at the top of the interface; each tab has its own canvas and panel layout and they share one project. Switch workspaces by task rather than rearranging panels over and over.
-## Workspace presets
-Click **+** at the right of the tab bar to create a workspace and choose one of these presets; a preview of the layout and its purpose appears on the right:
-| Preset | Purpose |
+A workspace is a tab at the top of the interface. Each tab has its own canvas and panel layout, but they all edit the same project. Rigging, tuning physics and arranging animation each need different panels, so instead of rearranging panels again and again, switch workspaces by task.
+## Create a workspace
+Click the **+** at the right of the tab bar and choose a preset; the layout and its purpose are previewed on the right.
+| Preset | Good for |
 |---|---|
-| Edit | One edit canvas for deformers, keyforms and bones, with the full set of property panels |
-| Mesh | Hierarchy, edit canvas and Mesh panel for editing mesh topology |
-| Rigging | Edit canvas and live preview side by side, with the Parameters panel always open |
+| Edit | One editing canvas for deformers, keyforms and skeleton, with the full set of property panels |
+| Mesh | Hierarchy, editing canvas and Mesh panel, for changing mesh topology |
+| Rig | Editing canvas beside a live preview, with the Parameter panel always shown |
 | Animation | Motion list, preview canvas and Animation Editor |
 | Preview | A large preview with only the motion list |
-| Physics | A preview canvas plus the Parameters and Physics panels |
-| Texture | Atlas page, edit canvas and Texture panel |
-| Layout | Material browser, an edit canvas in Object mode, hierarchy and layer table, for placing first and generating later |
-| History | Only the history tree and the operation list |
-| Blank | An empty dock area; add canvases and panels from the **Windows** menu |
-## Operations
-- Click a tab to switch, drag to reorder, middle-click to close; {key:JUMP_TAB_1} and so on jump to the workspace with that number.
+| Physics | Preview canvas plus the Parameter and Physics panels, for tuning while you pull the model |
+| Texture | Atlas page, editing canvas and Texture panel |
+| Layout | Material browser, an Object-mode editing canvas, the hierarchy tree and the layer table, for placing first and then generating |
+| History | Only the history tree and the operations list |
+| Blank | An empty dock area; add panels as needed from the **Windows** menu |
+## Switching and arranging
+- Click a tab to switch, drag to reorder, middle-click to close; {key:JUMP_TAB_1} and so on jump straight to the workspace with that number, and {key:NEXT_TAB} / {key:PREV_TAB} step through them.
 - Right-click a tab to **Rename**, **Duplicate**, **Close**, **Close others** or **Close to the right**.
-- Panel sets, split ratios, floating state, canvas modes and view options are all saved per workspace; **Reset layout** restores only the current workspace's preset.
+- Panel grouping, split ratios, floating state, canvas mode and view options are all stored in their own workspace; **Reset layout** restores only the current one.
 {tutorial=WORKSPACE}
-## Differences from Cubism
-- Cubism's workspaces switch between Modeler and Animator and can save window layouts.
-- PSD2Live can have several workspace tabs at once, each saving its own canvases and panels; creating, deleting and reordering workspaces is saved with the project.
+For dragging, splitting and floating panels, see [[palatte-basic-operation]].
 
 @@ view-area | View area
 @@ about-viewarea | About the View Area
-The canvas is the area where the model is shown and edited. PSD2Live has edit canvases and preview canvases; a workspace can hold several canvases, each saving its own camera and display settings.
-## Elements on the canvas
+The canvas is where you view and edit the model. PSD2Live has editing canvases and preview canvases; one workspace can hold several, and each remembers its own camera and display settings.
+## What is on the canvas
 | Position | Contents |
 |---|---|
-| Top left | The canvas mode menu and mode bar (confirm, cancel and so on), with the current mode's toolbar below it (see [[canvas-modes]], [[toolbar]]) |
-| Bottom left | Tool options bar: values such as radius and strength for the current tool |
-| Bottom right | Display bar: toggles for texture, mesh wireframe, deformers, rotation deformers, deform paths, skeleton, texture density, source pixels, reference images and more; expands on hover |
-| Title bar | "View ▾": canvas background (checkerboard / solid color / transparent) and more, plus resetting the current canvas's view options |
-## View operations
+| Upper left | The canvas mode menu and the mode bar (confirm, cancel and so on), with the toolbar of the current mode below (see [[canvas-modes]], [[toolbar]]) |
+| Lower left | The tool options bar: the current tool's radius, strength and other values |
+| Lower right | The display bar: toggles for texture, mesh wireframe, deformers, rotation deformers, deform paths, skeleton, texture density, source pixels, reference images and so on; hover to expand |
+| Title bar | "View ▾": the canvas background (checkerboard / solid / transparent) and more, plus resetting this canvas's view options |
+## Moving the view
 | Operation | How |
 |---|---|
 | Zoom | Mouse wheel; or hold {key:ZOOM_DRAG} and drag up and down |
 | Pan | Hold {key:PAN_VIEW} and drag, or {kbd:Space} + left-drag |
-| Frame selection | {key:FRAME_VIEW} |
-| Reset camera | {key:RESET_CAMERA} |
-| Quick preview | {key:QUICK_PREVIEW} switches quickly between editing and preview |
+| Frame the selected objects | {key:FRAME_VIEW} |
+| Reset the camera | {key:RESET_CAMERA} |
+| Temporary preview | {key:QUICK_PREVIEW} switches quickly between editing and preview |
 {tutorial=WORKSPACE}
-## Differences from Cubism
-- Cubism's view area has a single view (with a separate multiview), and display items are toggled globally in the View menu.
-- PSD2Live saves display items per canvas, and the canvas's mode and tool settings sit in floating bars inside the canvas instead of taking up panels.
 
 @@ canvas-modes | Canvas modes
-The canvas mode decides what you change on the canvas. The mode menu at the top left of each canvas lists every mode, and while the menu is open you can press 1–7 to pick one directly; switching modes shows that mode's tools.
+The canvas mode decides what you change on the canvas: shapes, meshes, skeleton or pixels. The mode menu at the upper left of each canvas lists all the modes; with the menu open, press 1–7 to pick directly; after switching, the toolbar on the left changes to that mode's tools.
 ## Modes at a glance
 | Mode | What it changes | Shortcut |
 |---|---|---|
-| Object | Select objects; create Warps, rotation deformers and deform paths | {key:MODE_SELECT} |
+| Object | Select objects; create Warp, rotation deformers and deform paths | {key:MODE_SELECT} |
 | Deform | The base shape, or the keyform at the current parameter key | {key:MODE_DEFORM} |
-| Edit | Mesh topology and path bindings, Glue | {key:MODE_EDIT} |
-| Simulate | Vertex weight groups read by cloth and hair simulation | {key:MODE_SIMULATE} |
-| Skeleton | Posing and editing the skeleton | {key:MODE_SKELETON} |
+| Edit | Mesh topology, path binding and Glue | {key:MODE_EDIT} |
+| Simulate | The vertex weight groups read by cloth and hair simulation | {key:MODE_SIMULATE} |
+| Skeleton | The pose and structure of the bone skeleton | {key:MODE_SKELETON} |
 | Paint | Layer pixels | {key:MODE_PAINT} |
-| Preview | No changes; play back and inspect | {key:MODE_PREVIEW} |
-## How to use
-1. Select the target (drawable, deformer or layer) in the hierarchy or on the canvas.
-2. Choose a mode from the mode menu; without a target you are asked to select one first.
-3. Edit with the tools in the left toolbar; "Confirm" on the mode bar or {kbd:Enter} completes steps such as placing or cutting, and {key:CANCEL} cancels.
-Hold {key:TEMPORARY_SELECT} to switch to selection temporarily; release to go back.
+| Preview | Changes nothing; plays and checks | {key:MODE_PREVIEW} |
+Deform changes shape and Edit changes mesh structure; this is the pair most easily confused. Painting changes pixels, runs in its own session that can be undone independently, and is applied or discarded on the mode bar at the end.
 {tutorial=HIERARCHY}
-## Relation to Cubism
-- Cubism switches what you edit through toolbar buttons and dedicated modes such as "Mesh Edit mode" and "Deform Path".
-- PSD2Live switches everything from one mode menu, similar to Blender's mode dropdown; Simulate, Skeleton and Paint are modes Cubism does not have, and their results are baked or written into textures on export.
-*> Deform versus Edit: Deform changes shapes, Edit changes mesh structure; Paint changes pixels and uses its own apply / discard session.
+## Selecting in Object mode
+1. Choose **Object** in the mode menu, or press {key:TOOL_SELECT} to activate the click-select tool; switch to lasso {key:TOOL_LASSO_SELECT} or brush select {key:TOOL_BRUSH_SELECT} when needed.
+2. Click to select; {kbd:Shift} adds, {kbd:Alt} subtracts, {kbd:Ctrl} + click cycles the hierarchy level among overlapping hit objects, drag for a box selection, {key:SELECT_ALL} selects all.
+3. The selection stays in sync with the hierarchy tree; press {key:FRAME_VIEW} to bring the selected objects to the center of the view.
+4. After choosing a target, switch to the mode you need. With no target selected, the mode tells you to select one first.
+In other modes, hold {key:TEMPORARY_SELECT} to switch to selection temporarily and release to return. Multi-step operations such as placing or cutting are finished with "Confirm" on the mode bar or {kbd:Enter}, and cancelled with {key:CANCEL}.
+{tutorial=SELECT_MODE}
+*> Simulate, Skeleton and Paint are modes Cubism does not have; their results are baked into parameters, keyforms and pendulums on export, or written straight into the textures.
 
 @@ preview-canvas | Preview canvas
-The preview canvas plays the exported model to check motions, physics and simulation, without changing the model. Choosing "Preview" from an edit canvas's mode menu turns it into a preview canvas; choosing another mode returns to editing.
-## How to open
-- Choose **Preview** from the canvas mode menu ({key:MODE_PREVIEW}).
+The preview canvas plays the exported model so you can check motions, physics and simulation; it never modifies the model. It uses the same compile as the `.moc3` export, so what you see here is what you deliver.
+## Opening a preview
+- Choose **Preview** in the canvas mode menu ({key:MODE_PREVIEW}); choose another mode to return to editing.
 - **View → Add Preview Canvas** ({key:NEW_PREVIEW_TAB}), or **Windows → Add Preview Canvas**.
-- Switch to a workspace with a preview canvas, such as "Preview", "Animation" or "Physics".
-## Preview controls
-| Item | What it does |
+- Switch to a workspace that has its own preview canvas, such as Preview, Animation or Physics.
+## Preview options
+| Item | Purpose |
 |---|---|
 | Idle animation | Plays or stops the idle motion |
-| Tracking | Head and gaze follow the mouse; "Smooth + body Y" can be turned on |
+| Mouse tracking | Head and gaze follow the mouse; "Smooth + body Y" can be turned on |
 | Physics | Turns physics on or off |
 | Preview runtime | Cubism SDK (the exported moc3, played in the official Cubism 5 runtime) or the PSD2Live runtime (the exported .p2lrt) |
-| Advanced mode | PSD2Live runtime only: skinning along arcs, exact links, live cloth and hair simulation |
-| Frame rate cap | Follow display or a fixed FPS |
-The bottom of the canvas shows the current runtime, physics state and zoom; it warns when simulation has not been baked.
-## Relation to Cubism
-- Cubism previews the model directly in the Editor, previews physics in the "Physics Settings" window, and confirms the final result in the Viewer.
-- PSD2Live's preview canvas plays the output of the same compilation as the export and can switch directly between the official SDK and the bundled runtime, much like Cubism Viewer.
-!> Reference simulation runs only in the editor and is not exported; to export it, bake it in the Simulation panel.
+| Advanced mode | PSD2Live runtime only: arc skinning, exact links, live cloth and hair simulation |
+| Frame rate cap | Follow the monitor or a fixed FPS |
+The bottom of the canvas shows the current runtime, physics state and zoom ratio; a hint appears when a simulation has not been baked yet.
+!> The reference simulation runs only in the editor and is not exported; to carry it into the exported files, bake it in the Simulation panel.
 
 @@ guide-function | Guide line function
-
 @@ solo | Solo function
-Solo shows only the selected layer and temporarily hides the others, which helps when checking parts that are covered.
+Solo shows only the selected layer and temporarily hides the others, which makes it easy to check parts covered by hair or clothing.
 ## How to use
-1. Right-click a layer in the hierarchy.
-2. In the "View" group, choose **Solo this layer**; a `SOLO` badge appears next to the menu item.
-3. Right-click again and choose **Exit solo**; the other layers return to the visibility they had before.
-Solo applies to the current canvas; other canvases in the same workspace are not affected.
-*> Solo is temporary visibility for editing and is not the same as variants that switch with parameters; to show or hide a layer with a parameter, set up a variant or opacity keyforms (see [[variants]]). The Interior shape panel also has its own "Solo / frame".
-## Differences from Cubism
-- Cubism: turn on Solo for the selected objects in the view area; several objects can be soloed at once.
-- PSD2Live: solo a single layer from the hierarchy context menu; it affects only the current canvas.
+1. Right-click a layer in the hierarchy tree.
+2. In the "Show" group choose **Solo this layer**; a `SOLO` mark appears beside the menu item.
+3. When done, right-click again and choose **Exit solo**; the other layers return to the visibility they had before solo.
+Solo affects only the current canvas; other canvases in the same workspace display as usual.
+*> Solo is only a temporary show/hide while editing. To show or hide a part with a parameter, set up a variant or an opacity keyform (see [[variants]]).
 
 @@ grid | Grid Function
-
 @@ snapshot | Snapshot Function
-
 @@ onion-skin | Onion Skin
-
 @@ multiview | Multiview
-A workspace can hold several canvases, for example an edit canvas next to a preview canvas, or two edit canvases viewing the same model with different cameras.
+One workspace can hold several canvases: for example an editing canvas and a preview canvas side by side, so you see the finished result while editing keyforms; or two editing canvases, one zoomed in on detail and one showing the full body.
 ## Adding a canvas
 1. Open the **Windows** menu at the right of the workspace tab bar.
-2. Choose **Add Edit Canvas** or **Add Preview Canvas**; the new canvas docks in the workspace, and you can drag its title to move it.
-3. When it is no longer needed, untick it in the "Canvases" group of the **Windows** menu, or close the canvas. At least one canvas always remains.
-## What each canvas keeps and what is shared
-| Per canvas | Shared |
+2. Choose **Add Edit Canvas** or **Add Preview Canvas**; the new canvas docks into the workspace, and dragging its title moves it.
+3. When no longer needed, untick it in the "Canvas" group of the **Windows** menu, or simply close it. A workspace keeps at least one canvas.
+## What is independent and what is shared
+| Independent per canvas | Shared |
 |---|---|
 | Selection, tool, camera, display settings, canvas mode | Parameter pose, parameter locks and playback controls |
-So adjusting a parameter on the edit canvas is reflected on the preview canvas at once; switching focus or hiding a canvas does not swap in a different pose. Different workspaces keep their own poses.
-## Differences from Cubism
-- Cubism's multiview shows several viewpoints side by side in one view, and each view can have different parameter values.
-- PSD2Live's canvases share one parameter pose and each saves its own camera and display items; use different workspaces when you need different poses.
+So when you drag a parameter on the editing canvas, the preview canvas shows the same pose.
+*> To compare two different parameter poses side by side, put them in two workspaces: each workspace keeps its own pose.
 
 @@ random-pose | Random Pose
-
 @@ toolbar-folder | Toolbar
 @@ toolbar | About the Toolbar
-The toolbar sits at the top left of each canvas, below the mode menu, and lists the tools of the current canvas mode. Each tool takes one row, grouped by category with separators; hovering expands it to show names and shortcuts.
+The toolbar sits at the upper left of each canvas, below the mode menu, and lists only the tools available in the current mode. Tools of the same kind share one slot that shows the one used last; click the slot again or right-click it to expand the rest, and hovering shows the name and shortcut.
 ## Tools in each mode
 | Mode | Tools |
 |---|---|
-| Object | Select, Transform, Lasso Select; Create Warp, Create Rotation, Deform Path |
-| Deform | Select, Transform, Lasso Select, Brush Select; Deform Brush, Smooth Brush, Inflate Brush |
-| Edit | The Deform mode tools plus Subdivide, Knife and Glue (available when two meshes are selected) |
-| Simulate | Weight paint, Weight gradient, with the weight groups to paint listed below |
-| Skeleton | Pose Bones, Edit Bones |
-| Paint | Brush, Pencil, Eraser; Paint Bucket, Eyedropper; Shape |
-## Tool variants
-When you select a tool with variants, they expand below it: brush shapes, the sub-tools of glue and bones, weight group kinds and paint shapes. Pick them directly with {key:PICK_OPTION_1}–{key:PICK_OPTION_5}.
-## Where settings are
+| Object | Select, Transform, lasso select; Create Warp, Create Rotation, deform path |
+| Deform | Select, Transform, lasso select, brush select; push/pull brush, smooth brush, inflate/deflate |
+| Edit | The Deform mode tools, plus subdivide, knife and Glue (available when two meshes are selected) |
+| Simulate | Weight brush, weight gradient, with the weight groups to paint listed below |
+| Skeleton | Bone pose, edit bones |
+| Paint | Brush, pencil, eraser; paint bucket, eyedropper; shapes |
+When a tool has variants (brush shapes, the sub-tools of Glue and Skeleton, weight group kinds, paint shapes), the variants are listed as icons once it is selected, and {key:PICK_OPTION_1}–{key:PICK_OPTION_5} switch between them directly.
+## Where to adjust values
 | Where | Contents |
 |---|---|
-| Mode bar (top of the canvas) | Vertex / edge / face selection, confirming and cancelling the current step |
-| Tool options bar (bottom left of the canvas) | Values such as radius, strength, hardness and opacity; drag left and right to adjust, click to pop up a slider |
-| Canvas context menu | The same settings as the options bar, plus the tool's operations |
+| Mode bar (top of the canvas) | Point / edge / face selection, confirm and cancel for the current step |
+| Tool options bar (lower left of the canvas) | Radius, strength, hardness, opacity and so on; drag left and right on a value to adjust, click to pop up a slider |
+| Canvas right-click menu | The same values as the options bar, plus the tool's operations |
 | Tool Details panel | Advanced settings that need more room (see [[detailed-toolpalatte]]) |
+Brush size and hardness can also be adjusted directly with shortcuts, such as {key:BRUSH_RADIUS_DOWN} / {key:BRUSH_RADIUS_UP}.
 {tutorial=TOOL_DETAILS}
-## Differences from Cubism
-- Cubism's toolbar is at the top of the window, with one row of buttons shared by all modes.
-- PSD2Live's toolbar is inside each canvas and changes with the canvas mode; numeric settings are gathered in the tool options bar and the context menu.
 
 @@ edit-level | Level edit
-The edit level decides which layer of control points you edit on a warp deformer. In Deform mode, PSD2Live offers two levels for warp deformers: "Vertices" and "Bezier".
-## How to use
-1. Select a warp deformer and enter Deform mode.
-2. On the mode bar, choose **Vertices** ({key:PICK_OPTION_1}) or **Bezier** ({key:PICK_OPTION_2}).
-3. Vertices: edit every control point of the grid directly. Bezier: only the cyan anchors and amber handles can be dragged to bend the whole grid; the detailed grid fades and cannot be edited.
-When the target is not a warp deformer, the two are the same and the mode bar shows no level.
+When editing a mesh deformer (Warp), sometimes you need to refine point by point and sometimes you just want to bend the whole grid into an arc. The two edit levels in Deform mode serve these two needs: **Vertices** and **Bezier**.
+## Switching levels
+1. Select a mesh deformer and enter Deform mode.
+2. On the mode bar choose **Vertices** ({key:PICK_OPTION_1}) or **Bezier** ({key:PICK_OPTION_2}).
+3. At the vertex level you drag each control point directly; at the Bezier level you drag only the cyan anchors and amber handles, the whole grid bends smoothly along the curve, and the fine grid fades and cannot be edited.
+When the target is not a mesh deformer, the mode bar shows no levels, and an art mesh's vertices are edited by point, edge and face as usual.
 ## Related settings
-**Bezier Division** (1–16) in the Inspector and Tool Details panel sets the number of segments at the Bezier level, and **Reset Bezier Control Points** returns the handles to their default positions.
+**Bezier Division** (1–16) in the Inspector and Tool Details panels sets the segments of the Bezier level, and **Reset Bezier Control Points** returns the handles to their default positions.
 {tutorial=DEFORM_MODE}
-## Differences from Cubism
-- Cubism's edit level has levels 1–3, switched on the toolbar, controlling how dense the shown and editable points on a deformer are.
-- PSD2Live has only the Vertices and Bezier levels, and only for warp deformers; a drawable's vertices are always edited by vertex, edge and face selection.
+*> Cubism's edit levels 1–3 control how dense the displayed points are; here there are only the two levels Vertices and Bezier, and they apply only to mesh deformers.
 
 @@ palettes | Palette
 @@ palatte-basic-operation | Basic Palette Operations
-Canvases and panels are all dockable modules that can be combined, split, floated or closed freely. Layouts are saved per workspace.
+The canvas and the panels are all dockable modules; drag them around to build a layout that suits the current task. The layout is stored in its own workspace, so a mess affects only that one workspace.
 ## Basic operations
-| Operation | How |
+| What you want | How |
 |---|---|
-| Reorder / merge into a tab group | Drag a module tab to another position in the same column, or between the tabs of another column |
-| Split | Drag a module to the top, bottom, left or right edge of the target area and release to create a new split; drag the divider to change the ratio |
-| Move a whole group | Drag the empty part of the tab bar or the faint handle at its right end |
-| Float | Drag it out of the main window to become a separate window; the floating title bar offers **Dock in workspace** |
-| Close | Middle-click the tab; right-click a tab for **Close Other Tabs** or **Close All Tabs** |
+| Reorder, or merge into a tab group | Drag a module's tab to another position in the same column, or between the tabs of another column |
+| Split | Drag a module to the top, bottom, left or right edge of the target area and release to create a new column; drag the dividers to change ratios |
+| Move a whole group | Drag an empty part of the tab bar or the faint handle at the right end |
+| Float | Drag it out of the main window to become a separate window; **Dock in workspace** on the floating window's title bar takes it back |
+| Close | Middle-click the tab; right-click a tab for **Close Other Tabs** or **Close All Tabs** in the group |
 | Show again | Tick it in the **Windows** menu, or **Reset layout** |
-The sidebar buttons at the top right of the title bar fold or unfold all panels on one side, and hovering shows the modules inside.
+The sidebar buttons at the upper right of the title bar collapse or expand all the panels on one side, and hovering shows the modules in them. The panels of the Start, Help and Settings pages can be arranged in the same way.
 {tutorial=WORKSPACE}
-## Differences from Cubism
-- Cubism's palettes can be docked and floated, and the layout is saved as a whole.
-- In PSD2Live each workspace has its own layout and the canvas is one of the modules; panels on the Start, Help and Settings pages can be arranged the same way.
 
 @@ detailed-toolpalatte | Tool Details palette
-The **Tool Details** panel shows advanced settings of the current tool that need more room. Common values (radius, strength, hardness and so on) are in the tool options bar at the bottom left of the canvas, not here.
-## Contents
+The **Tool Details** panel holds settings of the current tool that need more room. Frequently used values such as radius, strength and hardness are not here but in the tool options bar at the lower left of the canvas and the canvas right-click menu, so you do not have to look away from the canvas while adjusting.
+## Contents for each tool
 | Tool | Settings |
 |---|---|
-| Transform | Precise numeric transforms |
-| Create Warp / Create Rotation | Defaults used when creating, such as Bezier division |
-| Deform Path | The path list |
+| Transform | Exact numeric transforms |
+| Create Warp / Create Rotation | Defaults used at creation, such as Bezier division |
+| Deform path | The path list |
 | Skeleton | Bone binding and weights |
-| Paint | Palette: the foreground color's color field and hue bar, swatches and recently used colors; "Discard" and "Apply" for the paint session |
+| Paint | Palette: the foreground color's gamut and hue bar, swatches and recently used colors; "Discard" and "Apply" for the paint session |
 {tutorial=TOOL_DETAILS}
-## Differences from Cubism
-- Cubism's Tool Details palette shows all settings of the current tool, such as brush size and falloff.
-- PSD2Live puts common values in the tool options bar and context menu inside the canvas, and the Tool Details panel keeps only advanced settings.
 
 @@ inspector-palette | Inspector palette
-The **Inspector** shows and edits the properties of the selected object according to its type. With nothing selected, it shows a hint.
+The **Inspector** shows and edits the properties of the selected object; its contents change with the object type, and with nothing selected it shows a hint.
 ## Main properties
 | Object | Properties |
 |---|---|
-| Drawable | Name, clipping mask, draw order, opacity, multiply color, screen color, blend mode, culling, user data, vertex info |
-| Warp deformer | Bezier division, edit level settings, deformer conversion method |
-| Rotation deformer, deform path | Their own fields (for a path: curve, width, hardness, closed) |
-Draw order in the Inspector, **Draw order…** in the hierarchy context menu and the draw order ruler beside the hierarchy all change the same property.
+| Art mesh | Name, clipping mask, draw order, opacity, multiply color, screen color, blend mode, culling, user data, vertex info |
+| Mesh deformer | Bezier division, edit level settings, deformer conversion method |
+| Rotation deformer, deform path | Their own dedicated fields (such as the path's curve, width, hardness and closed state) |
+Draw order has three entry points: the value in the Inspector, **Draw order…** in the hierarchy tree's right-click menu, and the draw-order ruler beside the hierarchy tree. They change the same property, so use whichever is handy.
 {tutorial=INSPECTOR}
-*> When editing keyforms owned by a generator, "Generated overrides" in the Inspector lists items that could not be merged cleanly.
+*> When you modify a keyform produced by the generator, "Generated overrides" in the Inspector lists the items that cannot be merged cleanly with regeneration.
 
 @@ partspalatte | Parts palette
-PSD2Live has no separate Parts panel. The object hierarchy is viewed and edited in the **Hierarchy**, and recognition and variants of PSD layers are set in the **Layers** panel.
-## Hierarchy
-- Lists deformers and drawables by parent-child relation; the root node "Model Hierarchy" shows counts.
-- The top bar searches deformers and layers, expands or collapses everything, and sorts by model order, height, horizontal position, draw order or name.
-- The eye icon controls visibility, selection syncs with the canvas, dragging a node changes its parent, and dropping on "Drop here to move it to the root" moves it to the root.
-- Right-click a layer: solo, draw order, mesh, add a parent deformer or deform path, import layer, delete layer.
-- The draw order ruler beside the tree zooms with the wheel, reorders by dragging and takes a typed value on double-click.
+Looking for the Parts palette: the hierarchy of objects is in the **Hierarchy** tree, and the recognition and variants of PSD layers are in the **Layers** panel (see [[layers-palette]]). The hierarchy tree arranges art meshes directly by the deformers' parent-child relationships, and parts are written out when you export a `.cmo3`.
+## Hierarchy tree
+- The root node "Model Hierarchy" shows the number of deformers and layers.
+- The top bar can search deformers and layers, expand or collapse everything, and sort by model order, height, horizontal position, draw order or name.
+- The eye icon toggles visibility; selecting in the tree stays in sync with the canvas highlight.
+- Dragging a node under another deformer changes its parent, and dragging it to "Drop here to move it to the root" moves it to the root level.
+- Right-click a layer for: solo, draw order, mesh, add parent deformer or deform path, import layer, delete layer.
+- Drag a PNG / WebP / TIFF / BMP onto a node to import it as a new layer under that node.
+- The draw-order ruler beside the tree zooms with the wheel, reorders by dragging, and takes a value on double-click.
 {tutorial=HIERARCHY}
-## Differences from Cubism
-- Cubism's Parts palette organizes ArtMeshes and deformers into parts (folders) and manages part visibility, locking and draw order groups.
-- PSD2Live's hierarchy is organized directly by the deformer parent-child structure; parts are written when exporting `.cmo3`. Layers are classified by tags rather than part folders (see [[layers-palette]]).
 
 @@ deformerpalatte | Deformer palette
-The deformer parent-child structure is edited in the **Hierarchy**, which plays the role of both Cubism's Parts palette and Deformer palette.
-## How to use
-1. View the parent-child relations of deformers and drawables in the hierarchy; selection syncs with highlighting on the canvas.
-2. Drag a node under another deformer to change its parent.
-3. Right-click a deformer: add a parent warp, child warp or parent rotation deformer, import a layer, move to root, expand / collapse the branch, **Delete (children up)**.
-4. A new deformer starts a placement session; adjust it on the canvas and confirm (see [[making-and-placement-of-warp-deformer]]).
-{tutorial=HIERARCHY}
-## Differences from Cubism
-- Cubism's Deformer palette lists only the deformer structure, with ArtMeshes in the Parts palette.
-- PSD2Live lists deformers and drawables in one tree; changed parent-child relations can be reverted with **Reset Hierarchy** or **Reset Hierarchy for This Item** in the context menu.
+The parent-child structure of deformers is also edited in the **Hierarchy** tree; deformers and art meshes are in the same tree, so you can see at a glance who follows whom.
+## Creating and adjusting deformers
+1. In the hierarchy tree select the layer or deformer to wrap in a deformer.
+2. Right-click and choose add parent mesh, child mesh or parent rotation deformer.
+3. A placement panel appears at the lower left of the canvas; adjust the extent on the canvas and confirm, or cancel with {key:CANCEL} (see [[making-and-placement-of-warp-deformer]]).
+4. After that, dragging a node changes its parent; right-click also offers **Move to Root**, expanding or collapsing a branch, and **Delete (children up)**.
+{tutorial=CREATE_DEFORMER}
+If you have messed up the parent-child relationships, **Reset Hierarchy** restores everything, and **Reset Hierarchy for This Item** on an item restores only that one.
 
 @@ palametorpalatte | Parameter palette
-The **Parameters** panel lists the model's parameters and is used to adjust the pose and to add or delete parameter keys.
+The **Parameters** panel lists all of the model's parameters, for posing and for adding or removing parameter keys. A generated model already comes with angle, blink, mouth and other parameters, so dragging them shows how the model can move.
 ## Basic operations
-- Left-drag a parameter bar to change its current value; right-click while hovering a key marker to snap to that key.
-- Parameters can be searched, locked, reset and organized into folders.
-- Parameters linked in two dimensions are operated with an XY pad; right-click to snap to the intersection of both parameters' keys.
-- Key markers: a round dot is a normal key, a square dot is a blend shape key.
+- Left-drag a parameter bar to change the current value; right-click while hovering over a key mark to snap to that key.
+- Parameters can be searched, locked and reset, and organized with folders.
+- Two-dimensionally linked parameters are operated with an XY pad; right-click to snap to the key intersection of the two parameters.
+- Among key marks, a round dot is an ordinary key and a square dot is a blend shape key.
 {tutorial=PARAMETERS}
-*> Keyforms on parameter keys are modeling data, not the keyframes of the animation timeline; dragging a parameter on the edit canvas pauses animation playback.
+*> The keyform on a parameter key is modeling data and is not the same thing as a keyframe on the animation timeline; dragging a parameter on the editing canvas pauses animation playback.
 
 @@ layers-palette | Layers panel
-The **Layers** panel lists PSD layers as a table, together with the tags and variant settings the generator recognized for them. The generator identifies parts by the tags here; correct them directly when recognition is wrong.
+The **Layers** panel is the main entry for controlling automatic generation: it lists the PSD layers as a table, together with the tags and variants the generator recognized for them. The generator decides how to rig a part from its tags, so when something moves wrongly in the model, check here first for a wrongly recognized tag.
 ## Table columns
 | Column | Contents |
 |---|---|
 | # | Index |
-| PSD layer / component | The layer name; the summary at the top shows how many are visible, recognized and unrecognized |
-| Tags | Part, side and custom tags (not read by the generator); click to choose or type words such as "hair" or "front" |
+| PSD layer / component | The layer name; the summary at the top shows the number of visible, recognized and unrecognized layers |
+| Tags | Part, side, and custom tags the generator does not read; click to choose, or type words such as "hair" or "front" |
 | Variant | None, Toggle Variant, Switch Variant |
 | Parameter | The parameter ID the variant uses |
+## Correcting the recognition
+1. From the layer name, confirm what part it depicts.
+2. Open the tags and choose the right part and side.
+3. For layers that should appear or switch with a parameter, set the "Variant" column (see [[variants]]).
+Generated layers take on their new tags after regeneration.
+{tutorial=BASIC}
 ## Other operations
 - Right-click to show all, hide all or invert visibility.
 - Deleted layers can be brought back with **Restore Deleted Layers**.
-- A layer can be made a reference layer ({key:LAYER_TOGGLE_REFERENCE}): it stays on the canvas but takes no part in generation or export.
+- A layer set as a reference layer ({key:LAYER_TOGGLE_REFERENCE}) stays on the canvas for reference but takes no part in generation or export.
 - Layers not yet generated can be reordered with {key:LAYER_TO_FRONT}, {key:LAYER_FORWARD}, {key:LAYER_BACKWARD} and {key:LAYER_TO_BACK}.
-Generated layers take on their new tags after regeneration.
-{tutorial=BASIC}
-## Relation to Cubism
-- Cubism has no such panel: after a PSD is loaded, the author builds meshes and deformers by hand.
-- PSD2Live's generator reads layer tags to decide how to rig, so this table is the main control over automatic generation (see [[precautions-for-psd-data]], [[variants]]).
+{tutorial=VARIANTS}
 
 @@ timelinepalatte | Timeline palette
-The **Animation Editor** corresponds to Cubism's Timeline palette and edits a motion's parameter tracks and keyframes; the motion list is in the **Animation** panel.
-## Basic operations
-1. Select or create a motion in the Animation panel.
-2. Add parameter tracks in the Animation Editor; double-click a track to add a keyframe.
-3. The dope sheet suits timing and the curve view suits easing; keyframes use Bezier interpolation by default.
-4. With "Auto Key" on in the toolbar, adjusting a parameter slider, 2D point or canvas pose at the playhead sets keyframes automatically; to key by hand, pose first and then use "Key Pose" to write it at the playhead.
+The **Animation Editor** edits a motion's parameter tracks and keyframes, and the motion list is in the **Animation** panel. Generation already brings idle and other preset motions, which you can edit directly or add to with new ones.
+## Making a motion
+1. In the Animation panel choose or create a motion.
+2. In the Animation Editor add parameter tracks and double-click a track to add keyframes.
+3. The dope sheet suits arranging timing and the curve view suits adjusting easing; keyframes use Bezier transitions by default.
+4. With "Auto Key" on in the toolbar, dragging a parameter slider, a 2D point or the canvas pose at the playhead keys automatically; with it off, set the pose first and write it to the playhead with "Key Pose".
+{tutorial=ANIMATION}
 ## Shortcuts (when the timeline has focus)
 | Operation | Shortcut |
 |---|---|
 | Play / pause | {key:MOTION_PLAY_PAUSE} |
-| Set keyframe | {key:MOTION_KEY_POSE} |
+| Key the pose | {key:MOTION_KEY_POSE} |
 | Auto Key | {key:MOTION_TOGGLE_AUTO_KEY} |
 | Previous frame / next frame | {key:MOTION_PREV_FRAME} / {key:MOTION_NEXT_FRAME} |
 | Fit view | {key:MOTION_FIT_VIEW} |
-{tutorial=ANIMATION}
-## Differences from Cubism
-- Cubism's timeline manages several models and tracks in an Animator scene.
-- PSD2Live's motions belong to the current model and there are no scenes; preset motions have their own tuning controls, and after you edit their keyframes by hand you must restore the defaults to use those controls again.
+!> Preset motions have their own adjustment controls. After you edit its keyframes by hand, you must restore the default before those controls can be used again.
+*> A motion belongs to the current model; there are no scenes as in Cubism Animator. Motions are written out together with the model on export.
 
 @@ scene-palette | Scene palette
-
 @@ project-palette | Project palette
-
 @@ history-palette | History panel
-The **History** panel shows every version of the project as a tree. Continuing to edit from an old version creates a new branch; the original branch is kept and can be checked out at any time.
-## How to open
+The **History** panel draws every version of the project as a tree. Going back to an old version and editing does not discard the later steps but grows a new branch; the original branch is always kept and can be checked out at any time. History is stored in the `.psd2live`, so it is still there when you close and reopen the program.
+## Opening
 - {key:OPEN_HISTORY_TAB}, or **View → Show History**.
-- Create a workspace from the "History" preset, which shows only the history tree and **Operations**.
-## Operations
+- You can also create a workspace with the "History" preset, which shows only the history tree and the **Operations** list.
+## Common operations
 | Operation | How |
 |---|---|
-| Check out a version | Double-click a node card, or select it and click **Checkout**; **Latest** checks out the newest version |
-| Find | **Search history…** at the top; the branch leading to HEAD is highlighted |
+| Go back to a version | Double-click the node card, or select it and click **Checkout**; **Latest** checks out the newest version |
+| Search | **Search history…** at the top; the branch leading to HEAD is highlighted |
 | Annotate | Fill in **Node title** and **Notes**, then click **Apply annotation** |
-| Hide a branch | **Hide branch** (no data is deleted); **Show hidden branches** brings it back |
-| Undo / redo | "Undo" and "Redo / choose branch", or {key:UNDO} / {key:REDO} |
-| Zoom the view | Zoom in, zoom out, reset to 100%, fit to view |
-Node details show the node ID, parent node ID, revision and creation time, and offer **Copy ID**.
+| Hide a branch | **Hide branch** (the data is not deleted); **Show hidden branches** restores them |
+| Undo / redo | {key:UNDO} / {key:REDO}; with several branches, redo lets you choose the branch |
+| Zoom the view | Zoom in, zoom out, reset to 100%, fit view |
+The node details show the node ID, parent node ID, revision and creation time, and you can **Copy ID**.
 {tutorial=PROJECT_HISTORY}
-## Relation to Cubism
-- Cubism's undo is linear: editing after an undo discards the later steps.
-- PSD2Live's history is saved in the `.psd2live`, and branches can still be checked out after closing; changes made over MCP and in the interface go into the same history.
 
 @@ logpalatte | Log Palette
-The **Logs** panel shows records from the program, editing operations and AI clients, including errors, warnings and export reports.
+The **Log** panel records program activity, edit operations and messages from AI clients, including errors, warnings and export reports. When something goes wrong, look here first to see what happened.
 ## Operations
-- Filter by source: All, System, User, AI, Images; filter by level: Debug, Info, Warning, Error.
-- **Filter…** filters by text; **Auto Scroll**, **Clear**, **Copy Log**.
-- Columns are time, source, tag and message, with **Reset Columns**; repeated messages are merged with a count.
-- Records with images can be clicked to view them full size.
-*> When reporting a problem you can attach the copied log (see [[fault-map]]).
+- Filter by source (all, system, user, AI, image) and by level (debug, info, warning, error).
+- **Filter…** filters by text; there are also **Auto Scroll**, **Clear** and **Copy Log**.
+- The columns are time, source, tag and message, and can be restored with **Reset Columns**; repeated messages are merged and show a count.
+- Click a record with an image to see it larger.
+*> When reporting a problem, attach the copied log (see [[fault-map]]).
 
 @@ convert-id | ID Conversion
-
 @@ autosave | Automatic Backup Function
-While you edit, PSD2Live keeps writing unsaved changes to local workspace storage. After the program quits unexpectedly, the next launch can restore these changes as an unsaved project.
-## Restoring
-1. After the program closed unexpectedly before you saved or discarded changes, start PSD2Live again.
-2. When the "Restore unsaved edits" window appears, choose **Restore**.
-3. The project opens unsaved, including history, parameter pose, snapshots and workspaces; press {key:SAVE_PROJECT} to keep them.
-Choose **Discard** to not restore. Exiting after a normal save or discard clears the recovery data.
+While you edit, PSD2Live keeps writing unsaved changes into the local workspace storage. If the program crashes or the power fails, the next launch can recover those changes, so you do not have to dig through backup files by hand.
+## Recovery
+1. After the program closed abnormally before you saved or discarded changes, launch PSD2Live again.
+2. When the "Restore unsaved edits" window appears, choose **Restore**; choosing **Discard** does not restore.
+3. The project opens in an unsaved state with its history, parameter poses, snapshots and workspaces intact; press {key:SAVE_PROJECT} to save it.
+After a normal save, or after discarding and quitting, the recovery data is cleared. Background tasks that were running at the crash are shown as records but are not run again automatically.
+!> Recovered content is still unsaved; save it as a `.psd2live` soon.
 ## Storage location
-**Settings → Files & data** shows the location and size of workspace storage, which holds the history of opened projects; you can also clean up leftovers that earlier crashes left in the system temp folder.
-## Differences from Cubism
-- Cubism saves a copy of the model as a backup file at a set interval, and you open the backup by hand when needed.
-- PSD2Live creates no backup files; it keeps recovery checkpoints and asks at the next launch whether to restore them. Background task records are restored but not rerun automatically.
-!> Restored content is still unsaved; save it as a `.psd2live` soon.
+**Settings → Files & data** shows the location and size of the workspace storage, where the history of opened projects is kept; it can also clean up leftovers that an abnormal exit left in the system temp folder.
+
 @@ material | Material division / PSD creation
 @@ divide-the-material | About Material Separation
-To make an illustration move, the parts that move separately or overlap one another must be drawn on separate layers; this step is called material separation. PSD2Live reads the separated layered PSD, recognizes parts by layer name and automatically generates meshes, deformers and parameters, so how finely you separate directly determines the result.
-## Basic rules for separation
-- Put each part on its own layer: eye whites, irises, upper lashes, eyebrows, nose, mouth, front hair, back hair, face, neck, top and so on.
-- Draw the iris as a full circle, including the part hidden by the eyelids; the eye white limits where the iris shows.
-- Draw the mouth fully open; the program generates the closed mouth. The mouth interior can be one piece, or split into upper teeth, lower teeth and tongue.
-- Keep front hair and back hair apart, and paint extra into covered areas so nothing shows through when moving.
-- Paired parts (both eyes, both ears, both arms) are best split into left and right layers, with the side written in the name.
-## When the separation is not fine enough
-Left and right parts drawn on one layer are not split on import and are generated as one part. After import you can split them into separate layers with [[split-by-mesh]]; when one layer has to sit both in front of and behind another part (such as a collar wrapping around the neck), use [[depth-split]].
-## Differences from Cubism
-- Cubism: how to separate is entirely up to the author, and after loading you build meshes, deformers and parameters by hand one by one.
-- PSD2Live: after separation, a full rig is generated automatically from layer names (or the tags you change in the layer table after import), so naming and layering should follow the conventions in [[precautions-for-psd-data]].
-- PSD2Live can also skip the PSD: place individual images on the canvas in a [[layout-project]] and then generate.
-*> Layers whose names are not recognized are not discarded: they still get meshes and a fallback assignment, and you can fix their tags in the layer table after import.
+PSD2Live can generate a moving model straight from a layered PSD, provided that parts which move separately, or which cover each other, are drawn on different layers. The more sensibly it is split, the less the automatically generated meshes, deformers and parameters need reworking.
+## How to split
+- One layer per part: eye white, pupil, upper eyelashes, eyebrows, nose, mouth, front hair, back hair, face, neck, top and so on.
+- Draw the pupil as a complete circle, including the part hidden by the eyelid; the eye white limits where the pupil shows.
+- Draw the mouth at its widest open state; the closed mouth is generated by the program. The mouth interior can be one layer, or split further into upper teeth, lower teeth and tongue.
+- Keep front hair and back hair separate and draw extra in the covered areas so that no base shows when the hair sways.
+- Parts that come in left and right pairs (both eyes, both ears, both arms) go on separate left and right layers, with the side written in the name.
+The layer name tells the generator what part each layer is; for the naming conventions and recognized names, see [[precautions-for-psd-data]].
+## Missed splits can be fixed in the editor
+Left and right parts drawn on the same layer are not separated automatically on import. After importing, [[split-by-mesh]] separates them into independent layers by connected region; when one layer must be both in front of and behind another part (for example a collar that wraps around the neck), use [[depth-split]]. When the materials come from several files and are hard to merge into one PSD, you can place the images directly in a [[layout-project]] and then generate.
 
 @@ reimport-psd | How to create PSDs to import
-This page describes the format and structure requirements when preparing PSD files for PSD2Live. A PSD that meets them can be imported directly and a model generated automatically.
-## File format
-- Use a layered RGB, 8-bit PSD with a transparent background.
-- Rasterize text, vector shapes, layer styles and adjustment effects first, or merge them into the corresponding pixel layers.
-- Keep the body basically upright; the head may tilt slightly, but check the automatic reference estimate in the preview.
-## Layer naming
-The generator recognizes parts by layer name, and English, Chinese, Japanese and Korean names all work, such as `front hair`, `前发`, `eyelash-l`, `左睫毛`. For the name table, see [[precautions-for-psd-data]]. Recognition results are only initial values and can be changed at any time after import in the "Tags" column of the "Layers" panel.
-## Sides and numbers
-- Left and right refer to the character's own sides: the character's left is usually on the right of the image.
-- Numbers in names (such as `front hair 1`) tell similar materials apart; some Photoshop copy suffixes are cleaned up.
-- Numbers alone do not set up expression switching. For layers that should switch with a parameter, set up [[variants]] after import.
+If you keep to a few rules when preparing the PSD, you get a moving model straight after import and skip binding layer by layer by hand.
+## File
+- Use a layered PSD in RGB, 8-bit, with a transparent background.
+- Rasterize text, vectors, layer styles and adjustment effects first, or merge them into the corresponding pixel layer.
+- Keep the body basically upright; the head may tilt slightly. After import, check the automatically estimated reference in the preview.
+## Layer names decide the part
+The generator recognizes parts from layer names, in English, Chinese, Japanese or Korean, for example `front hair`, `前发`, `eyelash-l`, `左睫毛`. The recognition is only an initial value and can be changed at any time in the **Tags** column of the "Layers" panel after import.
+*> A note for users of Cubism: a PSD's folder structure does not become parts; parts are built by the generator from the recognized parts, so layer names matter more than folders.
+- Left and right refer to the character itself: the character's left side is usually on the right of the picture.
+- A number in a name (such as `front hair 1`) only tells similar materials apart; the copy suffix Photoshop adds automatically is cleaned up.
+- A number does not create expression switching. For layers that should show or switch with a parameter, set [[variants]] after import.
 ## Canvas size
-Mesh settings default to "Scale with document size": lengths are computed as if the document's long side were scaled to a fixed size, so a large PSD gets an equally dense mesh. Sharpness comes from the layers' own pixels.
-## Differences from Cubism
-- Cubism: the PSD's layer and folder structure becomes ArtMeshes and parts directly, and names are only for display.
-- PSD2Live: the layer name decides which part the generator treats it as, and parts are built automatically by the generator according to body part, not by PSD folder.
-*> Without a PSD, you can also write images separated in an external tool into a Layout manifest (JSON or zip) and open it directly; see [[layout-project]].
+The mesh settings default to **Scale with document size**: mesh lengths are computed as if the document's long side were scaled to a fixed size, so a large PSD gets a mesh of the same density; sharpness comes from the layers' own pixels.
 
 @@ precautions-for-psd-data | Notes on PSD creation
-Automatic generation depends on layer names and how layers are separated. Below are the common pitfalls when drawing, and the table of layer names the generator can recognize automatically.
-## When drawing
-- Draw only the upper lashes on the lash layer; do not mix in the lower lashes or the lower eyelid line, or closing the eye may drag the lower eyelid.
-- Draw the mouth fully open; if you need a particular closed-mouth look, draw a separate `mouth_close`. A closed-mouth drawing cannot recover a mouth interior that is not there by deforming.
-- Keep front hair and back hair apart, with enough overlap where they are covered.
-- A closed eye can be drawn in advance as `eye_close`, or left to the lashes' eye-closing curve.
-!> A recognized name does not mean the shape is right. After import, check neutral, eye and mouth open/close, head turns and hair motion, and verify layer order, left and right, masks and anything showing through.
-*> Recognition results can be changed in the "Tags" column of the "Layers" panel; see [[psd-import]].
+Automatic generation depends on layer names and how the layers are split. Below are the recognized layer names and the places where drawing most easily goes wrong; a layer whose name is not in the table is not lost either — after import, add its part in the **Tags** column of the "Layers" panel.
+!> A successful name recognition does not mean the shape is good enough. After import, check the neutral pose, eye and mouth opening, head turns and hair movement, and verify layer order, left/right, masks and exposed base.
 
 @@ split-by-mesh | Split layers by mesh
-When a layer contains several unconnected pieces (for example both eyes drawn on one layer), you can split it into separate layers by the connected regions of its mesh, so each piece gets its own mesh, deformation and tags.
-## How to open
-- **Model → Split Layers by Mesh…**: scans all layers and lists those containing separate meshes; use **Select all** / **Deselect all**, then click **Split selected**.
-- Right-click a layer in the hierarchy → **Split disconnected meshes…**, or choose it under **Mesh** in the canvas context menu in Object, Edit or Paint mode, to handle just that one layer.
-- After importing layers, the program can offer to split them; tick don't-show-again in the dialog, or toggle "Offer mesh splits when importing layers" in **Settings › Prompts**.
-## Splitting
-1. Open the **Split layers by mesh** dialog and check the preview of each mesh region.
-2. Choose a naming style: for two pieces, `L / R`, `T / B`, `1 / 2` or **Custom names**; for more pieces, numbers or custom.
-3. Click **Split layers**. If you do not want to split, click **Keep as one layer**; in a batch you can click **Keep all as single layers**.
-`L / R` naming follows the character's own left and right: the piece on the left of the image gets the `-r` suffix and is tagged as the right side, and the other gets `-l`.
+When one layer holds several parts that are not connected to each other (for example two eyes on one layer), you can split it right in the editor by the mesh's connected regions; each piece gets its own mesh, deformation and tags, with no need to go back to the drawing software and edit the PSD.
+## Splitting layers
+1. Open **Model → Split Layers by Mesh…**; the dialog lists all layers that contain several separate meshes, and you can **Select all** / **Deselect all** and then click **Split selected**. To handle just one layer, right-click it in the hierarchy tree and choose **Split disconnected meshes…**, or choose it under **Mesh** in the canvas right-click menu.
+2. Check the preview of each region and choose the naming: for two pieces you can pick `L / R`, `T / B`, `1 / 2` or **Custom names**; for more pieces, numbering or custom names.
+3. Click **Split layers**; if you do not want to split, click **Keep as one layer**, and for batches you can click **Keep all as single layers**.
+`L / R` names by the character's own left and right: the piece on the left of the picture gets the `-r` suffix and is tagged as the right side, and the other is `-l`.
+After importing a layer the program may also ask on its own whether to split; to stop seeing the prompt, tick the box in the dialog, or turn off "Offer mesh splits when importing layers" under **Settings › Prompts**.
 ## After splitting
-The pieces replace the original layer, their meshes are taken from the matching parts of the original mesh, and the original layer's keyforms, blend shapes, paths, weights and glue are carried over to them. If you later change a piece's mesh settings, its mesh is regenerated from that piece's own pixels and these bindings are migrated.
-!> Models imported from CMO3 cannot be split by mesh.
-## Relation to Cubism
-In Cubism, layers are separated in the PSD before loading, and ArtMeshes cannot be split after loading; you have to go back to the drawing software, change the PSD and load it again. PSD2Live can split directly in the editor without touching the PSD. To separate by a custom shape rather than by connected regions, or to interleave front and back, see [[depth-split]].
+The parts replace the original layer, with meshes taken from the matching portions of the original mesh, and the keyforms, blend shapes, paths, weights and glue on the original layer carry over to the parts. If you later change a part's mesh settings, the mesh is regenerated from that part's own pixels and these bindings are migrated.
+To split along a custom shape, or to make one layer interleave front and back, use [[depth-split]].
+!> A model imported from a CMO3 cannot be split by mesh.
 
 @@ depth-split | Front/back layers
-Different parts of one layer sometimes need to sit in front of and behind another part, for example the back of a collar hidden behind the neck while the front flaps cover it. **Front/back layers** duplicates the layer into a back and a front copy sandwiching the middle object, sets the draw order automatically and glues the two so they deform together; all you do is erase from the front copy the parts that should go behind.
+A back collar hidden behind the neck and a front collar piece covering the neck in front — when one layer has to appear both in front of and behind another part, **Front/back layers** solves it in the editor in one step: the program duplicates the layer into a front layer and a back layer that sandwich the middle object, arranges the draw order automatically and ties the two layers together with glue so that they deform together; all you do is erase on the front layer the parts that should be hidden behind.
 ## Steps
-1. Switch the edit canvas to **Object** mode, select the layer to split (such as the top), and hold {kbd:Shift} to add the object that goes in between (such as the neck).
-2. Right-click the layer to split and choose **Split "layer name" into front/back layers**. The name in the menu is the object that will be duplicated; check it before clicking.
-3. The program creates "`layer name · back`" and "`layer name · front`" to replace the original layer, selects the front copy and switches to the **Eraser** in **Paint** mode.
-4. Erase the parts of the front copy that should be covered, along the edge of the middle object. If you erase too much, use undo in the paint session.
-5. Click **Apply**. The front copy keeps the original mesh and deformation, so no mesh needs regenerating.
-6. Check poses such as head turns and body turns in the Parameters panel, and go back to touch up the front copy if needed.
-When only one layer is selected, right-click it in the hierarchy and choose **Front/back layers…**, pick the middle object under **Intervening object** in the popup, confirm the front / middle / back arrangement and click **Create and erase**.
-## Notes
-- Only one layer is split at a time; you can add several middle objects, which are placed together between the front and back copies and keep their order.
-- Nothing looks different right after creation: the new front copy starts as a full duplicate, and the covering appears only after you erase.
-- If a paint session is uncommitted, apply or discard it before creating.
-!> Models imported from CMO3 do not support front/back layers yet.
+1. On the editing canvas switch to **Object** mode, select the layer to split (such as the top), and hold {kbd:Shift} to add the object that goes in the middle (such as the neck).
+2. Right-click the layer to split and choose **Split "layer name" front/back**. The menu shows the object that will be duplicated; check it before you click.
+3. The program creates two layers, "`layer name · back`" and "`layer name · front`", in place of the original, selects the front layer and switches to the **Eraser** in **Paint** mode.
+4. Along the edge of the middle object, erase the parts of the front layer that should be covered; if you erase too much, undo it in the paint session.
+5. Click **Apply**. The front layer keeps the original mesh and deformation, so the mesh does not have to be regenerated.
+6. Drag the head-turn, body-turn and other parameters in the Parameter panel to check, and go back to the front layer to touch up edges if needed.
 {tutorial=PAINT_MODE}
-## Relation to Cubism
-In Cubism you usually go back to the drawing software to split the material into front and back layers, then reload it and set up deformation for each, or connect them with glue. PSD2Live does the duplication, ordering and gluing in one step inside the editor; the back copy keeps all its pixels, and the original layer's deformation data is copied to both.
+With only one layer selected, right-click it in the hierarchy tree and choose **Front/back layers…**, pick the middle object under **Intervening object** in the dialog, check the relationship of front layer, middle and back layer, and click **Create and erase**.
+## Notes
+- Only one layer is split at a time; you can add several middle objects, which are placed together between the front and back layers and keep their order relative to each other.
+- The appearance does not change right after creation: the front layer starts as a full copy, and the occlusion appears only after you erase.
+- With an uncommitted paint session, apply or discard it before creating.
+!> Front/back layers are not supported yet for models imported from a CMO3.
 
 @@ layout-project | Layout projects and the material library
-A Layout project lets you place parts on the canvas first and generate the rig afterwards; after generation you can keep adding images and changing tags and then regenerate, and existing edits are kept. The material library (the **Materials** panel) holds every image the project uses, and the pixels a layer shows come from the material linked to it.
+A Layout project lets you place parts on the canvas and tag them first, then generate the rig; after generation you can still add images, change tags and regenerate, and your existing edits are kept. It suits materials scattered over several files or split by other tools. All images a project uses live in the **Materials** panel, and a layer's pixels on the canvas come from the material it is linked to.
 ## Starting a Layout project
-- **From an empty canvas**: on the Start page choose **Layout project** (or **File → New → New Layout project…**), pick a common size or enter width and height, then click **Create Layout Project**. The new project has no rig yet and switches to the Layout workspace.
-- **From a PSD**: import a PSD as usual. The project generates a rig directly, and every PSD layer also appears in the Materials panel, linked to the layer on the canvas.
-- **From a Layout manifest**: a manifest written by an external tool (JSON, or a zip with it at the root) opens the same way as a PSD; layers are placed according to the manifest and not yet generated.
-## Materials panel
-- **Import**: click **Import** or **Import folder…**, or drop files onto the panel. Supported are PNG, BMP, TIFF, WebP, JPEG, layered images inside PSD and CMO3, and SVG. A PSD becomes a folder, and its layer groups become subfolders.
-- **Organize**: drag materials into another folder to move them; right-click to rename, create a folder or delete. Materials in use by a layer cannot be deleted.
-- **Material window**: double-click a material to open a separate window where you can view, paint, flip and adjust colors; every layer using that material updates together.
+- **Empty canvas**: on the Start page choose **Layout project** (or **File → New → New Layout project…**), choose a common size or enter a width and height, and click **Create Layout Project**.
+- **From a PSD**: import the PSD as usual and the project generates the rig directly; each PSD layer is also registered as a material and linked to its layer on the canvas.
+- **From a Layout manifest**: a manifest written by an external tool (JSON, or a zip with it in the root) is opened the way a PSD is; the layers are placed per the manifest and not yet generated.
 ## Placing and generating
-1. Drag materials or a whole folder onto the canvas, or right-click **Place on canvas**.
-2. In **Object** mode, move, scale and mirror layers with the transform box; placing and scaling never resample pixels.
-3. Describe part and side in the **Tags** column of the "Layers" panel, and set toggle or switch variants in the **Variant** column.
-4. Click **Generate** in the generate bar at the top right of the edit canvas. Layers placed or retagged afterwards show as "waiting"; click **Regenerate** to bring them into the rig.
-Layers not yet generated can move up or down one step with {key:LAYER_FORWARD} / {key:LAYER_BACKWARD}, or to the top or bottom with {key:LAYER_TO_FRONT} / {key:LAYER_TO_BACK}; after generation, the front-to-back order of generated layers is adjusted with [[draworder]].
-*> Canvas units set the model's size and proportions, while sharpness comes from the materials' own pixels: the smaller a layer is placed, the denser its texture.
+1. In the Materials panel click **Import** or **Import folder**, or drag files straight onto the panel. PNG, BMP, TIFF, WebP, JPEG and SVG are supported, plus the layered images inside a PSD or CMO3; a PSD becomes a folder, and layer groups become subfolders.
+2. Drag a material or a whole folder onto the canvas, or right-click **Place on canvas**.
+3. In **Object** mode use the transform box to move, scale and mirror layers; none of these resample pixels.
+4. In the "Layers" panel's **Tags** column write the part and side, and in the **Variant** column set [[variants]].
+5. Click **Generate** in the generate bar at the upper right of the editing canvas. After that, newly placed layers or layers whose tags changed show as "waiting"; click **Regenerate** to merge them into the rig.
 {tutorial=LAYOUT}
-## Relation to Cubism
-Cubism models only from PSDs; adding or removing materials means going back to the drawing software, editing the PSD and loading it again. A Layout project brings "organizing materials, placing and naming" into the editor too, which suits materials that come from several files or were separated by a program. For reference layers, see [[sketch]].
+*> The canvas unit decides the model's size and proportions, while sharpness comes from the material's own pixels: the smaller a layer is placed, the denser its texture.
+Layers not yet generated move up or down one step with {key:LAYER_FORWARD} / {key:LAYER_BACKWARD}, and to the front or back with {key:LAYER_TO_FRONT} / {key:LAYER_TO_BACK}; after generation use [[draworder]] instead.
+## Organizing materials
+- Drag a material to another folder to move it; right-click to rename, create a folder or delete. A material in use by a layer cannot be deleted. Tags on a folder carry to every layer placed from it.
+- Double-click a material to open a separate material window, where you can zoom, paint, flip and recolor; every layer using that material updates together.
+- Right-click a material and choose **Replace selected layer's image**: the layer's position and size on the canvas stay the same and only the pixels change; see [[psd-re-import]].
+- Reference images such as the original art or drafts can be placed as reference layers; see [[sketch]].
 
 @@ modeling | Modeling
 @@ psd-import-folder | PSD Import
 @@ psd-import | Import PSDs
-After you import a layered PSD, PSD2Live recognizes parts by layer name, automatically generates meshes, deformers, parameters, motions and physics, and enters the editing workspace. What is generated is decided by [[model-presets]], which you can choose before importing or change afterwards.
-## Ways to import
-- Choose a file with **File → New → New project from PSD…** ({key:OPEN_PSD}).
-- Drop a PSD anywhere on the window.
-- **Generate from PSD** on the Start page: first pick a preset in the details panel (**Minimal** / **Default** / **Full**), adjust items as needed, then choose a file; double-click in **Recent PSDs** to generate directly.
-The preset is remembered, and PSDs imported from the menu, recent files or by dropping are all generated with it. After import, hair and clothing simulations bake one after another, with progress in the status bar.
-## Checks after import
-1. Open the **Layers** panel and check the **Tags** (part and side) recognized for each layer; if one is wrong, click it to change it, and generated layers take on the new tags after regeneration.
-2. In the **Variant** column, set up [[variants]] for layers that should show, hide or switch with a parameter.
-3. Switch to preview and check blinking, mouth shapes, head turns and hair motion.
-4. Save as a `.psd2live` project with {key:SAVE_PROJECT}. Every PSD layer is also registered as a material; see [[layout-project]].
+After a layered PSD is imported, PSD2Live recognizes parts from the layer names and generates meshes, deformers, parameters, motions and physics in one go, giving you a model that moves right away; every later change is recorded as an edit and replayed automatically on regeneration. What gets generated is decided by [[model-presets]].
+## Import
+1. Choose **File → New → New project from PSD…** ({key:OPEN_PSD}), or drag a PSD anywhere onto the window. Or on the Start page click **Generate from PSD**, pick the **Minimal** / **Default** / **Complete** preset in the details panel and adjust as needed, then choose the file; double-clicking in **Recent PSDs** generates right away.
+2. Wait for generation to finish. Hair and clothing simulations are then baked one after another, with progress shown in the status bar.
+3. Open the **Layers** panel and check the **Tags** (part and side) recognized for each layer; open and change any that are wrong. Generated layers take on new tags after regeneration.
+4. For layers that should show or switch with a parameter, set [[variants]] in the **Variant** column.
+5. Switch to the preview and check blinking, mouth shapes, head turns and hair movement, then save as a `.psd2live` project with {key:SAVE_PROJECT}.
 {tutorial=BASIC}
-## Differences from Cubism
-- Cubism: loading a PSD creates only ArtMeshes and parts; meshes, deformers and parameters must be built one by one by hand or with helper features.
-- PSD2Live: import gives you a complete moving model, which you then edit in the editor; every change is saved as an edit record and replayed on regeneration.
-- Cubism builds parts from PSD folders; PSD2Live builds parts automatically from the recognized body parts.
-- Existing Cubism models can be opened through [[cmo3-import]].
+The chosen preset is remembered, and PSDs imported later from the menu, recent files or by drag and drop are generated with it. Each PSD layer is also registered as a material, and you can keep adding images in [[layout-project]].
+*> For users coming from Cubism: parts are built automatically from the recognized parts, not from the PSD folders. To open an existing Cubism model project, use [[cmo3-import]].
 
 @@ psd-re-import | Re-import PSDs
-After the artwork changes, the new pixels need to go into the existing project. PSD2Live has no feature to reload a whole PSD by layer mapping; instead, pick from the approaches below as needed.
-## Replacing individual layers' pixels (keeping edits)
-1. **Import** the modified PSD in the Materials panel; it becomes a new material folder.
+After the artwork changes, you can put only the new pixels into the existing project, and the edits you made to the model are all kept. PSD2Live does not match up the layers of a whole PSD; it replaces layer by layer:
+## Replacing a layer's pixels
+1. In the Materials panel **Import** the modified PSD; it becomes a new material folder.
 2. Select the layer to update on the canvas or in the layer list.
-3. Right-click the new material and choose **Replace selected layer's image**. The layer's position and size on the canvas stay the same; only the pixels and atlas tile change.
-4. Click **Regenerate** in the generate bar. Layers whose image was replaced get their mesh regenerated from the new pixels by default; to keep the original mesh, choose **Generate, keeping replaced images' meshes** from the generate button's dropdown.
-You can also replace a single layer with **Replace image…** in the **Texture** panel; see [[png-file-export-replacement]].
-## Adding new layers
-Drag new materials onto the canvas, place and tag them, then **Regenerate**; existing edits are kept. See [[layout-project]].
-## Regenerating from scratch
-**Model → Reanalyze PSD** ({key:REANALYZE}) reads the current PSD again and generates a new project with the current presets. If there are unsaved changes, you are asked whether to save first; edits in the original project are not carried into the new one.
-## Differences from Cubism
-- Cubism: re-importing a PSD maps layers by name or by hand, replaces the textures of existing ArtMeshes, and lets you choose whether to keep the meshes.
-- PSD2Live: there is no whole-PSD mapping; pixels are updated layer by layer through material replacement, and new layers are added by placing them and regenerating.
-!> For layers with author edits, bindings or materialized meshes, replacing the image and rebuilding the mesh may be refused; the reason is shown above the atlas page.
+3. Right-click the new material and choose **Replace selected layer's image**. The layer's position and size on the canvas stay the same; only the pixels and the atlas tile change.
+4. Click **Regenerate** in the generate bar. A layer whose image was replaced is rebuilt by default with a mesh from the new pixels; to keep the original mesh, choose **Generate, keeping replaced images' meshes** in the generate button's drop-down.
+A single layer can also be replaced in the **Texture** panel with **Replace image…**; see [[png-file-export-replacement]]. When the artwork gains a new part, treat it as a new material, drag it onto the canvas, tag it, and **Regenerate**; see [[layout-project]].
+!> For a layer that already has authored edits, bindings or materialized meshes, replacing the image and rebuilding the mesh may be refused, and the reason is shown above the atlas page.
+## Regenerate from scratch
+When you want to start over completely from a modified PSD, use **Model → Reanalyze PSD** ({key:REANALYZE}): it re-reads the current PSD and generates a new project with the current preset. Edits in the original project are not carried over; if there are unsaved changes it asks first whether to save.
 
 @@ model-presets | Model presets
-The **Model presets** panel decides what is generated automatically and how strongly: deformation and mouth shapes, rig values, motions, physics and simulation. After a change the model is regenerated with the new settings, and your existing edits are replayed as usual.
+The **Model presets** panel decides in one place what is generated automatically and how large the motion amounts are: deformation and mouth shapes, Rig values, motions, physics and simulation. After a change the model is regenerated with the new settings and your existing edits are replayed as usual, so feel free to try repeatedly.
 ## Where to set them
-- Before import: the details panel of **Generate from PSD** on the Start page, where you pick the **Minimal** / **Default** / **Full** preset and adjust items. The generate button's menu switches presets or offers **Apply to Current Model**.
-- After import: the **Model presets** panel (reopen it from the **Windows** menu). The toolbar at the top expands / collapses everything, and **Reset Defaults** returns all model presets to their defaults.
-## Groups
+- Before import: the details panel of **Generate from PSD** on the Start page; first choose **Minimal** / **Default** / **Complete**, then adjust item by item; the generate button's menu can switch presets or **Apply to Current Model**.
+- After import: the **Model presets** panel (reopen it from the **Windows** menu if it was closed). The toolbar at the top can expand or collapse everything, and **Reset Defaults** restores all presets.
+## Contents of each group
 | Group | Contents |
 |---|---|
-| Rigging & Facial | Feature displacement deformers on/off, head range and body range (0–4×), generated upper and lower lip outlines with line width and color, mouth shape settings |
-| Rig Values | Body X (turn), Body Y, body lean, Proportion (chibi), Body Z and breath, depth and perspective; **Advanced** holds head turn, eyes, eyebrows and mouth |
-| Motions | Two groups, **Basic motions** and **Skeleton motions**; turning one off removes its motions from the Animation panel, preview and export |
-| Physics & Simulation | Front hair and back hair each choose **Simulate** / **Classic sway** / **Off**; **Clothing** simulation (only loose areas are simulated); Eye Jelly; Auto pin weights |
-With **Selected only** ticked, the physics and simulation presets apply only to the selected layers.
-## Tips
-1. Generate with the defaults first and preview.
-2. When adjusting, change one item at a time and watch the preview.
-3. Atlas parameters are not here; they are set in the export window.
-{tutorial=BASIC}
-## Relation to Cubism
-Cubism has no matching panel: deformers, parameters, motions and physics are built by the author by hand, or with separate helper features such as [[auto-generation-of-deformer]], [[face-auto-edit]] and [[auto-generation-of-sway-motion]]. PSD2Live's model presets gather these generation steps in one place, and you can regenerate at any time after a change.
+| Deformation and mouth shapes | Facial-feature offset deformer switches, head and body amounts (0–4×), upper and lower lip strokes with their line width and color, mouth shape settings |
+| Rig values | Body X (turning left and right), body Y, body lean forward and back, size change (head-to-body ratio), body Z and breathing, depth and perspective; **Advanced** holds head turning, eyes, eyebrows and mouth |
+| Motions | Two groups, **Basic motions** and **Skeleton motions**; when turned off, that group's motions are removed from the Animation panel, preview and export |
+| Physics and simulation | Front hair and back hair each choose **Simulation** / **Classic sway** / **Off**; **Clothing** simulation (acts only on loose parts); jelly eyes; auto Pin physics weights |
+With **Selected only** ticked, the physics and simulation presets act only on the selected layers.
+*> It is best to generate with the defaults first and preview; when you need to adjust, change one item at a time so you can see what each does. Texture atlas settings are not here but in the export window.
 
 @@ update-generated-rig | Update Generated Rig
-Operations that change the automatically generated result, such as turning on hair simulation, enabling the skeleton or splitting layers, merge your existing edits onto the new generated result and save it as fixed data, so later program upgrades do not change these results automatically. To adopt a newer generator's improvements, use **Update Generated Rig**.
-## Steps
-1. First check with **Model → Preview Generated Rig Update**: the status bar shows whether the update would change the model and how many items need a look; the project itself is unchanged.
-2. Run **Model → Update Generated Rig**. Parts you have not changed are replaced with the new generator's results, and your changes are kept.
-3. Places that cannot be migrated cleanly are counted in the status bar and listed under **Generated overrides** in the Inspector.
-After a project opens or the generated result changes, the program checks in the background for results that an older version merged incorrectly, and if it finds any it shows a notice at the top of the edit canvas, where you can click "Update Generated Rig" or "Preview changes" directly. Once you dismiss the notice, it does not return until the generated result changes again.
-## Notes
-- When the generated result does not change, no history is created; an update is one undoable history step.
-- Canvas edits on keyforms produced by a generator are saved as overrides of the generated result and merged three ways with the new result during an update.
-## Relation to Cubism
-In Cubism the model data is exactly what the author built by hand, so there is no generated part to update. A PSD2Live model consists of the generated result plus your edits, and this feature re-merges the two after the generator improves.
+Actions such as turning on hair simulation, enabling the skeleton or splitting layers merge your edits onto the generated result of that moment and pin it, so that upgrading the program never quietly changes your model. When you want the improvements of a newer generator, run **Update Generated Rig** yourself.
+## Operations
+1. First choose **Model → Preview Generated Rig Update**: the status bar shows whether the update would change the model and how many items need a look; the project itself is unchanged.
+2. Then choose **Model → Update Generated Rig**. The parts you did not change switch to the new version's result, and your changes are kept.
+3. Where something cannot be migrated cleanly, the status bar reports how many, and the items are listed one by one in **Generated overrides** in the Inspector.
+An update is one history step and can be undone; when the generated result does not change, no history step is made.
+After a project is opened or the generated result changes, the program checks in the background whether an earlier version merged something wrongly; if so, a prompt appears at the top of the editing canvas, where you can click "Update Generated Rig" or "Preview changes" directly. After you dismiss the prompt, it does not appear again until the generated result changes once more.
+*> Canvas edits on keyforms owned by the generator are saved as overrides of the generated result and three-way merged with the new result on update, so shapes you tuned by hand are not washed away.
 
 @@ cmo3-import | Import from CMO3
-An existing Cubism model project (`.cmo3`) can be imported into PSD2Live for further editing, preview and export. The imported parameters, keyforms, deformers, textures and physics are saved with the project.
+An existing Cubism model project (`.cmo3`) can be imported into PSD2Live to keep editing, previewing and exporting; parameters and keyforms, deformers and hierarchy, textures and meshes, and physics all come along and are saved with the `.psd2live` project. After exporting a CMO3 you can go back to Cubism Editor and carry on there.
 ## Two ways to import
-| Method | Where | Result |
+| Way | Entry | Result |
 |---|---|---|
-| New project from CMO3 | **File → New → New project from CMO3…**, or **Import CMO3** on the Start page | Clears the current model and imports; the model content comes only from that file |
-| Replace the current model with a CMO3 | **Model → Replace the model with a CMO3…**, or **Replace with a CMO3…** on the Start page | Keeps the current project, replaces objects in the model with those of the CMO3 by ID and adds new objects; objects not in the CMO3 stay unchanged |
-Neither method generates presets. After import, parameters and keyforms, deformers and the layer hierarchy, textures and meshes, and physics are kept.
+| New project from CMO3 | **File → New → New project from CMO3…**, or **Import CMO3** on the Start page | Clears the current model; the content comes only from that file |
+| Replace the current model with a CMO3 | **Model → Replace the model with a CMO3…**, or **Replace with a CMO3…** on the Start page | Keeps the current project, replaces objects of the same ID in the model with those from the CMO3 and adds new ones; objects the CMO3 does not have stay as they are |
+Neither way applies a model preset automatically.
+{path=EXPERIENCED}
 ## Notes
-- The Materials panel can also import a CMO3, using its layered images as materials.
-- Parts marked as guide images in Cubism are not written when exporting moc3 by default; tick **Export guide image parts** in the export window if you need them.
-!> Models imported from CMO3 cannot use [[split-by-mesh]] or [[depth-split]].
-## Differences from Cubism
-- Cubism: `.cmo3` is Cubism Editor's native model file and is opened and edited directly.
-- PSD2Live: `.cmo3` is an import format and becomes a PSD2Live project (`.psd2live`) when read; you can import it whole or replace objects in the current model by ID. After exporting a CMO3 you can go back to editing it in Cubism Editor.
+- Parts marked as reference images in Cubism are not written by default when exporting moc3; when needed, tick **Export guide image parts** in the export window.
+- The Materials panel can also import a CMO3, and the layered images in it are used as materials; see [[layout-project]].
+!> A model imported from a CMO3 cannot use [[split-by-mesh]] or [[depth-split]].
 
 @@ texture | Texture
-@@ original-picture | About Source Image and Model Guide Image
-@@ psd-link | Linking Source Image to Model Guide Image
 @@ texture-atlas-edit | Edit Texture Atlas
-The atlas is the texture pages into which all layer pixels are packed for export. PSD2Live shows the atlas in the **Texture** workspace, where you can adjust each layer's tile position, density and rotation and set the page budget.
+The texture atlas is packed automatically with the model and usually needs no attention; when you want to control the sharpness of a particular part, or squeeze the textures into smaller pages, adjust tile positions, density and rotation directly in the **Texture** workspace and set the page budget.
 ## Three sizes
-Each layer has three sizes: the rectangle it covers on the canvas (canvas units), the pixels of its own raster, and its tile pixels in the atlas. The **Texture** panel shows these three for the selected layer side by side as "Canvas → Source → Atlas".
-## Working on the atlas page
-- Click a tile to select its layer, or drag on empty space to box-select; selection syncs with the canvas and the layer list.
-- **Drag a tile** to move it; when its mesh overlaps other tiles or it leaves the page, the tile turns red and is not moved on release.
-- Drag a corner of the selected tile to scale density proportionally; drag the round handle above the top edge to rotate, holding {kbd:Shift} for 15° steps.
-- Right-click a tile to double / halve density, turn it 90°, move it to another page, lock its size, arrange the selected tiles or replace the image.
-Moving, scaling and rotating first enter an adjustment session: a session bar at the top of the page offers undo, redo and **Discard**, and **Apply** commits it as one history step.
-## Arrangement and budget
-- **Arrange** at the top left arranges once by the menu options and saves: **By mesh shape (nest tiles)** or **By rectangles**, over **All tiles** or **Selected tiles only**.
-- With **Auto arrange** on, tiles are rearranged by rectangles after every change; when off (the default for new projects), the current layout is kept.
-- **Atlas budget** at the top right sets the page size, maximum pages and padding. A "Fit" below 100% means things do not fit, and all unlocked tiles shrink together; layers with **Lock size** keep their size.
-## Texture panel
-The **Texture density** slider and the ½× / 2× / reset buttons adjust how many atlas pixels correspond to each source pixel (1/64–16). With no layer selected, the panel shows an overview of each page's size, tile count, usage, estimated video memory and so on.
-## Differences from Cubism
-- Cubism: ArtMeshes are placed and scaled by hand in the texture atlas editing dialog, and atlases are set up by texture size.
-- PSD2Live: the atlas is packed automatically with the model and can be adjusted at any time in the Texture workspace, with overlaps judged by the area each mesh actually covers; the export dialog shows only an atlas summary.
-*> **Source pixels** in the display bar at the bottom right of the edit canvas makes the canvas sample each layer's own raster directly, for comparing sharpness after packing.
+Each layer has three sizes: the rectangle it covers on the canvas (canvas units), the pixels of its own raster, and the tile pixels in the atlas. The **Texture** panel shows these three for the selected layer side by side as "Canvas → Source → Atlas".
+## Adjusting tiles
+1. On the atlas page click a tile to select its layer, or drag on empty space to box-select; the selection stays in sync with the canvas and the layer list.
+2. Drag a tile to move it; when its mesh overlaps another tile's or goes beyond the page, the tile turns red and does not move on release.
+3. Drag a corner of the selected tile to change density proportionally, and drag the round handle outside the top edge to rotate (hold {kbd:Shift} to step by 15°).
+4. A session bar appears at the top of the page where you can undo, redo or **Discard**; when satisfied click **Apply**, which is committed as one history step.
+Right-clicking a tile also offers doubling / halving the density, rotating 90°, moving to another page, locking its size, arranging the selected tiles, or replacing the image. Overlap is judged by the area the mesh actually covers, so transparent corners of tiles can nest into each other.
+## Layout and budget
+- **Arrange** at the upper left rearranges once and saves: **By mesh shape (nest tiles)** or **By rectangles**, with a scope of **All tiles** or **Selected tiles only**.
+- With **Auto arrange** on, every change rearranges by rectangles; for new projects it is off by default and the current layout is kept.
+- **Atlas budget** at the upper right sets page size, maximum page count and spacing. A "Fit" below 100% means it does not fit, and all unlocked tiles are shrunk together; layers with **Lock size** stay unchanged.
+With no layer selected, the **Texture** panel shows each page's size, tile count, usage and a video memory estimate; with a layer selected, the **Texture density** slider and the ½× / 2× / reset buttons adjust how many atlas pixels correspond to each source pixel (1/64–16).
+*> **Source pixels** in the display bar at the lower right of the editing canvas makes the canvas sample the layer's own raster directly, which is handy for comparing against the packed sharpness.
 
 @@ png-file-export-replacement | Exporting and Replacing PNG Files
-Export textures as images, edit them in external software, then replace them back into the model. PSD2Live offers three ways: exporting a whole page, replacing a single layer and exporting a PSD.
-## Exporting
-- **Save page as PNG…**: right-click empty space on the atlas page in [[texture-atlas-edit]]. What is written matches the texture in the exported model byte for byte.
-- **File → Export as → Source PSD…** ({key:REEXPORT_PSD}): exports a layered PSD at 1× or an upscale factor, optionally with **Include generated auxiliary layers**, for detailed per-layer touch-ups in drawing software.
-- In the Materials panel, right-click a folder → **Export folder as PSD…**.
-## Replacing
+To modify a texture in a drawing program, export it first, and after editing, replace it back per layer; the atlas is repacked automatically, and tile positions do not have to stay the same.
+## Export
+- Right-click empty space on the atlas page in [[texture-atlas-edit]] and choose **Save page as PNG…**; the content is byte-for-byte identical to the texture in the exported model.
+- **File → Export as → Source PSD…** ({key:REEXPORT_PSD}) exports a layered PSD at 1× or an upscale factor, and can **Include generated auxiliary layers**; it suits touching up layer by layer in a drawing program.
+- In the Materials panel, right-click a folder and choose **Export folder as PSD…**.
+## Replace
 1. Select the layer to replace.
-2. In the **Texture** panel click **Replace image…** (or right-click the tile on the atlas page).
-3. Choose the fit, **Stretch** or **Contain**, and whether to **Rebuild the mesh from the new pixels**.
-The new image can be any resolution, and the canvas rectangle stays the same; a larger image raises the layer's density. You can also right-click in the Materials panel → **Replace selected layer's image**.
-!> For layers with author edits, bindings or materialized meshes, replacing the image and rebuilding the mesh is refused; the reason is shown above the atlas page.
-## Differences from Cubism
-- Cubism: PNGs are output per atlas page, and after editing the whole page is replaced back.
-- PSD2Live: whole-page PNGs are output only; replacement works per layer, and the atlas is repacked automatically, so tile positions need not stay the same.
-*> To fix just a few pixels, using [[paint-mode]] directly in the editor is easier.
+2. In the **Texture** panel click **Replace image…** (or right-click a tile on the atlas page).
+3. Choose the fit method **Stretch** or **Contain**, and whether to **Rebuild the mesh from the new pixels**.
+The new image can be any resolution; the canvas rectangle stays the same, and a larger image raises the layer's density. You can also right-click in the Materials panel and choose **Replace selected layer's image**.
+!> For a layer that already has authored edits, bindings or materialized meshes, replacing the image and rebuilding the mesh is refused, and the reason is shown above the atlas page.
+*> To fix only a few pixels, [[paint-mode]] is easier.
 
 @@ texture-upscale | Texture upscale
-Texture upscale enlarges textures layer by layer before the atlas is packed, for artwork whose resolution is on the low side. It is off by default and does not change the original PSD, canvas size or rig; preview and export use the processed textures.
-## Settings
-Open **Model → Texture Upscale…** ({key:TEXTURE_UPSCALE}), or click **Texture Upscale…** in the **Texture** panel.
+When the artwork resolution is low, texture upscale enlarges textures layer by layer with AI before the atlas is packed, so lines and details stay clear at large display sizes. It does not change the original PSD, the canvas size or the bindings; the preview and export use the processed textures, and you can change the factor or turn it off at any time.
+## Usage
+1. Open **Model → Texture Upscale…** ({key:TEXTURE_UPSCALE}), or click **Texture Upscale…** in the **Texture** panel.
+2. Fill in the local runtime environment. If no upscale model is detected, click **One-Click Download Model (110MB)** to download it automatically and fill in the model folder and nunif folder; if the machine already has an environment, click **Use detected local runtime**.
+3. Choose the **Scale** and the denoise level, then click **Apply**. The program processes layer by layer and rebuilds the preview, and the configuration is saved with the project.
+4. Check the meshes and deformation on the editing page, confirm in the preview, and export again.
+{tutorial=TEXTURE_UPSCALE}
 | Item | Contents |
 |---|---|
-| Python | A Python executable with the nunif dependencies installed |
-| nunif folder | A local source folder containing the `nunif` and `waifu2x` subfolders |
-| Model folder | The folder holding the Art `.pth` weights |
-| Scale | 1 is off; 2× or 4× upscales |
-| Denoise | -1 only upscales; 0–3 are denoise levels, default 1 |
-| Neural alpha | On by default; when off, alpha is upscaled bilinearly |
-| Input tile | 64–512, default 256; lower it when video memory runs short |
-Applying rebuilds the preview, and the configuration is saved with the project; on another computer, check the local paths again.
+| Python | A Python executable with the nunif dependencies (including PyTorch) installed |
+| nunif source folder | A local source folder containing the `nunif` and `waifu2x` subfolders |
+| Art weights folder | The folder that holds the Art `.pth` weights |
+| Scale | 1 is off; 2× or 4× enlargement |
+| Denoise and line sharpening | No denoise (enlarge only), or Level 0–3, default Level 1 |
+| Neural alpha channel | On by default; when off, alpha is enlarged bilinearly |
+| Input tile size | 64–512, default 256; reduce it when video memory runs short |
 ## Notes
-- Release packages do not include an inference environment; prepare Python, PyTorch, nunif and matching weights yourself.
-- When no matching model is available, an error is reported rather than falling back to ordinary interpolation.
-- Neural alpha can change semi-transparent outlines; check hair strands, lashes, lip lines and mask edges in motion against both dark and light backgrounds.
-{tutorial=TEXTURE_UPSCALE}
-## Relation to Cubism
-Cubism Editor has no texture upscaling; you usually upscale in external software and then reload the PSD or replace the textures. PSD2Live makes upscaling a step of the generation pipeline, leaves the original materials untouched, and lets you change the scale or turn it off at any time.
+- The release package does not include Python or PyTorch; you must install them yourself, and the local paths must be checked again after changing computers.
+- A missing matching model causes an error; ordinary interpolation is not passed off as upscaling.
+- The neural alpha channel may change semi-transparent outlines; check hair strands, eyelashes, lip lines and moving mask edges against both light and dark backgrounds.
 
 @@ paint-mode | Paint mode
-Paint mode changes layer pixels directly, for trimming edges, filling colors or erasing. Strokes are first kept in a separate paint session and are written into the project as one history step only when confirmed.
-## Starting to paint
+Touch up edges, fill in color, erase a stray line, all without going back to a drawing program: Paint mode edits layer pixels right in the editor. Strokes are first placed in a separate paint session and only written into the project as one history step once you confirm, so you can discard it whenever it goes wrong.
+## Start painting
 1. Select a layer on the canvas or in the layer list.
-2. Choose **Paint** ({key:MODE_PAINT}) from the mode menu at the top left of the canvas.
-3. Pick a tool in the left toolbar and adjust size, hardness, opacity and other values in the tool options bar at the bottom left.
-## Tools
+2. In the mode menu at the upper left of the canvas choose **Paint** ({key:MODE_PAINT}).
+3. Pick a tool in the left toolbar, and adjust size, hardness and opacity in the tool options bar at the lower left.
+4. When done, click **Apply** on the session bar at the top of the canvas, or **Discard** to throw away all strokes of this session.
+{tutorial=PAINT_MODE}
+The session bar shows the layer being painted and the stroke count, and also offers undo and redo; the "Tool Details" panel also has **Discard changes** and **Apply**. During a session {key:UNDO} undoes only strokes and does not affect the project history.
+## Tools and shortcuts
 | Tool | Shortcut |
 |---|---|
 | Brush | {key:TOOL_PAINT_BRUSH} |
 | Pencil | {key:TOOL_PAINT_PENCIL} |
 | Eraser | {key:TOOL_PAINT_ERASER} |
-| Paint Bucket | {key:TOOL_PAINT_BUCKET} |
+| Paint bucket | {key:TOOL_PAINT_BUCKET} |
 | Eyedropper | {key:TOOL_PAINT_EYEDROPPER} |
-| Shape (line / rectangle / ellipse) | {key:TOOL_PAINT_LINE}, {key:PAINT_SHAPE_CYCLE} switches shape |
-Brush size {key:BRUSH_RADIUS_DOWN} / {key:BRUSH_RADIUS_UP}, hardness {key:BRUSH_HARDNESS_DOWN} / {key:BRUSH_HARDNESS_UP}, opacity {key:PAINT_OPACITY_DOWN} / {key:PAINT_OPACITY_UP}; drag with {key:BRUSH_ADJUST_DRAG} to adjust on the spot. The tool options bar starts with the foreground / background colors; {key:AXIS_CONSTRAIN_X} swaps them.
-## Applying and discarding
-After the first stroke, a session bar appears at the top center of the canvas showing the layer being painted and the stroke count, with undo, redo, **Discard** and **Apply**; the "Tool Details" panel also has **Discard changes** and **Apply**. During the session, {key:UNDO} undoes strokes only.
-## Painting outside the mesh
-You can paint anywhere on the canvas. On apply, the result is cut by the layer's mesh: the part on the mesh stays in the layer, with mesh, keyforms and bindings unchanged; the part outside the mesh becomes a new layer named after the original plus "+", placed directly above the original and moving with the same parent. To have the layer's own mesh cover the newly painted area, click **Rebuild from pixels** in the Mesh panel.
-*> For a layer linked to a material, painting is written into the material itself, and every layer using that material changes together; see [[layout-project]].
-{tutorial=PAINT_MODE}
-## Relation to Cubism
-Cubism Editor cannot edit pixels; changing the artwork means going back to the drawing software and then reloading the PSD or replacing the textures. PSD2Live's Paint mode keeps small fixes inside the editor, saved with the project and its history.
+| Shapes (line / rectangle / ellipse) | {key:TOOL_PAINT_LINE}; {key:PAINT_SHAPE_CYCLE} switches the shape |
+Brush size {key:BRUSH_RADIUS_DOWN} / {key:BRUSH_RADIUS_UP}, hardness {key:BRUSH_HARDNESS_DOWN} / {key:BRUSH_HARDNESS_UP}, opacity {key:PAINT_OPACITY_DOWN} / {key:PAINT_OPACITY_UP}; hold {key:BRUSH_ADJUST_DRAG} and drag to adjust on the spot. The foreground / background colors come first in the tool options bar, and {key:AXIS_CONSTRAIN_X} swaps the two.
+## Painting beyond the mesh
+You can paint anywhere on the canvas. On apply, it is clipped to the layer's mesh: what is inside the mesh stays in the layer, and the mesh, keyforms and bindings do not change; what is outside the mesh is split into a new layer named after the original layer plus "+", placed directly above the original layer and moving with the same parent. To make the original layer's own mesh cover the newly painted area, click **Rebuild from pixels** in the Mesh panel.
+*> For a layer linked to a material, strokes are written into the material itself, so every layer using that material changes together; see [[layout-project]].
 
 @@ parts-folder | Part
 @@ parts | About Parts
-Parts are organizational units that group ArtMeshes and deformers, used to organize objects, show or hide them together and group them on export. When PSD2Live generates a model, it builds parts automatically from the recognized body parts.
-## Automatically generated parts
-The generator builds parts such as "Head", "Back Hair", "Face", "Front Hair", "Head Accessories", "Extra" and "Body", and layers go into the matching part by their tags; unrecognized layers go into "Body".
-## Parts and the hierarchy
-PSD2Live's **Hierarchy** shows the parent-child relations of deformers and drawables (which decide how deformation is inherited), not a part tree. Part membership is shown in the **Inspector**: select a drawable and the **Part** dropdown shows the part it belongs to.
-## Differences from Cubism
-- Cubism: PSD folders become parts on loading, and the Parts palette shows and edits parts and objects as a tree.
-- PSD2Live: parts are built automatically by body part, independent of the PSD folder structure; there is no separate Parts panel, and the deformer hierarchy is edited in the Hierarchy.
-- When exporting moc3, **Export hidden parts** in the export window decides whether hidden parts are written.
-*> Models imported from CMO3 keep their original part structure.
+Parts group art meshes and deformers, for organizing objects, showing or hiding them as a whole and grouping on export. In PSD2Live you normally do not create parts yourself: the generator builds "Head", "Back Hair", "Face", "Front Hair", "Head Accessories", "Extra", "Body" and other parts automatically from the recognized parts, layers are put into them by tag, and unrecognized layers go into "Body".
+## Where to see parts
+The **Hierarchy** tree shows the parent-child relationships of deformers and art meshes, which decide how deformation is inherited; it is not a parts tree. To see which part an art mesh belongs to, select it and look at the **Part** drop-down in the **Inspector**; for changing the assignment see [[edit-parts]].
+{tutorial=HIERARCHY}
+*> A model imported from a CMO3 keeps its original part structure. When exporting moc3, **Export hidden parts** in the export window decides whether hidden parts are written.
 
 @@ edit-parts | Editing Parts
-This page explains how to change which part an object belongs to.
-## Changing a drawable's part
-1. Select the drawable on the canvas or in the hierarchy.
-2. In the **Part** dropdown of the **Inspector**, choose the target part, or choose **(None)** to move it to the top level.
-The change is recorded as one undoable history step.
-## Choosing a part when creating a deformer
-When creating a Warp in Object mode, **Part to insert** in the "Tool Details" panel chooses which part the new deformer belongs to; the default is **Inherit from selection**.
-## Differences from Cubism
-- Cubism: create, delete and rename parts in the Parts palette, and drag objects to change their membership.
-- PSD2Live: parts are built by the generator, and the interface can only change the part of drawables and of newly created deformers; deformer parent-child relations are changed by dragging in the **Hierarchy**; see [[partspalatte]].
+Parts are built by the generator; when adjustment is needed, you can change which part an art mesh belongs to, or specify which part a deformer goes into when you create it.
+## Change the part an art mesh belongs to
+1. Select the art mesh on the canvas or in the hierarchy tree.
+2. In the **Part** drop-down of the **Inspector**, choose the target part, or **(None)** to move it to the top level.
+The change is recorded as one history step and can be undone.
+## Specify the part when creating a deformer
+When creating a Warp in Object mode, **Part to insert** in the "Tool Details" panel decides which part the new deformer belongs to; the default is **Inherit from selection**.
+*> For users used to dragging objects in Cubism's Parts palette: in PSD2Live, dragging adjusts the parent-child relationships in the hierarchy tree, and part membership is changed only in the Inspector; see [[partspalatte]].
 
 @@ edit-parts-sketch | Guide image parts
-Images used only for comparison, such as the original artwork or sketches, can be set as references so they show on the canvas without taking part in generation, and are not exported. PSD2Live uses "reference layers" for the role of Cubism's guide image parts.
-## Setting a reference
+Images used only for comparison, such as the original art and drafts, can be set as reference layers: they show on the canvas but take no part in generation and are not exported.
+## Setting as reference
 1. Select the layer.
-2. Click **Use as Reference** in the toolbar of the "Layers" panel, or press {key:LAYER_TOGGLE_REFERENCE}; the canvas context menu also has a **Use as Reference** toggle.
-A reference layer has a reference icon after its name; click it to make it a model layer again. Generated layers cannot be made references; a restored reference layer joins the model at the next generation.
+2. Click **Use as Reference** on the "Layers" panel toolbar, or press {key:LAYER_TOGGLE_REFERENCE}; the canvas right-click menu also has a **Use as Reference** switch.
+A reference layer has a reference icon after its name; click it to turn it back into a model layer, and the restored layer joins the model at the next generation. A layer that has already been generated cannot be set as a reference.
 ## Display
-Reference layers sit under the model by default; **Reference layers on top** in the display bar at the bottom right of the canvas stacks them above the model. References for different angles can be shown only at the matching parameter values with **Pin to Keyform** in the context menu.
-## Differences from Cubism
-- Cubism: a part is set as a guide image part and is not written on export.
-- PSD2Live: set per layer, not per part; reference layers take no part in generation and are not exported.
-- Guide image parts in models imported from CMO3 are not written when exporting moc3 by default; tick **Export guide image parts** in the export window to write them.
-For placing a new reference image, see [[sketch]].
+Reference layers sit underneath the model by default, and **Reference layers on top** in the display bar at the lower right of the canvas stacks them above the model. References of different angles can be right-clicked and **Pin to Keyform**, so they show only at the matching parameter values; see [[sketch]].
+*> References are set per layer, not per part. A reference-image part imported from a CMO3 is not written by default when exporting moc3; when needed, tick **Export guide image parts** in the export window.
 
 @@ variants | Variants
-Variants let layers show, hide or switch with a parameter, for "on / off" parts such as blush, tears and glasses, and for "one of several" looks such as expressions, gestures and outfits. They are set in the **Variant** column of the "Layers" panel.
-## Kinds of variant
-| Kind | What it does | Use for |
+Parts that are simply "present / absent", such as blush, tears and glasses, and looks that are "pick one of several", such as expressions, gestures and outfits, can all be made variants: declare it on the layer, and generation automatically builds the matching parameter and visibility control, so dragging the parameter switches it, with no need to keyframe opacity by hand. Variants are set in the **Variant** column of the "Layers" panel.
+| Kind | Effect | Suited to |
 |---|---|---|
-| None | Generates the part given by the tags | Ordinary layers |
-| Toggle Variant | One parameter shows or hides the layer | Blush, tears, glasses, lighting |
-| Switch Variant | One parameter shows only the layer with one ID at a time | Expressions, gestures, outfits |
-## Setting up a toggle variant
-1. In the "Layers" panel, set the row's **Variant** to **Toggle Variant**.
-2. Enter a parameter name (such as `blush`) under **Parameter**. One parameter name can drive several toggle layers.
-## Setting up a switch variant
-1. Set all the related layers to **Switch Variant**.
-2. Enter the same parameter name under **Parameter**, or pick an existing switch parameter from the dropdown.
-3. Set the ID next to it to 0, 1, 2… in turn. For example `expression`: 0 normal / 1 happy.
-Drag the parameter to see the result in editing and preview.
-!> Numbers in layer names do not create variants automatically; a toggle variant needs a parameter, and a switch variant needs a shared parameter with different IDs.
+| None | Generates the matching part from the tag | Ordinary layers |
+| Toggle Variant | One parameter shows or hides the layer | Blush, tears, glasses, light and shadow |
+| Switch Variant | With one parameter, only the layer of one ID is shown at a time | Expressions, gestures, outfits |
 {tutorial=VARIANTS}
-## Relation to Cubism
-In Cubism, variants are usually made by keying an ArtMesh's opacity on a parameter. PSD2Live declares variants on layers and builds the matching parameters and visibility control automatically at generation. Temporary solo in the tree is only for checking while editing and is not a variant.
+## Setting a Toggle Variant
+1. In the "Layers" panel set the row's **Variant** to **Toggle Variant**.
+2. In **Parameter** enter the parameter name (such as `blush`). The same parameter name can drive several toggle layers.
+## Setting a Switch Variant
+1. Set all the related layers to **Switch Variant**.
+2. In **Parameter** enter the same parameter name, or pick an existing switch parameter from the drop-down.
+3. Set the IDs beside them to 0, 1, 2… in turn, for example `expression`: 0 normal, 1 happy.
+Once set, dragging the parameter shows the effect in both editing and preview.
+!> A number in a layer name does not create a variant automatically: a Toggle Variant needs a parameter, and a Switch Variant needs a shared parameter with different IDs.
 
 @@ copy-and-paste | Copy and Paste Objects
 @@ search-and-replace | Search and Replace Objects
 @@ offscreen-drawing | Offscreen drawing
 @@ draw-order | Draw order
 @@ draworder | About Draw Order
-Draw order decides how ArtMeshes cover one another: higher values are further in front. The range is 0–1000, default 500. Draw order is independent of the deformer parent-child relations.
-## Changing draw order
-The same property has three entry points:
-- The **Draw Order** field in the **Inspector**.
-- Right-click a drawable in the hierarchy → **Draw order…** and enter a value, or **Reset to Default**.
-- The draw order ruler beside the hierarchy: zoom with the wheel, drag to reorder, double-click to type a value.
-Choose **Draw order (front to back)** from the hierarchy's **Sort** menu to see the front-to-back order.
+Draw order decides which art mesh covers which: the larger the value, the further to the front, in the range 0–1000 with a default of 500. It is independent of the deformers' parent-child relationships, so adjusting occlusion does not affect deformation inheritance.
+## Changing the draw order
+- Type it in the **Draw Order** field of the **Inspector**.
+- In the hierarchy tree, right-click an art mesh → **Draw order…** and enter a value, or **Reset to Default**.
+- On the draw-order ruler beside the hierarchy tree, zoom with the wheel, drag to reorder, and double-click to enter a value.
+To see the front-to-back relationships at a glance, set the hierarchy tree's **Sort** to **Draw order (front to back)**.
 {tutorial=INSPECTOR}
-*> Layout layers not yet generated are reordered up and down ({key:LAYER_FORWARD} / {key:LAYER_BACKWARD}); after generation, use draw order instead; see [[layout-project]].
+*> Layout layers not yet generated are adjusted by order up and down ({key:LAYER_FORWARD} / {key:LAYER_BACKWARD}); after generation use the draw order instead; see [[layout-project]].
 
 @@ drawing-order-group | Draw order group
 @@ artmesh | ArtMesh
 @@ concept-of-artmesh | About ArtMeshes
-An ArtMesh is an object that maps a texture onto a mesh of vertices and triangles, so moving the vertices deforms the image. Each layer of a PSD becomes an ArtMesh on import; in PSD2Live it is also called a drawable.
-## What a mesh is made of
-- Vertices: points on the mesh, the things that move during deformation.
+An ArtMesh maps a texture onto a mesh of vertices and triangles, and moving the vertices deforms the image. Each PSD layer becomes an ArtMesh on import, also called an art mesh in PSD2Live; the mesh is generated automatically at import from the layer's transparency.
+## What a mesh consists of
+- Vertices: the points that move when deforming.
 - Edges and triangles: connect the vertices and decide how the image stretches with them.
 - Outline: follows the edge of the layer's opaque pixels; pixels outside the mesh are not shown.
-Denser vertices give finer deformation but cost more in editing and at runtime. PSD2Live generates meshes automatically from layer alpha on import; see [[mesh-edit]], and for local adjustments see [[mesh-edit-manual]].
-## Properties
-With an ArtMesh selected, the **Inspector** shows name, ID, part, deformer, clip ID, inverted mask, draw order, opacity, multiply color, screen color, blend mode, culling and user data.
+The denser the vertices, the finer the deformation, but the heavier the load on editing and at runtime. For adjusting density see [[mesh-edit]], for changing topology locally see [[mesh-edit-manual]]; what moves several meshes together is a [[deformer]].
 {tutorial=LIVE2D_BRIDGE}
-*> Warp deformers and rotation deformers deform ArtMeshes as a whole; see [[deformer]].
+## Properties
+With an ArtMesh selected, the **Inspector** shows its name, ID, part, deformer, Clip ID, inverted mask, draw order, opacity, multiply color, screen color, blend mode, culling and user data.
 
 @@ mesh-edit | Automatic Mesh generator
-When importing a PSD, PSD2Live generates a mesh for every layer automatically: it first traces an outline along the layer's alpha, then places edge and interior vertices according to the settings and triangulates. Mesh density and shape are decided by the settings in the **Mesh** panel, which can be set globally or overridden per part.
-## Mesh panel
-Open the **Mesh** panel from the **Mesh** workspace or the **Windows** menu:
-- **Global defaults** apply to every part without its own override.
-- With an ArtMesh selected, the panel shows that part's own settings, and after a change the part shows "Custom Settings".
-- When the mesh does not cover some visible pixels, the panel shows the proportion; click **Rebuild from pixels** to include them.
+Every layer already has a mesh on import: the program traces the outline from the layer's transparency, places edge points and interior points according to the settings, and triangulates. When the mesh is too sparse, too dense or its outline does not fit, change the settings in the **Mesh** panel to rebuild it; existing keyforms, paths, weights and glue migrate to the new mesh, so nothing has to be redone.
+## Adjusting the mesh
+1. Open the **Mesh** panel in the **Mesh** workspace or from the **Windows** menu.
+2. **Global defaults** apply to all parts without their own setting; after selecting an ArtMesh, the panel shows its own settings, and after you change them it shows "Custom Settings".
+3. The mesh is rebuilt right after a change; check the effect in Deform mode and in the preview.
+When the mesh does not cover some visible pixels, the panel shows the proportion; click **Rebuild from pixels** to include them. **Show descriptions** in the panel expands an explanation of each option.
 ## Main settings
-| Group | Setting | What it does |
+| Group | Setting | Purpose |
 |---|---|---|
-| Contour Placement | Single / double / triple edge rows, outer margin, edge mesh width | How many rings of vertices sit near the outline and where |
-| Vertex Spacing | Edge distance, interior density | Spacing of outline vertices and of interior vertices |
-| Interior fill algorithm | Graded Poisson fill (default), balanced quadtree fill, triangle fractal subdivision, contour paving, simple triangular fill | How interior vertices are laid out |
-| Connections | Suppress diagonals between boundary vertices | Connects non-adjacent edge vertices through interior vertices |
-| Units | Scale with document size, trace outlines from texture pixels, wrap | The length unit, the precision of outline tracing, and gaps between small protrusions such as closed lashes |
-Changing the settings rebuilds the mesh, and existing keyforms, paths, weights and glue migrate to the new mesh.
-## Differences from Cubism
-- Cubism: after loading, run automatic mesh generation on the selected ArtMeshes, choose a preset and adjust margins and point spacing.
-- PSD2Live: meshes are already generated for all layers on import, and the settings are saved as global defaults and part overrides, rebuilding whenever you change them.
-- PSD2Live offers multiple edge rows and several interior fill algorithms, plus tracing outlines from texture pixels and wrap topology.
-*> **Show descriptions** in the settings panel expands an explanation of each option.
+| Outline position | Single / double / triple edge layers, outer edge distance, edge mesh width | How many rings of vertices go near the outline, and where |
+| Point density | Edge point distance, interior density | Spacing of outline vertices and of interior points |
+| Interior fill algorithm | Graded Poisson fill (default), balanced quadtree fill, regular-triangle fractal subdivision, contour layering, simple triangle fill | How the interior points are arranged |
+| Connection topology | Suppress edges that cross between edge points | Make non-adjacent edge points connect through interior points |
+| Units | Scale with document size, trace outline by texture pixels, wrap | The length unit, the precision of the outline trace, and gaps between small protrusions such as closed eyelashes |
 
 @@ mesh-edit-manual | Edit Mesh manually
-When an automatically generated mesh does not fit, you can change its topology by hand in **Edit** mode: subdivide, connect, merge, duplicate, delete and cut. When the topology changes, UVs and the vertex references of keyforms, blend shapes and glue are updated along with it.
+Where the automatic mesh is not right in a few places, change the topology directly in **Edit** mode: subdivide, connect, merge, duplicate, delete and cut. Even when the mesh already has keyforms you can modify it — the vertex references of the UVs, keyforms, blend shapes and glue are updated along with it, and every operation goes straight into the history.
 ## Entering Edit mode
-1. Select one or more drawables.
-2. Choose **Edit** ({key:MODE_EDIT}) from the mode menu. Edit mode shows the mesh.
-3. On the mode bar choose vertex / edge / face ({key:PICK_OPTION_1}–{key:PICK_OPTION_3}), which decides what the selection tools pick.
+1. Select one or more art meshes.
+2. In the mode menu choose **Edit** ({key:MODE_EDIT}); the mesh is forced to display.
+3. On the mode bar choose point / edge / face ({key:PICK_OPTION_1}–{key:PICK_OPTION_3}), which decides the elements the select tool picks.
+{tutorial=EDIT_MODE}
 ## Operations
 | Operation | Result |
 |---|---|
-| Subdivide ({key:TOOL_SUBDIVIDE}) | Adds points on the edges hit and rebuilds the triangles; neighboring faces fix the seam too |
-| Connect / merge | Connects the selected points, or merges the selected vertices into one |
-| Duplicate | Duplicates the selected vertices and the faces they fully cover; the copy becomes the selection |
-| Delete ({key:DELETE_SELECTION}) | Deletes the selection and tries to rebuild the gap; refused if no valid topology can be formed |
-| Knife ({key:TOOL_KNIFE}) | Places a polyline point by point, snapping near points or edges, with {kbd:Shift} turning snapping off temporarily; {key:FINISH_PATH} finishes, {key:CANCEL} cancels |
-## Editing several meshes
-Edit mode works on all selected drawables at once. Clicking a vertex of one mesh makes it the primary mesh, and the knife and edge / face selection act only on the primary mesh.
-{tutorial=EDIT_MODE}
-## Differences from Cubism
-- Cubism: in manual mesh edit mode you add and delete vertices and draw connections point by point, then exit the mode to confirm.
-- PSD2Live: existing meshes are changed with topology operations such as subdivide and cut, each going straight into history; meshes that already have keyforms can be changed too.
-!> Deleting outline points changes the boundary; afterwards, check under several parameter poses. Everyday reshaping belongs in Deform mode.
+| Subdivide ({key:TOOL_SUBDIVIDE}) | Adds a point on the hit edge and reorganizes the triangles, handling the seams of neighboring faces too |
+| Connect / merge | Creates connections between the selected points, or merges the selected vertices into one point |
+| Duplicate | Duplicates the selected vertices and the faces they fully cover; the new copy becomes the selection |
+| Delete ({key:DELETE_SELECTION}) | Deletes the selection and tries to fill the gap; refused when no valid topology can result |
+| Knife ({key:TOOL_KNIFE}) | Specify a polyline point by point, snapping near points or edges (hold {kbd:Shift} to turn this off temporarily); {key:FINISH_PATH} finishes and {key:CANCEL} cancels |
+When several art meshes are selected, clicking a vertex of one mesh makes it the primary mesh; the knife and edge and face selection act only on the primary mesh.
+!> Deleting outline points changes the boundary, so check under several parameter poses after changing it. Do everyday shape pulling in Deform mode, and use Edit mode only to change topology.
 
 @@ mesh-duplication | Mesh duplication
 @@ clipping-mask | Clipping Mask
-A clipping mask makes an ArtMesh show only within the area of another ArtMesh, for example the iris showing only inside the eye white.
-## Setting it up
+A clipping mask makes an ArtMesh show only within the area of another ArtMesh, for example a pupil showing only inside the eye white. The commonly used masks are already set automatically when the model is generated: a pupil is masked by the eye white on the same side, and inner-mouth parts such as teeth and tongue are masked by the mouth.
+## Setting manually
 1. Select the ArtMesh to be masked.
-2. Under **Clip ID** in the **Inspector**, specify the ArtMesh that acts as the mask: type the ID directly (separate several with commas), click the list button **Select clipping mask from list**, or click the crosshair button **Quick link mask from canvas** and then click the mask drawable on the canvas.
-One ArtMesh can be limited by several masks together.
-*> Common masks are set up automatically when the model is generated: the iris is masked by the eye white on the same side, and parts inside the mouth such as teeth and tongue are masked by the mouth. For the inverted effect, see [[reversed-mask]].
+2. In **Clip ID** in the **Inspector** specify the mask: type the ID directly (separate several with commas), click the list button **Select clipping mask from list**, or click the crosshair button **Quick link mask from canvas** and then click the mask art mesh on the canvas.
+One ArtMesh can be limited by several masks at once. For the opposite effect, see [[reversed-mask]].
+{tutorial=INSPECTOR}
 
 @@ reversed-mask | Reversed mask
-An inverted mask makes an ArtMesh show only outside the mask area, the opposite of [[clipping-mask]].
-## Setting it up
+A reversed mask makes an ArtMesh show only outside the mask area, the opposite of a [[clipping-mask]].
+## Setting
 1. Select an ArtMesh that already has a **Clip ID**.
-2. Tick **Invert Mask** in the **Inspector**.
-The change is recorded as one undoable history step.
+2. Tick **Inverted mask** in the **Inspector**.
+The change is recorded as one history step and can be undone.
 
 @@ sketch | Placement of Guide Image
-Put the original artwork, sketches or references from other angles on the canvas for comparison; layers used as references show on the canvas but take no part in generation and are not exported.
+Putting the original art, a draft or character sheets of other angles on the canvas for comparison while you work lets you adjust shapes more accurately. Reference images are imported as materials and placed on the canvas as reference layers: shown, but taking no part in generation and not exported.
 ## Placing a reference image
-1. **Import** the reference image in the Materials panel.
-2. Right-click the material and choose **Place as reference layer**; with **Place as reference by default** on, every layer dragged onto the canvas from that material is a reference layer.
+1. In the Materials panel **Import** the reference image.
+2. Right-click the material and choose **Place as reference layer**. With **Place as reference by default** turned on, every layer dragged from that material onto the canvas is a reference layer.
 3. Adjust position and size with the transform box.
-Layers already on the canvas can be toggled with **Use as Reference** in the toolbar of the "Layers" panel or {key:LAYER_TOGGLE_REFERENCE}; see [[edit-parts-sketch]].
+A layer already on the canvas can be switched with **Use as Reference** on the "Layers" panel toolbar or {key:LAYER_TOGGLE_REFERENCE}; see [[edit-parts-sketch]].
 ## Showing by pose
-References for different angles (front, side, looking up) can be stacked in the same place, each showing only at its matching keyform:
+References of different angles, such as front, side and looking up, can be stacked in the same place and each shown only in its matching pose:
 1. Right-click the reference layer → **Pin to Keyform**.
-2. The menu lists the parameters worth pinning and their current values; click a pin to pin at that value or unpin; **Pin at Current Pose** pins all the listed parameters at once, and **Unpin** makes it show in every pose again.
-## Differences from Cubism
-- Cubism: the guide image placement feature adds the image to the model as a guide image part.
-- PSD2Live: a reference image is a material that becomes a reference layer when placed, and can be pinned to keyforms to show only in the matching pose.
-- Reference layers sit under the model by default; **Reference layers on top** in the display bar at the bottom right of the canvas stacks them above.
+2. The menu lists the parameters worth pinning and their current values; click the pin to pin or unpin at that value; **Pin at Current Pose** pins all the listed parameters at once, and **Unpin** goes back to showing in any pose.
+*> Reference layers sit underneath the model by default, and **Reference layers on top** in the display bar at the lower right of the canvas stacks them above.
 
 @@ hittest | Preparation for Setting Up Collision Detection
 @@ blend-mode | Blend mode
-The blend mode decides how an ArtMesh's colors are composited with what has already been drawn below.
-## Setting it up
-Select the ArtMesh and choose under **Blend Mode** in the **Inspector**:
+The blend mode decides how an ArtMesh's color combines with what has already been drawn beneath it, and is often used for shadows and highlights. Select an ArtMesh and choose in **Blend Mode** in the **Inspector**:
 | Mode | Effect |
 |---|---|
-| Normal | Ordinary overlay |
-| Multiply | Multiplies with the colors below, for shadows |
-| Add | Adds to the colors below, for glow and highlights |
-## On PSD import
-PSD layer blend modes are converted on import: additive modes such as Linear Dodge (Add), and Linear Light, become Add; Multiply, Linear Burn and Color Burn become Multiply; other modes are treated as Normal.
-## Differences from Cubism
-- From Cubism 5.3, more blend modes are available (such as Screen and Overlay), and they can be combined with offscreen drawing.
-- PSD2Live's Inspector offers only Normal, Multiply and Add; offscreen drawing is not available yet.
-*> To adjust colors without changing how they blend, use **Multiply Color** and **Screen Color** in the Inspector.
+| Normal | Ordinary covering |
+| Multiply | Multiplies with the color beneath; for shadows |
+| Add | Adds to the color beneath; for glow and highlights |
+A PSD layer's blend mode is converted automatically on import: additive modes such as Linear Dodge (Add), and Linear Light, become Add; Multiply, Linear Burn and Color Burn become Multiply; other modes are treated as Normal.
+*> To only tint an ArtMesh without changing how it is composited, use **Multiply Color** and **Screen Color** in the Inspector; see [[multiply-color-screen-color]].
 
 @@ interior-shape | Interior shape
-Interior shape is an optional mesh keyform generator: it makes the texture inside a layer compress, stretch and press along a virtual surface, giving large parts such as clothes and hair a sense of volume when they turn. It does not generate new textures or shading, and it is not cloth simulation.
-## Using it
+On a large garment or head of hair, only the outline moves when turning, so it looks like a sheet of paper. Interior shape makes the texture inside a layer contract, expand and lean along a virtual curved surface, giving a sense of volume as it turns; it generates the keyforms it needs automatically and exports as standard blend shapes and physics settings. It does not generate new textures or shadows, and it is not cloth simulation.
+## Usage
 1. Select a generated layer and open the **Interior shape** panel.
-2. Tick **Enabled**; the program generates the interior shape and starts the audition.
-3. Under **Shape**, adjust horizontal / vertical range, surface bulge, pressure, fold strength and outline keeping.
-4. If the motion needs easing, open **Easing / propagation** and set response time, propagation time, propagation mix and **Direction**.
-5. Under **Audition**, drag the 2D parameter pad or turn on **Mouse follow** to check the result; **Solo / frame** shows only this layer and centers it on the canvas.
-Ending a drag commits one history record. If generation fails, the draft and the previous valid result are kept.
+2. Tick **Enable**; the program generates the interior shape and starts the audition.
+3. Under **Shape** adjust the horizontal / vertical amounts, surface bulge, bias, fold strength and outline preservation; for a local fold, click + add under **Local folds**.
+4. When the motion needs easing, expand **Easing / propagation** and set the easing time, propagation time, propagation strength and **Direction**.
+5. In **Audition** drag the 2D parameter pad or turn on **Mouse follow** to check the effect; **Solo / frame** shows only this layer and centers it on the canvas.
+Each drag commits one history entry when it ends; if generation fails, the draft and the previous valid result are kept.
 ## Settings
 | Setting | Range | Meaning |
 |---|---|---|
-| Horizontal / vertical range | 0–2 | The overall amount of shaping in each direction |
-| Surface bulge / pressure | 0–2 | The virtual arch and how much it presses; if either is 0 there is no surface displacement |
-| Fold strength | 0–2 | The contribution of **Local folds**; has no effect without local folds |
-| Keep outline | 0–1 | 0 frees the visible outline, 1 protects the original outline |
-| Response time | 0–0.6 s | The response time of the first stage |
-| Propagation time | 0–0.5 s | How long the rear zone lags behind the front zone |
-| Propagation mix | 0–1 | The weight of the rear zone; 0 means no zones |
-The horizontal / vertical mouse gains under **More settings** affect only the mouse audition, not the keyform range or the exported parameter range. **Source parameters** can pick existing parameters or **New parameter**.
+| Horizontal / vertical amount | 0–2 | The total shape amount in each of the two directions |
+| Surface bulge / bias | 0–2 | The virtual arch and how much it is biased; with either at 0 there is no surface displacement |
+| Fold strength | 0–2 | The contribution of local folds; has no effect without local folds |
+| Outline preservation | 0–1 | 0 frees the visible outline, 1 protects the original outline |
+| Easing time | 0–0.6 s | Response time of the first stage |
+| Propagation time | 0–0.5 s | How long the rear area takes to follow the front area |
+| Propagation strength | 0–1 | The weight of the rear area; 0 means no zoning |
+The horizontal / vertical mouse multipliers under **More settings** affect only the mouse audition and do not change keyform amounts or the exported parameter range; **Source parameters** can pick an existing parameter or **New parameter**.
 ## Notes
-- Turning off **Enabled** keeps the settings without applying the deformation; **Delete effect** removes the recipe and its physics, and can be undone.
-- When the mesh, material or source parameters change, the panel prompts you to regenerate or rebind; invalid effects are skipped on export and listed in the warnings.
-- Easing uses the project's physics groups and exports as standard physics settings.
-## Relation to Cubism
-In Cubism, a similar sense of volume requires adjusting mesh vertices by hand on several parameter keys, or combining deformers. Interior shape generates these deformations automatically and exports them as Cubism-native blend shapes and physics settings.
+- Unticking **Enable** keeps the settings but does not apply the deformation; **Delete effect** removes the recipe and its physics, and can be undone.
+- After the mesh, material or driving parameter changes, the panel prompts you to regenerate or rebind; effects that have become invalid are skipped on export and listed in the warnings.
+- Easing uses the project's physics group and exports as standard physics settings.
 
 @@ artpath-folder | ArtPath
 @@ artpath | About ArtPaths
@@ -1185,206 +965,190 @@ In Cubism, a similar sense of volume requires adjusting mesh vertices by hand on
 
 @@ deformer-folder | Deformer
 @@ deformer | About Deformers
-A deformer is a "container" that deforms ArtMeshes as a whole. Meshes sit under a deformer; when the deformer changes shape with a parameter, the meshes and child deformers below it deform along with it. Like Cubism, PSD2Live has two kinds of deformers: the warp deformer (Warp) and the rotation deformer (Rotation).
-## The two kinds of deformers
-| Kind | UI name | What it does | Suited to |
-|---|---|---|---|
-| Warp deformer | Warp | Wraps its children in a grid of control points; moving the control points deforms the inside smoothly | Face turns, body bends, hair sway |
-| Rotation deformer | Rotation | Rotates everything around an origin (optionally with scale); children stay rigid | Arms, neck, accessories and other parts that turn around a joint |
-## Viewing them in PSD2Live
-- The **Hierarchy** lists deformers and ArtMeshes by parent-child relation; clicking stays in sync with the canvas selection.
-- The **Deformer Warp** and **Deformer Rotation** toggles in the display rail at the bottom right of the canvas control whether deformers are shown on the canvas.
-- After a PSD is imported, the program has already generated a complete deformer structure from the layer tags (body, head, face, hair and so on), so you usually do not have to build one from scratch; see [[auto-generation-of-deformer]].
-*> In Deform mode a warp deformer can switch between the **Vertices** and **Bezier** edit levels; see [[making-and-placement-of-warp-deformer]].
-Related: [[system-of-parent-child-relation]] · [[setting-of-parent-child-relation]] · [[deformerpalatte]]
+A deformer wraps ArtMeshes and other deformers and changes its own shape with parameters, so everything inside moves with it. After a PSD is imported, PSD2Live has already built a full set of deformers from the layer tags (body, head, face, hair and so on); most of the time you fine-tune that structure instead of building from scratch.
+## Two kinds of deformer
+| Kind | How it deforms | Typically used for |
+|---|---|---|
+| Warp deformer | A grid of control points wraps its children; moving the points bends the contents smoothly | Face turns, body bends, hair sway |
+| Rotation deformer | Rotates everything around an origin (optionally with scale); children stay rigid | Arms, neck, ornaments and other parts that turn around a joint |
+*> The warp deformer is Cubism's "Warp Deformer"; in the interface it is called warp deformer or Warp.
+## Where to see them
+The Hierarchy lists deformers and ArtMeshes by parent-child relationship, and selection stays in sync with the canvas. The **Deformer Warp** and **Deformer Rotation** toggles in the display bar at the bottom right of the canvas control whether they are drawn. To find out which deformers affect an object, see [[convenient-function-deformer]].
+## Next
+- Add a deformer yourself: [[making-and-placement-of-warp-deformer]], [[making-and-rotation-of-rotationdeformer]].
+- Change a parent and understand layered motion: [[system-of-parent-child-relation]], [[setting-of-parent-child-relation]].
+- What the generated structure contains: [[auto-generation-of-deformer]].
 {tutorial=CREATE_DEFORMER}
 
 @@ making-and-placement-of-warp-deformer | Warp Deformer
-A warp deformer (Warp) wraps the selected objects in a rows × columns grid of control points; moving the control points bends the objects smoothly. In PSD2Live you create it by dragging a box on the canvas, and the placement preview is the final grid.
-## Creating
-1. Select the ArtMeshes to put into the deformer in the Hierarchy or on the canvas (when several are selected they must share the same parent deformer).
-2. Choose **Create Warp** ({key:TOOL_CREATE_WARP}) in the last group of the left toolbar in Object mode; you can also pick it under Create in the canvas context menu, or choose **Parent · Warp** / **Child · Warp** from the Hierarchy context menu.
-3. Drag a rectangle on the canvas; while dragging, the mouse wheel changes the conversion divisions. You can also click **Create from selection** to generate it directly from the extent of the selected objects.
-4. Check the attach position, part to insert and size strategy in the placement panel at the bottom left; drag inside the box to move it, and drag a corner or edge midpoint to scale it.
-5. Click **Create** on the mode bar or press {key:FINISH_PATH} to write it to the project; **Cancel** or {key:CANCEL} discards it.
-## Placement options
-| Option | Content |
+When the generated structure has no suitable deformer (for example, you want an accessory or a lock of hair to bend on its own), add a warp deformer yourself. PSD2Live creates it by dragging a box on the canvas; the preview box you drag out is the final grid.
+## Create
+1. Select the ArtMeshes to put into the deformer in the Hierarchy or on the canvas. With several selected, they must all hang under the same parent deformer.
+2. In Object mode, choose **Create Warp** ({key:TOOL_CREATE_WARP}) in the last group of the left toolbar. You can also enter from the canvas right-click menu **Create**, or from the Hierarchy right-click **Parent · Warp** / **Child · Warp**.
+3. Drag a rectangle on the canvas and scroll the wheel while dragging to adjust the divisions. To fit the selected objects only, just click **Create from selection**.
+4. In the placement panel at the bottom left, check the attachment, the part to insert into and the size strategy; drag inside the box to move it, and drag a corner or edge midpoint to scale it.
+5. Click **Create** on the mode bar or press {key:FINISH_PATH} to write it to the project; **Cancel** or {key:CANCEL} abandons it.
+{tutorial=CREATE_DEFORMER}
+| Placement option | Contents |
 |---|---|
 | Add to | Set as parent of selected / Set as child of selected deformer (empty) / Specify parent deformer |
-| Part to insert | The part the new deformer goes into; inherits the selection's part by default |
+| Part to insert | Which part the new deformer goes into; inherits the selection's part by default |
 | Size | Fit selection (+5% padding) / Include keyform envelope / Align center with selection |
-| Sequential create | Keep placing the next one after creating |
-## Edit levels
-In Deform mode, when the target is a warp deformer, the mode bar switches between **Vertices** and **Bezier** (number keys 1 / 2). The Vertices level edits grid points; at the Bezier level you can only drag the cyan anchors and amber handles, and the detailed grid fades and cannot be edited. In the Inspector you can set **Bezier Division**, **Reset Bezier Control Points** and **Deformer Conversion (3.2 method)**.
-## Differences from Cubism
-- Cubism creates a deformer after you enter a name and divisions in a dialog; PSD2Live creates it by dragging a box on the canvas, divisions are adjusted with the mouse wheel while dragging, and the attach position and size strategy are chosen in the placement panel.
-- The Warp placement box is created as a rectangle and can only be moved and scaled, not rotated.
-- The **Tool Details** panel stores the creation defaults for Warp / Rotation; the model presets also hold the default divisions for deformers created on the canvas.
-{tutorial=CREATE_DEFORMER}
+| Continuous creation | Keep placing the next one after creating |
+*> Unlike Cubism's creation dialog, the name and divisions are not entered before creating: the divisions are set with the wheel while dragging, and defaults are set in the **Tool Details** panel and the model presets. The placement box can only be moved and scaled, not rotated.
+## Edit levels: Vertices and Bezier
+After selecting a warp deformer and entering Deform mode, the mode bar offers two levels, **Vertices** and **Bezier** ({key:PICK_OPTION_1} / {key:PICK_OPTION_2}). The Vertices level edits the grid point by point; the Bezier level only drags the cyan anchors and amber handles to bend the whole grid with a few control points, while the detailed grid is dimmed and not editable. In the Inspector you can set **Bezier Division**, **Reset Bezier Control Points** and **Deformer Conversion (3.2 method)**.
+{tutorial=DEFORM_MODE}
 
 @@ making-and-rotation-of-rotationdeformer | Rotation Deformer
-A rotation deformer turns the objects under it as a whole around an origin, suited to arms, neck, accessories and other parts that turn around a joint. Its shape is defined by the origin, angle and scale, and it is an exact rigid rotation at any parameter value.
-## Creating
+For parts that turn around a point, such as arms, necks and hanging ornaments, a rotation deformer is the simplest choice: it has only an origin, an angle and a scale, so any parameter value gives an exact rigid rotation instead of the in-between deformation a grid would show.
+## Create
 1. Select the ArtMeshes or deformers to rotate.
-2. Choose **Create Rotation** ({key:TOOL_CREATE_ROTATION}) in the Object mode toolbar, or pick it under Create in the canvas context menu or **Parent · Rotation** in the Hierarchy context menu.
-3. Drag on the canvas from the rotation center toward the direction end; hold Shift to snap the angle in 15° steps.
-4. The new deformer is inserted as the direct parent of the selected objects (keeping their original parent); the canvas highlights the objects that will be reparented, and the placement panel shows how many deformers and ArtMeshes will be affected.
+2. Choose **Create Rotation** ({key:TOOL_CREATE_ROTATION}) on the Object mode toolbar, or enter from the canvas right-click menu **Create** or the Hierarchy right-click **Parent · Rotation**.
+3. On the canvas, drag from the rotation center to the direction endpoint; a single drag sets both the origin and the heading. Hold Shift to snap to 15°.
+4. The new deformer is inserted as the direct parent of the selection, and the former parent is kept. The canvas highlights what will be remounted, and the placement panel shows how many deformers and ArtMeshes are affected.
 5. Press {key:FINISH_PATH} or click **Create** to confirm, {key:CANCEL} to cancel.
-## Editing
-In Deform mode: drag the origin to move it and drag the end to rotate; by default hold Shift to snap the angle, and Alt + drag the end to adjust the scale. The deform brushes do not work on rotation deformers; use the move, rotate or scale tools.
-## Differences from Cubism
-- Cubism creates the deformer in a dialog first and then adjusts its position; PSD2Live sets the origin and direction in one drag and automatically inserts it as the parent of the selected objects.
-- The handle direction follows Cubism's convention: up at 0°, clockwise positive.
-- Skeleton baking generates rotation deformers for limbs, tails and wings automatically; see [[skeleton]].
 {tutorial=CREATE_DEFORMER}
+## Adjust
+In Deform mode, drag the origin to move it and drag the endpoint to rotate; Shift snaps the angle, and Alt + dragging the endpoint adjusts the scale. A rotation deformer does not accept the deform brush; use the move, rotate or scale tools.
+*> The handle direction follows Cubism's convention: 0° points up and clockwise is positive, so the angles you see in Cubism Editor after export are the same.
+Rotation deformers for limbs, tails and wings usually need no manual creation: the skeleton generates them automatically, see [[skeleton]].
 
 @@ system-of-parent-child-relation | Parent-Child Hierarchy Structure
-An object follows whichever deformer it is attached to; this is the parent-child structure. A child's shape is evaluated in its parent's local space, so when the parent deforms, the child is carried along as a whole; the child's own keyforms are then layered on top.
+An object follows the deformer it hangs under: the parent deforms first, the child is carried along as a whole, and the child's own keyforms are then layered on top. Understanding this lets you tell whether a shape is moving by itself or being carried.
 ## Inheritance rules
-- Objects under a warp deformer: the whole shape bends together with the parent grid.
-- A warp deformer under a warp deformer: the child deformer's control points are transformed by the parent, and its inside is then interpolated by its own grid.
-- A rotation deformer under a warp deformer: only the origin position and angle are inherited; the parent's non-rigid bending does not pass below it.
-- Objects under a rotation deformer: they turn rigidly with the origin.
-## Parents and direct bindings
-The parameters an object is bound to itself determine its own shape; the parent's parameters are passed down through the hierarchy. When editing, first make sure whether you want to change the object's own axis or the motion brought by its parent, so you do not mistake the parent's pose for the object's direct binding.
-*> The **Parent** badge in the Hierarchy marks the ancestors of the selected object.
+- Objects under a warp deformer: the whole shape bends with the parent grid.
+- A warp deformer inside a warp deformer: the child deformer's control points are transformed by the parent, and the inside is then interpolated by its own grid.
+- A rotation deformer under a warp deformer: it inherits only the origin position and angle; the parent's bending does not pass down.
+- Objects under a rotation deformer: they rotate rigidly with the origin.
+## Telling the two kinds of motion apart while editing
+The parameters bound directly to an object determine its own shape, while parent parameters come down through the hierarchy. Before changing a shape, make clear whether you want to edit the object's own axis or should actually edit the parent; otherwise it is easy to mistake a pose brought by the parent for the object's own binding. The **Parent** badge in the Hierarchy marks the ancestors of the selected object.
 Related: [[setting-of-parent-child-relation]] · [[combintion-of-parent-child-relation]] · [[keyform-parent-chilid-relation]]
 
 @@ setting-of-parent-child-relation | Setting Up Parent-Child Hierarchies
-Set which deformer an object is attached to. In PSD2Live this is mainly done by dragging in the Hierarchy; you can also specify the attach position directly when creating a deformer.
-## Setting it in the Hierarchy
+To change a parent, just drag in the Hierarchy; when creating a deformer you can also decide on the spot which object it goes above or below.
+## Change the parent in the Hierarchy
 1. In the Hierarchy, press and hold the row of an ArtMesh or deformer.
-2. Drop it on the target deformer to attach it there; drop it on the move-to-root area to move it to the root.
-3. Changing the parent is one history step and can be undone.
-## Other ways
-- Hierarchy context menu: **Parent · Warp**, **Child · Warp** and **Parent · Rotation** insert a new deformer above or below the selected objects; when a deformer is deleted its children move up.
-- **Add to** when creating a Warp: Set as parent of selected / Set as child of selected deformer (empty) / Specify parent deformer.
-- The Inspector shows the part and deformer an object belongs to.
-!> Dragging transparent images onto the Hierarchy imports layers; it is not the same operation as reparenting.
-## Differences from Cubism
-- Cubism chooses the parent in the Inspector or the "Set parent" dialog; PSD2Live works mainly by drag and drop in the Hierarchy, and the parent-child relation can be set while creating a deformer.
-- If you reparent objects in a generated model and later regenerate (changing the model presets, the skeleton and so on), your changes are kept by a three-way merge; see [[update-generated-rig]].
+2. Drag it onto the target deformer and release to hang it underneath; drag it to the **Drop here to move it to the root** area to move it to the root level.
+3. Changing a parent is one history step and can be undone.
 {tutorial=HIERARCHY}
+!> Dragging a transparent image onto the Hierarchy imports a layer; it does not change a parent.
+## Set while inserting a deformer
+- The Hierarchy right-click **Parent · Warp**, **Child · Warp** and **Parent · Rotation** insert a new deformer above or below the selected object; when a deformer is deleted, its children move up one level.
+- When creating a Warp, **Add to** in the placement panel can be set as parent of selected, set as child of selected deformer (empty), or a specified parent deformer; see [[making-and-placement-of-warp-deformer]].
+*> If you change a parent on a generated model and later regenerate by editing the model presets, the skeleton and so on, your changes are kept through a three-way merge; see [[update-generated-rig]].
 
 @@ combintion-of-parent-child-relation | Combination of Parent-Child Hierarchy
-Nesting several deformers lets you split a complex motion into a few simple layers: the outer layer handles the large turn, the inner layers handle local bending or rotation, and each layer binds only the parameters it needs.
-## Combinations in the generated model
-The body PSD2Live generates is layered this way:
-1. `DeformBodyXY`: body X / Y; the whole upper body turns and follows the hips.
-2. `DeformBodyLean`: body lean and proportion (head-to-body ratio).
-3. `DeformBodyZBreath`: body Z and breathing.
-4. Below these are the head rotation and the face lattice, and below those the facial features and hair.
-Each layer handles only its own parameters, and lower layers inherit the motion of upper layers automatically; for example, the head rotation is also carried by the body turn. The Hierarchy shows the actual structure.
-## Things to watch when combining
-- An upper deformer with a coarse grid resamples the shapes below it; put fine bending in the layer closest to the mesh.
-- A rotation deformer under a warp deformer inherits only the origin and angle, so parts that should follow the bending belong under a warp deformer.
-*> With a skeleton enabled, the torso bend and limb rotation deformers attach to the end of this chain; see [[skeleton]].
+The core idea of a deformer structure is to split complex motion into several simple layers: outer layers handle the large turns, inner layers handle local bending or rotation, each layer binds only the parameters it needs, and lower layers automatically inherit the motion of the upper ones.
+## Layering in a generated model
+The body PSD2Live generates is stacked exactly like this (the actual structure in the Hierarchy is authoritative):
+1. `DeformBodyXY`: Body X / Y; the whole upper body turns and follows the hips.
+2. `DeformBodyLean`: body lean forward/back and proportion (head-to-body ratio).
+3. `DeformBodyZBreath`: Body Z and breath.
+4. Below that come the head rotation and the face lat-long grid, then the facial features and hair.
+So when the head turns, it is also carried by the body's turn, and you do not need to repeat the body's motion on the head. With the skeleton enabled, the torso bend and the limb rotation deformers are attached at the end of this chain; see [[skeleton]].
+## Tips when building
+- An upper deformer with a coarse grid resamples the shapes below it, so put fine bending in the layer closest to the mesh.
+- Parts that must bend along go under a warp deformer; under a rotation deformer they inherit only the origin and angle.
 
 @@ auto-generation-of-deformer | Auto Generation of Deformer
-When PSD2Live imports a PSD it automatically generates the full set of deformers, parameters and keyforms from the layer tags; you do not need to create them one by one or apply templates as in Cubism.
+When a PSD is imported, PSD2Live generates the whole set of deformers, parameters and keyforms from the layer tags in one go, and the model can move right away. Your work changes from building the structure to tuning it.
 ## What is generated
-- Body chain: body X/Y, lean, body Z and breathing; standing full-body characters also get leg deformers.
-- Head: head rotation and head-shell follow, the face lattice, face outline and feature displacement; see [[face-auto-edit]].
-- Hair: follow and sway branches for front and back hair; you can also generate [[auto-generation-of-sway-motion]] or simulation separately.
+- Body chain: Body X / Y, lean forward/back, Body Z and breath; full-body standing characters also get leg deformers.
+- Head: head rotation with head-shell follow, the face lat-long grid, and face contour and facial-feature displacement; see [[face-auto-edit]].
+- Hair: follow and sway branches for front and back hair; you can add [[auto-generation-of-sway-motion]] or simulation on top.
 - Skeleton (when enabled): torso bend and limb rotation deformers; see [[skeleton]].
-## Adjusting the result
-1. Adjust the deformation strength, Rig Values and other settings in the **Model presets** panel; the model regenerates accordingly.
-2. Edits you make on the generated result are merged onto the new result and kept.
-3. To adopt improvements from a newer generator version, use **Model → Update Generated Rig**.
-## Automatic size when creating by hand
-When using **Create Warp**, click **Create from selection**, or choose a size strategy in the placement panel (Fit selection / Include keyform envelope / Align center with selection), and the deformer is sized automatically from the selected objects.
-## Differences from Cubism
-- Cubism's auto generation creates a single deformer structure for the selected objects; PSD2Live generates the deformer chain and keyforms for the whole model at import.
-- The generated structure changes with the model presets; the Hierarchy shows the actual objects.
-Related: [[model-presets]] · [[update-generated-rig]] · [[psd-import]]
+The exact objects vary with the model presets; the Hierarchy is authoritative.
+## Adjust the result
+1. In the **Model presets** panel, adjust the deformation range, Rig Values and so on; the model regenerates accordingly.
+2. The edits you made on the generated result are merged onto the new result and kept.
+3. To benefit from improvements in a newer generator, use **Model → Update Generated Rig**; see [[update-generated-rig]].
+*> When you create a warp deformer by hand, **Create from selection** and the size strategy in the placement panel also size it automatically from the selected objects.
+Related: [[model-presets]] · [[psd-import]]
 
 @@ convenient-function-deformer | Validate Deformer Function
-When checking a deformer structure you often need to see where an object is attached and which deformers and parameters affect it. PSD2Live puts this information in the canvas display rail, the Hierarchy and the Parameters panel.
-## Available checks
-| Location | Function |
+Once a structure gets complicated, you need a quick answer to "where does this object hang, and which deformers and parameters drive it". PSD2Live puts these checks where you are already working: the canvas display bar, the Hierarchy and the Parameters panel.
+| To find out | How |
 |---|---|
-| Display rail at the bottom right of the canvas | **Deformer Warp** and **Deformer Rotation** toggles; **Contextual warp** shows only deformers related to the selected object; **Dim unselected**; **Names** and **Selected only** |
-| Hierarchy | The **Parent** badge marks the ancestors of the selected object; search deformers and layers; expand / collapse all |
-| Parameters panel | **Related only** lists only parameters bound to the selected components; hover a parameter key mark to see the components with keyforms on that key |
-| Canvas | {key:FRAME_VIEW} frames the selected objects |
-## Differences from Cubism
-- Cubism provides dedicated commands for displaying and validating deformers; PSD2Live does the same checks with the display rail toggles and the Parameters panel filter, without a separate validation menu.
+| Which deformers affect the selected object | In the display bar at the bottom right of the canvas, turn on **Contextual warp**, which shows only deformers related to the selection; combine it with **Dim unselected** and **Selected only** |
+| A deformer's name | The **Names** toggle in the display bar |
+| Where an object hangs | The **Parent** badge in the Hierarchy marks the ancestors; you can search deformers and layers and expand or collapse all |
+| Which parameters an object is bound to | **Related only** in the Parameters panel lists only the parameters bound to the selected components |
+| Which objects have shapes on a key | Hover the key marker in the Parameters panel |
+| Bring an object to the center of the view | {key:FRAME_VIEW} |
 {tutorial=HIERARCHY}
 
 @@ parameter-folder | Parameter
 @@ parameter | About Parameters
-Parameters are the numeric sliders that drive the model's motion, such as Angle X or eye open/close. An object records a shape (keyform) on each of several keys of a parameter, and in-between values interpolate the shape automatically. Animation and physics ultimately just change parameter values over time.
-## Parameters panel
+Parameters are numeric sliders that drive the model, such as Angle X or eye open. An object records a shape (a keyform) on several keys of a parameter and is interpolated automatically at in-between values; animation, physics and face tracking all end up just changing parameter values. A generated model already carries a full set of parameters, so dragging them in the Parameters panel is enough to check the result.
+## The Parameters panel
 | Action | How |
 |---|---|
-| Change the value | Drag the slider with the left button |
-| Snap to a key | Hover over a key mark and right-click |
-| 2D control | Two linked parameters appear as a 2D pad: drag with the left button, right-click to snap to the intersection of both parameters' keys |
-| Reset / lock | The reset button in the row; lock the parameter value; **Reset All** and **Unlock All** on the toolbar |
-| Find | Search by name or parameter ID; **Related only** shows only parameters bound to the selected components |
-| Properties | Click the parameter name to open **Parameter Properties** |
-## Key marks
-- Round dot: a normal key; values between keys are interpolated.
-- Square dot: a blend shape key, which adds the shape difference on top of the base shape; see [[blend-shape]].
-- Hovering a key mark lists the components that have keyforms on that key.
-- Parameters with a physics icon are physics output parameters and are driven by physics in the preview.
-!> Keys on a parameter are modeling data, not the keyframes on the animation timeline.
-*> Parameter operations in PSD2Live are basically the same as in Cubism; all canvases share one parameter pose.
+| Change a value | Drag the slider with the left button |
+| Snap to a key | Hover a key marker and right-click |
+| Two-dimensional control | Two linked parameters appear as a 2D pad: drag with the left button, right-click to snap to the intersection of both parameters' keys |
+| Reset / lock | The reset and lock buttons on the row; **Reset All** and **Unlock All** on the toolbar |
+| Find | Search by name or ID; **Related only** lists just the parameters bound to the selected components |
+| Change the definition | Click the parameter name to open **Parameter Properties**; see [[parameter-modifyication]] |
 {tutorial=PARAMETERS}
+## Reading key markers
+- A round dot is a normal key, interpolated between neighboring keys; a square dot is a blend shape key, which adds the shape difference on top of the base shape; see [[blend-shape]].
+- Hovering a key marker lists the components that have a keyform on that key.
+- A parameter with a physics icon is a physics output, and physics takes over while previewing.
+!> Keys on a parameter are modeling data; they are not the same thing as keyframes on an animation timeline.
+*> Several canvas tabs share one parameter pose, so a value changed in one canvas is visible in the others too.
 
 @@ edit-parameters | Add/Delete Keys to/from parameters
-In PSD2Live, key positions are defined on the parameter and shared by every object bound to it; when an object is modified on a key, the shape is recorded on that key.
-## Editing a parameter's keys
+In PSD2Live the positions of keys belong to the parameter itself, and all objects bound to that parameter share the same set of keys; when an object is modified on a key, the shape is recorded on that key.
+*> In Cubism you select an object and press "Add 2 points / 3 points" to add keys to that object; here the parameter's key points are edited together in **Parameter Properties**, and objects bind by being deformed on a key.
+## Add, delete and move keys
 1. Click the parameter name in the Parameters panel to open **Parameter Properties**.
-2. On the **Key points** axis: click an empty spot to add a point and drag to change its value; click a number to edit it directly and press Enter to confirm; right-click to delete.
-3. **Step** sets the snap interval while dragging, and **Even** spreads the key points evenly; the minimum, default and maximum can be typed directly at the ends of the axis.
-4. Step back with **Undo point edit** and **Redo point edit**, and click **Save** to commit everything at once.
-## Binding an object to a parameter
+2. On the **Key points** axis, click empty space to add a point and drag to change its value; click a number to type a value and press Enter to confirm; right-click to delete.
+3. **Step** sets the snapping interval while dragging, and **Even** spreads the key points evenly; the minimum, default and maximum can be typed directly at the ends of the axis.
+4. Use **Undo point edit** and **Redo point edit** to step back, and click **Save** to commit once.
+!> When you move a key, the existing keyforms move with it; deleting a key also deletes every object's shape on that key (undoable).
+## Give an object a shape on a key
 1. Select the object.
-2. In the Parameters panel, drag the parameter to the target key's value (or right-click to snap to the key); the parameter you operate in the panel becomes the edit target.
-3. Switch to Deform mode ({key:MODE_DEFORM}) and change the shape; the result is written to that key's keyform.
-!> When a key is moved, existing keyforms move with it; deleting a key also deletes every object's shape on that key, which can be undone.
-## Differences from Cubism
-- Cubism adds keys to a selected object individually with buttons such as "Add 2 points / 3 points"; PSD2Live edits a parameter's key points in one place in **Parameter Properties**, and objects record shapes by being deformed on a key.
-- A new parameter does not produce any motion by itself; you need to give objects shapes on its keys.
+2. In the Parameters panel, drag the parameter to the target key (or right-click to snap to the key).
+3. Switch to Deform mode ({key:MODE_DEFORM}) and change the shape; the result is written into this key's keyform.
+A newly created parameter produces no motion by itself; it moves only after you give objects shapes on its keys.
 {tutorial=PARAMETERS}
+{tutorial=DEFORM_MODE}
 
 @@ parameter-modifyication | Parameter Adjustment
-Change a parameter's name, range and keys in **Parameter Properties**, and organize parameter groups and display in the Parameters panel.
-## Parameter Properties
+A parameter's name, range and keys are changed in **Parameter Properties**; once there are many parameters, use folders and 2D links to keep the Parameters panel tidy.
+## Change the definition
 1. Click the parameter name in the Parameters panel to open **Parameter Properties**.
-2. Change the **Name**; the ID can only be edited when the parameter is created.
-3. Change the minimum, default and maximum at the ends of the **Key points** axis; the default must lie within the range.
-4. **Lock parameter value** keeps the preview at the current value.
-5. **Duplicate** creates a new parameter with the same name and range (without copying component bindings or deformation data); **Delete Parameter** also removes the related keyframes and links.
-6. Click **Save**.
-## Groups and links
-- Create parameters or folders from the toolbar; a folder's context menu can create a parameter / folder inside it, set the tag color, rename it or dissolve it.
-- The link button in a row links the parameter with the next one into a 2D controller; **Unlink** turns them back into independent sliders. The height of the 2D pad can be adjusted by dragging.
-!> Shrinking a parameter's range also clamps key values and Bezier control points in animations; deleting a parameter removes the corresponding animation tracks.
-*> Changing a parameter definition is one history step and can be undone.
+2. Change the **Name**; the ID is editable only when the parameter is created.
+3. At the two ends of the **Key points** axis, change the minimum, default and maximum; the default must lie within the range.
+4. Click **Save**; this is one undoable history step.
+The dialog also has **Lock parameter value** (only keeps the preview at the current value; it is not part of the definition), **Duplicate definition** (copies the name and range, not component bindings or deformation data) and **Delete Parameter** (also removes the associated keyframes and links).
+!> Shrinking the range also limits the key values and Bezier control points in animations; deleting a parameter removes the corresponding animation tracks.
+## Tidy the Parameters panel
+- Create parameters or folders from the toolbar; right-click a folder to create a parameter / folder inside it, set a label color, rename it or dissolve it.
+- The link button on a row joins the parameter with the next one into a 2D controller, and **Unlink** restores two sliders; the height of the 2D pad can be adjusted by dragging.
 
 @@ standard-parameter-list | Standard Parameter List
-Models generated by PSD2Live use Cubism standard parameter IDs, so they work directly with various runtimes and face tracking software. The table below lists the default generated parameters; with mesh mode, deformers turned off or missing parts, the actual parameter set may differ.
+Generated models use the Cubism standard parameter IDs, so after export they can be connected directly to all kinds of runtimes and face-tracking software. The table below shows the parameters generated by default; in mesh mode, with some deformers turned off, or when the matching parts are missing, the actual set differs, and the Parameters panel is authoritative.
 | ID | Name | Range | Default |
 |---|---|---|---|
 | `ParamAngleX` | Angle X | -45…45 | 0 |
 | `ParamAngleY` / `ParamAngleZ` | Angle Y / Angle Z | -30…30 | 0 |
 | `ParamBodyAngleX` / `Y` / `Z` | Body Angle X / Y / Z | -10…10 | 0 |
-| `ParamBodyLean` | Body Lean | -10…10 | 0 |
-| `ParamProportion` | Proportion (chibi) | -10…10 | 0 |
+| `ParamBodyLean` | Body lean forward/back | -10…10 | 0 |
+| `ParamProportion` | Proportion (head-to-body ratio) | -10…10 | 0 |
 | `ParamEyeLOpen` / `ParamEyeROpen` | Left Eye Open / Right Eye Open | 0…1 | 1 |
 | `ParamEyeBallX` / `ParamEyeBallY` | EyeBall X / EyeBall Y | -1…1 | 0 |
-| `ParamEyeBallForm` | Eye Jelly | -1…1 | 0 |
+| `ParamEyeBallForm` | Jelly eye | -1…1 | 0 |
 | `ParamBrowLY` / `ParamBrowRY` | Left Brow Y / Right Brow Y | -1…1 | 0 |
 | `ParamMouthForm` | Mouth Form | -1…1 | 0 |
 | `ParamMouthOpenY` | Mouth Open | 0…1 | 0 |
 | `ParamBreath` | Breath | 0…1 | 0 |
-| `ParamHairFront` / `ParamHairBack` | Front Hair Sway / Back Hair Sway | -1…1 | 0 |
+| `ParamHairFront` / `ParamHairBack` | Front hair sway / Back hair sway | -1…1 | 0 |
+*> `ParamBodyLean` and `ParamProportion` are PSD2Live's own parameters and not in the Cubism standard parameters; tracking software does not drive them.
 ## Other automatic parameters
 - Skeleton parameters: `ParamArmLA`, `ParamLegLA`, `ParamTail1..n` and so on, in degrees; see [[skeleton]].
-- Swing parameters: `ParamSwing<id>`, range -1..1; see [[auto-generation-of-sway-motion]].
-*> `ParamBodyLean` and `ParamProportion` are PSD2Live's own parameters and are not among the Cubism standard parameters.
+- Swing parameters: `ParamSwing<id>`, range -1…1; see [[auto-generation-of-sway-motion]].
 
 @@ extended-interpolation-folder | Extended Interpolation
 @@ extended-interpolation | About Extended Interpolation
@@ -1392,306 +1156,266 @@ Models generated by PSD2Live use Cubism standard parameter IDs, so they work dir
 @@ repeat | Repeat
 @@ recording-parameters | Record Parameter Operations and Generate Animations
 @@ copy-and-paste-parameter-values | Copy/Paste Parameter Values
-PSD2Live saves and restores a set of parameter values with "parameter snapshots" instead of Cubism's copy / paste of parameter values. A snapshot records all of the model's current parameter values and can be loaded back at any time.
-## Using parameter snapshots
-1. Set the parameters to the pose you want in the Parameters panel.
-2. Click **Save current parameters as a snapshot** in the snapshot bar; the new snapshot is named "Snapshot n".
-3. Hover a snapshot to preview that pose on the canvas, click to load it, middle-click to delete it.
-4. Right-click a snapshot for **Overwrite with current values**, **Rename** and **Delete**.
+After you have dialed in a pose or expression you like, save it as a parameter snapshot and return to that state with one click later; this is easier than copying parameter values one by one, and suits comparing back and forth between several poses while correcting shapes. A snapshot records only parameter values and does not change the model.
+## Use parameter snapshots
+1. In the Parameters panel, set the parameters to the pose you want.
+2. Click **Save current parameters as a snapshot** in the snapshot bar; the new snapshot is named **Snapshot n**.
+3. Hover a snapshot to preview that pose on the canvas, click to load it, and middle-click to delete it.
+4. Right-click a snapshot for **Overwrite with current values**, rename or delete.
+*> A snapshot loads the whole set of parameters, like pasting all parameter values at once, rather than copying the selected parameters and pasting them as in Cubism.
 ## Skeleton poses
-In the **Pose Bones** tool of Skeleton mode, **Tool Details** can save the current model parameters under a name and apply them again; **Insert saved pose** in the animation editor inserts it at the playhead; see [[skeleton]].
-## Differences from Cubism
-- Cubism copies the values of selected parameters and pastes them elsewhere; PSD2Live saves the whole parameter pose and restores it as a whole when loaded.
-- Snapshots and named poses only change parameter values and do not modify the model.
+A pose set up in Skeleton mode can also be saved by name in **Tool Details** and applied again; **Insert saved pose** in the animation editor inserts it at the playhead; see [[skeleton]].
 
 @@ motion-sync | Motion-sync
 @@ keyform | Key form editing
 @@ how-to-choose | How to make selections
-Before editing keyforms, first select the object to edit, then select the points to move in Deform or Edit mode. Selection in PSD2Live works the same in every mode and is synced with the Hierarchy.
-## Selecting objects (Object mode)
-- Click to select, Shift to add, Alt to subtract; Ctrl + click cycles through overlapping objects.
-- Drag to box-select; {key:SELECT_ALL} selects all, {key:CANCEL} cancels.
-- Clicking in the Hierarchy is synced with the canvas; in the tree, Shift selects a range and Ctrl toggles.
-## Selecting points (Deform / Edit mode)
+Choose the right thing before editing a shape: select the object to edit in Object mode, then select the points to move in Deform or Edit mode. The selection always stays in sync with the Hierarchy.
+*> PSD2Live uses the canvas mode to tell the two kinds of selection apart: Object mode selects only objects, while Deform / Edit mode selects points. Edit mode can edit several selected meshes at once.
+## Select objects (Object mode)
+- Click to select, Shift to add, Alt to subtract; Ctrl + click cycles among overlapping objects.
+- Drag to box-select; {key:SELECT_ALL} selects all, {key:CANCEL} deselects.
+- Selection in the Hierarchy stays in sync with the canvas; in the tree, Shift selects a range and Ctrl toggles. {key:FRAME_VIEW} brings the selection into view.
+{tutorial=SELECT_MODE}
+## Select points (Deform / Edit mode)
 | Tool | Shortcut | Use |
 |---|---|---|
-| Select | {key:TOOL_SELECT} | Click and box selection |
-| Lasso Select | {key:TOOL_LASSO_SELECT} | Free-form selection |
+| Select | {key:TOOL_SELECT} | Click or box-select |
+| Lasso Select | {key:TOOL_LASSO_SELECT} | Free-form lasso |
 | Brush Select | {key:TOOL_BRUSH_SELECT} | Select by painting like a brush |
-| Temporary select | Hold {key:TEMPORARY_SELECT} | Release to return to the previous tool |
-Meshes can be selected by point / edge / face (mode bar or `1`–`3`). {key:INVERT_SELECTION} inverts the selection, {key:SELECT_LINKED} selects connected parts.
-## Differences from Cubism
-- Cubism switches between object selection and point selection in the same view; PSD2Live separates them by canvas mode: Object mode selects only objects, Deform / Edit mode selects points.
-- Edit mode can edit several selected meshes at once.
-{tutorial=SELECT_MODE}
+| Temporary Select | Hold {key:TEMPORARY_SELECT} | Release to return to the previous tool |
+A mesh can be selected by point / edge / face; switch on the mode bar or press {key:PICK_OPTION_1}–{key:PICK_OPTION_3}. {key:INVERT_SELECTION} inverts the selection, {key:SELECT_LINKED} selects the connected part, and {key:SELECTION_STYLE_BOX} / {key:SELECTION_STYLE_LASSO} switch the selection style.
 
 @@ how-to-edit | How to edit
-Change object shapes in Deform mode. For an object not bound to any parameter you change its base shape; for a bound object you change the keyform at the current parameter combination.
+All keyforms are made in Deform mode: set a parameter to a key, then change the object's shape. If the object is not bound to a parameter yet, you change its base shape; if it is bound, you change the keyform at the current parameter combination.
 ## Basic flow
 1. Select the object and switch to Deform mode ({key:MODE_DEFORM}).
-2. Move the parameters to the target key in the Parameters panel.
-3. Change the shape with the tools; when you release the mouse the result enters the history and can be undone.
-## Tools
-| Tool | Shortcut | What it does |
-|---|---|---|
-| Transform | {key:TOOL_TRANSFORM} | Move, scale and rotate the selected points with a transform box |
-| Deform Brush | {key:TOOL_BRUSH} | Push the points within the brush radius; see [[deform-brush]] |
-| Smooth Brush | {key:TOOL_SMOOTH} | Smooth the shape |
-| Inflate Brush | {key:TOOL_INFLATE} | Inflate outward or shrink inward |
-- Warp deformers can switch between the **Vertices** and **Bezier** edit levels; rotation deformers are edited by dragging the origin and the end.
-- **Precise Transform** in **Tool Details** moves, scales and rotates the selected points by numbers; see [[edit-vertices]].
-- **Mirror keyform** in the canvas context menu mirrors a shape to the opposite key or the opposite-side object; see [[motion-mirroring]].
-## Differences from Cubism
-- PSD2Live separates changing shapes (Deform mode) from changing mesh structure (Edit mode); tool settings are in the tool options bar at the bottom left and in the context menu.
-- Edits on keyforms owned by a generator are recorded as generated overrides; see [[generated-overrides]].
+2. In the Parameters panel, set the parameter to the target key.
+3. Change the shape with the tools in the table below; releasing the mouse enters it into the history, {key:UNDO} undoes and {key:REDO} redoes.
 {tutorial=DEFORM_MODE}
+| Tool | Shortcut | Effect |
+|---|---|---|
+| Transform | {key:TOOL_TRANSFORM} | Move, scale and rotate the selected points with the transform box |
+| Deform Brush | {key:TOOL_BRUSH} | Push the points within the brush range; see [[deform-brush]] |
+| Smooth Brush | {key:TOOL_SMOOTH} | Smooth the shape out |
+| Inflate Brush | {key:TOOL_INFLATE} | Inflate outward or shrink inward |
+- {key:AXIS_CONSTRAIN_X} / {key:AXIS_CONSTRAIN_Y} restrict movement to one axis.
+- A warp deformer can switch between the **Vertices** and **Bezier** edit levels; for a rotation deformer, drag the origin and the endpoint.
+- **Precise Transform** in **Tool Details** moves, scales and rotates the selected points by numeric values; see [[edit-vertices]].
+- The canvas right-click menu **Mirror keyform** mirrors a finished side to the other; see [[motion-mirroring]].
+*> Changing the mesh structure (adding points, cutting) happens in Edit mode, separate from changing shapes; for everyday shape correction stay in Deform mode. When you edit a keyform owned by a generator, the change is recorded as a generated override and survives regeneration; see [[generated-overrides]].
 
 @@ keyform-parent-chilid-relation | Keyforms (Parent-Child Hierarchy Movement)
-A parent deformer and its child objects can bind the same parameter and each record shapes on its keys; when the parameter changes, the overall motion carried by the parent and the child's own shape are layered to give the final result.
-## Example
-When the head turns on Angle X, the head deformer handles the turn of the whole head, and the face lattice and facial features each correct their shapes by Angle X. The generated model is bound in layers this way.
-## Things to watch when editing
-- After selecting an object, check which parameters it is bound to directly, and tell them apart from the motion its parent brings through the hierarchy.
-- Shapes edited on a child are based on the parent's state in the current pose.
-- Mirror keyform only handles the object's own deformation, using the parent at the default pose as the coordinate system; the parent's keyforms need to be mirrored separately.
-*> **Related only** in the Parameters panel lists the parameters bound directly to the selected components.
+A parent deformer and a child object can be bound to the same parameter, each recording shapes on the keys; when the parameter changes, the overall motion brought by the parent and the child's own shape are combined into the final result. This way the parent handles the large motion and the child only needs small corrections.
+## Example in a generated model
+When Angle X turns the head, the head deformer handles the turn of the whole head, and then the face lat-long grid and facial features each correct their shapes by Angle X; the generated model is bound in layers like this.
+## Things to note while editing
+- First see which parameters the object is directly bound to (**Related only** in the Parameters panel) and tell that apart from the motion it gets through the hierarchy from its parent.
+- A shape edited on a child is based on the parent's state in the current pose.
+- Mirror keyform handles only the object's own deformation, using the parent in the default pose as the coordinate system; the parent's keyforms must be mirrored separately.
 
 @@ keyform-xydirection | Keyforms (Make X, Y Movements)
-When an object is bound to two parameters at once (such as Angle X and Angle Y), its keyforms form a grid: every combination of an X key and a Y key has a shape, and diagonal poses are interpolated from the surrounding keys.
-## How to make them
-1. Link the two parameters into a 2D controller in the Parameters panel (the link button in the row), and right-click on the pad to snap to the intersection of both parameters' keys.
-2. In Deform mode, make the shape for each intersection in turn: first the ends and midpoints, then the four diagonal corners.
-3. Drag between keys on the pad to check that the interpolation looks natural.
-## Generated model
-The generated head produces nine poses from combinations of the ends and midpoints of Angle X / Y, with extra correction on the diagonals; the strength can be adjusted in **Rig Values** of the model presets.
-*> Diagonal shapes are not synthesized automatically and must be made one by one (Cubism's [[synthesize-corners]] is not yet available).
+When an object is bound to two parameters at once (such as Angle X and Angle Y), the keyforms are arranged in a grid: each combination of an X key and a Y key has its own shape, and diagonal poses are interpolated from the surrounding keys. The generated head already has nine poses made from combinations of the end and middle points of Angle X / Y, with extra correction for the diagonals; the strength is tuned under **Rig Values** in the model presets.
+## Make a set of XY shapes yourself
+1. In the Parameters panel, link the two parameters into a 2D controller with the link button on the row, and right-click on the pad to snap to the intersection of both parameters' keys.
+2. In Deform mode, make shapes at each intersection in turn: first the end and middle points, then the four diagonals.
+3. Drag the pad back and forth between keys to check whether the interpolation looks natural.
+{tutorial=PARAMETERS}
+*> The shapes of the four diagonals have to be made one by one; PSD2Live does not synthesize them automatically as Cubism does.
 
 @@ copy-and-blend-shape | Edit Form
 @@ paste-form-special | Paste Form Special
 @@ confirm-target-for-pasting-multiple-forms | Where to apply form pasting
 @@ synthesize-corners | Automatic Generation of Four Corner Forms
 @@ face-auto-edit | Auto generation of facial motion
-When PSD2Live imports a PSD it automatically generates a full set of facial motion: head turns, blinking, eyeballs, brows, mouth form and lip sync, without first making the up, down, left and right shapes by hand.
+Head turns, blinks, eyeballs, eyebrows, mouth shapes and lip sync are all generated when the PSD is imported; you do not have to make the up, down, left and right shapes by hand first. What you do is adjust the range with numbers and then correct a few places by hand.
 ## What is generated
-- Head X / Y: nine poses from combinations of the ends and midpoints, based on the head tilt in the original art; the diagonals get extra correction.
-- The face uses a lattice and region-based reshaping; the eyes and brows, pupils, mouth and ears have their own compensation or masks.
-- Mouth: open/close and mouth form are generated from the mouth settings, with optional upper and lower lip outlines.
-- Front and back hair are separated from strong face deformation and output their own sway parameters.
-## Adjusting
-1. Open the **Rigging & Facial** group of the **Model presets** panel: the **Facial Feature Displacement Deformer** toggle, **Head range** and **Body range**.
-2. Fine-tune the head turn, eyes, brows, mouth, nose and ears, and hair in the **Rig Values** group; less common items are under **Advanced**.
-3. After a change the model regenerates, and existing manual edits are kept by merging.
-!> This is the output of preset algorithms, not a 3D reconstruction. The layering, wide hair strands, extreme angles and overlapping regions may all need manual reshaping.
-## Differences from Cubism
-- Cubism generates the rest of the facial motion automatically from up, down, left and right shapes you have already made; PSD2Live generates all facial motion directly from the PSD layers and adjusts the strength with numbers.
-- Generated facial keyforms can be further edited by hand in Deform mode.
+- Head X / Y: the end and middle points combine into nine poses, based on the head tilt in the original art, with extra correction for the diagonals.
+- The face is corrected with a lat-long grid and by region; eyes and brows, pupils, mouth and ears each have their own compensation or masking.
+- Mouth: opening and mouth form are generated from the mouth shape settings, and upper and lower lip outlines can optionally be generated.
+- Front and back hair are separated from strong face deformation and each outputs its own sway parameter.
+## Adjust the range
+1. Open the **Rigging & Facial** group in the **Model presets** panel and adjust the **Facial Feature Displacement Deformer** switch and **Head range** and **Body range**.
+2. In the **Rig Values** group, fine-tune head turn, eyes, brows, mouth, nose and ears, and hair; less common items are under **Advanced**.
+3. After a change the model regenerates, and the manual edits you already made are merged and kept.
+## Correct by hand
+The generated facial keyforms can be edited further directly in Deform mode; for the method see [[how-to-edit]].
+!> This is the result of a preset algorithm, not a 3D reconstruction. Unusual layering, wide hair strands, extreme angles and overlapping regions may need manual correction.
 Related: [[model-presets]] · [[standard-parameter-list]]
 
 @@ auto-generation-of-sway-motion | Auto Generation of Sway Motion
-Swing generation corresponds to Cubism's "Auto Generation of Sway Motion": select a warp deformer (or a mesh), and swaying keyforms are generated automatically on parameter values -1 / 0 / 1, together with a physics pendulum. The settings are saved with the project and can be reopened and adjusted at any time.
-## Opening
-- In Object mode, right-click the selected mesh or warp deformer on the canvas → **Generate Swing...**; an already generated one shows **Edit Swing...**.
-- The same menu is in the Hierarchy context menu.
-- Physics panel **+ New** → **Swing for the selection…**.
-When a mesh is selected, a fitting warp deformer is wrapped around it automatically. A rotation deformer cannot be a target.
-## Editing
-1. Once opened, the canvas enters swing editing and a floating swing panel appears at the bottom left.
-2. Drag handles on the canvas: the tip dot sets amplitude and upturn, the diamond on the center line sets softness, the two tip corners set widen / narrow and parallel, the hollow circle rotates the whole swing rectangle, and the hollow square changes the pivot edge.
-3. In the panel choose the **Motion** direction (**Left / Right** / **Up / Down**, both can be checked), **Segments** (1–3), **Estimate** (**Hair** / **Accessory** / **Cloth**) and whether to generate a physics pendulum.
-4. **Preview Sway** shows the effect; **Generate** / **Apply** or Enter writes it, **Cancel** or Esc discards it.
-## Generator and baking
-- Keyforms on the swing axis are owned by the swing and recalculated from the target's current form on every rebuild; manual changes on these keyforms are recorded as generated overrides (see [[generated-overrides]]).
-- **Bake to Keys** writes the current forms as ordinary keyforms and keeps only the physics pendulum; **Delete** removes it together with the generated axis and the automatically created parameter.
-## Differences from Cubism
-- Cubism generates sway with a warp deformer as the target; PSD2Live also supports mesh targets (wrapped in a deformer automatically), both left-right and up-down sway, segments, a parallel bottom (several hair strands swaying together) and rotating the swing rectangle.
-- A physics pendulum is generated at the same time and exported to physics3.json and cmo3.
-- If the parameter does not exist it is created automatically, named `ParamSwing<id>`.
+For parts like hair, accessories and skirt hems, select them and generate a sway in one step: PSD2Live automatically makes swaying keyforms at -1 / 0 / 1 of a new parameter and also generates a physics pendulum, so after export they swing with the head. The settings are saved with the project and can be reopened and adjusted at any time.
+## Open
+- In Object mode, right-click the selected mesh or warp deformer on the canvas and choose **Generate Swing...**; one that has already been generated shows **Edit Swing...**. The Hierarchy right-click has the same menu.
+- In the Physics panel, **+ New** → **Swing for the selection…**.
+When a mesh is selected, a fitting warp deformer is wrapped around it automatically; a rotation deformer cannot be the target.
+## Edit
+1. After opening, the canvas enters swing editing and a swing panel appears at the bottom left.
+2. Drag the handles on the canvas: the dot at the tip sets the amplitude and upward curl, the diamond on the center line sets the softness, the two corners at the tip set enlarge / shrink and parallel, the hollow circle rotates the whole swing rectangle, and the hollow square changes the pivot edge.
+3. In the panel choose the swing direction (left-right / up-down, both can be ticked), the segments (1–3), the auto estimate (strands / accessory / cloth), and whether to generate a physics pendulum.
+4. **Preview Sway** to see the effect; **Generate** / **Apply** or Enter writes it, **Cancel** or Esc abandons it.
+*> Compared with Cubism's feature of the same name, this one can also target a mesh, make up-down swings and segments, and use bottom parallel to make several bundles of hair sway together. If the parameter does not exist it is created automatically as `ParamSwing<id>`, and the pendulum is exported to physics3.json and cmo3.
+## Regeneration and baking
+The keyforms on the swing axis belong to the swing and are recomputed from the target's current shape on every rebuild; your manual changes on these keyforms are recorded as generated overrides (see [[generated-overrides]]). To take over completely by hand, click **Bake to Keys** to write the current form as ordinary keyforms and keep only the physics pendulum; **Delete** removes it together with the generated axis and the automatically created parameter.
 
 @@ edit-vertices | Edit Vertices in Canvas Coordinates
-Canvas editing in PSD2Live always works on where points appear on the canvas: whatever deformer an object is attached to, dragging, the transform box and the brushes act on the points you see on the canvas, and the program converts to the parent's local coordinates automatically. Use **Precise Transform** when you need exact numbers.
+In PSD2Live, dragging, the transform box and brushes always act on the position where a point is shown on the canvas; whichever deformer the object hangs under, the program converts it to the parent's local coordinates automatically. This is default behavior and needs no separate switch. When you need exact values, use **Precise Transform**.
 ## Precise Transform
-1. Select the points to move in Deform mode.
+1. In Deform mode, select the points to move.
 2. Open **Precise Transform** in the **Tool Details** panel.
-3. Enter the offset (canvas pixels), scale or rotation angle and click **Apply**.
-Rotation and scale are centered on the transform box anchor; when the target is a single rotation deformer, they are centered on its origin.
-## Transform box
-While dragging the transform box, the rotation angle, scale or moved canvas pixels are shown next to the pointer; drag the anchor to change the center, which snaps near the center, corners or edge midpoints.
-## Differences from Cubism
-- Cubism offers editing vertices in canvas coordinates as a separate feature; PSD2Live edits in canvas coordinates by default, with no separate switch.
-- Numeric input only moves, scales and rotates the selected points as a whole; there is no per-vertex coordinate input.
+3. Enter the movement (canvas pixels), the scale ratio or the rotation angle, and click **Apply**.
+Rotation and scaling are centered on the anchor of the transform box; when the target is a single rotation deformer, they are centered on its origin. The values act on the selected points as a whole; there is no per-vertex coordinate input.
 {tutorial=TOOL_DETAILS}
+## Reading values from the transform box
+While dragging the transform box, the rotation angle, scale ratio or moved canvas pixels are shown beside the pointer; dragging the anchor changes the center, and it snaps when near the center, a corner or an edge midpoint.
 
 @@ restore-deformer-shape | Restore deformer shape
 @@ glue | Glue
-Glue sticks the vertices of two meshes together so the two parts move together at the seam without tearing. A glue point is one point shared by both meshes, shown as a diamond on the canvas; when selected or dragged, the vertices on both sides always move together.
-## Creating
-1. Select two meshes in Object mode and switch to Edit mode ({key:MODE_EDIT}).
-2. Choose the **Glue** tool ({key:TOOL_GLUE}), which has three sub-tools: **Glue brush**, **Weight brush** and **Remerge** (`1`–`3`).
-3. Paint with the glue brush over the overlap; or press {key:FINISH_PATH} / **Create glue** on the mode bar to glue a whole stretch along the two outlines.
+When two parts split apart at their seam as soon as they move, use glue to stick the vertices of the two meshes together. A glue point is one point shared by both meshes, drawn as a diamond on the canvas, and when it is selected or dragged the vertices on both sides always move together.
+## Create
+1. In Object mode, select two meshes and switch to Edit mode ({key:MODE_EDIT}).
+2. Choose the **Glue** tool ({key:TOOL_GLUE}); it has three sub-tools below: Glue brush, Weight brush and Remerge ({key:PICK_OPTION_1}–{key:PICK_OPTION_3}).
+3. Brush with the glue brush where they overlap; or press {key:FINISH_PATH} / click **Create glue** on the mode bar to glue the whole seam along the two outlines.
+{tutorial=EDIT_MODE}
 ## Operations
 | Operation | Effect |
 |---|---|
-| Glue brush | Adds or slides a vertex on the other mesh at the overlap (its UV moves with it); changes only the mesh, not the image |
+| Glue brush | Where they overlap, makes the other mesh gain or slide a vertex (UV follows); only the mesh changes, not the picture |
 | Alt + drag | Unglue |
-| Weight brush | Shows and paints the weights of the two sides in blue (A) / orange (B) |
-| Remerge | Removes the existing glue on brushed vertices, then glues again by the snap tolerance |
-| {key:GENERATE} | Glues the selected vertices on either mesh (this does not open export here) |
-| Right-click **Remerge the whole seam** | Removes all glue between the two meshes and glues again along the outline |
-!> Gluing happens on the rest form (all parameters at their defaults). When parameters are not at their defaults, the glue brush, Remerge and Create glue first move the parameters smoothly back to their defaults and then glue.
-## Differences from Cubism
-- PSD2Live's glue brush adds or slides vertices on the other mesh so the vertices on both sides coincide; the two meshes do not need aligned vertices beforehand.
-- Limbs split by the skeleton and depth splits generate glue automatically.
-{tutorial=EDIT_MODE}
+| Weight brush | Shows and paints the pull weights of both sides in blue (A) / orange (B) |
+| Remerge | Removes the existing glue on the brushed vertices and glues again by the weld tolerance |
+| {key:GENERATE} | Glue the selected vertices on either mesh |
+| Right-click **Remerge the whole seam** | Remove all glue between the two meshes and glue again along the outline |
+*> The two meshes do not need aligned vertices beforehand: the glue brush adds or slides vertices on the other side so that both sides coincide.
+!> Gluing is done on the rest shape (all parameters at their defaults). When a parameter is not at its default, the glue brush, Remerge and Create glue first move the parameter smoothly back to the default and then glue.
+Limbs split by the skeleton and front/back layering get glue automatically, so you rarely need to handle it by hand.
 
 @@ deformpath | Deform Paths
-A deform path (experimental) is an editing aid attached to a mesh: draw a curve along a part, and dragging the curve's control points makes the mesh deform along it, with the result written as the mesh's keyforms. It is not a third kind of deformer.
-## Creating and editing
-1. Select an ArtMesh and choose **Deform path** in the Hierarchy context menu, or use {key:TOOL_CREATE_DEFORM_PATH}.
+A deform path (experimental) lets you draw a curve along a part and drag the curve's control points, and the mesh deforms along the curve; it suits long hair, ribbons and tails. The path is only an editing aid attached to one mesh, the result is written as ordinary keyforms of that mesh, and it is not a deformer itself.
+## Create and edit
+1. Select an ArtMesh and choose **Deform Path** in the Hierarchy right-click menu, or press {key:TOOL_CREATE_DEFORM_PATH}.
 2. Click on the ArtMesh to place at least two control points, press {key:FINISH_PATH} to confirm, {key:CANCEL} to cancel.
-3. In Edit mode adjust the path's bind position, influence width, hardness, closing and corners; the mesh does not move at this stage.
-4. Set the target pose in the Parameters panel, switch to Deform mode and drag the control points; the shape is written to the ArtMesh's keyforms.
-## Edit levels
-Paths come in two groups, L2 and L3, each stored separately; choose one in the placement panel or in **Path edit level** in **Tool Details**, and change an existing path in **Edit Level** in the Inspector. The canvas shows only paths of the current group.
+3. In Edit mode, adjust the path's binding position, influence width, hardness, closure and corners; the mesh does not move at this point.
+4. Set the target pose in the Parameters panel, switch to Deform mode and drag the control points; the shape is written into the ArtMesh's keyforms.
+Paths are divided into two groups, L2 / L3, each storing its own set; choose one in **Path edit level** in the placement panel or **Tool Details**, and change an existing path with **Edit Level** in the Inspector. The canvas shows only the paths of the current group. These two groups are unrelated to the Vertices / Bezier levels of a warp deformer.
 ## Export
-| File | Content |
-|---|---|
-| `.cmo3` | Path controller structure and mesh keyforms |
-| `.moc3` | Baked mesh keyforms; the runtime does not run the path algorithm |
-!> A mesh can have several paths, but one path cannot control several meshes. The drag result has not yet been fully verified to match Cubism Editor; check width, hardness and large-angle deformation.
-## Differences from Cubism
-- PSD2Live's paths act on a single mesh and are an editing aid on that mesh; only the baked keyforms remain in `.moc3`.
-- The path edit levels L2 / L3 are unrelated to a warp deformer's Vertices / Bezier levels.
+`.cmo3` stores the path controller structure and the mesh keyforms; `.moc3` stores only the baked mesh keyforms, and the runtime does not run the path algorithm.
+!> A mesh can have several paths, but one path cannot control several meshes. The dragging result has not been fully verified to match Cubism Editor, so check width, hardness and large-angle deformation yourself.
 
 @@ skinning | Skinning
-Skinning lets a mesh that spans a joint bend smoothly with several bones. Cubism's skinning converts the mesh into a chain of rotation deformers; PSD2Live does the same with its own skeleton: the mesh is bound to bones, weights are computed automatically, and at export it is baked into Cubism deformers and keyforms.
+When a whole mesh that spans a joint (such as an arm that has not been split, or stockings) must bend smoothly with several bones, PSD2Live hands it to the skeleton: bind the mesh to bones, the weights are computed automatically, and on export they are baked into rotation deformers and mesh correction keyforms.
 ## Binding and weights
-1. In Skeleton mode choose **Edit Bones** ({key:TOOL_SKELETON_EDIT}) and use the **Bind** sub-tool to bind meshes to bones; meshes of one limb only need to be bound to one of its bones.
-2. Weights are computed automatically over the whole limb: each vertex follows at most the two bones on either side of a joint, blending smoothly within the **Joint band**.
+1. In Skeleton mode, choose **Edit Bones** ({key:TOOL_SKELETON_EDIT}) and bind the mesh to bones with the **Bind** sub-tool; meshes of one limb only need to be bound to one of its bones.
+2. Weights are computed automatically over the whole limb: each vertex follows at most the two bones on either side of the joint, with a smooth transition within the **Joint band**.
 3. To correct them, use the **Weights** sub-tool: select a bound mesh and a bone in the same limb, and paint with add, subtract, replace or smooth.
-4. In **Tool Details** you can clean up, restore automatic weights, or copy / mirror weights to another mesh.
-5. **Show skin weights** in the display rail colors vertices by bone color.
-## Baked result
-Vertices within the joint band rotate around the joint blended by angle, so the limb keeps its width as it bends; at export this is written as rotation deformers plus corrective mesh keyforms.
-## Differences from Cubism
-- Cubism's skinning generates a chain of rotation deformers directly on the mesh, which you then edit in Cubism; in PSD2Live the weights belong to the skeleton and are rebaked after the bones change.
-- Each vertex is affected by at most two adjacent bones.
-See [[skeleton]] for details.
+4. In **Tool Details** you can clean up and restore the automatic weights, or copy / mirror the weights to another mesh.
+5. While posing, turn on **Show skin weights** in the display bar to check the transitions at the joints by bone color.
 {tutorial=SKELETON}
+Vertices inside the joint band blend by angle and rotate around the joint, so the limb keeps its width when it bends.
+*> Cubism's skinning converts the mesh directly into a chain of rotation deformers and you then edit on that chain; here the weights belong to the skeleton, and changing the bones bakes again. For the full description see [[skeleton]].
 
 @@ skeleton | Skeleton
-The skeleton is PSD2Live's quick limb rigging tool: a skeleton drives the body, limbs, tails and wings, and at export it is baked into structures Cubism can run directly—a torso bend deformer, rotation deformers for the limbs, and corrective keyforms for meshes that span joints. The exported model does not depend on this program.
-## Skeleton mode
-Skeleton work happens in the **Skeleton** tab (next to the Hierarchy) and in the canvas's Skeleton mode ({key:MODE_SKELETON}):
-| Tool | Shortcut | Sub-tools |
-|---|---|---|
-| Pose Bones | {key:TOOL_SKELETON_POSE} | Auto / FK / IK |
-| Edit Bones | {key:TOOL_SKELETON_EDIT} | Edit / New Bone / Extrude / Bind / Weights |
-## Creating a skeleton
-1. Enter Skeleton mode; if the project has no skeleton yet, click **Create skeleton** in the middle of the canvas or in the **Skeleton** tab.
-2. The program infers and binds bones from layer tags and sides: arms bind to handwear, legs to legwear, feet to footwear, and tails and wings to their own layers.
-3. Use **Edit** to drag joint ends into place; **New Bone** and **Extrude** add custom bones; **Bind** binds meshes in bulk.
-4. In **Tool Details** you can copy, mirror, subdivide and merge bones; with a bone selected you can set the **Joint band** and the minimum / maximum angle.
-5. Click **Done** to save it as one history step; switching to Pose Bones, changing mode or selecting another layer also saves, and only **Cancel** discards the changes.
-## Posing
-- Dragging a bone's body is FK and rotates only that bone; dragging its end or holding Shift while dragging is IK.
-- **Tool Details** sets the IK chain length, iterations and bend direction, and can pin the ends of selected bones.
-- Posing only changes parameter values and creates no history; **Reset Pose** zeroes it. Named poses can be saved and inserted into animations.
-## Generated structures and parameters
-- Torso bend `DeformSkelTorso`, and rotation deformers `DeformSkel_<bone ID>` for limbs, tails and wings.
-- Skeleton parameters such as `ParamArmLA`, `ParamLegLA` and `ParamTail1..n`, in degrees.
-- Pose parameters: Crouch, Weight Shift, Tail Swing, Wing Flap, Knees In and Hop.
-- Skeleton motions appear in the Animation panel; see [[builtin-motions]].
-- **Parameter sampling** sets the tolerance, minimum angle step and the keyform limit per mesh, which control export size.
-!> Limbs whose left and right sides are drawn on the same layer are not bound; split them first with **Model → Split Layers by Mesh…**. After the skeleton is baked, Cubism Editor keeps no skeleton semantics; keep the `.psd2live` project if you want to change the skeleton later.
-!> Skeleton parameters for limbs that can be added together are written as blend shape parameters when the export target is Cubism 5.0 or later; for targets below 5.0 everything is baked into ordinary keyforms, and poses on rotation deformers are dropped.
-## Relation to Cubism
-Cubism Editor has no skeleton object; limbs are usually built by hand from rotation deformer chains and skinning. PSD2Live's skeleton is a tool for generating those structures: you place bones, bind and adjust weights on the skeleton, and the same deformers and keyforms come out automatically at export. Related: [[skinning]] · [[making-and-rotation-of-rotationdeformer]]
+For a body, limbs, tail or wings that need to move, the skeleton is the fastest way to rig: the program infers the skeleton from the layers and binds the meshes, you adjust the joints and pose it, and on export it is baked into structures Cubism can run directly: a torso bend deformer, rotation deformers for the limbs, and correction keyforms for meshes that span joints. The exported model does not depend on this program.
+*> Cubism Editor has no skeleton object; there, limbs are usually built by hand with chains of rotation deformers and skinning. The skeleton here is exactly the tool that generates those structures automatically.
+## Create a skeleton
+1. Enter Skeleton mode from the mode menu ({key:MODE_SKELETON}). When the project has no skeleton yet, click the center of the canvas or **Create skeleton** on the **Skeleton** tab.
+2. The program infers the bones from layer tags and sides and binds them: arms to the same-side handwear, legs to legwear, feet to footwear, and tails and wings to their own layers.
+3. Adjust with **Edit Bones** ({key:TOOL_SKELETON_EDIT}): **Edit** drags joints, **New Bone** and **Extrude** add bones, **Bind** binds meshes in batches, and **Weights** corrects skinning (see [[skinning]]).
+4. In **Tool Details** you can copy, mirror, subdivide and merge bones; after selecting a bone on the **Skeleton** tab you can adjust the **Joint band** and the minimum / maximum angle.
+5. Click **Done** to save as one history step. Switching to Pose Bones, changing mode or selecting another layer also saves; only **Cancel** discards this round of changes.
 {tutorial=SKELETON}
+!> Limbs drawn on the same layer for left and right are not bound; first split them with **Model → Split Layers by Mesh…** and then bind.
+## Pose
+In **Pose Bones** ({key:TOOL_SKELETON_POSE}), dragging a bone's body is FK and turns only that bone; dragging the tip or dragging while holding Shift is IK. **Tool Details** lets you set the IK chain length, iterations and bend direction, and **Pin selected tip**. Posing changes only parameter values and produces no history; **Reset Pose** zeroes everything. A good pose can be saved by name and applied again later or inserted into an animation.
+## Generated structures and parameters
+| Item | Description |
+|---|---|
+| Torso bend | `DeformSkelTorso`, the upper and lower body bend around the waist |
+| Limbs, tail, wings | Rotation deformers `DeformSkel_<bone ID>` |
+| Skeleton parameters | `ParamArmLA`, `ParamLegLA`, `ParamTail1..n` and so on, in degrees |
+| Pose parameters | Squat, weight shift, tail flick, wing flap, knock-knees, bounce |
+The motions a skeleton can play appear in the Animation panel; see [[builtin-motions]]. **Parameter sampling** at the bottom of the **Skeleton** tab sets the tolerance, the minimum angle interval and the per-mesh keyform limit, and is used to control the export size.
+## Export notes
+- Limb parameters that can be added are written as blend shape parameters when the export target is Cubism 5.0 or later; with a target below 5.0, everything is baked into ordinary keyforms and the poses on rotation deformers are dropped.
+- The skeleton itself is not kept in Cubism Editor; if you will need to change the skeleton later, keep the `.psd2live` project.
+Related: [[making-and-rotation-of-rotationdeformer]] · [[blend-shape]]
 
 @@ generated-overrides | Generated Overrides
-Keyforms from generators such as swing and simulation are recalculated on every rebuild. Your changes on these keyforms are not overwritten; they are recorded as "generated overrides" and merged with the generated result after all generators run.
-## Which edits are overrides
-- Keyforms generated by a swing on its target warp deformer (when the swing parameter is not at its default).
-- Mesh keyforms written back as keyform axes by a baked simulation.
-- Keyforms written by skeleton skinning on meshes you reparented yourself.
-Edits where the generated parameter is at its default are still ordinary edits and change the rest shape.
+The keyforms of generators such as swing, simulation and skeleton are recomputed on every rebuild. Your hand-made changes on those keyforms are not washed away by a rebuild: they are recorded as "generated overrides" and merged with the new result after all generators have run. So you can safely correct shapes on a generated result and still adjust the swing, skeleton or model presets afterward.
+## Which edits become overrides
+- Keyforms that swing generates on the target warp deformer (when the swing parameter is not at its default).
+- Baked simulation written back to the mesh keyforms as keyform axes.
+- Keyforms written by skeleton skinning on a mesh whose parent you changed yourself.
+Editing at the default value of a generated parameter is still an ordinary edit and changes the rest shape.
 ## Merge rules
 | Case | Result |
 |---|---|
 | Points you did not change | Follow the new generated result |
-| Points the generator did not change | Keep your values |
-| Both changed | Keep your values and report a conflict |
-## Viewing issues
-When there are issues, the Inspector toolbar shows an "n override issue(s)" badge; the selected object's issues are listed under **Generated overrides** at the top of the Inspector, and clicking the badge lists all issues.
-- Conflict: some points were changed by both the generator and your edit; your edit was kept.
-- Not applied: the generated keyform no longer exists, the generated shape's point count changed, or the mesh was replaced by a split.
-!> Copying to or from generated keyforms, and adding or deleting keys on a generator's axis, cannot be recorded as overrides and are rejected. To edit a swing fully by hand, first use **Bake to Keys** in the swing panel.
-## Relation to Cubism
-Cubism's auto generation is one-off; afterwards the result is ordinary keyforms. PSD2Live's generators run again as settings change, and overrides keep your manual changes across regeneration. Related: [[auto-generation-of-sway-motion]] · [[simulation]] · [[update-generated-rig]]
+| Points the generator did not change this time | Your values are kept |
+| Both sides changed | Your values are kept and a conflict is reported |
+## Viewing problems
+When there are problems, the Inspector toolbar shows an **n override issue(s)** badge; the problems of the selected object are listed in **Generated overrides** at the top of the Inspector, and clicking the badge lists all of them.
+- Conflict: some points were changed by both the generator and your edit, and your edit was kept.
+- Not applied: the generated keyform no longer exists, the number of points of the generated shape changed, or the mesh was split and replaced.
+!> Copying to or from a generated keyform, and adding or deleting keys on a generator's axis, cannot be recorded as overrides and are rejected. To edit a swing completely by hand, first click **Bake to Keys** in the swing panel.
+Related: [[auto-generation-of-sway-motion]] · [[simulation]] · [[update-generated-rig]]
 
 @@ multi-key | Multiple Keys Editing Function
 @@ motion-mirroring | Motion Mirroring
-Mirror a keyform made on one side to the other side, for example the Angle X 30 shape to -30, or the left eye's shape to the right eye. The result is written as ordinary keyforms and can be undone.
+For left-right symmetric motion, make one side only: make the shape for Angle X 30 and mirror it to -30, or mirror the left eye's shape to the right eye. The symmetric key and the opposite object are decided automatically from the parameter and layer semantics, the result is written as ordinary keyforms, and it can be undone.
 ## How to use
-1. Select the object in Deform mode and set the parameters to the key to mirror.
-2. Choose an operation in **Mirror keyform** in the canvas context menu, or press {key:MIRROR_KEYFORM} to mirror to the opposite key.
+1. In Deform mode, select the object and set the parameter to the key to mirror.
+2. Choose an operation in the canvas right-click menu **Mirror keyform**, or press {key:MIRROR_KEYFORM} to mirror directly to the symmetric key.
 | Operation | Effect |
 |---|---|
-| Mirror to opposite key | Mirrors the current key to the opposite key and switches to that key to show the result |
-| Mirror from opposite key | Overwrites the current key with the opposite key's shape |
-| Mirror to the opposite-side object | Writes to the matching object on the other side; L/R parameters are swapped for the other side and left-right parameters are negated |
-| Flip in place | Flips the current key around the object's own center |
-| Mirror all keys to the other side / to the opposite-side object | Processes all keys at once |
-## Rules
-- The negated left-right parameters are those whose range is symmetric around the default and that are the horizontal axis of a 2D link or whose ID ends in X or Z (AngleX, BodyAngleX, EyeBallX and so on).
-- Opposite-side objects are paired first by layer semantics, then by L/R, Left/Right or 左/右 in the name.
-- Mirroring only handles the object's own deformation; the parent's keyforms need to be mirrored separately. With several layers selected, each is mirrored separately and committed in one history step.
-## Differences from Cubism
-- PSD2Live works from the canvas context menu, and the opposite key and opposite-side object are determined automatically from parameters and layer semantics, with no correspondence to set up separately.
+| Mirror to opposite key | Mirrors the current key to the symmetric key and switches to that key to show the result |
+| Mirror from opposite key | Overwrites the current key with the symmetric key's shape |
+| Mirror to (opposite object) | Writes to the same kind of object on the other side; parameters with L/R are swapped to the other side, and left-right parameters are negated |
+| Flip in place | Flips the current key about the object's own center |
+| Mirror all keys to the other side / Mirror all keys to (opposite object) | Handles all keys at once |
+## How the program decides on symmetry
+- Negated left-right parameters: the range is symmetric about the default and the parameter is the horizontal axis of a 2D link, or its ID ends in X or Z (AngleX, BodyAngleX, EyeBallX and so on).
+- Opposite objects: first paired by layer semantics, then by L/R, Left/Right, 左/右 in the name.
+- Only the object's own deformation is handled, and the parent's keyforms must be mirrored separately; when several layers are selected, each is mirrored in turn and committed in one history step.
 
 @@ temporary-deform-tool | Temporary deform tool
 @@ deform-brush | Deform brushes
-The deform brush pushes shapes like a brush in Deform mode, suited to places that need broad, soft changes such as hair and outlines. It only changes geometry, not textures.
+For places that need broad, soft adjustment, such as hair and face contours, the deform brush pushes the shape around like a brush, much faster than dragging point by point. It changes only geometry, not the texture.
 ## How to use
-1. Select the object, switch to Deform mode and choose **Deform Brush** ({key:TOOL_BRUSH}); there are also **Smooth Brush** and **Inflate Brush**.
-2. Drag on the canvas to push points; with no selection it acts on all of the object's points, with a selection only on the selected points.
-3. By default drag with {key:BRUSH_ADJUST_DRAG} to adjust radius or hardness, {key:BRUSH_RADIUS_DOWN} / {key:BRUSH_RADIUS_UP} to adjust the radius, and {key:CANCEL} to cancel the current stroke.
+1. Select the object, switch to Deform mode and choose the **Deform Brush** ({key:TOOL_BRUSH}); the same group also has the **Smooth Brush** ({key:TOOL_SMOOTH}) and the **Inflate Brush** ({key:TOOL_INFLATE}).
+2. Drag on the canvas to push the shape. With no selection it acts on all points of the object; with a selection, only on the selected points. When hovering, a red circle marks the points that would be pushed on press; the bigger the circle, the stronger the effect.
+3. {key:BRUSH_ADJUST_DRAG} drags to adjust the radius or hardness on the spot; you can also use {key:BRUSH_RADIUS_DOWN} / {key:BRUSH_RADIUS_UP} for the radius and {key:BRUSH_HARDNESS_DOWN} / {key:BRUSH_HARDNESS_UP} for the hardness. {key:CANCEL} cancels the current stroke.
+{tutorial=DEFORM_MODE}
 ## Settings
 | Setting | Effect |
 |---|---|
-| Tip | Circle, line or rectangle ({key:BRUSH_SHAPE_CYCLE} cycles) |
-| Radius / Hardness / Strength | Area of effect, edge softness and the force of each push |
+| Brush tip | Circle, line or rectangle; {key:BRUSH_SHAPE_CYCLE} cycles through them |
+| Radius / Hardness / Strength | The range of effect, the softness of the edge and the force of each push |
 | Falloff | Smooth, sphere, root, inverse square, sharp, linear, constant, random |
 | Connected Only | Affects only points connected to the mesh under the pointer |
-The tip is chosen below the brush in the left toolbar; the other settings are in the tool options bar at the bottom left and in the canvas context menu. While hovering, red circles mark the points a press would push; the bigger the circle, the stronger the effect.
-*> **Connected Only** is useful for brushing close-together parts separately, such as neighbouring hair strands or the upper and lower lips.
-{tutorial=DEFORM_MODE}
+The brush tip is chosen below the brush on the left toolbar; the other settings are in the tool options bar at the bottom left and the canvas right-click menu.
+*> **Connected Only** suits brushing parts that sit close together separately, such as adjacent strands of hair or the upper and lower lips.
+{tutorial=TOOL_DETAILS}
 
 @@ blend-shape | Blend Shape
-A blend shape parameter adds a shape difference on top of an object's existing keyforms instead of multiplying with other parameters' keys. When several parameters act independently, blend shapes can greatly reduce the number of keyforms. PSD2Live supports blend shape parameters, but the editing workflow in the product is still being completed.
-## What you can already do
-1. When creating a parameter, choose **Blend shape** in **Parameter Properties** (the type can only be chosen at creation; the default range is 0..1).
-2. Blend shape keys appear as square dots in the Parameters panel; 0 is the neutral base and cannot be moved or deleted.
-3. Move the parameter to another key and change the mesh or deformer in Deform mode to record the additive shape.
-4. The skeleton and simulation generate blend shape parameters automatically (skeleton parameters, simulation mode parameters); see [[skeleton]], [[simulation]].
-!> Not yet complete: Cubism's weight limit settings ([[limit-settings-for-blend-shape-weights]]), limit curves and the full creation workflow are not available yet.
+A blend shape parameter adds a shape difference on top of the object's existing keyforms, instead of multiplying with the keys of other parameters. When several parameters act independently, it greatly reduces the number of keyforms; the skeleton and simulation rely on exactly this to keep the export size down.
+## Create a blend shape parameter
+1. Create a parameter in the Parameters panel and choose **Blend shape** in **Parameter Properties** (the type can be chosen only on creation; the default range is 0…1).
+2. In the Parameters panel, the keys of a blend shape are shown as square dots; 0 is the neutral base shape and cannot be moved or deleted.
+3. Set the parameter to another key and change the mesh or deformer in Deform mode; the additive shape is then recorded.
+The skeleton and simulation generate blend shape parameters automatically (skeleton parameters, the simulation's mode parameters); see [[skeleton]] and [[simulation]].
+!> The editing workflow for blend shapes is still being completed: Cubism's weight limit settings and limit curves are not provided yet, and an existing parameter cannot be changed into a blend shape.
 ## Export
-Blend shapes on meshes and warp deformers need an export target of Cubism 4.2 or later; blend shapes on rotation deformers and parts need 5.0 or later. When the target version does not support them, export downgrades and explains it in the report.
-## Differences from Cubism
-- In Cubism you can switch an existing parameter to a blend shape and set weight limits; PSD2Live chooses the type only at creation and has no weight limits yet.
+Blend shapes on meshes and warp deformers need an export target of Cubism 4.2 or later; those on rotation deformers and parts need 5.0 or later. When the target version does not support them, the export is downgraded and the report says so.
 
 @@ limit-settings-for-blend-shape-weights | Limit settings for blend shape weights
 @@ multiply-color-screen-color | Multiply Color/Screen Color
-Multiply color darkens or tints an object and screen color lightens it, useful for blush, shadows or highlights without drawing extra layers.
-## How to set it
+Without drawing another layer, you can tint, darken or brighten a part: Multiply Color darkens or tints an object, and Screen Color (Cubism's screen color) brightens it, which suits blushes, shadows and highlights.
+## How to set
 1. Select an ArtMesh or deformer.
-2. In **Multiply Color** and **Screen Color** in the Inspector, click the swatch to pick a color or enter a hex code.
-3. The reset button at the end of the row restores the default (white for multiply, black for screen).
-!> The Inspector sets a fixed color for the object; colors that change with parameters must be written as color channel keyforms through MCP `keyform_apply`.
-*> When the export target version does not support multiply / screen color, export downgrades and explains it in the report.
-## Differences from Cubism
-- Cubism: multiply and screen colors belong to keyforms, and a different color can be set on each parameter key.
-- PSD2Live: the Inspector sets only one fixed color; colors that change with parameters can only be written through MCP.
+2. In the Inspector, click the color swatch of **Multiply Color** or **Screen Color** to pick a color, or type a hex code.
+3. The reset button at the end of the row restores the default (white for Multiply Color, black for Screen Color).
+!> What the Inspector sets is a fixed color of the object, not varying with parameters; the Cubism way of setting different colors on each key is not provided in the interface for now.
+*> When the export target version does not support Multiply / Screen colors, the export is downgraded and the report says so.
 
 @@ apply-3d-rotation-expression | Application of 3D Rotation Expression
 @@ apply-3d-rotation-expression-settings | Setting items for applying 3D rotation expressions
@@ -1702,171 +1426,135 @@ Multiply color darkens or tints an object and screen color lightens it, useful f
 @@ creating-exporting-the-model-template | Creating/Exporting Model Templates
 @@ animation | Animation
 @@ animation-preparation | Preparation for Animation Creation
-Animation in PSD2Live is done inside the editor; you do not open a separate Animator, set up a scene and import the model as in Cubism. The model's motions are saved directly in the project and exported as `motion3.json`, or as `.can3` alongside CMO3.
+Once the model is generated, it can already idle, blink, nod and shake its head; to make it do something else, make the motion right in the same project. Motions are saved in the project, go along with undo/redo and saving, and are written to `motion3.json` automatically on export.
 ## Where motions come from
-- **Built-in motions**: when the model is generated, idle, blink, nod, shake and other motions are generated from the model presets, plus skeleton motions when there is a skeleton; see [[builtin-motions]].
-- **Custom motions**: click **New Motion** in the Animation panel, choose **Blank Motion** or **Copy From Preset**, then key each parameter in the Animation Editor.
-## Preparing the workspace
-1. Click **+** at the right of the workspace tab bar and choose the **Animation** preset: the motion list is left of the preview canvas, the Animation Editor below, and the Parameters panel on the right.
-2. In the Animation panel, click the edit button on a motion row, or right-click and choose **Edit**; the motion opens in the Animation Editor.
-3. Drag sliders in the Parameters panel to pose the model and record keyframes in the Animation Editor; see [[timeline-basic-operation-timelinepalette]].
+- **Built-in motions**: made automatically when the model is generated, according to the model presets; you only adjust a few sliders. See [[builtin-motions]].
+- **Custom motions**: in the **Animation** panel click **New Motion** and choose **Blank Motion** to start from scratch, or **Copy From Preset** to start from a built-in motion.
+## Get started
+1. Click the **+** at the right of the workspace tab bar and choose the **Animation** preset: the motion list is at the left of the preview canvas, the animation editor is below, and the Parameters panel is on the right.
+2. In the **Animation** panel, click the edit button on a motion row (or right-click and choose **Edit**) to open the motion in the animation editor.
+3. Pose the model in the Parameters panel and record it as keyframes in the animation editor; for how, see [[timeline-basic-operation-timelinepalette]].
 {tutorial=ANIMATION}
-## Differences from Cubism
-- Cubism: create a scene in the Animator, import the model and place a model track on the timeline before making motion; one scene corresponds to one motion file.
-- PSD2Live: there are no scenes, model tracks or group tracks; each motion is a clip in the project that directly drives the current model's parameters, and you cannot add backgrounds, audio or multiple models.
-- Motions are saved with the project and take part in undo/redo; no separate animation file needs saving.
-*> When exporting CMO3, motions are saved as a `.can3` with the same name, which can be opened together with the cmo3 in Cubism Editor's Animator for further editing.
+*> If you are used to Cubism Animator: there are no scenes or model tracks here, and the open motion drives the current model's parameters directly. When CMO3 is exported, the motions are saved as `.can3` files of the same name, which you can keep editing in Animator.
 @@ builtin-motions | Built-in Motions
-Built-in motions are motions PSD2Live generates for the model automatically, giving you idle, blink and other common motions without keying by hand; they are exported with the model.
-## Motion list
-| Group | Motions | Notes |
+Built-in motions let a freshly generated model move right away: the program makes common motions such as idle and blink according to the model, without a single keyframe from you, and on export they are written as `motion3.json` just like hand-made motions.
+## Which motions there are
+| Group | Motions | Description |
 |---|---|---|
-| Basic motions | Idle Loop, Blink, Nod, Shake | Playable on any model; the idle loop loops |
-| Skeleton motions | Tail Swing, Crouch, Weight Shift, Shy, Wave, Head Tilt, Cheer, Leg Kick, Happy Sway, Cute Idle | Need a skeleton; motions the current skeleton cannot play are not listed; Cute Idle loops |
-The **Basic motions** and **Skeleton motions** checkboxes in the **Motions** group of the model presets decide whether each whole group is generated; see [[model-presets]].
-## Adjusting and toggling
-1. In the **Built-in Motions** folder of the Animation panel, check or uncheck the box at the left of each row to decide whether that motion is exported.
-2. Click a motion row to expand its controls: for example the idle loop has **Sway**, **Breath**, **Head**, **Speed** and a **Blink** toggle; Blink has **Closure**, **Speed** and **Double blink**; Nod and Shake have **Amplitude**, **Speed** and **Count**.
-3. The play button at the right of the row plays the motion in the preview canvas.
-## Manual changes
-After you open a built-in motion in the Animation Editor and change its keyframes, the row shows **Modified** and the controls become unavailable (Keys edited by hand: reset to use these settings). The context menu offers:
-- **Duplicate as Custom Motion**: creates a new custom motion from the current content; the built-in motion stays unchanged.
-- **Restore Default**: discards the manual changes and returns to the result generated from the controls.
-- **Delete**: it is no longer exported; it can be brought back from **Restore deleted presets** in the **New Motion** menu.
-!> Physics-driven parameters are not written into the idle loop, to avoid conflicts with the physics output.
-## Relation to Cubism
-Cubism has no automatically generated motions; they are made by hand in the Animator. Built-in motions are like ready-made motions, and after export they are written as `motion3.json` just like hand-made ones; looping motions go into the `Idle` group; see [[notes-for-sdk]].
+| Basic motions | Idle Loop, Blink, Nod, Shake | Any model can play them; the Idle Loop loops |
+| Skeleton motions | Tail Swing, Crouch, Weight Shift, Shy, Wave, Head Tilt, Cheer, Leg Kick, Happy Sway, Cute Idle | A skeleton is required; motions the current skeleton cannot do are not listed; Cute Idle loops |
+Whether the two groups are generated is decided by the **Basic motions** and **Skeleton motions** checkboxes in the **Motions** group of the model presets; see [[model-presets]]. For making the skeleton see [[skeleton]].
+## Adjust
+1. In the **Built-in Motions** folder of the **Animation** panel, use the checkbox at the left of each row to decide whether the motion is exported.
+2. Click a motion row to expand its knobs. The idle has **Sway**, **Breath**, **Head**, **Speed** and a **Blink** switch; the blink has **Closure**, **Speed** and **Double blink**; nod and shake have **Amplitude**, **Speed** and **Count**.
+3. Click the play button at the right of the row to see the effect in the preview canvas.
 {tutorial=ANIMATION}
+## After editing keyframes by hand
+After you change the keyframes of a built-in motion in the animation editor, the row is marked **Edited** and the knobs are disabled until you restore the default. The right-click menu offers:
+- **Duplicate as Custom Motion**: saves the current content as a custom motion and leaves the original built-in motion unchanged.
+- **Reset to default**: discards the manual changes and returns to what the knobs generate.
+- **Delete**: no longer exported; you can bring it back later from **Restore deleted presets** in the **New Motion** menu.
+!> Parameters driven by physics are not written into the idle animation, so that the motion and physics do not fight over the same parameter.
 @@ loading-model-and-placement | Model loading and placement
 @@ eye-blink-settings | Eye Blinking Setting
-Cubism sets up automatic blinking with the blink effect in the Animator or the blink settings in the Viewer. PSD2Live achieves the same with the built-in Blink motion and the `EyeBlink` group written at export.
-## How to set it
-1. Make sure **Basic motions** is checked in the **Motions** group of the model presets.
-2. Check **Blink** in the Animation panel; click the row to expand it and adjust **Closure** and **Speed**, and check **Double blink** to blink twice in a row.
-3. The idle loop also blinks by itself; turn off **Blink** in the idle loop's controls if needed.
-## Export result
-- When both basic motions and the Blink motion are enabled and the export is not mesh-only, the `EyeBlink` group is written to `Groups` in `model3.json`, containing `ParamEyeLOpen` and `ParamEyeROpen`, which the SDK's automatic blinking uses.
-- The Blink motion itself is also exported as a `motion3.json`.
-## Differences from Cubism
-- Cubism: set the blink interval with the blink effect on the model track in the Animator, or set the blink parameters in the Viewer and then output model3.json.
-- PSD2Live: there is no blink effect track or interval setting; blinking comes from the built-in motion, and the `EyeBlink` group is written automatically at export.
-!> When exporting CMO3, the blink effect curve in a motion has no matching track in the Animator and is not written into `.can3`.
+Automatic blinking needs no separate setup: the built-in blink motion handles the blink animation in the editor and in the export, and on export `model3.json` also gets an `EyeBlink` group, which the SDK's automatic blinking relies on.
+## How to set
+1. Make sure **Basic motions** is ticked in the **Motions** group of the model presets.
+2. In the **Animation** panel tick **Blink**; click the row to expand it, adjust **Closure** and **Speed**, and tick **Double blink** to make it blink twice in a row.
+3. The idle animation includes blinking; when you do not want it, turn off **Blink** in the idle animation's knobs.
+When both the basic motions and the blink motion are enabled and the export is not mesh-only, the `EyeBlink` group contains `ParamEyeLOpen` and `ParamEyeROpen`.
+*> Cubism users set the interval in the blink effect of Viewer or Animator; there is no such setting here, and the rhythm of the blinking is decided by the blink motion itself.
 @@ generating-scene-from-audio-file | Creating Scenes with Background Music and Audio
 @@ placement-background-and-grouptrack | Background Placement and Group Tracks
 @@ management-of-scenes | Scene management and settings
 @@ change-pose | Create Motion with Pose Switching
 @@ timeline | Manipulating the timeline
 @@ timeline-basic-operation-timelinepalette | Displaying and operating the timeline palette
-Cubism's timeline palette corresponds to PSD2Live's **Animation Editor**. It shows the parameter tracks of the open motion, where you move the playhead, set keyframes and adjust interpolation.
-## Opening
-Open the **Animation Editor** from the **Windows** menu, or use the **Animation** workspace preset. Edit a motion in the Animation panel, or choose one in the **Choose a motion…** dropdown on the editor toolbar.
+The animation editor is where motions are made: one track per parameter; move the playhead, set the pose and key it, then fine-tune in the dopesheet or the curves.
+## Open
+Open the **Animation Editor** from the **Windows** menu, or use the **Animation** workspace preset directly. Edit a motion from the **Animation** panel, or pick one with **Choose a motion…** on the editor toolbar.
+## Make a motion
+1. Click **Track**, then search for and add the parameters to move. A track row shows the value at the playhead and has buttons for **Key at playhead** and for deleting the track.
+2. Click or drag on the ruler to move the playhead to the target time, and set the pose in the Parameters panel.
+3. Press {key:MOTION_KEY_POSE} (**Key Pose**) to record the current values of all tracks at the playhead; or turn on **Auto Key** ({key:MOTION_TOGGLE_AUTO_KEY}) so that changing a parameter keys it automatically, and parameters without a track are added automatically too.
+4. Press {key:MOTION_PLAY_PAUSE} to play and check; the canvas shows the result live.
+{tutorial=ANIMATION}
 ## Toolbar
 | Item | Description |
 |---|---|
 | New Motion | Creates a blank motion and opens it |
-| Back to start / Play | Moves the playhead to 0; plays or pauses |
-| Playhead time / Duration | Current time (seconds) and motion length (0.1–600 seconds) |
-| FPS | Motion frame rate (1–120), which sets the step for frame-by-frame moves and snapping |
-| Loop | Whether it loops on export |
-| Snap to Frames | Aligns keyframes and the playhead to whole frames while dragging |
-| Auto Key | Sets keyframes at the playhead automatically when parameters change; unrecorded parameters are added to the tracks automatically |
-| Track | Search for and add parameters to animate |
-| Key Pose | Records the current values of all tracks as keyframes at the playhead |
-| Dopesheet / Curves | Switches between the [[timeline-basic-operation-dopesheet]] and [[grapheditor]] views |
-## Basic operation
-1. Add parameters with **Track**, one track per parameter; a track row shows the value at the playhead and has **Key at playhead** and **Remove track** buttons.
-2. Click or drag on the ruler to move the playhead, and change parameter values in the Parameters panel.
-3. Press {key:MOTION_KEY_POSE} to key the pose, or turn on **Auto Key** and adjust parameters directly.
-4. Press {key:MOTION_PLAY_PAUSE} to play and check.
+| Back to start / Play | The playhead returns to 0; play or pause |
+| Time / Duration | The playhead time and the motion length (0.1–600 seconds) |
+| FPS | The motion frame rate (1–120), which decides the step for frame-by-frame movement and snapping |
+| Loop | Export as a looping motion |
+| Snap to Frames | Align to whole frames when dragging keyframes and the playhead |
+| Dopesheet / Curves | Switch between [[timeline-basic-operation-dopesheet]] and [[grapheditor]] |
 ## Shortcuts (when the timeline has focus)
 | Action | Key |
 |---|---|
-| Play / pause | {key:MOTION_PLAY_PAUSE} |
-| Key the current pose | {key:MOTION_KEY_POSE} |
-| Toggle auto key | {key:MOTION_TOGGLE_AUTO_KEY} |
 | Previous / next frame | {key:MOTION_PREV_FRAME} / {key:MOTION_NEXT_FRAME} |
-| Go to start / end | {key:MOTION_GO_START} / {key:MOTION_GO_END} |
+| Jump to start / end | {key:MOTION_GO_START} / {key:MOTION_GO_END} |
 | Fit the timeline | {key:MOTION_FIT_VIEW} |
 | Zoom / pan the timeline | {kbd:Ctrl+Wheel} / {kbd:Shift+Wheel} |
-## Differences from Cubism
-- Cubism: the timeline palette has a multi-level structure of model tracks, group tracks, effects and properties, with parameter tracks shown under the model track.
-- PSD2Live: there are only parameter tracks, one set of tracks per motion; there are no bookmarks, Shy, Freeze, markers and similar features.
-- A motion's duration, frame rate and loop are set directly on the toolbar, with no scene settings needed.
-{tutorial=ANIMATION}
 @@ timeline-basic-operation-dopesheet | Basic Dope Sheet Operation
-The dope sheet shows each track's keyframes as a row of dots, for viewing and adjusting keyframe timing. Click **Dopesheet** on the Animation Editor toolbar to switch to this view.
-## Operations
-| Action | How |
+The dopesheet lays out each track's keyframes as a row of dots and is best for arranging timing: shifting the rhythm, copying a stretch of motion, changing the interpolation in one go. Click **Dopesheet** on the animation editor toolbar to switch here.
+| Operation | How |
 |---|---|
-| Add a keyframe | Double-click an empty spot on a track |
-| Select | Click a keyframe; {kbd:Shift} adds, {kbd:Ctrl} toggles; drag on an empty area to box-select |
-| Select all | {key:MOTION_SELECT_ALL} |
-| Move | Drag the selected keyframes (aligned to frames when **Snap to Frames** is on) |
+| Add a keyframe | Double-click empty space on the track |
+| Select | Click; {kbd:Shift} adds, {kbd:Ctrl} toggles; drag in empty space to box-select; {key:MOTION_SELECT_ALL} selects all |
+| Move | Drag the selected keyframes (they align to frames when **Snap to Frames** is on) |
 | Copy / paste | {key:MOTION_COPY_KEYS} / {key:MOTION_PASTE_KEYS} |
 | Delete | {key:MOTION_DELETE_KEYS}, or **Delete Keys** at the bottom |
-With keyframes selected, the bottom of the editor shows **n keys selected**, where you can enter **Time** and **Value** directly and set the **Interpolation** for all of them (Linear, Ease (Bezier), Stepped, Inverse Stepped).
-*> A continuous drag or input is recorded as one history step and can be undone.
+With keyframes selected, the bottom shows **n keys selected**, and you can type the **Time** and **Value** directly and set the interpolation for all of them. One drag or one input is recorded as one history step.
 @@ parameter-bookmark | Parameter Bookmarks
 @@ timeline-basic-operation-shy | Shy function
 @@ freeze | Freeze function
 @@ timeline-basic-operation-repeat | Animation of parameter repeat
 @@ grapheditor | Graph Editor
-The curves view shows parameter tracks as value–time curves, for adjusting keyframe values and easing. Click **Curves** on the Animation Editor toolbar to switch to it.
+The curve view draws a track as a curve of the value over time, used to tune easing and overshoot. It shares the same area, selection and shortcuts as the dopesheet; click **Curves** on the animation editor toolbar to switch.
 ## Operations
-1. Click a track row on the left to show only that curve; click **Show all** above the track list to show all curves again.
-2. Dragging a keyframe changes its time and value together; when only one curve is shown, double-clicking an empty spot adds a keyframe at that time and value.
-3. Keyframes in Bezier segments have handles on both sides; drag them to adjust easing. **Reset Handles** at the bottom restores the default handles.
-4. {kbd:Ctrl+Wheel} zooms the time axis, {kbd:Ctrl+Shift+Wheel} zooms the value axis, and {kbd:Wheel} pans the values up and down.
+1. Click a track row on the left to show only that curve; click **Show all** to bring back all curves.
+2. Dragging a keyframe changes both its time and its value; when only one curve is shown, double-clicking in empty space adds a keyframe there.
+3. A keyframe on a Bezier segment has handles on both sides; drag them to adjust the acceleration and deceleration, and **Reset Handles** at the bottom restores the default shape.
+4. {kbd:Ctrl+Wheel} zooms time, {kbd:Ctrl+Shift+Wheel} zooms the value, and {kbd:Wheel} pans up and down.
 ## Interpolation
-| Interpolation | Description |
+| Interpolation | Effect |
 |---|---|
-| Linear | Changes at a constant rate between two keys |
-| Ease (Bezier) | Default; handles control acceleration and deceleration |
+| Linear | Changes at a constant speed between two keys |
+| Ease (Bezier) | The default; the handles control acceleration and deceleration |
 | Stepped | Holds the previous key's value and jumps at the next key |
-| Inverse Stepped | Jumps to the next key's value immediately and holds it |
-Handle times are restricted to their own segment, matching `AreBeziersRestricted` in `motion3.json`, so the curve shape is unchanged after export.
-## Differences from Cubism
-- Cubism: the Graph Editor is a separate view that can show curves of several properties at once, with more handle and zoom tools.
-- PSD2Live: the curves view shares the same area, selection and shortcuts with the dope sheet, and edits only parameter curves.
+| Inverse stepped | Jumps to the next key's value immediately and holds it |
+*> The handle time is limited to within its segment (consistent with `AreBeziersRestricted` in `motion3.json`), so the curve shape does not change after export.
 @@ marker | Marker Function
 @@ locus-of-tracks | Track Trajectory
 @@ template-making-and-management | Animation Templates
 @@ about-fade | About Fading
-A fade is the transition time between a motion and other motions at its start and end. When the runtime switches motions, the new motion takes effect gradually over the fade-in time and the old one fades away over the fade-out time, avoiding sudden pose changes.
-## Fades in PSD2Live
-- Custom motions have **Fade In (s)** and **Fade Out (s)**, both 1 second by default, exported as `FadeInTime` / `FadeOutTime` in `motion3.json`.
-- Built-in motions that have not been changed by hand write no fade times, and the runtime uses its defaults.
-- When exporting CMO3, fades are written into the `.can3` scene.
-See [[fade-setting]] for how to set them.
-*> Fades only matter when the runtime switches motions; you cannot see a difference when the editor preview plays one motion on its own.
+Fading decides how smoothly the runtime switches between motions: the new motion takes effect gradually during the fade-in time and the old motion fades out during the fade-out time, so the pose does not jump suddenly.
+- Custom motions have **Fade In (s)** and **Fade Out (s)**, both 1 second by default, exported to `FadeInTime` / `FadeOutTime` in `motion3.json`.
+- Built-in motions that have not been edited by hand do not write fade times; the runtime uses its defaults.
+Fading only matters when switching motions in an application; playing a single motion on its own in the editor shows no difference. For how to set it see [[fade-setting]].
 @@ fade-setting | Fade value setting
-Set the fade times of custom motions in the Animation panel.
-1. In the **Custom Motions** folder of the Animation panel, click the row of the motion to set to expand its settings.
-2. Enter a value of 0–5 seconds in **Fade In (s)** and **Fade Out (s)**.
+Fading is set per motion in the **Animation** panel.
+1. In the **Custom Motions** folder of the **Animation** panel, click the motion row to expand its settings.
+2. Enter 0–5 seconds in **Fade In (s)** and **Fade Out (s)**.
 3. After export they are written into that motion's `motion3.json`.
-*> When a built-in motion needs fades, first make a copy with **Duplicate as Custom Motion** and set them there.
-## Differences from Cubism
-- Cubism: set fade-in/out for the whole motion in the timeline palette, and fades can also be set per parameter curve.
-- PSD2Live: fade-in/out can only be set for the whole motion in the Animation panel; there are no per-curve fades.
-@@ lightweight-playback | Lightweight Playback Function
+*> To set fading on a built-in motion, first make a copy with **Duplicate as Custom Motion** in the right-click menu.
+!> Fading applies to the whole motion; you cannot set a separate fade for a single parameter curve as in Cubism.
 @@ notes-for-sdk | Precautions When Embedding the SDK
-Motions exported to the SDK are `motion3.json` files. PSD2Live writes them by the following rules; call them accordingly when embedding in an application.
+When a Live2D model is exported, all motions are written at once, and the groups and file names are decided automatically according to the table below. Check here before calling motions in your application.
 ## Files and groups
 | Motion | Motion group | File name |
 |---|---|---|
-| Idle loop and other looping motions (including looping custom motions) | `Idle` | `<model name>.<motion>.motion3.json` |
-| Other built-in motions | Same name as the motion (such as `Blink`, `Nod`) | As above, such as `<model name>.blink.motion3.json` |
-| Non-looping custom motions | Motion name | As above |
-All motions are written to `Motions` in `model3.json`, and `Groups` gets `EyeBlink` (when blinking is enabled) and `LipSync` (`ParamMouthOpenY`).
+| Idle Loop and other looping motions (including looping custom motions) | `Idle` | `<model name>.<motion>.motion3.json` |
+| Other built-in motions | Same as the motion name (such as `Blink`, `Nod`) | For example `<model name>.blink.motion3.json` |
+| Custom motions that do not loop | The motion name | Same as above |
+All motions are written into `Motions` in `model3.json`; `Groups` gets `EyeBlink` (when blinking is enabled) and `LipSync` (`ParamMouthOpenY`).
 ## Notes
-- Only parameters that exist in the model are written; tracks in a motion that point to deleted parameters are not exported.
-- Bezier handles are restricted to their segment (`AreBeziersRestricted: true`), so every SDK version plays them correctly.
-- Physics-driven parameters are not written into the idle loop, so motions and physics do not fight over the same parameter.
-- Motions unchecked in the Animation panel are not exported; a mesh-only export writes no motions.
-- Motions contain no user data events (Event); see [[userdata]].
-## Differences from Cubism
-- Cubism: motion3.json files are output scene by scene in the Animator's export settings, with groups and file names decided by the export settings or the Viewer.
-- PSD2Live: all motions are written at once when exporting the Live2D model, with groups and file names decided automatically by the table above.
+- Only parameters that exist in the model are written; tracks pointing to a deleted parameter are not exported.
+- Bezier handles are limited within the segment (`AreBeziersRestricted: true`), so every SDK version plays them correctly.
+- Parameters driven by physics are not written into the idle animation.
+- Motions unticked in the **Animation** panel are not exported; mesh-only export writes no motions.
+- Motions contain no events (user data events); see [[userdata]].
 @@ parameter-controller | Parameter Controller
 @@ about-the-parameter-controller | About the parameter controller
 @@ parameter-controller-target-setting | Controller target settings
@@ -1880,325 +1568,200 @@ All motions are written to `Motions` in `model3.json`, and `Groups` gets `EyeBli
 @@ limited-animation | Frame Step
 @@ physics-operation-bake | Bake Animation from Physics
 @@ motion-sync-bake | Motion-sync Animation Bake
-@@ gather-up-files | Gather files
-@@ runtime-model-track | Runtime Model Track
 @@ loop-editing-support | Loop editing support
 @@ export | Export
 @@ exporting-images | Image and video export
-Output the model's motions or poses as image sequences, animated images or video. In PSD2Live you choose a format in the **Images and video** group of **File → Export as**, and each format opens its own export window.
+To post a model's motion to social platforms, turn it into stickers or put it in a video, you can export an image sequence, an animation or a video directly. The picture is drawn by the editor's own renderer, with physics advanced between frames, and no Cubism SDK is needed.
+## Steps
+1. Choose **File → Export as**, and pick a format in the **Images and video** group.
+2. Set the **Motion** (the first motion by default, or the rest pose when there are no motions), **FPS**, **Size** (long edge in pixels, default 1024), **Background** and **Physics**; GIF also has **Dither**.
+3. Choose an **Output folder** and click **Export**. The files are written into a "<project name>-<format>" folder under the output folder, and when finished the **Export complete** window lists what that format cannot keep.
 ## Formats
-| Menu item | Output | Notes |
+| Menu item | Output | Description |
 |---|---|---|
 | PNG sequence… | Numbered PNG frames | With transparency |
-| Sprite sheet… | PNG laid out in a grid + JSON | Refused above 16384 px |
+| Sprite sheet… | PNG laid out in a grid + JSON | Rejected above 16384 px |
 | GIF… | Animated GIF | 256 colors, 1-bit transparency |
-| APNG… / Animated WebP… | Animated PNG / WebP | WebP is lossy |
-| MP4 video… | H.264 | No transparency; composited onto the background color (white by default) |
-| WebM video (with alpha)… | VP9 | Transparency needs libvpx to decode |
+| APNG… / Animated WebP… | Animated PNG / WebP | WebP uses lossy compression |
+| MP4 video… | H.264 | No transparency, composited onto the background color (white by default) |
+| WebM video (with alpha)… | VP9 | Transparency needs libvpx decoding |
 | QuickTime ProRes 4444… | MOV | With transparency |
-Video formats, APNG and WebP are encoded with ffmpeg: the environment variable `PSD2LIVE_FFMPEG`, the ffmpeg bundled with the installer and ffmpeg on PATH are tried in turn, or you can enter a path in the window's **ffmpeg** field.
-## Steps
-1. Choose **File → Export as →** the format you need.
-2. Set the **Motion** (the first motion by default, or a still pose when there are no motions), **FPS**, **Size** (long edge in pixels, 1024 by default), **Background** and **Physics**; GIF also has **Dither**.
-3. Choose the **Output folder** and click **Export**. Files are written to a folder named "<project name>-<format>" in the output folder.
-4. When done, the "Export complete" window appears and lists what this format cannot keep.
-## Differences from Cubism
-- Cubism: output images or video per scene in the Animator, with range, size and format settings.
-- PSD2Live: output directly from one motion, drawn by the editor's own software renderer with physics advanced between frames; it does not depend on the Cubism SDK.
-*> For a single still image, export a layered PSD with **PSD at a pose…**, or export a texture atlas with **Save page as PNG…** from a page's context menu in the Texture workspace; see [[other-formats]].
+!> Video, APNG and WebP need ffmpeg: the environment variable `PSD2LIVE_FFMPEG`, the ffmpeg bundled with the installer and the ffmpeg on PATH are used in that order, or you can enter a path in the **ffmpeg** field of the window.
+*> For a still layered image, use **PSD at a pose…**; see [[other-formats]].
 @@ export-moc3-motion3-files | Data for Embedded Use
-Data for embedded use is the set of files used by runtimes such as the Cubism SDK: `.moc3`, `model3.json`, `physics3.json`, `motion3.json`, `cdi3.json` and textures. PSD2Live writes them all at once from the **Export Live2D model** window, and can write a Cubism Editor project at the same time.
+To put a model into an application, streaming software or a game, you export embedded data: `.moc3`, `model3.json`, physics, motions, display names and textures. PSD2Live writes everything at once in one window and, when needed, also writes a `.cmo3` that you can keep editing in Cubism Editor.
 ## Steps
 1. Choose **File → Export Live2D model…** ({key:GENERATE}).
-2. Under **Formats:** check **moc3**, **cmo3**, **can3** (motions written alongside cmo3) and **json** (project metadata report). With **Mesh Only** checked, only meshes are exported, without motions or physics.
-3. Choose the runtime version in **SDK target** (from Cubism 3.0 to the latest). When the chosen version does not support features the model uses, the window lists the features that will be downgraded.
-4. Adjust the **MOC3 bake options** as needed: Export hidden parts, Export hidden art meshes, Export guide image parts, Include physics3.json, Include cdi3.json, and **Pixels / unit** (automatic by default, from the canvas width).
-5. Choose the **Output folder** and click **Generate & Export**.
+2. Under **Formats:** tick **moc3**, **cmo3**, **can3** (writes the motions along with cmo3) and **json** (project metadata report). With **Mesh Only** ticked, only the mesh is exported, without motions or physics.
+3. In **SDK target** choose the runtime version (from Cubism 3.0 to the latest). When the chosen version does not support features already used in the model, the window lists what will be downgraded.
+4. Adjust the **MOC3 bake options** as needed: Export hidden parts, Export hidden art meshes, Export guide image parts, Include physics3.json, Include cdi3.json, Include userdata3.json, and **Pixels / unit** (automatic by canvas width by default).
+5. Choose an **Output folder** and click **Generate & Export**.
+{tutorial=BASIC}
 ## Output files
-| File | Content |
+| File | Contents |
 |---|---|
 | `<name>.moc3` | Model data |
-| `<name>.model3.json` | Model settings; see [[export-model3-json]] |
-| `<name>.physics3.json` | Physics, with `Fps` written from the project's physics frame rate |
+| `<name>.model3.json` | Model settings, referencing the files below |
+| `<name>.physics3.json` | Physics; `Fps` is the project's physics frame rate |
 | `<name>.<motion>.motion3.json` | One per motion; see [[notes-for-sdk]] |
 | `<name>.cdi3.json` | Display names of parameters, parts and meshes |
-| `<name>.<width>/texture_00.png` etc. | Texture atlas pages |
+| `<name>.<width>/texture_00.png` etc. | Texture atlas pages; see [[texture-atlas-edit]] |
 | `<name>.cmo3` / `<name>.can3` | Cubism Editor project and Animator project |
-The window only shows a summary of the texture atlas page size and count; you can jump to the Texture workspace to adjust it; see [[texture-atlas-edit]].
-## Differences from Cubism
-- Cubism: the Modeler's "Export moc3" and the Animator's "Export motion3.json" are done separately, and the texture atlas is edited at export.
-- PSD2Live: the model, physics, motions and model3.json are written at once from one window; the export is the currently committed model and is not regenerated from the PSD.
-- The editor's Cubism SDK preview and the moc3 export are the same compilation, so what the preview shows is the export result.
-!> The GUIDs in cmo3 differ on every export; a `.can3` only matches the `.cmo3` from the same export, and the two must be kept in the same folder.
+What is exported is the currently committed model; it is not regenerated from the PSD. The Cubism SDK preview in the editor and the moc3 export are the same compilation, so what you see in the preview is the export result.
+!> The GUID of a cmo3 differs on every export, and a `.can3` pairs only with the `.cmo3` from the same export; keep the two in the same folder.
 @@ other-formats | Exporting Other Formats
-Besides Live2D models, PSD2Live can export the same model to other runtimes, players or file formats. Every format starts from the same neutral data, downgrades in its own way, and lists after export what the format cannot keep (loss report).
-## Export steps
-1. Choose **File → Export as**, and pick a format in the "Runtimes and players", "Images and video" or "Layered PSD" group.
-2. In the window that opens, adjust the format's own settings (when there are none it shows "This format has no settings."), choose the **Output folder** and click **Export**.
-3. Files are written to a folder named "<project name>-<format>" in the output folder, with a `<name>.<format>.report.json` loss report beside it.
+The same model can be exported directly for VTube Studio, the web, Unity and so on, without first exporting embedded data and then going through each platform's SDK. Every format starts from the same model data, and after export the window lists what it cannot keep.
+## Steps
+1. Choose **File → Export as** and pick a format in the three groups **Runtimes and players**, **Images and video** and **Layered PSD**.
+2. In the window that opens, adjust the settings for that format, choose an **Output folder** and click **Export**.
+3. The files are written into a "<project name>-<format>" folder under the output folder, with a `<name>.<format>.report.json` loss report beside it.
 ## Runtimes and players
 | Menu item | Output | Main limits |
 |---|---|---|
-| VTube Studio… | All moc3 files + `.vtube.json` | Face tracking maps only standard parameters; one hotkey per motion |
-| PSD2Live runtime rig… | `.p2lrt` | Editor-only data is not written; optional compression, name stripping and so on |
-| Web player… | `index.html`, player script, WebAssembly runtime and `.p2lrt` | Must be accessed over http |
-| Unity prefab… | `.p2lunity`, textures and installer script | Needs Unity 6.0 or later; parameters are baked into Blend Shapes, combinations are additive approximations; masks and physics are not written |
-## Images and video, layered PSD
-- For images and video see [[exporting-images]].
-- **PSD at a pose…**: poses the model at a moment of a motion or at given parameter values, one layer per visible mesh; deformers and parameters are not kept.
-- **Source PSD…**: exports the project's source layers, optionally at 1× or an upscale factor, and can include automatically split layers, convenient for touch-ups in painting software (also available with {key:REEXPORT_PSD}).
-## Relation to Cubism
-Cubism Editor exports only Live2D's own formats. To use a model in VTube Studio, on the web or in Unity, Cubism users usually export data for embedded use and then rely on each platform's Live2D SDK; PSD2Live writes files those platforms can read directly.
-*> Spine, DragonBones and glTF are experimental targets that are not in the menu and can only be exported from the command line.
+| VTube Studio… | The full set of moc3 files + `.vtube.json` | Face tracking maps only standard parameters; one hotkey per motion |
+| PSD2Live runtime rig… | `.p2lrt` | Without the data the editor attaches; optional compression, stripping names and so on |
+| Web player… | `index.html`, the player script, the WebAssembly runtime and `.p2lrt` | Must be accessed over http |
+| Unity prefab… | `.p2lunity`, textures and an install script | Needs Unity 6.0 or later; parameters are baked into Blend Shapes and combinations are approximated additively; masks and physics are not written |
+## Layered PSD
+- **PSD at a pose…**: poses the model by a motion's moment or by given parameter values, one layer per visible mesh; deformers and parameters are not kept.
+- **Source PSD…** (with generated layers): exports the project's source layers, optionally at 1× or an upscaled ratio, and can include the automatically split layers, so you can go back to your drawing software for fine touch-ups (also available with {key:REEXPORT_PSD}).
+For images and video see [[exporting-images]].
 @@ userdata | User Data and Events
-User data is an arbitrary string attached to an object for applications to read. PSD2Live supports entering user data on ArtMeshes.
-## How to set it
+User data is a piece of text attached to an ArtMesh that an application can read, for example to mark clickable regions.
+## How to set
 1. Select an ArtMesh.
-2. Expand **User Data** at the bottom of the **Inspector** and enter text.
-3. Finishing the input records one history step, which can be undone.
+2. At the bottom of the **Inspector**, expand **User Data** and type the text. When you finish typing it is recorded as one history step and can be undone.
 ## Export
-- User data is saved with the project and written into the exported `.cmo3`, where it is visible in Cubism Editor.
-- When **Include userdata3.json** is checked in the export window (the default) and some ArtMesh has user data, MOC3 export writes `<name>.userdata3.json` and references it from `model3.json`; without user data the file is not produced.
-## Differences from Cubism
-- Cubism: user data can be set on ArtMeshes and output as `userdata3.json`; in the Animator, Events (user data) can be placed in motions and written to `motion3.json`.
-- PSD2Live: user data can only be set on ArtMeshes; Events cannot be placed in motions, and the exported `motion3.json` contains no user data.
+- User data is saved with the project and written into the exported `.cmo3`.
+- When exporting MOC3, if **Include userdata3.json** is ticked (the default) and some mesh has user data filled in, `<name>.userdata3.json` is written and referenced in `model3.json`; without user data this file is not generated.
+*> Motions cannot hold events, and the exported `motion3.json` contains no user data; to notify the application at a moment in a motion, handle it by time on the application side.
 @@ physics-playlist | Physics Settings and Playlists
 @@ switch-viewer-setting | Physics Settings
-Cubism edits physics after switching to the physics settings in the Viewer. PSD2Live has no separate Viewer; physics is edited in the **Physics** panel, which can be opened in any workspace, and there is also a dedicated Physics workspace.
-## Opening the physics settings
-1. Click **+** at the right of the workspace tab bar and choose the **Physics** preset: the preview canvas takes the left half, with the Parameters panel and Physics panel on the right.
-2. Or open the **Physics** panel from the **Windows** menu and use it with any canvas.
-3. The physics toggle and physics frame rate are on the toolbar at the left of the preview canvas: **Physics** / **Physics off**, and the **Physics FPS** (30 / 60 / 90 / 120 / Unlimited, 60 by default).
-## Differences from Cubism
-- Cubism: physics is set up in the Viewer, and the result is output as `physics3.json` and then combined with the model.
-- PSD2Live: physics is part of the project, saved and undone with it, and written automatically into `physics3.json` and `.cmo3` at export; the physics frame rate is a project setting and is also written into the exported files.
-- The pendulum canvas in the panel can pull the model directly to try it out, without switching modes.
+Physics is part of the project: in the **Physics** panel you tune while pulling on the model, changes go into the undo history, and on export they are written to `physics3.json` and `.cmo3` automatically, with no separate Viewer and no separate physics file to save.
+## Open the physics settings
+1. Click the **+** at the right of the workspace tab bar and choose the **Physics** preset: the preview canvas takes half on the left, and the Parameters panel and the Physics panel follow on the right.
+2. You can also add the **Physics** panel to any workspace from the **Windows** menu.
+3. The toolbar at the left of the preview canvas has the physics switch and **Physics FPS** (30 / 60 / 90 / 120 / Unlimited, default 60). The physics frame rate is a project setting and is also written into the exported files.
 {tutorial=PHYSICS}
 @@ physics-operation | About Physics
-Physics makes parameters swing with inertia following inputs such as the head and body, used for the sway of hair, accessories, clothes and so on. PSD2Live uses the same pendulum model as Cubism.
-## How it works
-- **Inputs**: head, body angle and other parameters push the pendulum root (Position X) or tilt the direction of gravity (Angle).
-- **Pendulum**: a chain of pendulums hanging from the root, moving by length, sway, reaction speed and convergence speed.
-- **Outputs**: one pendulum's swing angle multiplied by the scale is written to an output parameter.
-Physics only writes parameters; the swaying shape comes from the output parameter's keyforms. If the output parameter has no end-point shapes, the parameter moves but the model does not.
+Physics lets hair, accessories and clothing swing with inertia as the head and body move. PSD2Live uses the same pendulum model as Cubism, and the computation corresponds item by item to the Cubism Native Framework, so the sway you see in the editor is the sway in the SDK.
+## Mechanism
+- **Input**: parameters such as head and body angles push the root of the pendulum (Position X), or tilt the direction of gravity (Angle).
+- **Pendulum**: a chain of pendulums hanging from the root, moving according to length, sway, reaction speed and convergence speed.
+- **Output**: a pendulum's swing angle multiplied by a scale is written into an output parameter.
+Physics changes only parameter values; the shape of the swing comes from the keyforms on the output parameter. If the output parameter has no end-point shapes made, the parameter moves but the model does not.
 ## Where physics groups come from
-Physics groups can come from presets (front hair, back hair, eye jelly), the skeleton, swings, simulation baking or manual creation; see [[physics-group-information]].
-*> The physics calculation used by the panel and the preview matches the Cubism Native Framework's calculation item by item, so an exported `physics3.json` behaves in the SDK the same as in the editor.
+Most physics groups need no manual building: front hair, back hair and jelly eyes come from the model presets, skeleton, swing and simulation baking also generate their own groups, and you can create them by hand as well. For managing them see [[physics-group-information]].
 @@ physical-operation-setting | How to Set Up Physics
-After selecting a physics group in the **Physics** panel, below it come the pendulum canvas, the response curve, the pendulum settings, inputs, outputs and advanced settings.
+Select a physics group in the **Physics** panel; below it come, in order, the pendulum canvas, the response curve, the pendulum settings, the inputs, the outputs and the advanced settings. The quickest way to tune is to drag right on the pendulum canvas and judge the effect from the response curve and the max output.
 ## Pendulum canvas
-| Action | Effect |
+| Operation | Effect |
 |---|---|
-| Drag left and right on an empty spot | Pulls the model like dragging it in the Viewer; it returns when released |
-| Drag the ring at a pendulum's end up and down | Adjusts that pendulum's length; click to select it |
-| Drag an output label on the right next to a pendulum | Reads that pendulum's angle instead (Pendulum #) |
-| Click an output label | Shows the range fan; drag the fan's edge to adjust the scale |
-The response curve below the pendulums shows the reaction to a pull to the right for 1 second and then release, so you can compare overshoot and settling between settings directly.
-## Settings
-1. **Preset**: pick a preset and click **Load** to replace all pendulums; **Add…** saves the current pendulums as your own preset.
-2. **Edit pendulum**: choose **All** or a number to decide which pendulum the sliders below adjust; pendulums can be added, deleted and moved up or down.
-3. Sliders: **Total length / Length**, **Sway**, **Reaction**, **Settling**, with the same meanings as in Cubism Editor.
-4. **Inputs**: add parameters with **Add**, choose the type **Position X** or **Angle**, and set the **Weight** and inversion.
-5. **Outputs**: set the **Pendulum #**, **Scale** and inversion. **Max output** on the right shows the percentage of the parameter's end the output reaches, and **Fit scale to max** brings it to 100%.
-6. **Advanced**: the pendulum settings table, output details and **Input normalization**.
-## Differences from Cubism
-- Cubism: values are entered in tables in the physics settings dialog and checked by dragging the model in the Viewer.
-- PSD2Live: length, pendulum number and scale can be changed by dragging directly in the pendulum canvas, which also shows the response curve and the max output.
-- Outputs only have the angle type: in the Cubism runtime, Position X outputs are always 0.
-- Each drag or input is recorded as one history step on release and can be undone.
+| Drag left and right in empty space | Pulls the model; it returns to rest after you release |
+| Drag the ring at the end of a pendulum up and down | Adjusts that pendulum's length; click to select it |
+| Drag an output label on the right next to a pendulum | Changes it to read that pendulum's angle (Pendulum #) |
+| Click an output label | Shows the range sector; drag the sector's edge to adjust the scale |
+The response curve under the pendulums shows the reaction to a 1-second pull to the right and then release, so the overshoot and convergence of different settings can be compared directly.
 {tutorial=PHYSICS}
+## Settings
+1. **Preset**: pick a preset and click **Import** to replace all pendulums; **Add…** saves the current pendulums as your own preset.
+2. **Edit pendulum**: choose **All** or a particular number to decide which pendulum the sliders below act on; you can add, delete and move pendulums up and down.
+3. Sliders: **Total length / Length**, **Sway**, **Reaction**, **Convergence**, with the same names and meanings as in Cubism Editor.
+4. **Inputs**: use **Add** to add a parameter, choose **Position X** or **Angle**, and set the **Weight** and reversal.
+5. **Outputs**: set the **Pendulum #**, **Scale** and reversal. **Max output** shows the percentage at which the output reaches the parameter's end points, and **Fit scale to max** brings it to 100%.
+6. **Advanced**: the pendulum settings table, output details and **Input normalization**.
+After you let go, each drag or input is recorded as one history step.
+*> Outputs have only the angle type: an output of the Position X type is always 0 in the Cubism runtime.
 @@ physics-group-information | Edit Physics Group
-The physics group list at the top of the **Physics** panel manages all of the model's physics groups, like the group list in Cubism's physics settings.
-## Physics group list
-- Groups are listed in calculation order with numbers; the checkbox enables or disables a group, and disabled groups are not exported.
-- Each row shows the origin (Preset, Skeleton, Swing, Simulation, Custom and so on) and the state: **Edited**, **Invalid** (parameter missing, no inputs or outputs and so on), **Replaced** (its output is already driven by another group).
-- Move up / down in the title bar changes the calculation order: when one group takes another group's output as input, the group being read must come first.
-## Creating
+The list at the top of the **Physics** panel shows all the model's physics groups. Groups built by generators update automatically with their source, and the places you changed are kept.
+## The physics group list
+- Sorted by calculation order with numbers; the checkbox enables or disables a group, and a disabled group is not exported.
+- Each row shows its source (preset, skeleton, swing, simulation, custom and so on) and its state: **Modified**, **Invalid** (parameter missing, no inputs or outputs and so on), **Replaced** (the same output parameter is already driven by another group, so this group is not exported).
+- Move up / move down in the title bar adjusts the calculation order: when one group reads another group's output, the group being read must come first.
+## New
 Click **New**:
-- **Blank pendulum**: inputs head and body sway by default, with no outputs yet.
-- **Duplicate as new group**: copies the selected group with its output parameters cleared.
-- **Import physics3.json…**: each group in the file becomes a custom group; groups with the same ID are replaced.
+- **Blank pendulum**: by default the input is the head and body sway, and there is no output yet.
+- **Duplicate as new group**: duplicates the selected group with the output parameters cleared.
+- **Import physics3.json…**: each group in the file becomes a custom group, and groups with the same ID are replaced.
 - **Swing for the selection…**: creates a swing for the mesh or warp deformer selected on the canvas; see [[auto-generation-of-sway-motion]].
-## Changing generated groups
-Generated groups can also be edited directly; after editing they are marked **Edited**, and later changes to their origin will not overwrite them; **Reset to generated** in the **More** menu returns to the generated version. Custom groups can be **Rename**d and **Delete**d.
-## Differences from Cubism
-- Cubism: every physics group must be created and set up by hand.
-- PSD2Live: most physics groups are created automatically by generators, and they can follow changes in their origin while keeping your edits.
-- A parameter can only be driven by one active group; conflicting groups are marked as replaced and not exported.
+## Change a generated group
+A generated group can be edited directly; after editing it is marked **Modified**, and later changes at the source will not overwrite your changes; **Reset to generated** in the **More** menu returns to the generated version. A custom group can be **renamed** or **deleted**.
+{tutorial=PHYSICS}
 @@ simulation | Cloth and Hair Simulation
-Simulation runs a real 2D cloth and hair simulation on meshes in the editor: vertices are held by pinned points and driven by gravity and inertia. The Cubism runtime does not do this kind of simulation, so a simulation must be **baked** into parameters, keyforms and Cubism pendulums before it can be exported.
-## Basic flow
-1. Select the skirt or hair meshes on the canvas, click **New** in the **Simulation** panel and choose **Cloth** or **Hair**. Several meshes in the same body simulate together.
-2. Specify the pinned points: click **Paint** on the pin row under **Vertex groups** in the panel, or switch the canvas to Simulate mode ({key:MODE_SIMULATE}) and paint with the weight brush; you can also set glue connected to the waist as **Pin** under **Glue**.
-3. Switch the panel's preview toggle to **Reference sim**, turn the head and sway the body in the preview, and adjust the material until it looks natural.
-4. Click **Bake** on the body, or **Bake all** on the toolbar. Baking runs in the background and takes a few seconds; when done it is committed as one undo step.
-5. Switch back to **Export**, and the preview plays the exported model's motion, to compare with the reference simulation.
-## Vertex groups
+Skirt hems, coat hems and long hair are hard to make feel like cloth with just a few pendulums. Simulation runs a real 2D cloth and hair simulation on the mesh in the editor and then **bakes** the result into parameters, keyforms and pendulums that Cubism can play, so the exported model moves in any Cubism runtime.
+## Start with the model presets
+The **Physics & Simulation** group of the model presets can generate simulation for common parts in one step: change the dropdowns for front and back hair to **Simulate**, or tick **Clothing**, and the program builds the physics bodies, writes the weights and bakes in the background. Afterwards you can keep adjusting everything in the **Simulate** panel; see [[model-presets]].
+{tutorial=SIMULATION}
+## Build a physics body by hand
+1. Select the mesh of the skirt or hair on the canvas, click **New** in the **Simulate** panel, and choose cloth or hair. Several meshes in one physics body are simulated together.
+2. Specify the pins: switch to the canvas's Simulate mode ({key:MODE_SIMULATE}) and paint pins with the **Weight brush** or **Weight gradient**; glue connected to the waist can also be set to **Pin** in the **Glue** section, see [[glue]].
+3. Switch the toolbar's preview switch to **Reference sim**, turn the head and shake the body, and change the preset or fine-tune the values in the **Material** section until the sway looks natural.
+4. Click **Bake** on the physics body, or **Bake all** on the toolbar. Baking runs in the background, usually takes a few seconds, and is committed as one undo step when done.
+5. Switch back to **Export**: what the canvas plays is the exported model's motion, which you can compare with the reference sim.
+## Vertex weight groups
+A weight group tells the simulation where to fix, and where to be stiffer or heavier. It exists only in this program and is not written into the exported files.
 | Kind | Effect |
 |---|---|
-| Pin | Vertices held by the rig; the weight is how firmly they are held |
-| Stiffness | Scales stretch and bend stiffness per vertex |
-| Shape | Scales the pull back toward the original art's shape per vertex |
-| Mass | Scales mass per vertex |
-| Damping | Scales damping per vertex |
-Vertex groups exist only in this software and are not written to exported files.
-## Material and baking
-- The **Material** section offers named presets (Cotton, Silk, Chiffon, Wool, Denim, Leather, Elastic, Hair, Fine hair, Thick hair, Bangs), and then fine-tuning of mass, stretch, bend, damping, shape and other values.
-- **Inputs** are the parameters that shake the body, by default head and body angles and so on; inputs with almost no effect on the body are dropped during baking.
-- The **Bake** section sets the number of modes, upper and lower parameters, keys, exaggeration and so on; after baking it shows a visual check against the reference simulation (amplitude, lag, settle, jitter) and R².
-- After baking, a pendulum group with the origin "Simulation" appears in the Physics panel, and `ParamSim…` parameters appear in the Parameters panel. When settings, meshes or weights change, the bake is shown as out of date, and export keeps using the old result until you bake again.
-*> The **Physics & Simulation** group of the model presets can create and bake simulations for front hair, back hair and clothing in one step; see [[model-presets]].
-## Relation to Cubism
-Cubism has only pendulum physics; complex swaying of cloth and long hair is usually made by hand with several parameters and keyforms driven by several pendulum groups. PSD2Live's simulation automates this: it simulates in real time first, then fits the result into pendulums, parameters and keyforms that Cubism can play, so the exported model plays in any Cubism runtime. The simulation itself (the reference simulation) is not exported.
-{tutorial=SIMULATION}
+| Pin | Vertices held by the rig; 1 follows the binding completely, 0 leaves it entirely to the simulation |
+| Stiffness | Scales stretch and bend stiffness per vertex, making a stiff root and a soft hem |
+| Shape retention | Scales the spring-back toward the original shape per vertex, holding up a flared skirt or an upturned hair tip |
+| Mass | Scales mass per vertex; the heavier, the clearer the lag and overshoot |
+| Damping | Scales motion decay per vertex, suppressing jitter at edges and corners |
+## Material, inputs and baking
+- **Material**: cloth has cotton, silk, chiffon, wool, denim, leather and stretch fabric; hair has hair, fine soft hair and coarse stiff hair; after choosing, each value can still be fine-tuned.
+- **Inputs**: the parameters that make the object sway, filled in automatically with the head and body angles and so on when created; baking is impossible while the list is empty.
+- **Bake**: **Modes** (1–3, default 2) decides how many parameters are generated, **Key points** decides the number of keyforms per parameter, and **Exaggeration** enlarges the sway without needing to bake again. After baking, R² and the error are shown.
+- The baked pendulums appear in the **Physics** panel with the source "Simulation"; the parameters appear in the Parameters panel, named `ParamSim…`.
+!> After changing settings, the mesh or weights, the bake shows **Stale**, and the export keeps using the old result until you bake again. The reference sim itself is never exported.
 @@ about-playlists | About Playlist
 @@ playlist-settings | How to set up a playlist
 @@ external | External Application Integration feature
 @@ external-application-integration | External Application Integration
-Cubism Editor's external integration lets external applications read and operate the editor through a network interface. PSD2Live's counterpart is a local MCP service: AI hosts such as Claude Code and Codex, or scripts, can read and edit the current project through it.
-## Enabling and connecting
-1. Open **MCP** in **Settings** ({key:OPEN_SETTINGS}).
-2. Under "Service", check **Enable the MCP service**, set the **Port** (1024–65535, 23871 by default), the **Access token** (can be **Regenerate**d) and the **Tools** set (**Compact (recommended)** or **Complete**), then click **Apply and restart**.
-3. Under "Connect a host", copy the command or configuration for your host; **Copy setup prompt** produces a prompt that lets the host configure itself.
-4. Once the host lists the tools, first call `workspace_inspect` to read the current project's object IDs and state.
-## Notes
-- The service runs only on this machine and uses Streamable HTTP with Bearer token authentication. The token can edit the current workspace; keep it only in local host configurations.
-- Hosts that support only Stdio run `mcp_proxy.py` in the repository root with Python 3.
-- After changing the port or token, update the configuration of every connected host.
-- Without opening a window, the `mcp` command-line subcommand starts an MCP endpoint on its own, with workspace storage separate from the editor.
-## Differences from Cubism
-- Cubism: external applications connect to the editor over WebSocket, and the editor permits each application individually.
-- PSD2Live: uses the MCP protocol with access token authentication; edits through MCP go through the same commands as the UI, and likewise enter the history and can be undone.
-@@ external-application-integration-api | Live2D Cubism Editor External API Integration
-PSD2Live's external interface is MCP tools. Every operation has a strict request and result schema; list them with `workspace_list_operations` and inspect one with `workspace_get_operation`.
-## Calling conventions
-- Arguments go in `{"request": {...}}`.
-- Modifying operations need `state` (from `workspace_inspect` or the previous result); the complete tool set also needs `project_id` and a unique `request_id`. The compact tool set may omit the latter two; `request_id` is derived from the arguments, and retrying the same call returns the original result.
-- When `state` does not match the current project, a conflict is reported; read again and retry.
-- Long-running operations return a background job; get the result with `job_wait` / `job_get`. In the compact tool set, `wait_ms` can return the result directly within the time limit.
-- `workspace_apply_edits` commits 1–128 edits as one atomic batch and appends only one history node when all succeed; `workspace_preview_edits` only does a dry run and does not change the project.
+PSD2Live has a built-in local MCP service. Once it is on, AI hosts such as Claude Code and Codex, or your own scripts, can read and edit the current project: import, change the rig, tune physics, make motions, save and export, all through the same commands as the interface, so they also enter the history and can be undone.
+## Enable and connect
+1. Open the **MCP** page of **Settings** ({key:OPEN_SETTINGS}).
+2. Under **Service**, tick **Enable the MCP service**, set the **Port** (default 23871), the **Access token** (it can be **Regenerate**d) and the **Tools**, and click **Apply and restart**.
+3. Under **Connect a host**, copy the command or configuration for your host; you can also click **Copy setup prompt** and give the prompt to the host so it configures itself.
+4. After the host connects, first call `workspace_inspect` to read the current project's object IDs and state.
 ## Tool sets
-| Tool set | Content |
+| Tool set | Suited for |
 |---|---|
-| Compact (default) | Operations of the same family are merged into one tool (for example `motion` selects `motion_set_key` with `op`); the rest are called through `workspace_call` |
-| Complete | One tool per operation, with full input and output schemas |
-Every operation can be called under both tool sets, with the same execution and validation.
-## Differences from Cubism
-- Cubism: JSON messages are sent over WebSocket, mainly for reading and writing parameter values and getting editor state.
-- PSD2Live: MCP tools can import, edit, save and export projects, covering the main editing features of the UI.
-See [[external-application-integration-api-list]] for the list of operations.
+| Compact (recommended) | Most hosts. Operations of one family are merged into one tool and the rest are called through `workspace_call`; the schema is compact, and background tasks can return their result directly |
+| Full | Hosts that load tools on demand. One tool per operation, with the full schema |
+All operations can be called under either tool set, with exactly the same execution and validation.
+## Notes
+- The service runs only on this machine, using Streamable HTTP and Bearer token authentication. The token can edit your workspace and is stored only in the configuration of the host on this machine; after changing the port or token, update the configuration of the connected hosts to match.
+- For hosts that support only Stdio, use Python 3 to run `mcp_proxy.py` in the repository root to bridge.
+- When no window is open, the command-line `mcp` subcommand can start the MCP endpoint on its own.
+@@ external-application-integration-api | Live2D Cubism Editor External API Integration
+When writing scripts or troubleshooting host calls, you need to know the calling conventions of MCP operations. Every operation has strict request and result schemas, which you can list with `workspace_list_operations` and inspect field by field with `workspace_get_operation`.
+## Calling conventions
+- Put the arguments in `{"request": {...}}`.
+- Modifying operations need `state` (from `workspace_inspect` or the previous result); a conflict is reported when `state` does not match the current project, so read again and retry.
+- The full tool set also needs `project_id` and a unique `request_id`; the compact tool set can omit them, `request_id` is derived from the arguments, and retrying the same call fetches the original result.
+- Long-running operations return a background task; get the result with `job_wait` / `job_get`; the compact tool set's `wait_ms` can return the result directly within a time limit.
+- `workspace_apply_edits` commits 1–128 edits as one atomic batch and appends one history node only if all succeed; `workspace_preview_edits` only does a trial run and does not change the project.
+For the main tools grouped by purpose see [[external-application-integration-api-list]].
 @@ external-application-integration-api-list | List of External API Integration Functions
-The main MCP tools are grouped by purpose below. Use `workspace_get_operation` for the full fields.
+The table below lists the main MCP tools by purpose (names in the compact tool set). Use `workspace_get_operation` for field details; the end of every manual page also lists the operations related to that page.
 | Group | Tools | Purpose |
 |---|---|---|
 | Query | `workspace_overview`, `workspace_inspect` | Read the canvas, parameters, layers, deformers, physics groups, motions and so on |
-| Edit | `workspace_apply_edits`, `workspace_preview_edits`, `rig_deform`, `keyform_apply` | Atomic batch edits, dry runs, keyform editing |
-| Intent tools | `author_axis`, `author_physics`, `author_compile` | Create parameter axis shapes and physics groups and fit them in one step |
+| Edit | `workspace_apply_edits`, `workspace_preview_edits`, `rig_deform`, `keyform_apply` | Atomic batch edits, trial runs, editing keyforms |
+| Intent tools | `author_axis`, `author_physics`, `author_compile` | Create parameter-axis shapes and physics groups and fit them in one step |
 | Parameters and preview | `parameter`, `preview_set`, `preview_reset`, `snapshot_*` | Parameters, preview pose and parameter snapshots |
-| Motion | `motion` (`motion_create`, `motion_pose`, `motion_move_keys` and so on) | Motion clips and keyframes |
-| Skeleton / paths | `skeleton`, `path` | Skeleton and deform paths |
-| Physics / swing / simulation | `physics`, `swing`, `simulation` | Physics groups, swings, cloth and hair simulation and baking |
+| Motion | `motion` | Motion clips and keyframes |
+| Skeleton / path | `skeleton`, `path` | Skeleton and deform paths |
+| Physics / swing / simulation | `physics`, `swing`, `simulation` | Physics groups, swing, cloth and hair simulation and baking |
 | Painting | `source_paint` | Source layer pixels |
 | Observation | `view` | Rendering and spatial mapping |
 | History | `history` | History nodes and annotations |
-| Project and export | `project` (`project_open`, `project_save`, `project_export_model`, `project_export_target`, `project_export_psd` and so on) | Open, import, save and export |
-| Jobs | `job` (`job_get`, `job_wait`, `job_cancel` and so on) | Background jobs |
-| Other | `workspace_call` | Calls operations not published directly as tools, such as `layer_classify` |
-## Differences from Cubism
-- Cubism's external integration API is listed by message type and is fairly small; PSD2Live's tools cover reading, writing, editing and exporting projects.
-- The tool set only decides which tools are published; every operation can be called under both tool sets.
-@@ viewer | Preview (Cubism Viewer counterpart)
-@@ selection-of-viewer | Selection of Cubism Viewer
-Cubism has Viewer (for OW) and Viewer (for Unity) for different uses. PSD2Live has no separate Viewer; you choose in the preview canvas which runtime plays the model.
-## Preview runtime
-The bottom of the toolbar at the left of the preview canvas lists three runtimes; click one to switch:
-| Option | Description |
-|---|---|
-| Cubism SDK (C) | The exported moc3 plays in the official Cubism 5 runtime |
-| p2lrt · Standard (P) | The exported `.p2lrt` plays in the PSD2Live runtime, the same as the web player |
-| p2lrt · Advanced (P+) | The PSD2Live runtime's advanced mode: skinning along arcs, exact links, real-time cloth and hair simulation |
-- The Cubism SDK preview needs the optional native preview component; when it is unavailable, a software fallback preview is shown.
-- When the PSD2Live runtime library cannot be found, only Cubism SDK can be chosen.
-## Differences from Cubism
-- Cubism: the Viewer is a separate application window that reads the output files.
-- PSD2Live: the preview is a canvas in the workspace that plays the export result compiled on the fly from the current project, and it updates right after edits.
-@@ viewer-ow | Cubism Viewer (for OW)
-@@ cubism3-viewer-for-ow | About Cubism Viewer (for OW)
-Cubism Viewer (for OW) is used to check the exported model, set up motions and physics, and output model3.json. In PSD2Live this work is done by the preview canvas, the Animation panel, the Physics panel and the export window respectively.
-## Correspondence
-| Cubism Viewer feature | PSD2Live |
-|---|---|
-| Load model and motions | The preview canvas shows the current project directly; see [[load-model-and-motion]] |
-| Motion settings | The Animation panel; see [[motion-setting]] |
-| Physics settings | The Physics panel; see [[switch-viewer-setting]] |
-| Check physics | The preview canvas's physics toggle and the pendulum canvas; see [[check-the-physics]] |
-| Output the model settings file | Written automatically at export; see [[export-model3-json]] |
-## Preview canvas
-- Choose **Preview** ({key:MODE_PREVIEW}) in the canvas mode menu, or use the **Preview** workspace preset (a large preview with only the motion list); {key:QUICK_PREVIEW} switches quickly between editing and preview.
-- Left toolbar: **Idle animation**, **Tracking**, **Smooth + body Y**, **Physics**, **Physics FPS**, and the runtime choice (see [[selection-of-viewer]]).
-- The menu of the status capsule at the bottom left sets the preview's **Frame rate cap** (follows the display by default), which is independent of the physics frame rate.
-## Differences from Cubism
-- Cubism: the Viewer is a separate tool, and files must be exported before loading.
-- PSD2Live: preview and editing are in the same window, so you can check without exporting; Viewer features such as expressions, pose settings and motion-sync are not yet available.
-@@ load-model-and-motion | Loading Models and Motion
-Cubism Viewer loads models and motions by dropping in model3.json and motion3.json. PSD2Live's preview canvas always shows the current project, with no files to load.
-## How to use
-1. After opening a project or importing a PSD, the model is visible in any preview canvas.
-2. Click the play button on a motion row in the Animation panel to play it in the preview canvas.
-3. After editing the model or motions, the preview updates automatically.
-## Differences from Cubism
-- Cubism: the Viewer loads exported files and can load several motion files at once.
-- PSD2Live: the model comes from the current project; motions come from the project's built-in and custom motions, and external `motion3.json` files cannot be loaded.
-*> Existing Cubism models can be imported as projects with **File → New → New project from CMO3…**; see [[cmo3-import]].
-@@ motion-setting | Motion Settings
-Cubism Viewer sets the group, fades, loop and so on for each motion and writes them to model3.json. PSD2Live sets these properties in the Animation panel and the Animation Editor and writes them automatically at export.
-## Settings
-| Item | Where |
-|---|---|
-| Whether to export | The checkbox at the left of a motion row in the Animation panel |
-| Name | **Rename** in a custom motion's context menu |
-| Loop | **Loop** on the Animation Editor toolbar |
-| Duration / frame rate | **Duration** and **FPS** on the Animation Editor toolbar |
-| Fade in / fade out | **Fade In (s)** / **Fade Out (s)** after expanding a custom motion; see [[fade-setting]] |
-## Motion groups
-Motion groups need no manual assignment: looping motions go into the `Idle` group and the other motions each form their own group; see [[notes-for-sdk]].
-## Differences from Cubism
-- Cubism: the motion group names, sound files and fades are set freely in the Viewer before outputting model3.json.
-- PSD2Live: motion groups are decided automatically by rules, sound files cannot be assigned, and fades are set only for custom motions.
+| Project and export | `project` | Open, import, save and export |
+| Tasks | `job` | Background tasks |
+| Other | `workspace_call` | Call operations not published directly as tools |
+@@ viewer | Expressions and Poses
 @@ pose-setting | Pose Settings
 @@ facial-expression-system | Facial Expression Mechanism
 @@ create-facial-expressions | Create Facial Expressions in Animation View
 @@ setting-and-exporting-facial-expressions | Expression Settings and Export
 @@ userdata-event-information | Check User Data and Event Information
-@@ export-model3-json | Exporting Model Setting Files
-model3.json is the model settings file that ties together the moc3, textures, physics, motions and other files. Cubism outputs it in the Viewer; PSD2Live writes it automatically when exporting the Live2D model.
-## How it is written
-Check **moc3** in **File → Export Live2D model…** ({key:GENERATE}) and export; `<name>.model3.json` is generated in the output folder; see [[export-moc3-motion3-files]].
-## Content
-| Item | Content |
-|---|---|
-| `Moc` / `Textures` | The moc3 file and the texture atlas pages |
-| `Physics` | `physics3.json` (when **Include physics3.json** is checked and there is physics) |
-| `DisplayInfo` | `cdi3.json` (when **Include cdi3.json** is checked) |
-| `Motions` | All motion files listed by motion group |
-| `Groups` | `EyeBlink` (when blinking is enabled) and `LipSync` |
-## Differences from Cubism
-- Cubism: output by hand after setting motions, expressions, poses, hit areas and so on in the Viewer.
-- PSD2Live: written automatically with the model, with content determined by the project; expressions, poses and hit areas are not written.
-@@ check-the-physics | Check Physics Information
-Cubism Viewer checks the effect of physics by dragging the model. PSD2Live checks it in the preview canvas and the Physics panel.
-## Checking in the preview canvas
-1. Turn on **Physics** on the toolbar at the left of the preview canvas and choose the **Physics FPS**.
-2. Turn on **Tracking** and move the pointer, or play a motion, and watch hair and other parts sway; you can also stop the idle animation and drag parameter sliders directly.
-3. With the Cubism SDK runtime selected, the preview reads the exported `physics3.json` directly with the official SDK.
-## Checking in the Physics panel
-- Select a physics group and drag left and right on an empty spot of the pendulum canvas to pull the model, watching the pendulums and outputs.
-- The response curve shows each output's maximum amplitude and settle time under a standard pull.
-- When **Max output** exceeds 100% it is shown in the warning color, meaning the parameter is clipped at its end; fix it with **Fit scale to max**.
-The number of physics groups, the active count and the frame rate are shown at the top of the Physics panel (**n / m active**).
-## Differences from Cubism
-- Cubism: check by dragging the model in the Viewer and look at the physics settings' values.
-- PSD2Live: preview and editing are in the same window; you can try each group in the pendulum canvas, which shows the response curve and the max output.
-{tutorial=PHYSICS}
-@@ motion-sync-setting-ow | Motion-sync Settings (OW)
-@@ texture-setting | Texture settings

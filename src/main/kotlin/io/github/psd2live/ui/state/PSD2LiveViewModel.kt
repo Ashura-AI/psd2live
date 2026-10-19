@@ -198,11 +198,13 @@ class PSD2LiveViewModel : AutoCloseable {
     /** Each page's arrangement, read from the preferences when first shown and written back as it changes. */
     internal val pageArrangements = androidx.compose.runtime.mutableStateMapOf<AppPage, PageArrangement>()
     /** The help topic shown, and the settings topic: each page's contents pick one. */
-    internal var helpTab by mutableStateOf(HelpTab.TUTORIALS)
+    internal var helpTab by mutableStateOf(HelpTab.MANUAL)
         private set
     /** The manual or tutorial page shown while [helpTab] is one of those trees. */
-    internal var helpPage by mutableStateOf(Manual.FIRST_TUTORIAL)
+    internal var helpPage by mutableStateOf(Manual.FIRST_MANUAL)
         private set
+    /** The MCP operations as the running server publishes them, for the manual pages' MCP sections; set by the app. */
+    internal var operationDocs: () -> List<io.github.psd2live.agent.AgentOperationDoc> = { emptyList() }
     internal var settingsTopic by mutableStateOf(SettingsTopic.SCALE)
         private set
     /** A page panel to bring forward: its tab selected, shown again if closed. Cleared once the page's dock has. */

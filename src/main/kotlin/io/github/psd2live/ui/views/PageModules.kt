@@ -50,7 +50,7 @@ internal fun PageModuleContent(id: String, state: PSD2LiveState, viewModel: PSD2
 		START_DETAILS -> StartDetailsPanel(state, viewModel, actions)
 		HELP_NAV -> HelpNav(viewModel.helpTab, viewModel.helpPage, viewModel::setHelpTab, viewModel::showHelpPage)
 		HELP_CONTENT -> HelpPanel(viewModel.helpTab, viewModel.helpPage, state.keymap, onOpenPage = viewModel::showHelpPage,
-			onStartInteractiveTutorial = actions.onStartTutorialPath)
+			onStartInteractiveTutorial = actions.onStartTutorialPath, operationDocs = viewModel.operationDocs)
 		SETTINGS_NAV -> SettingsNav(viewModel.settingsTopic, viewModel::setSettingsTopic, onResetAll = { resetAllSettings(viewModel) })
 		SETTINGS_CONTENT -> SettingsPanel(viewModel.settingsTopic, state, viewModel)
 	}

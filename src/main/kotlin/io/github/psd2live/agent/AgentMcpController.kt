@@ -86,6 +86,9 @@ class AgentMcpController(
     val settings: StateFlow<AgentMcpSettings> = _settings.asStateFlow()
     val status: StateFlow<AgentMcpStatus> = _status.asStateFlow()
 
+    /** Every operation as the help page describes it: its calls in both tool profiles and its request fields. */
+    fun operationDocs(): List<AgentOperationDoc> = agentOperationDocs(operations.registry.definitions())
+
     /** Starts the saved settings. */
     fun start(): AgentMcpStatus = apply(_settings.value, save = false)
 

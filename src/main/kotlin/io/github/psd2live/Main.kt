@@ -139,6 +139,7 @@ private fun runGui() {
 	viewModel.attachWorkspace(agentWorkspace)
 	val agentMcp = AgentMcpController(agentWorkspace, observer = viewModel.agentCallObserver)
 	agentMcp.start()
+	viewModel.operationDocs = agentMcp::operationDocs
 	viewModel.watchAgentMcp(agentMcp.status)
 
 	// Both close() calls are idempotent, so the hook (Ctrl+C, SIGTERM, logoff) and the normal exit can race.

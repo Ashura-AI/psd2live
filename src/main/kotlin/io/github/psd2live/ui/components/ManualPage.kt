@@ -1,6 +1,17 @@
 package io.github.psd2live.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import io.github.psd2live.ui.views.texture.glideItem
+import io.github.psd2live.ui.views.texture.MenuGlide
+import io.github.psd2live.ui.theme.handCursor
+import io.github.psd2live.ui.theme.LocalToolTypography
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +59,7 @@ import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.ToolColors
 import io.github.psd2live.ui.tutorial.TutorialId
 import io.github.psd2live.ui.tutorial.TutorialPath
+import io.github.psd2live.agent.AgentOperationDoc
 
 /*
  * A manual or tutorial page, set out like a Cubism manual page: the folders it sits in, its title with the tag that
@@ -67,11 +79,13 @@ internal sealed interface ManualBlock {
 	data class Table(val rows: List<List<String>>) : ManualBlock
 	data class Note(val kind: NoteKind, val text: String) : ManualBlock
 	data class Tutorial(val id: TutorialId) : ManualBlock
+	data class Path(val path: TutorialPath) : ManualBlock
 }
 
 internal enum class NoteKind { NOTE, CAUTION, POINT }
 
 private val TutorialLine = Regex("""^\{tutorial=([A-Z0-9_]+)}$""")
+private val PathLine = Regex("""^\{path=([A-Z0-9_]+)}$""")
 private val StepLine = Regex("""^\d+[.)]\s+(.*)$""")
 
 internal fun parseManualBlocks(body: String): List<ManualBlock> {
@@ -105,6 +119,10 @@ internal fun parseManualBlocks(body: String): List<ManualBlock> {
 				val kind = when (line[0]) { '!' -> NoteKind.CAUTION; '*' -> NoteKind.POINT; else -> NoteKind.NOTE }
 				val marker = if (kind == NoteKind.NOTE) "> " else line.substring(0, 3)
 				blocks += ManualBlock.Note(kind, collect { if (it.startsWith(marker)) it.removePrefix(marker) else null }.joinToString("\n"))
+			}
+			PathLine.matches(line) -> {
+				TutorialPath.entries.firstOrNull { it.name == PathLine.find(line)!!.groupValues[1] }?.let { blocks += ManualBlock.Path(it) }
+				i++
 			}
 			TutorialLine.matches(line) -> {
 				TutorialId.entries.firstOrNull { it.name == TutorialLine.find(line)!!.groupValues[1] }?.let { blocks += ManualBlock.Tutorial(it) }
@@ -195,7 +213,10 @@ internal fun manualStatusColor(status: Manual.Status): Color {
 	}
 }
 
-/** One manual or tutorial page. [embed] draws a generated table a page names; [onStartTutorial] starts a tutorial. */
+/**
+ * One manual or tutorial page. [embed] draws a generated table a page names; [onStartTutorial] starts a tutorial;
+ * [operations] are the MCP operations as the running server describes them, for the page's MCP section.
+ */
 @Composable
 internal fun ManualPageContent(
 	page: Manual.Page,
@@ -203,6 +224,7 @@ internal fun ManualPageContent(
 	onOpenPage: (String) -> Unit,
 	onOpenUrl: (String) -> Unit,
 	onStartTutorial: ((TutorialId, TutorialPath) -> Unit)?,
+	operations: List<AgentOperationDoc>,
 	embed: @Composable (String) -> Unit,
 ) {
 	val colors = LocalToolColors.current
@@ -297,20 +319,15 @@ internal fun ManualPageContent(
 					}
 				}
 			}
-			is ManualBlock.Tutorial -> if (onStartTutorial != null) {
-				Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).background(colors.panelElevated)
-					.border(BorderStroke(1.dp, colors.divider), RoundedCornerShape(4.dp)).padding(horizontal = 10.dp, vertical = 7.dp),
-					verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-					Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-						Text(tr("help.manual.tryIt"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted)
-						Text(tr(block.id.titleKey), style = typography.caption.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold), color = colors.textPrimary)
-					}
-					CompactButton(tr("tutorial.path.start"), onClick = { onStartTutorial(block.id, TutorialPath.defaultFor(block.id)) }, isPrimary = true, height = 22.dp)
-				}
-			}
+			is ManualBlock.Tutorial -> if (onStartTutorial != null) ManualTutorialCard(block.id) { onStartTutorial(block.id, TutorialPath.defaultFor(block.id)) }
+			is ManualBlock.Path -> if (onStartTutorial != null) ManualTutorialPathCard(block.path, onStartTutorial)
 		}
 	}
 	page.embed?.let { embed(it) }
+	Manual.operations[page.id]?.let { ids ->
+		val described = ids.mapNotNull { id -> operations.firstOrNull { it.id == id } }
+		if (described.isNotEmpty()) ManualOperationsSection(described)
+	}
 
 	// The pages before and after this one, as the Cubism pages end.
 	val order = remember(page.root) { Manual.readingOrder(page.root) }
@@ -335,4 +352,135 @@ internal fun ManualPageContent(
 private fun ManualTableFrame(content: @Composable () -> Unit) {
 	val colors = LocalToolColors.current
 	Column(Modifier.fillMaxWidth().background(colors.panelElevated).border(BorderStroke(1.dp, colors.divider))) { content() }
+}
+
+/** A small coloured label, the shape of the status tags, for what a card is. */
+@Composable
+private fun ManualChip(text: String, color: Color) {
+	Text(text, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = color, maxLines = 1, softWrap = false,
+		modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(color.copy(alpha = 0.16f)).padding(horizontal = 5.dp))
+}
+
+/** A step-by-step tutorial chapter inside an article: its tag, title and what it teaches, and the button that starts it. */
+@Composable
+private fun ManualTutorialCard(id: TutorialId, onStart: () -> Unit) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	Row(
+		Modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(RoundedCornerShape(4.dp)).background(colors.highlight.copy(alpha = 0.07f))
+			.border(BorderStroke(1.dp, colors.highlight.copy(alpha = 0.35f)), RoundedCornerShape(4.dp)),
+		verticalAlignment = Alignment.CenterVertically,
+	) {
+		Box(Modifier.width(3.dp).fillMaxHeight().background(colors.highlight))
+		Column(Modifier.weight(1f).padding(horizontal = 10.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+				ManualChip(tr("help.manual.interactive"), colors.highlight)
+				Text(tr(id.titleKey), style = typography.caption.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold), color = colors.textPrimary)
+			}
+			Text(tr(id.descKey), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
+		}
+		CompactButton(tr("tutorial.path.start"), onClick = onStart, isPrimary = true, height = 22.dp, modifier = Modifier.padding(end = 10.dp))
+	}
+}
+
+/** A whole step-by-step path inside an article: its chapters, each started on its own, or all in turn. */
+@Composable
+private fun ManualTutorialPathCard(path: TutorialPath, onStart: (TutorialId, TutorialPath) -> Unit) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	Column(
+		Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).background(colors.highlight.copy(alpha = 0.07f))
+			.border(BorderStroke(1.dp, colors.highlight.copy(alpha = 0.35f)), RoundedCornerShape(4.dp)).padding(10.dp),
+		verticalArrangement = Arrangement.spacedBy(6.dp),
+	) {
+		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			ManualChip(tr("help.manual.interactivePath"), colors.highlight)
+			Text(tr(path.titleKey), style = typography.body.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold), color = colors.textPrimary,
+				modifier = Modifier.weight(1f))
+			CompactButton(tr("tutorial.path.start"), onClick = { onStart(path.chapters.first(), path) }, isPrimary = true, height = 22.dp)
+		}
+		Text(tr(path.descKey), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
+		MenuGlide {
+			Column(Modifier.fillMaxWidth()) {
+				path.chapters.forEachIndexed { index, id ->
+					Row(
+						Modifier.fillMaxWidth().glideItem(enabled = true)
+							.clickable(indication = null, interactionSource = null) { onStart(id, path) }.handCursor()
+							.padding(horizontal = 4.dp, vertical = 4.dp),
+						verticalAlignment = Alignment.CenterVertically,
+						horizontalArrangement = Arrangement.spacedBy(8.dp),
+					) {
+						Text("%02d".format(index + 1), style = typography.monoSmall.copy(fontSize = 9.5.sp, fontWeight = FontWeight.Bold), color = colors.highlight)
+						Text(tr(id.titleKey), style = typography.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold), color = colors.textPrimary)
+						Text(tr(id.descKey), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, maxLines = 1,
+							overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+					}
+				}
+			}
+		}
+	}
+}
+
+/**
+ * The MCP operations that do what the page describes, read from the running server: how the compact profile calls
+ * each one, its kind, and, opened, what it does and its request fields.
+ */
+@Composable
+private fun ManualOperationsSection(operations: List<AgentOperationDoc>) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val bodyStyle = typography.caption.copy(fontSize = 11.sp, lineHeight = 15.sp, color = colors.textPrimary)
+	Column(Modifier.padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+		Text(tr("help.manual.mcp.title"), style = typography.title.copy(fontSize = 14.5.sp, fontWeight = FontWeight.Bold), color = colors.textPrimary)
+		Box(Modifier.fillMaxWidth().height(2.dp).background(colors.accent.copy(alpha = 0.5f)))
+	}
+	Text(tr("help.manual.mcp.intro"), style = bodyStyle.copy(color = colors.textMuted))
+	ManualTableFrame {
+		operations.forEachIndexed { index, operation ->
+			if (index > 0) Divider(color = colors.divider, thickness = 1.dp)
+			var open by remember(operation.id) { mutableStateOf(false) }
+			Row(
+				Modifier.fillMaxWidth().clickable(indication = null, interactionSource = null) { open = !open }.handCursor()
+					.padding(horizontal = 8.dp, vertical = 6.dp),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(6.dp),
+			) {
+				IconChevron(open, Modifier.size(11.dp))
+				Text(operation.id, style = typography.monoSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold), color = colors.accent)
+				ManualChip(tr("help.manual.mcp.kind.${operation.kind}"), colors.textMuted)
+				if (operation.jobBacked) ManualChip(tr("help.manual.mcp.job"), colors.warning)
+				val compact = when {
+					operation.coreOperation == null -> operation.coreTool
+					operation.coreTool == "workspace_call" -> "workspace_call · operation=${operation.coreOperation}"
+					else -> "${operation.coreTool} · op=${operation.coreOperation}"
+				}
+				Text(tr("help.manual.mcp.core", compact), style = typography.monoSmall.copy(fontSize = 9.5.sp), color = colors.textMuted,
+					maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.End, modifier = Modifier.weight(1f))
+			}
+			if (open) Column(Modifier.fillMaxWidth().padding(start = 25.dp, end = 8.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+				Text(operation.description, style = bodyStyle)
+				if (operation.fields.isNotEmpty()) {
+					Column(Modifier.fillMaxWidth().border(BorderStroke(1.dp, colors.divider))) {
+						val header = listOf(tr("help.manual.mcp.field"), tr("help.manual.mcp.type"), tr("help.manual.mcp.about"))
+						(listOf(null) + operation.fields).forEachIndexed { r, field ->
+							if (r > 0) Divider(color = colors.divider, thickness = 1.dp)
+							Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).background(if (field == null) colors.controlBackground else Color.Transparent)) {
+								val cells = if (field == null) header else listOf(field.name + if (field.required) " *" else "", field.type, field.description)
+								cells.forEachIndexed { c, cell ->
+									if (c > 0) Box(Modifier.width(1.dp).fillMaxHeight().background(colors.divider))
+									val style = when {
+										field == null -> bodyStyle.copy(fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+										c < 2 -> typography.monoSmall.copy(fontSize = 10.sp, color = if (c == 1) colors.codeIdentifier else colors.textPrimary)
+										else -> bodyStyle.copy(fontSize = 10.5.sp)
+									}
+									Text(cell, style = style, modifier = Modifier.weight(when (c) { 0 -> 0.9f; 1 -> 1f; else -> 2f }).padding(horizontal = 6.dp, vertical = 4.dp))
+								}
+							}
+						}
+					}
+					Text(tr("help.manual.mcp.required"), style = typography.caption.copy(fontSize = 9.5.sp), color = colors.textMuted)
+				}
+			}
+		}
+	}
 }

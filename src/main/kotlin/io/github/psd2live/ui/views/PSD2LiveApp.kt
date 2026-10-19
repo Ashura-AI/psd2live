@@ -179,7 +179,7 @@ fun FrameWindowScope.PSD2LiveApp(
 
 	fun openTutorialCatalog() {
 		stopInteractiveTutorial()
-		viewModel.showHelpPage(Manual.FIRST_TUTORIAL)
+		viewModel.showHelpPage(Manual.FIRST_MANUAL)
 	}
 
 	viewModel.confirmUnsavedChanges = {

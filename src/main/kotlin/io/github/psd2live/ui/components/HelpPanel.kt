@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.psd2live.agent.AgentOperationDoc
 import io.github.psd2live.i18n.I18n
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.state.Manual
@@ -71,7 +72,9 @@ internal fun HelpPanel(
 	onOpenPage: (String) -> Unit,
 	onOpenUrl: (String) -> Unit = { DesktopUtils.openBrowser(it) },
 	onStartInteractiveTutorial: ((TutorialId, TutorialPath) -> Unit)? = null,
+	operationDocs: () -> List<AgentOperationDoc> = { emptyList() },
 ) {
+	val operations = remember { operationDocs() }
 	var query by remember(page) { mutableStateOf("") }
 	var copied by remember(tab) { mutableStateOf(false) }
 	LaunchedEffect(copied) {
@@ -100,13 +103,13 @@ internal fun HelpPanel(
 						onOpenPage = onOpenPage,
 						onOpenUrl = onOpenUrl,
 						onStartTutorial = onStartInteractiveTutorial,
+						operations = operations,
 					) { embed ->
 						when (embed) {
 							"shortcuts" -> DccShortcutsContent(keymap, query)
 							"psd_spec" -> DccPsdSpecContent(onOpenUrl)
 						}
 					}
-					manualPage.path?.let { InteractiveTutorialPath(it, onStartInteractiveTutorial) }
 				}
 				HelpTab.COMMUNITY_LINKS -> DccCommunityLinksContent(
 					onOpenUrl = onOpenUrl,
@@ -221,47 +224,6 @@ private fun ManualLegend() {
 			ManualStatusTag(status, compact = true)
 			Text(tr(status.labelKey + ".desc"), style = typography.caption.copy(fontSize = 9.5.sp, lineHeight = 12.sp),
 				color = colors.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-		}
-	}
-}
-
-/** A step-by-step tutorial path: its chapters, each started on its own or all in turn. */
-@Composable
-private fun InteractiveTutorialPath(
-	path: TutorialPath,
-	onStartInteractiveTutorial: ((TutorialId, TutorialPath) -> Unit)?,
-) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	if (onStartInteractiveTutorial == null) return
-	Column(
-		Modifier.fillMaxWidth()
-			.background(colors.panelElevated, RoundedCornerShape(6.dp))
-			.border(BorderStroke(1.dp, colors.divider), RoundedCornerShape(6.dp))
-			.padding(10.dp),
-		verticalArrangement = Arrangement.spacedBy(7.dp),
-	) {
-		Text(tr(path.titleKey), style = typography.body.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold), color = colors.textPrimary)
-		Text(tr(path.descKey), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
-		CompactButton(
-			text = tr("tutorial.path.start"),
-			onClick = { onStartInteractiveTutorial(path.chapters.first(), path) },
-			isPrimary = true,
-			height = 25.dp,
-		)
-		path.chapters.forEachIndexed { index, id ->
-			Row(
-				modifier = Modifier.fillMaxWidth().clickable { onStartInteractiveTutorial(id, path) }.handCursor()
-					.padding(horizontal = 4.dp, vertical = 5.dp),
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(8.dp),
-			) {
-				Text("%02d".format(index + 1), style = typography.caption.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold), color = colors.accent)
-				Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-					Text(tr(id.titleKey), style = typography.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold), color = colors.textPrimary)
-					Text(tr(id.descKey), style = typography.caption.copy(fontSize = 9.5.sp), color = colors.textMuted)
-				}
-			}
 		}
 	}
 }
