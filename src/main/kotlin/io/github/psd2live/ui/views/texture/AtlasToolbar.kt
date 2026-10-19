@@ -685,7 +685,7 @@ internal fun FloatingMenuSubmenuRow(label: String, open: Boolean, onOpen: () -> 
 		Text(label, color = tint, fontSize = 11.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
 		if (trailing != null) Text(trailing, color = colors.textMuted.copy(alpha = 0.8f), fontSize = 10.sp, maxLines = 1,
 			modifier = Modifier.padding(horizontal = 4.dp))
-		GridIcon(Modifier.size(10.dp).rotate(-90f), tint) { outline(path { m(3.6f, 6.8f); l(9f, 11.8f); l(14.4f, 6.8f) }, 1.6f) }
+		GridIcon(Modifier.size(10.dp).rotate(if (io.github.psd2live.ui.views.tooloptions.LocalMenuOpensLeft.current) 90f else -90f), tint) { outline(path { m(3.6f, 6.8f); l(9f, 11.8f); l(14.4f, 6.8f) }, 1.6f) }
 	}
 }
 

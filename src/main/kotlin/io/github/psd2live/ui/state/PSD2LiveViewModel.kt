@@ -1105,7 +1105,7 @@ class PSD2LiveViewModel : AutoCloseable {
         synchronized(stateLock) {
             val before = _state.value
             _state.update { current ->
-                var next = reconcileCanvasPresentation(current, transform(current)).withStateChangeLog(current)
+                var next = reconcileCanvasPresentation(current, transform(current).reconcileSelection(current)).withStateChangeLog(current)
                 val parameters = next.previewModel?.rig?.puppet?.parameters
                 if (parameters != null && (parameters != current.previewModel?.rig?.puppet?.parameters ||
                     next.rigEdits.motionClips != current.rigEdits.motionClips)) {
@@ -1125,7 +1125,8 @@ class PSD2LiveViewModel : AutoCloseable {
                 // Pruning walks the entire rig and every canvas session. Pointer hover, camera
                 // and dock updates must never pay that cost; only a new model can invalidate ids.
                 if (next.previewModel !== current.previewModel ||
-                    next.projectOpenGeneration != current.projectOpenGeneration
+                    next.projectOpenGeneration != current.projectOpenGeneration ||
+                    next.layout.references.map { it.id } != current.layout.references.map { it.id }
                 ) next = pruneCanvasSessions(next)
                 trackProjectChanges(current, next)
             }
@@ -1210,7 +1211,7 @@ class PSD2LiveViewModel : AutoCloseable {
                 ?.canvases?.firstOrNull { it.id == canvasId } ?: return@updateState current
             val targetMode = mode ?: canvas.mode
             val projected = current.forCanvas(canvasId, workspaceId, targetMode)
-            val transformed = transform(projected)
+            val transformed = transform(projected).reconcileSelection(projected)
             val shared = WorkspacePose.capture(transformed)
             val presentation = CanvasPresentation.capture(transformed)
             if (presentation == canvas.session(targetMode).presentation && shared == current.activeWorkspace.pose) return@updateState current
@@ -2445,7 +2446,7 @@ class PSD2LiveViewModel : AutoCloseable {
             val canvases = workspace.canvases.map { canvas ->
                 fun reset(session: CanvasModeSession) = session.copy(
                     camera = if (replacing) session.camera else TabCamera(),
-                    presentation = if (replacing) session.presentation.copy(selectedLayerId = null, selectedLayerIds = emptySet(),
+                    presentation = if (replacing) session.presentation.copy(selectedReferenceId = null, selectedLayerId = null, selectedLayerIds = emptySet(),
                         selectedDeformerId = null, hoveredLayerId = null, hoveredDeformerId = null,
                         isolatedLayerId = null, isolationSnapshot = null) else CanvasPresentation())
                 canvas.copy(editSession = reset(canvas.editSession), previewSession = reset(canvas.previewSession))
@@ -2467,7 +2468,7 @@ class PSD2LiveViewModel : AutoCloseable {
             deletedLayerIds = document.deletedLayerIds, parentOverrides = document.parentOverrides, meshOverrides = document.meshOverrides,
             layerVisibility = if (replacing) current.layerVisibility else emptyMap(),
             deformerVisibility = if (replacing) current.deformerVisibility else emptyMap(),
-            selectedLayerId = null, selectedLayerIds = emptySet(), selectedDeformerId = null,
+            selectedReferenceId = null, selectedLayerId = null, selectedLayerIds = emptySet(), selectedDeformerId = null,
             hoveredLayerId = null, hoveredDeformerId = null, isolatedLayerId = null, isolationSnapshot = null, clipMaskPickSourceId = null,
             parameterValues = preview.rig.puppet.parameters.associate { it.id to it.default },
             previewParameterValues = emptyMap(), lockedParameters = emptySet(),
@@ -5699,6 +5700,7 @@ class PSD2LiveViewModel : AutoCloseable {
 				else -> LinkedHashSet<String>().apply { add(layerId) }
 			}
 			current.copy(
+				selectedReferenceId = null,
 				selectedLayerId = if (subtractive) current.selectedLayerId?.takeIf { it in selected }
 					?: selected.lastOrNull() else layerId,
 				selectedLayerIds = selected,
@@ -6153,11 +6155,12 @@ class PSD2LiveViewModel : AutoCloseable {
 			kotlinx.serialization.json.buildJsonObject { put("material_id", materialId); opacity?.let { put("opacity", it) }; if (under) put("under", true) })
 	}
 
-	private val _selectedReferenceId = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
-	/** The reference image whose handles the edit canvases show; process state, never saved. */
-	val selectedReferenceId: kotlinx.coroutines.flow.StateFlow<String?> = _selectedReferenceId
-
-	fun selectReference(id: String?) { _selectedReferenceId.value = id }
+	fun selectReference(id: String?, canvasId: String = _state.value.activeCanvas.id, workspaceId: String = _state.value.activeWorkspace.id) {
+		updateCanvasPresentation(workspaceId, canvasId, CanvasMode.EDIT) {
+			it.copy(selectedReferenceId = id, selectedLayerId = null, selectedLayerIds = emptySet(), selectedDeformerId = null)
+		}
+		selectionAnchorId = null
+	}
 
 	private val _referenceOpacityDraft = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, Float>?>(null)
 	/** Transient feedback shared by all canvases; only the release is a document edit. */
@@ -6182,7 +6185,7 @@ class PSD2LiveViewModel : AutoCloseable {
 			kotlinx.serialization.json.buildJsonObject { put("id", id); fields() })
 
 	fun removeReference(id: String) {
-		if (_selectedReferenceId.value == id) _selectedReferenceId.value = null
+		if (_state.value.selectedReferenceId == id) selectReference(null)
 		layoutEdit(tr("references.removed"), io.github.psd2live.application.WorkspaceMaterialEdits.REFERENCE,
 			kotlinx.serialization.json.buildJsonObject { put("id", id); put("material_id", kotlinx.serialization.json.JsonNull) })
 	}
@@ -6211,7 +6214,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	/** Shows [target] behind the model, in the layer stack or in front of it (`reference_set_mode`). */
 	fun setReferenceMode(target: ReferenceTarget, mode: ReferenceMode) {
-		if (target is ReferenceTarget.Image && _selectedReferenceId.value == target.id && mode == ReferenceMode.LAYER) _selectedReferenceId.value = null
+		if (target is ReferenceTarget.Image && _state.value.selectedReferenceId == target.id && mode == ReferenceMode.LAYER) selectReference(null)
 		layoutEdit(tr("references.moved", tr(mode.labelKey)), io.github.psd2live.application.WorkspaceReferenceModes.OP,
 			kotlinx.serialization.json.buildJsonObject {
 				when (target) {

@@ -60,6 +60,7 @@ data class CanvasPresentation(
     val selectedLayerId: String? = null,
     val selectedLayerIds: Set<String> = emptySet(),
     val selectedDeformerId: String? = null,
+    val selectedReferenceId: String? = null,
     val hoveredLayerId: String? = null,
     val hoveredDeformerId: String? = null,
     val layerVisibility: Map<String, Boolean> = emptyMap(),
@@ -77,6 +78,7 @@ data class CanvasPresentation(
         selectedLayerId = selectedLayerId,
         selectedLayerIds = selectedLayerIds,
         selectedDeformerId = selectedDeformerId,
+        selectedReferenceId = selectedReferenceId,
         hoveredLayerId = hoveredLayerId,
         hoveredDeformerId = hoveredDeformerId,
         layerVisibility = layerVisibility,
@@ -95,6 +97,7 @@ data class CanvasPresentation(
             selectedLayerId = state.selectedLayerId,
             selectedLayerIds = state.selectedLayerIds,
             selectedDeformerId = state.selectedDeformerId,
+            selectedReferenceId = state.selectedReferenceId,
             hoveredLayerId = state.hoveredLayerId,
             hoveredDeformerId = state.hoveredDeformerId,
             layerVisibility = state.layerVisibility,
@@ -168,6 +171,7 @@ internal fun pruneCanvasSessions(state: PSD2LiveState): PSD2LiveState {
         val selectedLayer = selectedLayerId?.takeIf { it in layerIds }
         val selectedLayers = selectedLayerIds.filterTo(LinkedHashSet()) { it in layerIds }
         val selectedDeformer = selectedDeformerId?.takeIf { it in deformerIds }
+        val selectedReference = selectedReferenceId?.takeIf { id -> state.layout.references.any { it.id == id } }
         val hoveredLayer = hoveredLayerId?.takeIf { it in layerIds }
         val hoveredDeformer = hoveredDeformerId?.takeIf { it in deformerIds }
         val isolated = isolatedLayerId?.takeIf { it in layerIds }
@@ -178,7 +182,7 @@ internal fun pruneCanvasSessions(state: PSD2LiveState): PSD2LiveState {
             else lockedParameters.filterTo(HashSet()) { it in parameterIds }
         val livePreview = if (previewParameterValues.keys.all { it in parameterIds }) previewParameterValues
             else previewParameterValues.filterKeys { it in parameterIds }
-        if (selectedLayer == selectedLayerId && selectedLayers == selectedLayerIds && selectedDeformer == selectedDeformerId &&
+        if (selectedReference == selectedReferenceId && selectedLayer == selectedLayerId && selectedLayers == selectedLayerIds && selectedDeformer == selectedDeformerId &&
             hoveredLayer == hoveredLayerId && hoveredDeformer == hoveredDeformerId &&
             isolated == isolatedLayerId && snapshot === isolationSnapshot &&
             parameters === parameterValues && locked === lockedParameters &&
@@ -187,6 +191,7 @@ internal fun pruneCanvasSessions(state: PSD2LiveState): PSD2LiveState {
             selectedLayerId = selectedLayer,
             selectedLayerIds = selectedLayers,
             selectedDeformerId = selectedDeformer,
+            selectedReferenceId = selectedReference,
             hoveredLayerId = hoveredLayer,
             hoveredDeformerId = hoveredDeformer,
             isolatedLayerId = isolated,
@@ -273,4 +278,16 @@ internal fun reconcileCanvasPresentation(previous: PSD2LiveState, next: PSD2Live
         result = result.updateWorkspace(previous.activeWorkspace.id) { it.withPose(WorkspacePose.capture(previous)) }
     result = result.updateActiveWorkspace { it.withPose(shared) }
     return shared.applyTo(result)
+}
+
+/** All selection entry points, including editor gestures, share this exclusive canvas selection. */
+internal fun PSD2LiveState.reconcileSelection(previous: PSD2LiveState): PSD2LiveState {
+    if (selectedReferenceId == null) return this
+    val modelChanged = selectedLayerId != previous.selectedLayerId || selectedLayerIds != previous.selectedLayerIds ||
+        selectedDeformerId != previous.selectedDeformerId
+    return if ((modelChanged && (selectedLayerId != null || selectedLayerIds.isNotEmpty() || selectedDeformerId != null)) ||
+        layout.references.none { it.id == selectedReferenceId }) copy(selectedReferenceId = null)
+    else if (selectedLayerId != null || selectedLayerIds.isNotEmpty() || selectedDeformerId != null)
+        copy(selectedLayerId = null, selectedLayerIds = emptySet(), selectedDeformerId = null)
+    else this
 }

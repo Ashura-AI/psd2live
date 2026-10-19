@@ -577,6 +577,8 @@ data class PSD2LiveState(
 	/** Object multi-selection of the focused canvas; [selectedLayerId] is its primary item. */
 	val selectedLayerIds: Set<String> = emptySet(),
 	val selectedDeformerId: String? = null,
+	/** Reference image selected by the same canvas session as layers and deformers. */
+	val selectedReferenceId: String? = null,
 	/** Source ArtMesh waiting for the next canvas/layer pick to become its clipping mask. UI-transient. */
 	val clipMaskPickSourceId: String? = null,
 	/** The prompts turned off with "Don't show again"; mirrors [AppSettings.mutedPrompts]. */

@@ -3,8 +3,6 @@ package io.github.psd2live.ui.views
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,27 +19,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.isAltPressed
-import androidx.compose.ui.input.pointer.isPrimaryPressed
-import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
-import androidx.compose.ui.input.pointer.pointerHoverIcon
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -51,19 +38,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.core.CanvasViewport
 import io.github.psd2live.i18n.tr
-import io.github.psd2live.project.LayerCanvasRect
 import io.github.psd2live.project.LayoutReference
 import io.github.psd2live.project.PinPoint
-import io.github.psd2live.ui.BoundingHandle
-import io.github.psd2live.ui.CanvasCursors
-import io.github.psd2live.ui.TransformDrag
-import io.github.psd2live.ui.TransformHandles
 import io.github.psd2live.ui.components.CompactIconButton
 import io.github.psd2live.ui.components.IconEye
 import io.github.psd2live.ui.components.IconLock
 import io.github.psd2live.ui.components.IconPin
 import io.github.psd2live.ui.components.IconTrash
-import io.github.psd2live.ui.drawTransformBox
 import io.github.psd2live.ui.parameterKeyMarks
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
@@ -72,16 +53,14 @@ import io.github.psd2live.ui.state.ReferencePinRows
 import io.github.psd2live.ui.state.ReferenceTarget
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.handCursor
-import io.github.psd2live.ui.transformHandleAt
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
 import io.github.psd2live.ui.views.texture.FloatingMenuSection
 import io.github.psd2live.ui.views.texture.FloatingMenuSlider
 import io.github.psd2live.ui.views.texture.FloatingMenuSubmenuRow
 import io.github.psd2live.ui.views.tooloptions.GlidingColumn
+import io.github.psd2live.ui.views.tooloptions.MenuCascade
 import io.github.psd2live.ui.views.tooloptions.MenuSecondLevel
-import kotlin.math.cos
 import kotlin.math.roundToInt
-import kotlin.math.sin
 import kotlinx.serialization.json.put
 import org.umamo.runtime.model.Parameter
 import org.umamo.runtime.model.ParameterId
@@ -258,6 +237,14 @@ internal fun referenceRows(state: PSD2LiveState, under: Boolean): List<Reference
 internal fun referenceLayerRow(state: PSD2LiveState, layerId: String, name: String) = ReferenceRow(ReferenceTarget.Layer(layerId), name,
 	ReferenceMode.LAYER, state.isLayerVisible(layerId), layerId in state.layout.referencePins, false, null)
 
+/** Canvas and hierarchy resolve the same selected member and use the same actions. */
+internal fun selectedReferenceRow(state: PSD2LiveState): ReferenceRow? {
+	state.selectedReferenceId?.let { id -> return (referenceRows(state, false) + referenceRows(state, true)).firstOrNull { (it.target as ReferenceTarget.Image).id == id } }
+	val layer = state.selectedLayerId?.takeIf { it in state.layout.referenceLayerIds } ?: return null
+	val name = state.analysis?.source?.layers?.firstOrNull { it.id.raw == layer }?.name ?: layer
+	return referenceLayerRow(state, layer, name)
+}
+
 /**
  * A reference in the hierarchy: a member like a mesh, with the reference icon, where it shows (behind, in the stack,
  * in front) and its pin; a click selects it - an image for its canvas handles, a layer as any layer - and its menu
@@ -267,7 +254,7 @@ internal fun referenceLayerRow(state: PSD2LiveState, layerId: String, name: Stri
 @Composable
 internal fun ReferenceTreeRow(row: ReferenceRow, startPadding: androidx.compose.ui.unit.Dp, state: PSD2LiveState, viewModel: PSD2LiveViewModel) {
 	val colors = LocalToolColors.current
-	val selectedImage by viewModel.selectedReferenceId.collectAsState()
+	val selectedImage = state.selectedReferenceId
 	val selected = when (val t = row.target) {
 		is ReferenceTarget.Image -> selectedImage == t.id
 		is ReferenceTarget.Layer -> state.selectedLayerId == t.layerId || t.layerId in state.selectedLayerIds
@@ -276,8 +263,8 @@ internal fun ReferenceTreeRow(row: ReferenceRow, startPadding: androidx.compose.
 	var menu by remember { mutableStateOf(false) }
 	var menuAt by remember { mutableStateOf(Offset.Zero) }
 	fun select() = when (val t = row.target) {
-		is ReferenceTarget.Image -> viewModel.selectReference(if (selected) null else t.id)
-		is ReferenceTarget.Layer -> viewModel.selectLayer(if (selected) null else t.layerId)
+		is ReferenceTarget.Image -> viewModel.selectReference(t.id)
+		is ReferenceTarget.Layer -> viewModel.selectLayer(t.layerId)
 	}
 	val text = when {
 		!row.visible -> colors.textDisabled
@@ -358,7 +345,7 @@ internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: P
 	add { FloatingMenuRow(tr("references.remove"), { close(); viewModel.removeReference(row.target) }, enabled = editable,
 		icon = { IconTrash(Modifier.size(12.dp), colors.error) }) }
 	val pinIndex = if (puppet != null && puppet.parameters.isNotEmpty()) rows.lastIndex - 1 else -1
-	Row(verticalAlignment = Alignment.Top) {
+	MenuCascade {
 		GlidingColumn(Modifier.width(236.dp), rows.size, { rows[it].first }, onHover = { if (it != pinIndex) pinsOpen = false }) { rows[it].second() }
 		MenuSecondLevel("pins".takeIf { pinsOpen }) {
 			if (puppet != null) {
@@ -373,101 +360,4 @@ internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: P
 			}
 		}
 	}
-}
-
-/** The shared transform control, with a fixed pointer origin throughout each gesture. */
-@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
-@Composable
-internal fun ReferenceHandles(reference: LayoutReference, viewport: CanvasViewport, onDraft: (LayoutReference?) -> Unit,
-                              onCommit: (LayerCanvasRect, Float) -> Unit, onAction: () -> Unit = {}) {
-	val colors = LocalToolColors.current
-	val density = LocalDensity.current
-	val handles = TransformHandles(unit = density.density)
-	var draft by remember(reference) { mutableStateOf(reference) }
-	var anchorUv by remember(reference.id) { mutableStateOf<Offset?>(null) }
-	var hover by remember { mutableStateOf(BoundingHandle.NONE) }
-	var active by remember { mutableStateOf(BoundingHandle.NONE) }
-	var pointer by remember { mutableStateOf<Offset?>(null) }
-	var heldOrigin by remember { mutableStateOf<Offset?>(null) }
-	var heldSize by remember { mutableStateOf<Offset?>(null) }
-	val frame = draft.transformFrame(viewport).withAnchor(anchorUv)
-	val radians = Math.toRadians(frame.angleDeg.toDouble())
-	val margin = 40f * handles.unit
-	val extentX = (kotlin.math.abs(frame.bounds.width / 2f * cos(radians)) + kotlin.math.abs(frame.bounds.height / 2f * sin(radians))).toFloat() + margin
-	val extentY = (kotlin.math.abs(frame.bounds.width / 2f * sin(radians)) + kotlin.math.abs(frame.bounds.height / 2f * cos(radians))).toFloat() + margin
-	val left = minOf(frame.pivot.x - extentX, frame.anchor.x - margin)
-	val top = minOf(frame.pivot.y - extentY, frame.anchor.y - margin)
-	val origin = heldOrigin ?: Offset(kotlin.math.floor(left), kotlin.math.floor(top))
-	val extent = heldSize ?: Offset(maxOf(frame.pivot.x + extentX, frame.anchor.x + margin) - left,
-		maxOf(frame.pivot.y + extentY, frame.anchor.y + margin) - top)
-	val currentFrame by rememberUpdatedState(frame)
-	val currentOrigin by rememberUpdatedState(origin)
-	val currentExtent by rememberUpdatedState(extent)
-	val currentViewport by rememberUpdatedState(viewport)
-	val currentReference by rememberUpdatedState(reference)
-	val showDraft by rememberUpdatedState(onDraft)
-	val commit by rememberUpdatedState(onCommit)
-	val focus by rememberUpdatedState(onAction)
-	val cursor = if (active != BoundingHandle.NONE) active else hover
-	Box(Modifier
-		.offset { IntOffset(origin.x.roundToInt(), origin.y.roundToInt()) }
-		.size(with(density) { extent.x.toDp() }, with(density) { extent.y.toDp() })
-		.pointerHoverIcon(PointerIcon(CanvasCursors.transform(cursor, frame.angleDeg)))
-		.onPointerEvent(PointerEventType.Move) { event ->
-			val at = event.changes.first().position + currentOrigin
-			pointer = at
-			hover = transformHandleAt(at, currentFrame, handles)
-		}
-		.onPointerEvent(PointerEventType.Exit) { if (active == BoundingHandle.NONE) { hover = BoundingHandle.NONE; pointer = null } }
-		.drawBehind {
-			translate(-origin.x, -origin.y) {
-				drawTransformBox(frame, cursor, colors, handles, pointer = pointer, active = active != BoundingHandle.NONE)
-			}
-		}
-		.pointerInput(reference.id, handles) {
-			awaitEachGesture {
-				val down = awaitFirstDown()
-				if (!currentEvent.buttons.isPrimaryPressed) return@awaitEachGesture
-				val from = currentReference
-				val pressedFrame = currentFrame
-				val pressedOrigin = currentOrigin
-				val press = down.position + pressedOrigin
-				val handle = transformHandleAt(press, pressedFrame, handles)
-				if (handle == BoundingHandle.NONE) return@awaitEachGesture
-				heldOrigin = pressedOrigin
-				heldSize = currentExtent
-				active = handle
-				down.consume()
-				val drag = TransformDrag(handle, pressedFrame.bounds, pressedFrame.pivot, pressedFrame.angleDeg, press, pressedFrame.anchor)
-				val scale = currentViewport.scale.toFloat()
-				var last = from
-				var released = false
-				try {
-					while (true) {
-						val event = awaitPointerEvent()
-						val change = event.changes.firstOrNull { it.id == down.id } ?: break
-						if (!change.pressed) { released = true; break }
-						if (change.isConsumed) break
-						val at = change.position + pressedOrigin
-						pointer = at
-						if (handle == BoundingHandle.ANCHOR) anchorUv = pressedFrame.anchorDraggedTo(at, handles.unit)
-						else {
-							val result = drag.apply(at, null, event.keyboardModifiers.isShiftPressed, event.keyboardModifiers.isAltPressed)
-							last = from.transformed(pressedFrame, result, scale)
-							draft = last
-							showDraft(last)
-						}
-						change.consume()
-					}
-					if (released && last != from) commit(last.rect, last.rotation)
-					else { draft = from; showDraft(null) }
-				} finally {
-					if (!released) { draft = from; showDraft(null) }
-					active = BoundingHandle.NONE
-					heldOrigin = null
-					heldSize = null
-					focus()
-				}
-			}
-		})
 }

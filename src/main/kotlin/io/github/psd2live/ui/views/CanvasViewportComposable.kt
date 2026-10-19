@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.input.key.*
 import io.github.psd2live.ui.CanvasEditor
+import io.github.psd2live.ui.drawTransformBox
 import io.github.psd2live.ui.CanvasTool
 import io.github.psd2live.ui.CreatePlacementKind
 import io.github.psd2live.ui.EditHierarchyMode
@@ -91,6 +92,7 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
@@ -442,17 +444,21 @@ fun CanvasViewportComposable(
 	fun referenceImage(raster: org.umamo.format.art.LayerRaster) = referenceImages.getOrPut(raster) {
 		io.github.psd2live.core.PreviewRenderer.rasterImage(raster.width, raster.height, raster.rgba).toComposeImageBitmap()
 	}
-	val selectedReferenceId by viewModel.selectedReferenceId.collectAsState()
+	val selectedReferenceId = canvasState.selectedReferenceId
+	val referenceInteraction = remember { ReferenceCanvasInteraction() }
+	val referenceHandles = io.github.psd2live.ui.TransformHandles(unit = density)
 	val referenceOpacityDraft = viewModel.referenceOpacityDraft.collectAsState()
 	// Reference images pinned to another keyform than the edit pose, as reference layers pinned away.
 	val pinnedAwayImages = canvasState.pinnedAwayReferenceImageIds
 	// A reference being moved, scaled or turned on this canvas, shown as it goes until the edit lands. Only the draw
 	// reads it, so a drag redraws the canvas without composing it again.
-	val referenceDraft = remember { mutableStateOf<io.github.psd2live.project.LayoutReference?>(null) }
-	LaunchedEffect(layoutReferences) { referenceDraft.value = null }
+	LaunchedEffect(layoutReferences) { referenceInteraction.settle() }
+	LaunchedEffect(selectedReferenceId, mode) {
+		if (mode != CanvasMode.EDIT || referenceInteraction.referenceId != selectedReferenceId) referenceInteraction.cancel()
+	}
 	val referencesShown = viewOptions.showReference && mode == CanvasMode.EDIT
 	fun shownReferences() = if (!referencesShown) emptyList() else layoutReferences
-		.map { (r, raster) -> (referenceDraft.value?.takeIf { it.id == r.id } ?: r) to raster }
+		.map { (r, raster) -> (referenceInteraction.draft?.takeIf { it.id == r.id } ?: r) to raster }
 		.map { (r, raster) -> (referenceOpacityDraft.value?.takeIf { it.first == r.id }?.let { r.copy(opacity = it.second) } ?: r) to raster }
 		.filter { (r, _) -> r.visible && r.id !in pinnedAwayImages }
 	val layerDensity = remember(previewModel) {
@@ -614,6 +620,15 @@ fun CanvasViewportComposable(
 	// steps at the project's rate whatever this is, interpolating between its steps.
 	val pumpInterval = frameIntervalNanos(previewFrameRate)
 	// The window whose Skia context this preview draws in; the frame's texture lives there.
+	fun selectedReference() = shownReferences().firstOrNull { it.first.id == viewModel.uiState.value.forCanvas(canvasId).selectedReferenceId }?.first
+	fun referenceAt(at: Offset): io.github.psd2live.project.LayoutReference? {
+		val viewport = currentViewportFor(viewSize)
+		val references = shownReferences().map { it.first }
+		return references.lastOrNull { !it.under && it.contains(at, viewport) }
+			?: references.lastOrNull { it.under && it.contains(at, viewport) }
+				?.takeIf { editor.layerCandidates(at, viewport).isEmpty() }
+	}
+
 	val previewGpu = remember(gpuPrimary, awtWindow) { SkiaGpu.of(awtWindow) }
 	// The GPU edit canvas and its overlay are composited together: the overlay paints over the artwork's hole.
 	val editComposited = mode == CanvasMode.EDIT && gpuReady && previewModel != null
@@ -776,7 +791,9 @@ fun CanvasViewportComposable(
 					showContextMenu = false
 					true
 				} else {
-					if (viewModel.swingSession != null) viewModel.endSwing()
+					if (referenceInteraction.active) referenceInteraction.cancel()
+					else if (selectedReference() != null) viewModel.selectReference(null, canvasId, canvasState.activeWorkspace.id)
+					else if (viewModel.swingSession != null) viewModel.endSwing()
 					else if (editor.placement != null) editor.cancelPlacement() else editor.cancel()
 					true
 				}
@@ -798,7 +815,8 @@ fun CanvasViewportComposable(
 				}
 			}
 			ShortcutAction.DELETE_SELECTION -> {
-				if (editor.tool == CanvasTool.KNIFE || editor.drawingPath) editor.undoDraftPoint()
+				if (selectedReference() != null) { referenceInteraction.cancel(); viewModel.removeReference(requireNotNull(selectedReference()).id) }
+				else if (editor.tool == CanvasTool.KNIFE || editor.drawingPath) editor.undoDraftPoint()
                         else if (editor.tool == CanvasTool.CREATE_DEFORM_PATH || editor.activePath != null) editor.deletePathPoint()
 				else if (editor.hierarchyMode == EditHierarchyMode.EDIT) editor.topology("delete")
 				true
@@ -960,6 +978,9 @@ fun CanvasViewportComposable(
 			.pointerHoverIcon(PointerIcon(when {
                 isDragging && zoomDragAnchor != null -> Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR)
                 isDragging -> Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
+                mode == CanvasMode.EDIT && canvasState.selectedReferenceId != null -> io.github.psd2live.ui.CanvasCursors.transform(
+                    if (referenceInteraction.active) referenceInteraction.activeHandle else referenceInteraction.hovered,
+                    layoutReferences.firstOrNull { it.first.id == canvasState.selectedReferenceId }?.first?.rotation ?: 0f)
                 mode == CanvasMode.EDIT -> editor.activeCursor()
                 else -> Cursor.getDefaultCursor()
             }))
@@ -982,6 +1003,10 @@ fun CanvasViewportComposable(
                 // The floating bars and rails consume the presses that land on them (canvasChrome), whatever
                 // their size at the moment; the strips along the top and bottom edge stay out of reach.
                 if(change.isConsumed) return@onPointerEvent
+                if (mode == CanvasMode.EDIT && referenceInteraction.active) {
+                    if (event.button == PointerButton.Primary) referenceInteraction.cancel()
+                    else { change.consume(); return@onPointerEvent }
+                }
                 if(mode == CanvasMode.EDIT && previewModel != null) {
                     val p=change.position/density
                     if(p.y<40f || p.y>viewSize.height/density-25f) return@onPointerEvent
@@ -1013,8 +1038,9 @@ fun CanvasViewportComposable(
                 // A right press that starts no gesture opens the mode/tool context menu (parameters + topology/paint actions).
                 if (mode == CanvasMode.EDIT && previewModel != null && event.button == PointerButton.Secondary &&
                     gesture == null && !isDragging && !editor.inGesture && !editor.adjustingBrush &&
-                    viewModel.swingSession == null && canvasContextMenuHasContent(editor)
+                    viewModel.swingSession == null && (selectedReference() != null || referenceAt(change.position) != null || canvasContextMenuHasContent(editor))
                 ) {
+                    referenceAt(change.position)?.let { viewModel.selectReference(it.id, canvasId, canvasState.activeWorkspace.id) }
                     contextMenuOffset = change.position
                     showContextMenu = true
                     change.consume()
@@ -1047,6 +1073,20 @@ fun CanvasViewportComposable(
                         change.consume()
                         return@onPointerEvent
                     }
+                    if (!canvasState.workspaceEditBusy && !canvasState.isBusy) {
+                        val viewport = currentViewportFor(viewSize)
+                        val selected = selectedReference()
+                        if (selected != null && referenceInteraction.press(selected, viewport, change.position, referenceHandles)) {
+                            change.consume(); return@onPointerEvent
+                        }
+                        val picked = if (editor.objectMode) referenceAt(change.position) else null
+                        if (picked != null) {
+                            viewModel.selectReference(picked.id, canvasId, canvasState.activeWorkspace.id)
+                            referenceInteraction.press(picked, viewport, change.position, referenceHandles)
+                            change.consume(); return@onPointerEvent
+                        }
+                        if (selected != null) viewModel.selectReference(null, canvasId, canvasState.activeWorkspace.id)
+                    }
                     var handled = false
                     editorGuard {
                         handled = editor.press(change.position,computeViewport(previewModel,viewSize.width,viewSize.height),event.keyboardModifiers.isShiftPressed,event.keyboardModifiers.isAltPressed,event.keyboardModifiers.isPrimaryPressed)
@@ -1068,6 +1108,11 @@ fun CanvasViewportComposable(
 			}
 			.onPointerEvent(PointerEventType.Release) { event ->
 				val change = event.changes.firstOrNull()
+                if (mode == CanvasMode.EDIT && event.button == PointerButton.Primary && referenceInteraction.active) {
+                    referenceInteraction.release()?.let { viewModel.placeReference(it.id, it.rect, it.rotation) }
+                    change?.consume()
+                    return@onPointerEvent
+                }
                 // Must be tested before the consumed check below, and the button test is load-bearing: a release of
                 // another button during an adjustment has to fall through to the pan-end block, otherwise
                 // isDragging stays true and the canvas pans forever.
@@ -1151,6 +1196,16 @@ fun CanvasViewportComposable(
                 // would leave every paint tool picking; the pointer's own modifiers are the truth.
                 if (mode == CanvasMode.EDIT) editor.altHeld = event.keyboardModifiers.isAltPressed
                 if (mode == CanvasMode.EDIT && previewModel != null && !isDragging) {
+                    if (referenceInteraction.active) {
+                        if (!event.buttons.isPrimaryPressed) {
+                            referenceInteraction.release()?.let { viewModel.placeReference(it.id, it.rect, it.rotation) }
+                            change.consume(); return@onPointerEvent
+                        }
+                        referenceInteraction.move(change.position, event.keyboardModifiers.isShiftPressed, event.keyboardModifiers.isAltPressed, referenceHandles)
+                        change.consume(); return@onPointerEvent
+                    }
+                    referenceInteraction.hover(selectedReference(), currentViewportFor(viewSize), change.position, referenceHandles)
+                    if (selectedReference() != null) { editor.clearHover(); return@onPointerEvent }
                     // The brush gesture takes over the pointer: skipping move() here is what keeps the outline
                     // parked at the press point, so the viewport stops feeding hover updates for the duration.
                     // A move with no button held after a missed release closes the gesture instead of
@@ -1210,7 +1265,7 @@ fun CanvasViewportComposable(
 					change.consume()
 					return@onPointerEvent
 				}
-				if (mode == CanvasMode.EDIT && (editor.inGesture || editor.adjustingBrush)) return@onPointerEvent
+				if (mode == CanvasMode.EDIT && (editor.inGesture || editor.adjustingBrush || referenceInteraction.active)) return@onPointerEvent
                 // Compose turns Shift + wheel into a horizontal scroll; it zooms the same.
                 val delta = if (change.scrollDelta.y != 0f) change.scrollDelta.y else change.scrollDelta.x
                 zoomAt(change.position.x, change.position.y, delta)
@@ -1218,7 +1273,23 @@ fun CanvasViewportComposable(
 	) {
 		// The edit canvas is drawn by the window compositor under its picture when it composites: a pose, a hover or
 		// a dragged point then records this canvas and its overlay again, not the whole window.
-		CompositedCanvas(Modifier.fillMaxSize(), previewGpu, "$gpuKey/art", editComposited, canvasOriginState, layer = gpuKey) {
+		if (mode == CanvasMode.EDIT && previewModel != null) {
+			CompositedCanvas(Modifier.fillMaxSize(), previewGpu, "$gpuKey/reference-background", editComposited, canvasOriginState,
+				order = -1, layer = gpuKey) {
+				when (background.kind) {
+					// One cached texture fill replaces thousands of per-frame checkerboard draw calls.
+					CanvasBackgroundKind.CHECKER -> drawRect(brush = checkerboardBrush)
+					CanvasBackgroundKind.SOLID -> drawRect(color = solidBackground)
+					// Src overwrites the chrome already painted underneath, so the transparent window shows
+					// the desktop here. Not quite zero alpha: Windows passes clicks on fully clear pixels
+					// through to whatever is behind the window, which would take pan and zoom with them.
+					CanvasBackgroundKind.TRANSPARENT -> drawRect(color = TransparentCanvasFill, blendMode = BlendMode.Src)
+				}
+				val viewport = currentViewportFor(viewSize)
+				for ((reference, raster) in shownReferences()) if (reference.under) drawReference(reference, referenceImage(raster), viewport)
+			}
+		}
+		CompositedCanvas(Modifier.fillMaxSize(), previewGpu, "$gpuKey/art", editComposited, canvasOriginState, clear = mode != CanvasMode.EDIT, layer = gpuKey) {
 			// Same placement read as the mesh overlay, so both pictures invalidate together.
 			canvasOrigin.x
 			val w = size.width.toInt().coerceAtLeast(1)
@@ -1231,7 +1302,7 @@ fun CanvasViewportComposable(
 				return@CompositedCanvas
 			}
 
-			when (background.kind) {
+			if (mode != CanvasMode.EDIT) when (background.kind) {
 				// One cached texture fill replaces thousands of per-frame checkerboard draw calls.
 				CanvasBackgroundKind.CHECKER -> drawRect(brush = checkerboardBrush)
 				CanvasBackgroundKind.SOLID -> drawRect(color = solidBackground)
@@ -1493,7 +1564,7 @@ fun CanvasViewportComposable(
 					}
 
 					// 3a''. Reference images and layers under the model: drawn before the artwork, whose frame clears to transparent.
-					for ((reference, raster) in shownReferences()) if (reference.under) drawReference(reference, referenceImage(raster), viewport)
+					// Background references are drawn by the separate live pass below the rig.
 					val referenceLayersShown = mode == CanvasMode.EDIT && showTexture && model.referenceLayerIds.isNotEmpty()
 					if (referenceLayersShown && !viewOptions.referenceLayersOver) drawIntoCanvas { target ->
 						ReferenceLayerPainter.paint(target.nativeCanvas, model, geometry, viewport, targetVisibleLayerIds)
@@ -1576,7 +1647,7 @@ fun CanvasViewportComposable(
 						drawPath(path, io.github.psd2live.ui.views.texture.heatColor(io.github.psd2live.ui.state.TextureDensity.heat(value)).copy(alpha = 0.5f))
 					}
 				}
-				for ((reference, raster) in shownReferences()) if (!reference.under) drawReference(reference, referenceImage(raster), viewport)
+				// Foreground reference images are in their own live canvas above the artwork.
 
 				// The Java2D guide pass is the software path's: with the GPU every guide is in its frame.
 				val guideImage = if (gpuReady) null else guideCache.imageFor(guideKey, w, h, panShift(guideKey)) { g ->
@@ -1869,6 +1940,18 @@ fun CanvasViewportComposable(
                 onAction = { focusRequester.requestFocus() },
             )
         }
+		if (mode == CanvasMode.EDIT && referencesShown) {
+			CompositedCanvas(Modifier.fillMaxSize(), previewGpu, "$gpuKey/references", editComposited, canvasOriginState,
+				order = 2, clear = false, layer = gpuKey) {
+				val viewport = currentViewportFor(viewSize)
+				for ((reference, raster) in shownReferences()) if (!reference.under) drawReference(reference, referenceImage(raster), viewport)
+				val selected = shownReferences().firstOrNull { it.first.id == selectedReferenceId }?.first
+				if (selected != null && !selected.locked) drawTransformBox(
+					referenceInteraction.frame(selected, viewport),
+					if (referenceInteraction.active) referenceInteraction.activeHandle else referenceInteraction.hovered,
+					colors, referenceHandles, pointer = referenceInteraction.pointer, active = referenceInteraction.active)
+			}
+		}
 		if (mode == CanvasMode.PREVIEW && previewModel != null) {
 			// The same mode menu as the edit canvas, on Preview: any other row goes back to editing.
 			PreviewModeBar(editor) { focusRequester.requestFocus() }
@@ -2001,13 +2084,6 @@ fun CanvasViewportComposable(
 						tr("canvas.staleRegeneration.preview") to { viewModel.previewGenerationUpdate(); focusRequester.requestFocus() },
 					),
 				)
-			}
-			// References use the same transform frame, handles and drag rules as the model selection.
-			val handled = layoutReferences.firstOrNull { it.first.id == selectedReferenceId }?.first
-				?.takeIf { mode == CanvasMode.EDIT && it.visible && !it.locked && viewOptions.showReference && it.id !in pinnedAwayImages }
-			if (handled != null && viewSize.width > 0) {
-				ReferenceHandles(handled, currentViewportFor(viewSize), onDraft = { referenceDraft.value = it },
-					onCommit = { rect, rotation -> viewModel.placeReference(handled.id, rect, rotation) }, onAction = { focusRequester.requestFocus() })
 			}
 			// While images or a material are carried: big targets for what a drop on the canvas itself does not do.
 			if (mode == CanvasMode.EDIT) {

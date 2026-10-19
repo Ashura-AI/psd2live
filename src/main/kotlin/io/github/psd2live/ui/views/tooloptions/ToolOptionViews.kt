@@ -295,7 +295,7 @@ internal fun ToolOptionMenu(editor: CanvasEditor, onDismiss: () -> Unit, onActio
     val entries = menuEntries(editor, menuOptions(editor))
     var openId by remember { mutableStateOf<String?>(null) }
     val open = entries.filterIsInstance<MenuEntry.Level>().firstOrNull { it.id == openId }
-    Row(verticalAlignment = Alignment.Top) {
+    MenuCascade {
         GlidingColumn(
             modifier = Modifier.width(236.dp),
             count = entries.size,
@@ -329,24 +329,6 @@ internal fun ToolOptionMenu(editor: CanvasEditor, onDismiss: () -> Unit, onActio
                     else -> MenuOption(editor, level.options[i - 1], onDismiss, onAction)
                 }
             }
-        }
-    }
-}
-
-/** Shared second-level placement and motion for canvas and hierarchy context menus. */
-@Composable
-internal fun MenuSecondLevel(id: String?, content: @Composable () -> Unit) {
-    val colors = LocalToolColors.current
-    AnimatedVisibility(
-        id != null,
-        enter = fadeIn(tween(Motion.Fade, easing = LinearOutSlowInEasing)) + slideInHorizontally(tween(Motion.Fade, easing = FastOutSlowInEasing)) { -it / 12 },
-        exit = fadeOut(tween(Motion.Instant, easing = FastOutLinearInEasing)),
-    ) {
-        val rule = colors.border.copy(alpha = 0.5f)
-        key(id) {
-            Box(Modifier.padding(start = 4.dp)
-                .drawBehind { drawLine(rule, androidx.compose.ui.geometry.Offset(0f, 4f), androidx.compose.ui.geometry.Offset(0f, size.height - 4f), 1f) }
-                .padding(start = 4.dp)) { content() }
         }
     }
 }

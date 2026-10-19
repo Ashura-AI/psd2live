@@ -16,7 +16,7 @@ import io.github.psd2live.ui.tooloptions.menuOptions
 import io.github.psd2live.ui.views.tooloptions.ToolOptionMenu
 
 /** Whether a right press on [editor]'s canvas has a menu to open: the tool in hand has options or actions for it. */
-internal fun canvasContextMenuHasContent(editor: CanvasEditor): Boolean = menuOptions(editor).isNotEmpty()
+internal fun canvasContextMenuHasContent(editor: CanvasEditor): Boolean = selectedReferenceRow(editor.state) != null || menuOptions(editor).isNotEmpty()
 
 /**
  * The canvas context menu, opened where the right press landed: the tool in hand's actions and its most used
@@ -33,7 +33,9 @@ internal fun CanvasContextMenu(
 ) {
     if (!expanded && !canvasContextMenuHasContent(editor)) return
     PressMenu(expanded, clickOffset, onDismissRequest) {
-        ToolOptionMenu(editor, onDismiss = onDismissRequest, onAction = onAction)
+        val reference = selectedReferenceRow(editor.state)
+        if (reference != null) ReferenceMenu(reference, editor.state, editor.viewModel) { onDismissRequest(); onAction() }
+        else ToolOptionMenu(editor, onDismiss = onDismissRequest, onAction = onAction)
     }
 }
 

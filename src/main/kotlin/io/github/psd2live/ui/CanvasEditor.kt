@@ -997,6 +997,7 @@ internal class CanvasEditor(
 		if (id != null && viewModel.tryApplyClipMaskPick(id)) return
         viewModel.updateCanvasPresentation(workspaceId, canvasId, CanvasMode.EDIT) {
             it.copy(
+                selectedReferenceId = null,
                 selectedLayerId = id,
                 selectedLayerIds = if (id == null) emptySet() else objects.takeIf { id in it } ?: setOf(id),
                 selectedDeformerId = if (id != null) null else it.selectedDeformerId,
@@ -1488,16 +1489,15 @@ internal class CanvasEditor(
     var subdivideEdges by mutableStateOf<Set<MeshElement.Edge>>(emptySet())
     private var subdividing = false
     val objectMode get() = hierarchyMode == EditHierarchyMode.SELECT
-    private var selectedObjects by mutableStateOf<Set<String>>(emptySet())
     var objects: Set<String>
-        get() = selectedObjects
+        get() = state.selectedLayerIds.ifEmpty { setOfNotNull(state.selectedLayerId) }
         set(value) {
             val ordered = LinkedHashSet(value)
-            if (selectedObjects == ordered) return
+            if (objects == ordered && state.selectedReferenceId == null) return
             glueSwapped = false
-            selectedObjects = ordered
             viewModel.updateCanvasPresentation(workspaceId, canvasId, CanvasMode.EDIT) { current ->
                 current.copy(
+                    selectedReferenceId = null,
                     selectedLayerIds = ordered,
                     selectedLayerId = current.selectedLayerId?.takeIf { it in ordered } ?: ordered.lastOrNull(),
                 )
@@ -3264,7 +3264,7 @@ internal class CanvasEditor(
     }
 
     /** Layers under [pos], in the order a Ctrl-click cycles them. Empty when nothing is pickable. */
-    private fun layerCandidates(pos: Offset, viewport: CanvasViewport): List<String> {
+    internal fun layerCandidates(pos: Offset, viewport: CanvasViewport): List<String> {
         val source = state.previewModel ?: return emptyList()
         val geometry = evaluatedGeometry() ?: return emptyList()
         if (cachedBoundsGeometry !== geometry) {

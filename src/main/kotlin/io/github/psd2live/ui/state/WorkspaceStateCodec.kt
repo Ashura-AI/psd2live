@@ -121,6 +121,7 @@ internal object WorkspaceStateCodec {
     }
 
     private fun encodePresentation(p: CanvasPresentation, includePreviewControls: Boolean = true): JsonObject = buildJsonObject {
+        put("selectedReferenceId", p.selectedReferenceId)
         put("selectedLayerId", p.selectedLayerId)
         putJsonArray("selectedLayerIds") { p.selectedLayerIds.forEach { add(it) } }
         put("selectedDeformerId", p.selectedDeformerId)
@@ -140,6 +141,7 @@ internal object WorkspaceStateCodec {
     private fun decodePresentation(value: JsonElement?): CanvasPresentation {
         val obj = value as? JsonObject ?: return CanvasPresentation()
         return CanvasPresentation(
+            selectedReferenceId = obj["selectedReferenceId"]?.jsonPrimitive?.contentOrNull,
             selectedLayerId = obj["selectedLayerId"]?.jsonPrimitive?.contentOrNull,
             selectedLayerIds = obj["selectedLayerIds"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet()
                 ?: setOfNotNull(obj["selectedLayerId"]?.jsonPrimitive?.contentOrNull),
@@ -447,6 +449,7 @@ internal object WorkspaceStateCodec {
         put("logPanelExpanded", state.logPanelExpanded)
         put("logPanelHeight", state.logPanelHeight)
         put("selectedHistoryNodeId", state.selectedHistoryNodeId)
+        put("selectedReferenceId", state.selectedReferenceId)
         put("selectedLayerId", state.selectedLayerId)
         putJsonArray("selectedLayerIds") { state.selectedLayerIds.forEach { add(it) } }
         put("selectedDeformerId", state.selectedDeformerId)
@@ -590,6 +593,7 @@ internal object WorkspaceStateCodec {
         advancedExpanded = value["advancedExpanded"]?.jsonPrimitive?.boolean ?: base.advancedExpanded,
         logPanelHeight = value["logPanelHeight"]?.jsonPrimitive?.float ?: base.logPanelHeight,
         selectedHistoryNodeId = if ("selectedHistoryNodeId" in value) value["selectedHistoryNodeId"]?.jsonPrimitive?.contentOrNull else base.selectedHistoryNodeId,
+        selectedReferenceId = if ("selectedReferenceId" in value) value["selectedReferenceId"]?.jsonPrimitive?.contentOrNull else base.selectedReferenceId,
         selectedLayerId = if ("selectedLayerId" in value) value["selectedLayerId"]?.jsonPrimitive?.contentOrNull else base.selectedLayerId,
         // Absent means "not part of this payload", as for selectedLayerId: a settings-only decode (every
         // authoring commit runs one) must keep the live multi-selection rather than empty it.
