@@ -1,5 +1,9 @@
 package io.github.psd2live.application
 
+import io.github.psd2live.core.Cmo3ImportMode
+import io.github.psd2live.core.Cmo3ModelImport
+import io.github.psd2live.core.PipelineConfig
+
 import io.github.psd2live.core.LayerSizeBudget
 import io.github.psd2live.project.LayerCanvasRect
 import io.github.psd2live.project.MaterialKind
@@ -191,22 +195,14 @@ internal object WorkspaceMaterialFiles {
     fun name(raw: String, fallback: String): String =
         raw.filterNot(Char::isISOControl).trim().take(128).trim().ifEmpty { fallback.filterNot(Char::isISOControl).take(128).ifEmpty { "material" } }
 
-    /** A CMO3's layered images as materials, or its atlas pages when it holds none. */
+    /**
+     * A CMO3's ArtMesh images as materials: each mesh's pixels as importing the model as a project gives its layers
+     * ([Cmo3ModelImport]), so the library and the imported model hold the same images.
+     */
     fun cmo3(bytes: ByteArray, folder: List<String>, origin: String, checkCancelled: () -> Unit = {}): List<Entry> {
-        val model = Cmo3.read(bytes)
-        val root = model.root as? CModelSource ?: throw IllegalArgumentException("Invalid CMO3 model: $origin")
-        val images = (root.textureManager as? CTextureManager)?._rawImages.let(Cmo3Import::elementsOf)
-            .mapNotNull { (it as? LayeredImageWrapper)?.image as? CLayeredImage }
-        val layered = images.flatMap { image ->
-            val id = Cmo3Import.uuidOf(image.guid) ?: return@flatMap emptyList()
-            val art = cmo3SourceArtOf(root, ArtSourceId(id), model::extractLayerPng) ?: return@flatMap emptyList()
-            layered(art, if (images.size > 1) folder + (image.name ?: id) else folder, origin, checkCancelled)
-        }
-        if (layered.isNotEmpty()) return layered
-        return cmo3AtlasPages(root, model::extractLayerPng).pageBytes.mapIndexed { index, png ->
-            checkCancelled()
-            Entry("texture_$index", folder, MaterialKind.BITMAP, bitmap(png, "texture_$index.png"), origin = "$origin#texture_$index")
-        }
+        val (art, _) = Cmo3ModelImport.prepare(bytes, Cmo3ImportMode.NEW, null, PipelineConfig())
+        checkCancelled()
+        return layered(art, folder, origin, checkCancelled)
     }
 
     /** An SVG drawing as a vector material, rendered at its own size (its width and height, else its view box). */

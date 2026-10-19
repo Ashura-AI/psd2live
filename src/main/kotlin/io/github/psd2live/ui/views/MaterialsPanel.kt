@@ -328,6 +328,19 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 					}
 				}
 			}
+			// Projects made before every layer had a material: offer to give the rest theirs.
+			val unlinked = remember(state.layout, state.analysis?.source, state.deletedLayerIds) {
+				state.analysis?.source?.layers?.count { layer ->
+					layer.id.raw !in state.deletedLayerIds && layer.raster.width > 0 && layer.raster.height > 0 &&
+						state.layout.layerMaterials[layer.id.raw]?.let(library::item) == null
+				} ?: 0
+			}
+			if (unlinked > 0) Row(Modifier.fillMaxWidth().background(colors.windowBackground).padding(horizontal = 8.dp, vertical = 3.dp),
+				verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+				Text(tr("materials.adopt.notice", unlinked), color = colors.textMuted, fontSize = 10.5.sp, maxLines = 2,
+					overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+				io.github.psd2live.ui.components.CompactButton(tr("materials.adopt.action"), onClick = { vm.adoptLayerMaterials() }, height = 22.dp)
+			}
 			Divider(color = colors.divider)
 			if (!loaded) {
 				Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

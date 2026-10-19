@@ -69,6 +69,8 @@ internal object WorkspaceLayoutOperations {
             put("items", schema(gesture, listOf("mode")))
         }), listOf("state", "id")),
         WorkspaceMaterialEdits.UNLINK to schema(state + mapOf("layer_ids" to strings(1, 128)), listOf("state", "layer_ids")),
+        WorkspaceMaterialEdits.FORK to schema(state + mapOf("layer_ids" to strings(1, 128)), listOf("state", "layer_ids")),
+        WorkspaceMaterialEdits.ADOPT to schema(state, listOf("state")),
         WorkspaceMaterialEdits.MARK_REFERENCE to schema(state + mapOf("ids" to strings(1, 1024), "reference" to boolean()), listOf("state", "ids", "reference")),
         WorkspaceMaterialEdits.REFERENCE to schema(state + mapOf("material_id" to nullableString(), "rect" to rect,
             "opacity" to range(0, 1), "visible" to boolean()), listOf("state")),
@@ -125,7 +127,9 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialPixels.PAINT to "Paint on a material item's own pixels, in its pixel coordinates (origin at the top left), with the raster engine the paint operation uses: one gesture given by mode and its fields, or gestures, a list of up to ${WorkspaceMaterialPixels.MAX_GESTURES} applied in order (a painting session's strokes as one edit). " +
             "brush, pencil and eraser take points, radius and hardness; bucket a point and tolerance; shape from, to, shape, stroke_width and filled; clear erases everything. color is RGBA bytes (default opaque black), opacity 0..1. " +
             "Every layer showing the item takes the new pixels over its unchanged canvas rectangle, as layer_replace_image does; a vector item becomes a bitmap of its current raster. One history edit.",
-        WorkspaceMaterialEdits.UNLINK to "Unlink layers from the materials they show: their pixels stay as they are, become their own, and painting them no longer paints the material. A layer linked to a material shows its pixels; painting it (Paint mode, source_paint_*, paint_session_begin with its layer_id) paints the material and every layer showing it, and an edit that gives it other pixels unlinks it. One history edit.",
+        WorkspaceMaterialEdits.UNLINK to "Same as material_fork; kept for older callers.",
+        WorkspaceMaterialEdits.FORK to "Give layers that share a material with other layers a copy of it of their own (beside it in the library, the pixels unchanged); a layer showing no material gets one. Every layer shows a material, its one source: painting a layer that shares its material (Paint mode, source_paint_*, paint_session_begin with its layer_id) paints the material and every layer showing it; any other edit that gives a layer other pixels takes its material along when no other layer shows it, else gives the layer a copy of its own, so a link never breaks. One history edit.",
+        WorkspaceMaterialEdits.ADOPT to "Give every present layer that shows no material one of its own, in the library folder Layers (its groups as subfolders). Projects made before every layer had a material have such layers; imports and edits give new layers materials themselves. One history edit; nothing to do adds none.",
         WorkspaceMaterialEdits.MARK_REFERENCE to "Mark material items - and every item in the folders given - to place as reference layers (reference true) or as model layers (false) " +
             "when layer_place does not say. A layout manifest's reference layers import marked. Placed layers already on the canvas keep what they are; layer_mark_reference changes them. One history edit.",
         WorkspaceMaterialEdits.REFERENCE to "Set the reference image: a material item laid over the canvas at opacity (default 0.5) to place layers against and compare the model with. " +
@@ -184,7 +188,8 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialPixels.PAINT -> "Painted material ${request.getValue("id").jsonPrimitive.content}"
         WorkspaceMaterialEdits.REFERENCE -> "Set the reference image"
         WorkspaceMaterialEdits.CROP -> "Cropped material ${request.getValue("id").jsonPrimitive.content}"
-        WorkspaceMaterialEdits.UNLINK -> "Unlinked ${request.getValue("layer_ids").jsonArray.size} layer(s) from their materials"
+        WorkspaceMaterialEdits.UNLINK, WorkspaceMaterialEdits.FORK -> "Gave ${request.getValue("layer_ids").jsonArray.size} layer(s) materials of their own"
+        WorkspaceMaterialEdits.ADOPT -> "Gave every layer a material"
         WorkspaceMaterialPixels.SET_PIXELS -> "Painted material ${request.getValue("id").jsonPrimitive.content}"
         WorkspaceDrawingEdits.DRAW -> "Drew ${request.getValue("id").jsonPrimitive.content}"
         WorkspaceDrawingEdits.KIT -> "Set the drawing kit"
@@ -247,8 +252,8 @@ internal fun registerLayoutOperations(registry: WorkspaceOperationRegistry, port
 
     registry.register(WorkspaceOperationDefinition(WorkspaceLayoutOperations.IMPORT,
         "Import 1..${WorkspaceMaterialFiles.MAX_PATHS} absolute paths into the material library under folder_id: PNG, BMP, TIFF, WebP and JPEG images as items; " +
-            "a PSD as a folder of its layers (its groups as subfolders, each layer keeping its place, opacity and visibility); a CMO3's layered images the same way " +
-            "(its texture pages when it has none - the whole model imports with project_import_cmo3); an SVG as a vector item rendered at its own size " +
+            "a PSD as a folder of its layers (its groups as subfolders, each layer keeping its place, opacity and visibility); a CMO3 as a folder of its ArtMesh images, each the pixels importing the model " +
+            "as a project (project_import_cmo3) gives that mesh's layer; an SVG as a vector item rendered at its own size " +
             "(material_set_resolution changes it); a folder as a folder of the files it holds, its subfolders nested as they are (hidden ones left out, names in number order). Each image is at most 16 megapixels. as_reference=true also lays the first new material over the canvas as the reference image. The library is part of the " +
             "document: one history edit, undoable. Returns a process-owned job handle; the result's changed list names the new materials (material:<id>).",
         WorkspaceLayoutOperations.schema(mapOf("state" to buildJsonObject { put("type", "string"); put("minLength", 1) },

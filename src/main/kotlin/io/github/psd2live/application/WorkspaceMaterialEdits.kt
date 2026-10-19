@@ -54,7 +54,9 @@ internal object WorkspaceMaterialEdits {
     const val REFERENCE = "layout_set_reference"
     const val CROP = "material_crop"
     const val MARK_REFERENCE = "material_mark_reference"
-    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, REFERENCE, CROP, MARK_REFERENCE) + WorkspaceMaterialPixels.supported +
+    const val FORK = "material_fork"
+    const val ADOPT = "material_adopt_layers"
+    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, FORK, ADOPT, REFERENCE, CROP, MARK_REFERENCE) + WorkspaceMaterialPixels.supported +
         WorkspaceDrawingEdits.supported + WorkspaceMaterialPeel.supported
     const val MAX_NAME = 128
 
@@ -81,7 +83,8 @@ internal object WorkspaceMaterialEdits {
             RENAME -> rename(document, text("id"), text("name"))
             DELETE -> delete(document, strings("ids").orEmpty())
             TAG -> tag(document, strings("ids").orEmpty(), strings("set"), strings("add").orEmpty(), strings("remove").orEmpty())
-            UNLINK -> WorkspaceMaterialLinks.unlink(document, strings("layer_ids").orEmpty())
+            UNLINK, FORK -> WorkspaceMaterialLinks.forkLayers(document, strings("layer_ids").orEmpty())
+            ADOPT -> WorkspaceMaterialLinks.adopt(document, WorkspaceMaterialLinks.unlinked(document).toSet())
             RESOLUTION -> resolution(document, model, text("id"), request.getValue("width").jsonPrimitive.int, request.getValue("height").jsonPrimitive.int)
             PLACE -> place(document, model, text("material_id"), request["rect"]?.jsonObject?.let(::rect),
                 request["at"]?.jsonArray?.map { it.jsonPrimitive.float }?.also { require(it.size == 2) { "at takes [x, y]" } },
@@ -149,16 +152,17 @@ internal object WorkspaceMaterialEdits {
 
     /**
      * [document] with its source layers added as materials in a folder named [folderName], after [fileName] unless
-     * given (its groups as subfolders), each layer linked to its own material ([WorkspaceLayout.layerMaterials]). The
-     * materials share the layers' pixels.
+     * given (its groups as subfolders), each layer linked to its own material ([WorkspaceLayout.layerMaterials]); only
+     * layers [only] names when given. The materials share the layers' pixels.
      */
     fun addLinked(document: WorkspaceDocument, fileName: String,
                   folderName: String = fileName.substringBeforeLast('.').ifEmpty { fileName },
-                  checkCancelled: () -> Unit = {}): WorkspaceDocument {
-        val layers = document.source.layers.filter { it.raster.width > 0 && it.raster.height > 0 }
+                  checkCancelled: () -> Unit = {}, only: Set<String>? = null): WorkspaceDocument {
+        val layers = document.source.layers.filter { it.raster.width > 0 && it.raster.height > 0 && (only == null || it.id.raw in only) }
         if (layers.isEmpty()) return document
+        val art = if (only == null) document.source else WorkspaceSourceArt(document.source.widthPx, document.source.heightPx, layers, document.source.groups)
         // Entries come in the layers' order; a reference layer's material places as a reference again.
-        val entries = WorkspaceMaterialFiles.layered(document.source, listOf(WorkspaceMaterialFiles.name(folderName, "source")), fileName, checkCancelled)
+        val entries = WorkspaceMaterialFiles.layered(art, listOf(WorkspaceMaterialFiles.name(folderName, "source")), fileName, checkCancelled)
             .mapIndexed { index, entry -> entry.copy(fileFolder = 0, reference = layers.getOrNull(index)?.id?.raw in document.layout.referenceLayerIds) }
         val before = document.layout.materials.items.size
         val added = add(document, entries, null, checkCancelled)

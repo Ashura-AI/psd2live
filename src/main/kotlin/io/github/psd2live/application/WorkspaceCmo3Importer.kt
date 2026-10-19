@@ -42,9 +42,10 @@ internal class WorkspaceCmo3Importer(
         val (source, config) = runInterruptible(Dispatchers.Default) {
             Cmo3ModelImport.prepare(bytes, mode, current?.model, base)
         }
-        val document = WorkspaceDocument(source, config.layerVisibility, config.deletedLayerIds, config.layerOverrides,
+        // Every ArtMesh's image is in the library too, in a folder named after the file.
+        val document = WorkspaceMaterialEdits.addLinked(WorkspaceDocument(source, config.layerVisibility, config.deletedLayerIds, config.layerOverrides,
             config.parentOverrides, config.rigEdits, WorkspaceSettingsCodec.encode(config), config.meshOverrides,
-            layout = current?.document?.layout?.let(::replacedLayout) ?: WorkspaceLayout.Empty)
+            layout = current?.document?.layout?.let(::replacedLayout) ?: WorkspaceLayout.Empty), path.fileName.toString())
         progress(0.6f, "Rebuilding imported document")
         val preview = build(document, current?.model)
         progress(0.9f, "Committing imported document")

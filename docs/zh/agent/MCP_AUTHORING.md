@@ -520,7 +520,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | --- | --- | --- |
 | `project_create` | `width`、`height`，可选 `discard_unsaved` | 新建未生成的空工程 |
 | `project_import_layout` | `path`（清单 `.json` 或含清单的 `.zip` 的绝对路径），可选 `discard_unsaved` | 按 [Layout 清单](../spec/LAYOUT_MANIFEST.md) 新建未生成的工程：图片保留原像素铺在 `rect` 上，图层保持清单的上下顺序、组、标签、差分、可见性与不透明度，同时登记为素材并关联；结果同 `project_create` |
-| `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id`、`as_reference` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的分层图片（没有时取纹理页）、SVG（按自身尺寸栅格化）、Layout 清单或含清单的 zip（组成为子文件夹，每层以 `rect` 为默认位置并带上标签）或文件夹（保留嵌套结构，子文件夹成为素材文件夹，跳过隐藏项与其中的清单、zip），作为一个历史节点加入素材库；`as_reference=true` 时第一项同时设为参考图；每张图不超过 16MP |
+| `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id`、`as_reference` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的各 ArtMesh 图片（与 `project_import_cmo3` 得到的图层像素相同）、SVG（按自身尺寸栅格化）、Layout 清单或含清单的 zip（组成为子文件夹，每层以 `rect` 为默认位置并带上标签）或文件夹（保留嵌套结构，子文件夹成为素材文件夹，跳过隐藏项与其中的清单、zip），作为一个历史节点加入素材库；`as_reference=true` 时第一项同时设为参考图；每张图不超过 16MP |
 | `material_add` | `state`、`staging`，可选 `folder_id`、`as_reference` | `material_import` 读取后实际提交的成员；`staging` 为进程内暂存的内容摘要，一般不直接调用 |
 | `material_list` | 可选 `folder_id`、`recursive`、`query`、`kind`、`unused`、`offset`、`limit`（≤256） | 列出文件夹与条目；`query` 匹配名称和标签（含文件夹标签），`references` 为使用它的图层数；读自 PSD / CMO3 的文件夹带 `origin` 文件名 |
 | `material_get` | `id`，可选 `include_svg` | 条目或文件夹详情；条目返回使用它的 `layers`，SVG 另有 `vector_size`，`include_svg` 时附存储的 SVG 原文 |
@@ -531,7 +531,8 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `material_tag` | `ids`，`set` 或 `add`/`remove` | 条目与文件夹的标签；放置时并入图层标签 |
 | `material_set_resolution` | `id`、`width`、`height`（单边 ≤4096） | SVG 的纹理分辨率；使用它的图层画布矩形不变、像素随之替换 |
 | `material_paint` | `state`、`id`，以及一笔（`mode` 及其参数）或 `gestures`（1–512 笔，各含 `mode` 及其参数，按顺序作为一次修改）；`mode` 为 `brush/pencil/eraser/bucket/shape/clear`，参数：`points`+`radius`+`hardness`、`point`+`tolerance`、`from`+`to`+`shape`+`stroke_width`+`filled`；可选 `color`（RGBA 字节）、`opacity` | 在条目自身像素坐标（左上为原点）上画一笔，算法与 `paint` 相同；使用它的图层画布矩形不变、像素随之替换，SVG 变为位图 |
-| `material_unlink` | `state`、`layer_ids`（1–128） | 解除图层与素材的关联，像素归图层自己。关联图层显示素材的像素：对它的 `source_paint_*` 与 `paint_session_begin`（`layer_id`）都画到素材上，所有关联图层同步；让图层像素与素材不同的其他编辑会自动解除关联 |
+| `material_fork` | `state`、`layer_ids`（1–128） | 给与其他图层共用素材的图层各一份自己的副本（素材库中紧随原素材），像素不变；没有素材的图层得到一个。每个图层显示一个素材，它是唯一来源：在共用素材的图层上 `source_paint_*` 与 `paint_session_begin`（`layer_id`）画到素材上，所有使用它的图层同步；其他让图层像素改变的编辑在只有它使用该素材时让素材跟随，否则给它一份副本，关联从不断开。`material_unlink` 为旧名 |
+| `material_adopt_layers` | `state` | 为尚无素材的图层各登记一个素材（`Layers` 文件夹，组成为子文件夹）；用于此前的旧工程，新导入与编辑会自己登记 |
 | `material_set_pixels` | `state`、`id`、`staging` | 写入素材绘画会话暂存的像素；由 `paint_session_commit` 发起，一般不直接调用 |
 | `material_adjust` | `state`、`id`，至少一项：`flip`（`horizontal/vertical`）、`hue`（±180）、`saturation`/`lightness`/`contrast`（±100） | 先翻转再调色，尺寸不变；同步图层与 SVG 规则同上 |
 | `material_export_psd` | `state`、`folder_id`、`path`（绝对 `.psd`） | 后台把文件夹写成 PSD：条目按默认位置（无则自左上排开），子文件夹为图层组 |

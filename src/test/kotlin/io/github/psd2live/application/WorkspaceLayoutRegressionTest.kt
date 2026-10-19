@@ -55,7 +55,7 @@ class WorkspaceLayoutRegressionTest {
         assertEquals(document.layout.layerMaterials["hat"], deleted.layout.layerMaterials["hat"])
     }
 
-    @Test fun typedImageReplacementUnlinksTheOldMaterial() = runBlocking {
+    @Test fun typedImageReplacementTakesTheMaterialAlong() = runBlocking {
         val document = WorkspaceMaterialEdits.addLinked(Characters.head(false), "head.psd")
         val builder = WorkspacePreviewBuilder()
         val runtime = WorkspaceRuntime({ document: WorkspaceDocument -> builder.build(document) })
@@ -68,19 +68,49 @@ class WorkspaceLayoutRegressionTest {
         })
         val replaced = WorkspaceTextureCommands(runtime).execute(before.projectId, before.state,
             WorkspaceTextureEdit.ReplaceImage("face", WorkspaceTextureImage.Raster(replacement)), MutationAuthor.USER).commit.capture
-        assertNull(replaced.document.layout.layerMaterials["face"])
-        // Editing the former material must leave the independent replacement alone.
-        val adjusted = WorkspaceDocumentCommands(runtime).execute(replaced.projectId, replaced.state, "Adjust old material",
-            listOf(WorkspaceDocumentOperation("material_adjust", buildJsonObject {
-                put("id", document.layout.layerMaterials.getValue("face")); put("hue", 90)
-            })), MutationAuthor.USER).capture.document
-        assertContentEquals(replacement.rgba, adjusted.source.layers.single { it.id.raw == "face" }.raster.rgba)
+        // The face alone showed its material: the material is its one source and follows the new image.
+        val face = document.layout.layerMaterials.getValue("face")
+        assertEquals(face, replaced.document.layout.layerMaterials["face"])
+        assertContentEquals(replacement.rgba, replaced.document.layout.materials.item(face)!!.raster.rgba)
+        // Editing the material edits the face.
+        val adjusted = WorkspaceDocumentCommands(runtime).execute(replaced.projectId, replaced.state, "Adjust the face's material",
+            listOf(WorkspaceDocumentOperation("material_adjust", buildJsonObject { put("id", face); put("hue", 90) })), MutationAuthor.USER).capture.document
+        assertContentEquals(adjusted.layout.materials.item(face)!!.raster.rgba, adjusted.source.layers.single { it.id.raw == "face" }.raster.rgba)
+        assertFalse(replacement.rgba.contentEquals(adjusted.source.layers.single { it.id.raw == "face" }.raster.rgba))
         assertEquals(document.layout.layerMaterials["hair"], adjusted.layout.layerMaterials["hair"])
         val current = runtime.capture()
         val linked = WorkspaceTextureCommands(runtime).execute(current.projectId, current.state,
             WorkspaceTextureEdit.ReplaceImage("face", WorkspaceTextureImage.Material(document.layout.layerMaterials.getValue("hair"))),
             MutationAuthor.USER).commit.capture.document
         assertEquals(document.layout.layerMaterials["hair"], linked.layout.layerMaterials["face"])
+    }
+
+    private fun WorkspaceDocument.withLayers(layers: List<org.umamo.format.art.SourceLayer>) =
+        copy(source = WorkspaceSourceArt(source.widthPx, source.heightPx, layers, source.groups))
+
+    private fun WorkspaceDocument.withRaster(layerId: String, raster: LayerRaster) = withLayers(source.layers.map {
+        if (it.id.raw == layerId) (WorkspaceSourceLayer.copyOf(it, it.order) as WorkspaceSourceLayer).copy(raster = raster) else it
+    })
+
+    @Test fun aLayerSharingItsMaterialGetsACopyAndAddedLayersGetMaterials() {
+        val document = WorkspaceMaterialEdits.addLinked(Characters.head(false), "head.psd")
+        val hair = document.layout.layerMaterials.getValue("hair")
+        val hairRaster = document.layout.materials.item(hair)!!.raster
+        val faceRaster = document.source.layers.single { it.id.raw == "face" }.raster
+        // The face shows the hair's material too; then only the face's pixels change.
+        val sharing = document.withRaster("face", hairRaster).let { it.copy(layout = it.layout.copy(layerMaterials = it.layout.layerMaterials + ("face" to hair))) }
+        val reconciled = WorkspaceMaterialLinks.reconcile(sharing, sharing.withRaster("face", faceRaster))
+        val copy = reconciled.layout.layerMaterials.getValue("face")
+        assertNotEquals(hair, copy)
+        assertSame(faceRaster, reconciled.layout.materials.item(copy)!!.raster)
+        assertEquals(hair, reconciled.layout.layerMaterials["hair"])
+        assertSame(hairRaster, reconciled.layout.materials.item(hair)!!.raster)
+        // A layer an edit adds is given a material of its own.
+        val face = document.source.layers.single { it.id.raw == "face" }
+        val extra = (WorkspaceSourceLayer.copyOf(face, 0) as WorkspaceSourceLayer).copy(id = org.umamo.format.art.LayerId("extra"))
+        val adopted = WorkspaceMaterialLinks.reconcile(document, document.withLayers(document.source.layers + extra))
+        val item = adopted.layout.materials.item(adopted.layout.layerMaterials.getValue("extra"))!!
+        assertEquals(WorkspaceMaterialLinks.LAYERS_FOLDER, adopted.layout.materials.folder(item.folderId!!)!!.name)
     }
 
     @Test fun aCmo3ReplacementKeepsTheMaterialLibraryButNoLayerState() {

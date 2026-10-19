@@ -203,7 +203,7 @@ internal class WorkspacePaintSessions(private val runtime: WorkspaceRuntime<RigP
             captured.document.source.widthPx, captured.document.source.heightPx, validateWorkspace = {
             val now = runtime.capture()
             if (now.projectId != captured.projectId || now.state != state) throw WorkspaceConflict(state, now.state)
-        }, materialId = WorkspaceMaterialLinks.linked(captured.document, layer.id.raw)?.first?.id, paintsMaterial = false)
+        }, materialId = WorkspaceMaterialLinks.shared(captured.document, layer.id.raw)?.first?.id, paintsMaterial = false)
         sessions[session.id] = session
         session
     }

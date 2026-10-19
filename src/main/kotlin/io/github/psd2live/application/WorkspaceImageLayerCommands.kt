@@ -55,7 +55,9 @@ internal class WorkspaceImageLayerCommands(private val runtime: WorkspaceRuntime
             // generators never read it ([RigGenerationSource.createdCoverage]). Moving it later is a mesh edit like any other.
             val candidate = document.copy(source = source, layerVisibility = document.layerVisibility + ids.associateWith { true },
                 layerOverrides = document.layerOverrides + ids.associateWith { LayerClassificationOverride(LayerType.PRESET, SemanticTag.UNKNOWN, Side.NONE) })
-            val placed = WorkspaceLayerInsertionEdits.materialize(candidate, model, ids.toSet(), parent) { context.ensureActive() }
+            // Each image is a material of the library, the one source of its layer's pixels.
+            val linked = WorkspaceMaterialEdits.addLinked(candidate, IMPORTED_FOLDER, IMPORTED_FOLDER, { context.ensureActive() }, ids.toSet())
+            val placed = WorkspaceLayerInsertionEdits.materialize(linked, model, ids.toSet(), parent) { context.ensureActive() }
             insertion.anchorLayerId?.let { anchor -> WorkspaceDrawOrderEdits.beside(placed, model, anchor, ids, insertion.inFront) } ?: placed
         }, beforeCommit = { captured, document, model ->
             context.ensureActive()
@@ -72,6 +74,10 @@ internal class WorkspaceImageLayerCommands(private val runtime: WorkspaceRuntime
         return WorkspaceLayerCommit(committed, mutation)
     }
 
-    companion object { const val OP = "layer_import_images" }
+    companion object {
+        const val OP = "layer_import_images"
+        /** The library folder imported images' materials go in. */
+        const val IMPORTED_FOLDER = "Imported images"
+    }
 
 }

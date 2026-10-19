@@ -24,6 +24,8 @@ class Cmo3ImportScenario {
 		val cmo3 = Studio(source, emptySet()).use { studio -> studio.open(Characters.figure()); studio.export("cmo3").single { it.toString().endsWith(".cmo3") } }
 		Studio.run(temp, checks = setOf(Studio.Check.REPLAY)) {
 			importCmo3(cmo3)
+			expect("in the library", now.document.source.layers.filter { it.raster.width > 0 && it.raster.height > 0 }.all { layer -> now.document.layout.layerMaterials[layer.id.raw]
+				?.let(now.document.layout.materials::item)?.raster?.rgba?.contentEquals(layer.raster.rgba) == true }) { "an imported ArtMesh's image is not a material" }
 			val layer = now.document.rigEdits.importedLayerIds.getValue("ArtMeshBackHair")
 			repeat(RigEditOverlay.CHECKPOINT_INTERVAL + 1) { edit("axis $it", "parameter_create", req("parameter_id" to "P$it", "name" to "P$it")) }
 			val journal = now.document.rigEdits.authoringJournal

@@ -192,14 +192,16 @@ class MaterialLibraryScenario {
 		edit("rebuild b's mesh", "layer_mesh_rebuild", req("layer_id" to "b"))
 		expect("linked", now.document.layout.layerMaterials["b"] == item.id && allShowTheMaterial()) { "a mesh rebuild cut the layer loose from its material" }
 
-		// Unlinked, a layer's pixels are its own.
-		edit("unlink a", "material_unlink", req("layer_ids" to listOf("a")))
+		// Given a material of its own, a layer's pixels no longer reach the one it shared; its own follows them.
+		edit("give a a material of its own", "material_fork", req("layer_ids" to listOf("a")))
+		val own = now.document.layout.layerMaterials.getValue("a")
+		expect("forked", own != item.id && pixels("a").rgba.contentEquals(material().rgba)) { "the fork did not keep the layer's pixels" }
 		val kept = material()
 		edit("paint layer a alone", "source_paint_brush", req("layer_id" to "a", "points" to listOf(listOf(120, 125)), "radius" to 3, "color" to listOf(0, 255, 0, 255)))
-		expect("unlinked", "a" !in now.document.layout.layerMaterials && material() === kept && !pixels("a").rgba.contentEquals(kept.rgba) &&
-			pixels("b").rgba.contentEquals(kept.rgba)) { "painting an unlinked layer reached the material" }
+		expect("own", material() === kept && !pixels("a").rgba.contentEquals(kept.rgba) && pixels("b").rgba.contentEquals(kept.rgba) &&
+			now.document.layout.materials.item(own)!!.raster.rgba.contentEquals(pixels("a").rgba)) { "painting a layer alone reached the shared material, or left its own behind" }
 		reopen()
-		expect("reopened", now.document.layout.layerMaterials == mapOf("b" to item.id, off.id.raw to offMaterial!!.id)) { "the links did not survive a save: ${now.document.layout.layerMaterials}" }
+		expect("reopened", now.document.layout.layerMaterials == mapOf("a" to own, "b" to item.id, off.id.raw to offMaterial!!.id)) { "the links did not survive a save: ${now.document.layout.layerMaterials}" }
 	}
 
 	private fun WorkspaceMaterialEdits(item: MaterialItem) = io.github.psd2live.application.WorkspaceMaterialEdits.enclosing(requireNotNull(item.placement))

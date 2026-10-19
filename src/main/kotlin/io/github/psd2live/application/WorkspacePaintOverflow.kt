@@ -33,7 +33,7 @@ internal object WorkspacePaintOverflow {
         val id = RasterPaintCommit.sourceLayerFor(model, model.analysis, request.layerId)?.id?.raw ?: return null
         val layer = document.source.layers.singleOrNull { it.id.raw == id && id !in document.deletedLayerIds } ?: return null
         if (DepthSplit.isFrontLayer(model, id)) return null
-        val linked = WorkspaceMaterialLinks.linked(document, id)
+        val linked = WorkspaceMaterialLinks.shared(document, id)
         val canvasWidth = document.source.widthPx; val canvasHeight = document.source.heightPx
         val space = PaintSpace.of(layer, canvasWidth, canvasHeight)
         val material = space.raster.takeIf { linked != null }
