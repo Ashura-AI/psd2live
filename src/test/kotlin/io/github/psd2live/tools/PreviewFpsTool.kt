@@ -50,6 +50,8 @@ import kotlin.test.Test
  * - PSD2LIVE_SCRUB=EDIT|PREVIEW: instead of playback, drags a parameter slider the way the panel does (begin, samples,
  *   release) on a canvas in that mode; on EDIT the window's frames are the ones counted. PSD2LIVE_SCRUB_PARAMETER picks
  *   the parameter (default the first), PSD2LIVE_SCRUB_HZ the pointer samples per second (default 240)
+ * - PSD2LIVE_GESTURE=hover|deform: on the edit canvas, circles over the face mesh with its vertices shown, or drags
+ *   all its points in Deform mode, through the editor's entry points (the system pointer is never moved)
  *
  * Measured in the window's own frames and draws, never the screen.
  *
@@ -120,7 +122,9 @@ class PreviewFpsTool {
 			val timing = RenderTiming()
 			SwingUtilities.invokeAndWait { timing.install(window.get()!!) }
 			val events = EventTiming().also { java.awt.Toolkit.getDefaultToolkit().systemEventQueue.push(it) }
-			val scrub = System.getenv("PSD2LIVE_SCRUB")?.takeIf { it.isNotBlank() }?.let { CanvasMode.valueOf(it.trim().uppercase()) }
+			val gesture = System.getenv("PSD2LIVE_GESTURE")?.takeIf { it.isNotBlank() }?.trim()?.lowercase()
+			val scrub = if (gesture != null) CanvasMode.EDIT
+				else System.getenv("PSD2LIVE_SCRUB")?.takeIf { it.isNotBlank() }?.let { CanvasMode.valueOf(it.trim().uppercase()) }
 			SwingUtilities.invokeAndWait {
 				vm.setCanvasMode(vm.state.value.activeCanvas.id, scrub ?: CanvasMode.PREVIEW)
 				vm.setAnimationEnabled(scrub == null)
@@ -134,7 +138,12 @@ class PreviewFpsTool {
 				if (scrub != CanvasMode.EDIT) runCatching { waitFor(60, "$backend frames") { flow.value?.backend == backend } }
 					.onFailure { report.appendLine("$backend: ${it.message}; status ${vm.state.value.sdkStatus}"); continue }
 				Thread.sleep(1500)
-				val label = when (scrub) { CanvasMode.EDIT -> "edit scrub"; null -> "$backend"; else -> "$backend scrub" }
+				val label = when {
+					gesture != null -> "edit $gesture"
+					scrub == CanvasMode.EDIT -> "edit scrub"
+					scrub == null -> "$backend"
+					else -> "$backend scrub"
+				}
 				val recording = if (setting("PSD2LIVE_JFR", "0") == "1") jdk.jfr.Recording(jdk.jfr.Configuration.getConfiguration("profile")).apply {
 					enable("jdk.ExecutionSample").withPeriod(java.time.Duration.ofMillis(1))
 					enable("jdk.NativeMethodSample").withPeriod(java.time.Duration.ofMillis(1))
@@ -164,7 +173,7 @@ class PreviewFpsTool {
 				var lastFrame: Any? = null
 				var lastState: Any? = null
 				var states = 0
-				val driver = scrub?.let { scrubDriver(vm) }
+				val driver = if (gesture != null) gestureDriver(vm, gesture) else scrub?.let { scrubDriver(vm) }
 				val start = System.nanoTime()
 				while (System.nanoTime() - start < seconds * 1_000_000_000L) {
 					val frame = if (scrub == CanvasMode.EDIT) timing.frames else flow.value
@@ -223,21 +232,63 @@ class PreviewFpsTool {
 		}
 	}
 
-	/** Starts dragging one parameter's slider; see [ScrubDriver]. */
-	private fun scrubDriver(vm: PSD2LiveViewModel): ScrubDriver {
+	/** Starts dragging one parameter's slider back and forth across its range, as the panel's slider does. */
+	private fun scrubDriver(vm: PSD2LiveViewModel): SampleDriver {
 		val parameters = vm.state.value.previewModel!!.rig.puppet.parameters
 		val parameter = System.getenv("PSD2LIVE_SCRUB_PARAMETER")?.takeIf { it.isNotBlank() }
 			?.let { id -> parameters.first { it.id.raw == id } } ?: parameters.first()
 		SwingUtilities.invokeAndWait { vm.beginParameterScrub() }
-		return ScrubDriver(vm, parameter.id, parameter.min, parameter.max, setting("PSD2LIVE_SCRUB_HZ", "240").toDouble())
+		return SampleDriver("scrubbed ${parameter.id.raw}", setting("PSD2LIVE_SCRUB_HZ", "240").toDouble(), { t ->
+			// A triangle over the range, one sweep each way per second.
+			val phase = t % 2.0
+			vm.setParameterValueFromPanel(parameter.id, (parameter.min + (parameter.max - parameter.min) * (if (phase < 1.0) phase else 2.0 - phase)).toFloat())
+		}) { vm.endParameterScrub() }
 	}
 
 	/**
-	 * Drags one parameter back and forth across its range on the event thread, a pointer sample at a time, as the
-	 * panel's slider does; [finish] releases it and reports what the samples cost the event thread.
+	 * Starts a pointer gesture on the edit canvas through the editor's own entry points, never the system's pointer:
+	 * `hover` circles over the face mesh with its vertices shown, `deform` drags every point of it in Deform mode.
 	 */
-	private class ScrubDriver(private val vm: PSD2LiveViewModel, private val id: org.umamo.runtime.model.ParameterId,
-		min: Float, max: Float, hz: Double) {
+	private fun gestureDriver(vm: PSD2LiveViewModel, gesture: String): SampleDriver {
+		val canvasId = vm.state.value.activeCanvas.id
+		val editor = vm.canvasEditorFor(canvasId)
+		val rig = vm.state.value.previewModel!!.rig
+		val face = rig.puppet.drawables.first { it.name.equals("face", ignoreCase = true) }.let { rig.layerIdByDrawableId.getValue(it.id.raw) }
+		SwingUtilities.invokeAndWait {
+			vm.setCanvasView(1f, 0f, 0f, canvasId, CanvasMode.EDIT)
+			vm.selectLayer(face)
+		}
+		Thread.sleep(500)
+		SwingUtilities.invokeAndWait {
+			editor.setHierarchyMode(if (gesture == "deform") io.github.psd2live.ui.EditHierarchyMode.DEFORM else io.github.psd2live.ui.EditHierarchyMode.EDIT)
+		}
+		Thread.sleep(500)
+		if (gesture == "deform") { SwingUtilities.invokeAndWait { editor.selectAll() }; Thread.sleep(500) }
+		var origin: androidx.compose.ui.geometry.Offset? = null
+		SwingUtilities.invokeAndWait {
+			val viewport = editor.viewport!!
+			val points = editor.screen(editor.target()!!.geometry.points, editor.target()!!, viewport)
+			origin = androidx.compose.ui.geometry.Offset(points.map { it.x }.average().toFloat(), points.map { it.y }.average().toFloat())
+		}
+		val center = origin!!
+		var pressed = false
+		return SampleDriver("$gesture on the face mesh (${editor.target()?.geometry?.points?.size?.div(2)} points)",
+			setting("PSD2LIVE_SCRUB_HZ", "240").toDouble(), { t ->
+			val viewport = editor.viewport ?: return@SampleDriver
+			val at = center + androidx.compose.ui.geometry.Offset((kotlin.math.cos(t * 4) * 40).toFloat(), (kotlin.math.sin(t * 4) * 40).toFloat())
+			when {
+				gesture != "deform" -> editor.updateHover(at, viewport)
+				!pressed -> pressed = editor.press(center, viewport, shift = false, alt = false)
+				else -> editor.move(at, viewport, shift = false)
+			}
+		}) { if (pressed) editor.release() }
+	}
+
+	/**
+	 * Runs [sample] on the event thread [hz] times a second, with the seconds since the start, as pointer samples
+	 * arrive; [finish] stops, runs [end] and reports what the samples cost the event thread.
+	 */
+	private class SampleDriver(private val what: String, hz: Double, sample: (Double) -> Unit, private val end: () -> Unit) {
 		private val samples = java.util.concurrent.atomic.AtomicLong()
 		private val busy = java.util.concurrent.atomic.AtomicLong()
 		@Volatile private var running = true
@@ -248,12 +299,10 @@ class PreviewFpsTool {
 			while (running) {
 				val due = start + n++ * period
 				while (System.nanoTime() < due) Thread.onSpinWait()
-				// A triangle over the range, one sweep each way per second.
-				val phase = ((System.nanoTime() - start) / 1e9) % 2.0
-				val value = (min + (max - min) * (if (phase < 1.0) phase else 2.0 - phase)).toFloat()
+				val t = (System.nanoTime() - start) / 1e9
 				SwingUtilities.invokeLater {
 					val begin = System.nanoTime()
-					vm.setParameterValueFromPanel(id, value)
+					sample(t)
 					busy.addAndGet(System.nanoTime() - begin)
 					samples.incrementAndGet()
 				}
@@ -263,9 +312,9 @@ class PreviewFpsTool {
 		fun finish(): String {
 			running = false
 			thread.join()
-			SwingUtilities.invokeAndWait { vm.endParameterScrub() }
-			return "scrubbed %s: %d samples, %.3f ms each on the event thread"
-				.format(id.raw, samples.get(), busy.get() / 1e6 / samples.get().coerceAtLeast(1))
+			SwingUtilities.invokeAndWait(end)
+			return "%s: %d samples, %.3f ms each on the event thread"
+				.format(what, samples.get(), busy.get() / 1e6 / samples.get().coerceAtLeast(1))
 		}
 	}
 
