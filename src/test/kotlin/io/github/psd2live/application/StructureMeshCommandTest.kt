@@ -7,6 +7,9 @@ import io.github.psd2live.project.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.umamo.format.art.*
+import org.junit.jupiter.api.io.TempDir
+import org.umamo.render.eval.CpuDeformationEvaluator
+import java.nio.file.Path
 import kotlin.math.*
 import kotlin.test.*
 
@@ -78,13 +81,9 @@ class StructureMeshCommandTest {
 			put("guides", buildJsonArray { add(fold) })
 		}), document, model)
 		val effectModel = WorkspacePreviewBuilder().build(withEffect)
-		// The batch the command makes: remesh, then bake the effect on the candidate the remesh built.
-		val remeshed = WorkspaceDocumentEdits.apply(op(WorkspaceStructureMeshEdits.OP, buildJsonObject { put("target", drawable.id.raw) }),
+		// The pure candidate includes the new mesh and its rebaked effect for every caller.
+		val baked = WorkspaceDocumentEdits.apply(op(WorkspaceStructureMeshEdits.OP, buildJsonObject { put("target", drawable.id.raw) }),
 			withEffect, effectModel)
-		val stale = remeshed.rigEdits.interiorEffects.single()
-		val remeshModel = WorkspacePreviewBuilder().build(remeshed)
-		assertNotNull(stale.issue(remeshModel.authored.rig.puppet), "the old bake must not apply to the new mesh")
-		val baked = WorkspaceDocumentEdits.apply(op("interior_put", buildJsonObject { put("target", drawable.id.raw) }), remeshed, remeshModel)
 		val effect = baked.rigEdits.interiorEffects.single()
 		val finalModel = WorkspacePreviewBuilder().build(baked)
 		assertNull(effect.issue(finalModel.authored.rig.puppet))
@@ -102,6 +101,62 @@ class StructureMeshCommandTest {
 		// A second remesh replaces detected lines and keeps the authored fold.
 		val twice = WorkspaceStructureMeshEdits.guides(effect.guides, emptyList())
 		assertEquals(listOf("fold0"), twice.map { it.id })
+	}
+
+	@Test
+	fun batchRemeshRebakesAtomicallyAndSurvivesHistoryAndProjectRestore(@TempDir directory: Path): Unit = runBlocking {
+		val document = document()
+		val builder = WorkspacePreviewBuilder()
+		val base = builder.build(document)
+		val id = target(base).id
+		val withEffect = WorkspaceDocumentEdits.apply(op("interior_put", buildJsonObject {
+			put("target", id.raw); put("motion", InteriorMotionSettings(enabled = false).toJson())
+		}), document, base)
+		val model = builder.build(withEffect)
+		val runtime = WorkspaceRuntime<RigPreviewModel>({ builder.build(it) })
+		val before = runtime.install(runtime.state.value.state, "remesh", withEffect, model)
+		val commands = WorkspaceDocumentCommands(runtime)
+		val edit = op(WorkspaceStructureMeshEdits.OP, buildJsonObject { put("target", "mesh:${id.raw}") })
+		// A later failing member must not publish the remesh or its rebake.
+		assertFailsWith<WorkspaceBatchEditException> {
+			commands.execute(before.projectId, before.state, "Invalid remesh", listOf(edit,
+				op("interior_put", buildJsonObject { put("target", "missing") })), MutationAuthor.AGENT)
+		}
+		assertSame(before, runtime.capture())
+		assertEquals(1, runtime.history().selections.size)
+		val after = commands.execute(before.projectId, before.state, "Remesh", listOf(edit), MutationAuthor.AGENT).capture
+		val effect = after.document.rigEdits.interiorEffects.single()
+		assertNull(effect.issue(after.model.authored.rig.puppet))
+		assertEquals(2, runtime.history().selections.size)
+		assertEquals(model.config.rigEdits.interiorEffects.single().id, effect.id)
+		val undone = runtime.checkout(after.projectId, after.state, before.historyHead)
+		assertEquals(withEffect.rigEdits.interiorEffects.single().toJson(), undone.document.rigEdits.interiorEffects.single().toJson())
+		val redone = runtime.checkout(undone.projectId, undone.state, after.historyHead)
+		assertEquals(effect.toJson(), redone.document.rigEdits.interiorEffects.single().toJson())
+		val store = WorkspaceStore(directory.resolve("store"))
+		store.persistHistory(after.projectId, runtime.history())
+		val file = directory.resolve("remesh.psd2live")
+		ProjectRepository(writeHeadCache = false).save(
+			ProjectSaveCapture(after.projectId, runtime.history(), JsonObject(emptyMap()), null, store), file)
+		ProjectRepository(writeHeadCache = false).open(file).use { opened ->
+			val restored = builder.build(opened.history.head().snapshot)
+			val restoredEffect = opened.history.head().snapshot.rigEdits.interiorEffects.single()
+			assertEquals(effect.toJson(), restoredEffect.toJson())
+			assertNull(restoredEffect.issue(restored.authored.rig.puppet))
+			assertContentEquals(target(after.model).mesh!!.indices, target(restored).mesh!!.indices)
+			val exported = deletionExport(restored.rig.puppet)
+			val evaluator = CpuDeformationEvaluator()
+			val xs = effect.sources[0].let { listOf(it.min, it.default, it.max) }
+			val ys = effect.sources[1].let { listOf(it.min, it.default, it.max) }
+			for (x in xs) for (y in ys) {
+				val pose = mapOf(effect.sources[0].id to x, effect.sources[1].id to y)
+				val expected = evaluator.evaluate(after.model.rig.puppet, pose).worldPositions.getValue(id)
+				for (puppet in listOf(redone.model.rig.puppet, restored.rig.puppet, exported)) {
+					val actual = evaluator.evaluate(puppet, pose).worldPositions.getValue(id)
+					for (i in expected.indices) assertEquals(expected[i], actual[i], .003f)
+				}
+			}
+		}
 	}
 
 	@Test

@@ -368,7 +368,7 @@ private fun InteriorBody(
 			count = detected.size,
 			icon = icon(InteriorIcon.SHAPE),
 		) {
-			StructureMeshControls(vm, state, target, rebake = true, enabled = editing)
+			StructureMeshControls(vm, state, target, enabled = editing)
 			if (detected.isEmpty()) Text(tr("interior.mesh.noLines"), style = caption, color = colors.textMuted)
 			for ((i, g) in detected) {
 				val fold = g.purpose == InteriorGuidePurpose.FOLD

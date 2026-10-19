@@ -323,7 +323,7 @@ private fun SelectedMeshSettingsEditor(
 		meshes.firstOrNull { it.mesh != null }?.id?.raw?.let { mesh ->
 			Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
 				InspectorSectionBox(tr("mesh.structure.title")) {
-					StructureMeshControls(viewModel, state, mesh, rebake = state.rigEdits.interiorEffects.any { it.target == mesh }, enabled = !isBusy)
+					StructureMeshControls(viewModel, state, mesh, enabled = !isBusy)
 				}
 			}
 		}

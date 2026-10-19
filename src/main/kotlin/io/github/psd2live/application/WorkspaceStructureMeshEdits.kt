@@ -4,6 +4,7 @@ import io.github.psd2live.core.*
 import io.github.psd2live.core.interior.InteriorGuide
 import io.github.psd2live.core.interior.InteriorGuidePurpose
 import io.github.psd2live.core.interior.InteriorPoint
+import io.github.psd2live.core.interior.NativeInteriorAuthoring
 import io.github.psd2live.core.mesh.Point
 import io.github.psd2live.core.mesh.distanceSquaredToSegment
 import io.github.psd2live.core.mesh.structure.*
@@ -17,7 +18,7 @@ import org.umamo.runtime.model.DrawableMesh
  * the outline row and edge band stay, the rest follows creases, shading boundaries and pattern lines. The result is
  * an ordinary `canvas_mesh_rebuild` record, so keyforms, blend shapes, paths, weights and glue migrate as for any
  * rebuild and replay never analyses pixels again. On a mesh with an interior effect it also refreshes the effect's
- * detected guides; the effect is baked again by the `interior_put` that follows it in the same batch.
+ * detected guides and bakes it again on the replacement mesh within the same candidate.
  */
 internal object WorkspaceStructureMeshEdits {
 	const val OP = "layer_mesh_structure"
@@ -138,9 +139,16 @@ internal object WorkspaceStructureMeshEdits {
 		val effects = document.rigEdits.interiorEffects.map { effect ->
 			if (effect.target != plan.id.raw) effect else effect.withGuides(guides(effect.guides, plan.analysis.lines))
 		}
+		val overlay = document.rigEdits.copy(authoringJournal = document.rigEdits.authoringJournal + journal,
+			interiorEffects = effects)
+		val rebaked = if (effects.none { it.target == plan.id.raw }) overlay else {
+			work.progress(.9f, "Baking interior on rebuilt mesh")
+			val authored = model.authoredPuppet(overlay)
+			work.checkpoint()
+			NativeInteriorAuthoring.put(model, overlay, buildJsonObject { put("target", plan.id.raw) }, authored)
+		}
 		work.progress(1f, "Recorded mesh")
-		return document.copy(rigEdits = document.rigEdits.copy(authoringJournal = document.rigEdits.authoringJournal + journal,
-			interiorEffects = effects))
+		return document.copy(rigEdits = rebaked)
 	}
 
 	/**

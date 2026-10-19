@@ -104,8 +104,7 @@ internal constructor(
 		)
 
 	/**
-	 * This recipe with other guides and nothing baked again: what a structure remesh records before the
-	 * `interior_put` that bakes the effect on the new mesh.
+	 * This recipe with other guides, retaining the old bake until the remesh candidate bakes it on the new mesh.
 	 */
 	internal fun withGuides(value: List<InteriorGuide>) =
 		NativeInteriorEffect(id, target, name, enabled, settings, motion, sources, created, generated, bindings, groups,
@@ -515,8 +514,10 @@ internal object NativeInteriorAuthoring {
 
 	/**
 	 * UI and MCP share this authoring command; no runtime or image-space formulas live in the UI.
+	 * [authoredModel] supplies a candidate's updated topology when it has not been published as a preview yet.
 	 */
-	fun put(preview: RigPreviewModel, overlay: RigEditOverlay, o: JsonObject): RigEditOverlay {
+	fun put(preview: RigPreviewModel, overlay: RigEditOverlay, o: JsonObject,
+	        authoredModel: PuppetModel? = null): RigEditOverlay {
 		val target = o.getValue("target").jsonPrimitive.content.removePrefix("mesh:")
 		val old = overlay.interiorEffects.singleOrNull { it.target == target }
 		val id =
@@ -540,7 +541,7 @@ internal object NativeInteriorAuthoring {
 						else it
 					}
 			)
-		val authored = preview.authored.rig.puppet
+		val authored = authoredModel ?: preview.authored.rig.puppet
 		val d =
 			requireNotNull(authored.drawables.singleOrNull { it.id.raw == target }) {
 				"Select a generated mesh"

@@ -22,7 +22,7 @@ import io.github.psd2live.ui.views.physics.FieldLabel
  * them. While shown, the canvas draws the lines found and the mesh they would give ([drawStructurePreview]).
  */
 @Composable
-internal fun StructureMeshControls(vm: PSD2LiveViewModel, state: PSD2LiveState, target: String, rebake: Boolean, enabled: Boolean = true) {
+internal fun StructureMeshControls(vm: PSD2LiveViewModel, state: PSD2LiveState, target: String, enabled: Boolean = true) {
 	val colors = LocalToolColors.current
 	val caption = LocalToolTypography.current.caption.copy(fontSize = 10.sp)
 	val structure = vm.structureMesh
@@ -62,7 +62,7 @@ internal fun StructureMeshControls(vm: PSD2LiveViewModel, state: PSD2LiveState, 
 			Spacer(Modifier.weight(1f))
 			CompactButton(
 				tr("mesh.structure.apply"),
-				{ structure.remesh(target, rebake) },
+				{ structure.remesh(target) },
 				enabled = enabled && !structure.busy,
 				isPrimary = true,
 				height = 22.dp,

@@ -99,15 +99,14 @@ internal class StructureMeshController(
 			result.getValue("vertices_before").jsonPrimitive.int, result.getValue("vertices_after").jsonPrimitive.int)
 	}
 
-	/** Rebuilds [target]; with [rebake] its interior effect is baked again in the same history edit. */
-	fun remesh(target: String, rebake: Boolean) {
+	/** Rebuilds [target] and any interior effect on it in the same history edit. */
+	fun remesh(target: String) {
 		val workspace = backend() ?: return
 		val expected = workspace.snapshot()
 		editJob?.cancel()
 		busy = true
 		progress(true)
-		val edits = listOf(WorkspaceDocumentOperation(WorkspaceStructureMeshEdits.OP, buildJsonObject { put("target", target); put("settings", options()) })) +
-			if (rebake) listOf(WorkspaceDocumentOperation("interior_put", buildJsonObject { put("target", target) })) else emptyList()
+		val edits = listOf(WorkspaceDocumentOperation(WorkspaceStructureMeshEdits.OP, buildJsonObject { put("target", target); put("settings", options()) }))
 		editJob = scope.launch {
 			try {
 				withContext(Dispatchers.Default + WorkspaceExecution(expected.projectId, expected.state, MutationAuthor.USER)) {
