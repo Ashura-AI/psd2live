@@ -103,7 +103,7 @@ internal fun WorkspaceQueries.inspect(a: JsonObject): JsonObject {
                 else -> {
                     val generation = layout.layout.generation
                     put("generated", generation.generated)
-                    // Reference layers are shown without generating them too, but never wait for a generation.
+                    // Reference layers never wait for a generation: in the model once generated, quads before.
                     val references = layout.layout.referenceLayerIds
                     putJsonArray("pending_layers") { (layout.pendingLayerIds - references).sorted().forEach { add(JsonPrimitive(it)) } }
                     putJsonArray("pending_classifications") { generation.pendingClassifications.toSortedMap().forEach { (id, value) -> addJsonObject {
@@ -111,7 +111,8 @@ internal fun WorkspaceQueries.inspect(a: JsonObject): JsonObject {
                         put("type", value.type.name.lowercase()); put("parameter", value.parameter); put("switch_id", value.switchId)
                     } } }
                     putJsonArray("refreshable") { generation.refreshLayerIds.sorted().forEach { add(JsonPrimitive(it)) } }
-                    putJsonArray("reference_layers") { references.filter { it in layout.pendingLayerIds }.sorted().forEach { add(JsonPrimitive(it)) } }
+                    // Every reference layer, whether in the model yet (generated) or waiting as a quad.
+                    putJsonArray("reference_layers") { references.sorted().forEach { add(JsonPrimitive(it)) } }
                 }
             }
             "preview" -> put("preview", queries.previewSession())

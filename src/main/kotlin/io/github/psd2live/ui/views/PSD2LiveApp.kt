@@ -732,8 +732,8 @@ fun FrameWindowScope.PSD2LiveApp(
 			)
 		}
 
-		// Carried files: the pointer says what a drop there does; the start page shows where they land itself.
-		if (isDraggingOver && !viewModel.startPageShown) FileDragLabel(viewModel)
+		// Something carried - files or a material: the pointer says what a drop there does; the start page shows where files land itself.
+		if (!viewModel.startPageShown) FileDragLabel(viewModel)
 		// Keep the shared task indicator visible above dialog scrims.
 		if (task != null) {
 			StatusBar(state, viewModel, Modifier.align(Alignment.BottomCenter).background(colors.windowBackground), task)

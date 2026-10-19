@@ -877,6 +877,11 @@ data class PSD2LiveState(
 				parameterValues[org.umamo.runtime.model.ParameterId(id)] }
 		}
 
+	/** The layers whose mesh the user made rather than a generator: imported images, references in the model. */
+	val createdLayerIds: Set<String>
+		get() = rigEdits.authoringJournal.filter { it["op"]?.let { op -> (op as? kotlinx.serialization.json.JsonPrimitive)?.content } == io.github.psd2live.core.RasterMeshCreation.OP }
+			.mapNotNullTo(HashSet()) { (it["layer_id"] as? kotlinx.serialization.json.JsonPrimitive)?.content }
+
 	/** Reference images pinned to another keyform than the edit pose: the canvas does not draw them. */
 	val pinnedAwayReferenceImageIds: Set<String>
 		get() {

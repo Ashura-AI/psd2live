@@ -60,6 +60,11 @@ import io.github.psd2live.ui.state.ReferencePinRows
 import io.github.psd2live.ui.state.ReferenceTarget
 import androidx.compose.ui.input.pointer.onPointerEvent
 import org.umamo.runtime.model.Parameter
+import io.github.psd2live.project.PinPoint
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
 import io.github.psd2live.ui.components.IconAdd
@@ -90,46 +95,144 @@ internal fun DrawScope.drawReference(reference: LayoutReference, image: ImageBit
 }
 
 /**
- * A reference's keyform pin as a compact copy of the parameter panel: a track for each parameter and a 2D pad for
- * each linked pair ([ReferencePinRows]), showing the keys and the value it is pinned at (else the edit pose). Nothing
- * here moves a parameter; each row's push pin pins the reference there or frees it ([onToggle], the row's IDs).
+ * A reference's keyform pin as a compact copy of the parameter panel: a track for each keyed parameter and a 2D pad
+ * for each linked pair ([ReferencePinRows]), drawn as the panel draws them but only to pin. Each keyform dot - a key
+ * on a track, a crossing of keys on a pad - is a point the reference may show at: a click adds it ([onToggle]) or
+ * takes it away, and the reference shows at any point it holds. The pose the canvas shows is the faint marker.
+ * Points pinned some other way are listed beneath, each to take away.
  */
 @Composable
-internal fun ReferencePinPanel(puppet: PuppetModel, values: Map<ParameterId, Float>, pin: Map<String, Float>, enabled: Boolean,
-                               onToggle: (List<String>) -> Unit) {
+internal fun ReferencePinPanel(puppet: PuppetModel, values: Map<ParameterId, Float>, points: List<PinPoint>, enabled: Boolean,
+                               onToggle: (PinPoint) -> Unit) {
 	val colors = LocalToolColors.current
-	val rows = remember(puppet, pin, values) { ReferencePinRows.of(puppet, pin, values) }
 	val marks = remember(puppet) { puppet.parameterKeyMarks() }
+	val keyed = remember(marks) { marks.filterValues { it.allKeys.isNotEmpty() }.keys }
+	val rows = remember(puppet, keyed, points) { ReferencePinRows.of(puppet, keyed, points) }
 	if (rows.isEmpty()) {
 		Text(tr("layers.pin.none"), color = colors.textMuted, fontSize = 10.5.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
 		return
 	}
-	fun shown(parameter: Parameter) = pin[parameter.id.raw] ?: values[parameter.id] ?: parameter.default
-	Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+	fun keys(parameter: Parameter) = (marks[parameter.id]?.allKeys.orEmpty() + points.mapNotNull { it[parameter.id.raw] }.filter { it in parameter.min..parameter.max })
+		.distinct().sorted()
+	fun pinned(point: PinPoint) = points.any { ReferencePinRows.same(it, point) }
+	fun current(parameter: Parameter) = values[parameter.id] ?: parameter.default
+	Column(Modifier.fillMaxWidth().heightIn(max = 340.dp).verticalScroll(rememberScrollState())
+		.padding(start = 10.dp, end = 8.dp, top = 2.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 		for (row in rows) {
-			val ids = row.parameters.map { it.id.raw }
-			val pinned = ids.all { it in pin }
+			val count = points.count { point -> point.keys == row.parameters.mapTo(HashSet()) { it.id.raw } }
 			Row(verticalAlignment = Alignment.CenterVertically) {
-				Column(Modifier.weight(1f)) {
-					Row(verticalAlignment = Alignment.CenterVertically) {
-						Text(row.parameters.joinToString(" × ") { it.name.ifBlank { it.id.raw } }, color = if (pinned) colors.textPrimary else colors.textMuted,
-							fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-						Text(row.parameters.joinToString(", ") { formatAxisValue(shown(it)) }, color = if (pinned) colors.accent else colors.textMuted, fontSize = 9.5.sp)
-					}
-					when (row) {
-						is ReferencePinRows.Axis -> ParameterTrack({ shown(row.parameter) }, {}, row.parameter.min..row.parameter.max,
-							marks[row.parameter.id].toSliderMarks(), if (pinned) listOf(shown(row.parameter)) else emptyList(),
-							Modifier.fillMaxWidth().height(18.dp), enabled = false)
-						is ReferencePinRows.Pad -> ParameterPad2D(row.horizontal, row.vertical, { shown(row.horizontal) }, { shown(row.vertical) },
-							xLocked = true, yLocked = true, horizontalKeys = marks[row.horizontal.id],
-							highlightedX = if (pinned) listOf(shown(row.horizontal)) else emptyList(),
-							highlightedY = if (pinned) listOf(shown(row.vertical)) else emptyList(),
-							verticalKeys = marks[row.vertical.id], modifier = Modifier.fillMaxWidth().height(72.dp), onChange = { _, _ -> })
-					}
+				Text(row.parameters.joinToString(" × ") { it.name.ifBlank { it.id.raw } }, color = if (count > 0) colors.textPrimary else colors.textMuted,
+					fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+				if (count > 0) Text(tr("layers.pin.count", count), color = colors.accent, fontSize = 9.5.sp)
+			}
+			when (row) {
+				is ReferencePinRows.Axis -> {
+					val id = row.parameter.id.raw
+					PinKeyTrack(row.parameter, keys(row.parameter), { key -> pinned(mapOf(id to key)) }, current(row.parameter), enabled) { key -> onToggle(mapOf(id to key)) }
 				}
-				CompactIconButton(onClick = { onToggle(ids) }, enabled = enabled, tooltip = tr(if (pinned) "layers.pin.unpinRow" else "layers.pin.pinRow"), size = 22.dp) {
-					IconPin(pinned, Modifier.size(12.dp), if (pinned) colors.accent else colors.textMuted)
+				is ReferencePinRows.Pad -> {
+					val h = row.horizontal.id.raw; val v = row.vertical.id.raw
+					PinKeyPad(row.horizontal, row.vertical, keys(row.horizontal), keys(row.vertical), { x, y -> pinned(mapOf(h to x, v to y)) },
+						current(row.horizontal) to current(row.vertical), enabled) { x, y -> onToggle(mapOf(h to x, v to y)) }
 				}
+			}
+		}
+		for (point in ReferencePinRows.loose(rows, points)) Row(verticalAlignment = Alignment.CenterVertically) {
+			Text(point.entries.joinToString(", ") { (id, value) -> "${puppet.parameters.firstOrNull { it.id.raw == id }?.name ?: id} ${formatAxisValue(value)}" },
+				color = colors.textPrimary, fontSize = 10.sp, maxLines = 2, modifier = Modifier.weight(1f))
+			CompactIconButton(onClick = { onToggle(point) }, enabled = enabled, tooltip = tr("layers.pin.unpinRow"), size = 20.dp) {
+				IconPin(true, Modifier.size(11.dp), colors.accent)
+			}
+		}
+	}
+}
+
+private val PinInset = 6.dp
+private val PinKeyRadius = 3.2.dp
+private val PinReach = 9.dp
+
+/** One parameter's keys as the parameter panel's track draws them, each a point to pin; [current] is the edit pose. */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+private fun PinKeyTrack(parameter: Parameter, keys: List<Float>, pinned: (Float) -> Boolean, current: Float, enabled: Boolean, onToggle: (Float) -> Unit) {
+	val colors = LocalToolColors.current
+	var hovered by remember(keys) { mutableStateOf<Float?>(null) }
+	val span = (parameter.max - parameter.min).takeIf { it > 0f } ?: 1f
+	fun nearest(x: Float, width: Float, inset: Float, reach: Float): Float? = keys.minByOrNull { kotlin.math.abs(inset + (it - parameter.min) / span * (width - inset * 2) - x) }
+		?.takeIf { kotlin.math.abs(inset + (it - parameter.min) / span * (width - inset * 2) - x) <= reach }
+	val density = LocalDensity.current
+	Canvas(Modifier.fillMaxWidth().height(20.dp).handCursor(enabled && hovered != null)
+		.onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move) { event ->
+			val p = event.changes.first().position
+			hovered = with(density) { nearest(p.x, size.width.toFloat(), PinInset.toPx(), PinReach.toPx()) }
+		}
+		.onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Exit) { hovered = null }
+		.onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press) { event ->
+			val change = event.changes.first()
+			if (!enabled || event.button != androidx.compose.ui.input.pointer.PointerButton.Primary) return@onPointerEvent
+			with(density) { nearest(change.position.x, size.width.toFloat(), PinInset.toPx(), PinReach.toPx()) }?.let { onToggle(it); change.consume() }
+		}) {
+		val inset = PinInset.toPx(); val y = size.height / 2f
+		fun x(value: Float) = inset + ((value - parameter.min) / span).coerceIn(0f, 1f) * (size.width - inset * 2)
+		drawLine(colors.textMuted.copy(alpha = 0.45f), Offset(inset, y), Offset(size.width - inset, y), 1.dp.toPx())
+		drawLine(colors.textMuted.copy(alpha = 0.55f), Offset(x(current), y - 6.dp.toPx()), Offset(x(current), y + 6.dp.toPx()), 1.dp.toPx())
+		val r = PinKeyRadius.toPx()
+		for (key in keys) {
+			val at = Offset(x(key), y)
+			if (pinned(key)) drawCircle(colors.accent, r * 1.35f, at)
+			else {
+				drawCircle(colors.panelBackground, r, at)
+				drawCircle(if (hovered == key) colors.accent else colors.textMuted, r, at, style = androidx.compose.ui.graphics.drawscope.Stroke(1.2.dp.toPx()))
+			}
+		}
+	}
+}
+
+/** A linked pair's keys as the parameter panel's 2D pad draws them, each crossing a point to pin; [current] is the edit pose. */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+private fun PinKeyPad(horizontal: Parameter, vertical: Parameter, xKeys: List<Float>, yKeys: List<Float>, pinned: (Float, Float) -> Boolean,
+                      current: Pair<Float, Float>, enabled: Boolean, onToggle: (Float, Float) -> Unit) {
+	val colors = LocalToolColors.current
+	var hovered by remember(xKeys, yKeys) { mutableStateOf<Pair<Float, Float>?>(null) }
+	val spanX = (horizontal.max - horizontal.min).takeIf { it > 0f } ?: 1f
+	val spanY = (vertical.max - vertical.min).takeIf { it > 0f } ?: 1f
+	val density = LocalDensity.current
+	fun place(width: Float, height: Float, inset: Float, x: Float, y: Float) =
+		Offset(inset + ((x - horizontal.min) / spanX).coerceIn(0f, 1f) * (width - inset * 2),
+			height - inset - ((y - vertical.min) / spanY).coerceIn(0f, 1f) * (height - inset * 2))
+	fun nearest(p: Offset, width: Float, height: Float, inset: Float, reach: Float): Pair<Float, Float>? =
+		xKeys.flatMap { x -> yKeys.map { y -> x to y } }.minByOrNull { (x, y) -> (place(width, height, inset, x, y) - p).getDistance() }
+			?.takeIf { (x, y) -> (place(width, height, inset, x, y) - p).getDistance() <= reach }
+	Canvas(Modifier.fillMaxWidth().height(76.dp).handCursor(enabled && hovered != null)
+		.onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move) { event ->
+			hovered = with(density) { nearest(event.changes.first().position, size.width.toFloat(), size.height.toFloat(), PinInset.toPx(), PinReach.toPx()) }
+		}
+		.onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Exit) { hovered = null }
+		.onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press) { event ->
+			val change = event.changes.first()
+			if (!enabled || event.button != androidx.compose.ui.input.pointer.PointerButton.Primary) return@onPointerEvent
+			with(density) { nearest(change.position, size.width.toFloat(), size.height.toFloat(), PinInset.toPx(), PinReach.toPx()) }
+				?.let { (x, y) -> onToggle(x, y); change.consume() }
+		}) {
+		val inset = PinInset.toPx()
+		drawRect(colors.textMuted.copy(alpha = 0.45f), Offset(inset, inset), androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2),
+			style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))))
+		for (x in xKeys) { val at = place(size.width, size.height, inset, x, vertical.min).x
+			drawLine(colors.textMuted.copy(alpha = 0.18f), Offset(at, inset), Offset(at, size.height - inset), 1.dp.toPx()) }
+		for (y in yKeys) { val at = place(size.width, size.height, inset, horizontal.min, y).y
+			drawLine(colors.textMuted.copy(alpha = 0.18f), Offset(inset, at), Offset(size.width - inset, at), 1.dp.toPx()) }
+		val now = place(size.width, size.height, inset, current.first, current.second)
+		val tick = 5.dp.toPx()
+		drawLine(colors.textMuted.copy(alpha = 0.6f), now - Offset(tick, 0f), now + Offset(tick, 0f), 1.dp.toPx())
+		drawLine(colors.textMuted.copy(alpha = 0.6f), now - Offset(0f, tick), now + Offset(0f, tick), 1.dp.toPx())
+		val r = PinKeyRadius.toPx()
+		for (x in xKeys) for (y in yKeys) {
+			val at = place(size.width, size.height, inset, x, y)
+			if (pinned(x, y)) drawCircle(colors.accent, r * 1.35f, at)
+			else {
+				drawCircle(colors.panelBackground, r, at)
+				drawCircle(if (hovered == (x to y)) colors.accent else colors.textMuted, r, at, style = androidx.compose.ui.graphics.drawscope.Stroke(1.2.dp.toPx()))
 			}
 		}
 	}
@@ -221,8 +324,9 @@ private fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: PS
 	val colors = LocalToolColors.current
 	CompactMenuHeader(row.name, badge = tr("references.badge"), icon = { IconReferenceImage(tint = colors.accent, size = 12.dp) })
 	CompactMenuSection(tr("references.mode"))
+	// Where it shows says whether it is in the model: only in the layer stack is it an ArtMesh of the rig.
 	for (mode in ReferenceMode.entries) CompactMenuItem(tr(mode.labelKey), onClick = { close(); if (mode != row.mode) viewModel.setReferenceMode(row.target, mode) },
-		active = mode == row.mode)
+		active = mode == row.mode, trailingText = tr(if (mode.inModel) "references.inModel" else "references.notInModel"))
 	CompactMenuDivider()
 	CompactMenuItem(tr(if (row.visible) "references.hide" else "references.show"), onClick = { close(); viewModel.setReferenceVisible(row.target, !row.visible) },
 		icon = { IconEye(row.visible, Modifier.size(12.dp), colors.textMuted) })
@@ -241,12 +345,9 @@ private fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: PS
 	val puppet = state.previewModel?.rig?.puppet
 	if (puppet != null && puppet.parameters.isNotEmpty()) {
 		CompactMenuSection(tr("layers.pin.menu"))
-		val pin = row.target.pin(state.layout)
-		ReferencePinPanel(puppet, state.parameterValues, pin, enabled = state.analysis != null) { ids -> viewModel.toggleReferencePin(row.target, ids) }
-		val listed = remember(puppet, pin, state.parameterValues) { ReferencePinRows.of(puppet, pin, state.parameterValues).flatMap { r -> r.parameters.map { it.id.raw } } }
-		if (listed.isNotEmpty()) CompactMenuItem(tr("layers.pin.pose"), onClick = { viewModel.pinReferencePose(row.target, listed) },
-			icon = { IconPin(true, Modifier.size(12.dp), colors.textMuted) })
-		if (pin.isNotEmpty()) CompactMenuItem(tr("layers.pin.clear"), onClick = { viewModel.setReferencePin(row.target, emptyMap()) })
+		val points = row.target.pin(state.layout)
+		ReferencePinPanel(puppet, state.parameterValues, points, enabled = state.analysis != null) { point -> viewModel.toggleReferencePoint(row.target, point) }
+		if (points.isNotEmpty()) CompactMenuItem(tr("layers.pin.clear"), onClick = { viewModel.setReferencePin(row.target, emptyList()) })
 	}
 	CompactMenuDivider()
 	CompactMenuItem(tr("references.remove"), onClick = { close(); viewModel.removeReference(row.target) }, danger = true,

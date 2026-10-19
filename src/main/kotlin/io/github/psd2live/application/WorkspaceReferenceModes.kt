@@ -4,7 +4,9 @@ import io.github.psd2live.core.LayerSpace
 import io.github.psd2live.core.RigPreviewModel
 import io.github.psd2live.core.StableIds
 import io.github.psd2live.project.WorkspaceDocument
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -59,9 +61,12 @@ internal object WorkspaceReferenceModes {
             putJsonObject("rect") { put("left", space.left); put("top", space.top); put("width", space.width); put("height", space.height) }
             put("under", mode == Mode.BACKGROUND)
             put("visible", document.layerVisibility[id] ?: layer.visible)
-            if (pin.isNotEmpty()) putJsonObject("pin") { pin.forEach { (parameter, value) -> put(parameter, value) } }
+            if (pin.isNotEmpty()) put("points", JsonArray(pin.map { point -> JsonObject(point.mapValues { JsonPrimitive(it.value) }) }))
         })
-        val removed = WorkspaceGenerationEdits.delete(added, id)
+        // A reference in the model goes with its mesh; one not in it yet leaves no trace.
+        val removed = if (id in WorkspaceReferenceMeshes.createdLayerIds(document))
+            WorkspaceLayerEdits.apply(added, model, WorkspaceDocumentOperation(WorkspaceLayerEdits.DELETE, buildJsonObject { put("layer_id", id) }))
+        else WorkspaceGenerationEdits.delete(added, id)
         return removed.copy(layout = removed.layout.copy(referencePins = removed.layout.referencePins - id))
     }
 }

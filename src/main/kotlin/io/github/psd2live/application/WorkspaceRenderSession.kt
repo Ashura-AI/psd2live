@@ -77,7 +77,7 @@ internal class WorkspaceRenderSession(
     internal suspend fun renderModel(model: RigPreviewModel, revision: String, request: WorkspaceModelViewRequest,
                                      worldPositions: Map<org.umamo.runtime.model.DrawableId, FloatArray> = emptyMap(),
                                      reference: ViewReferenceImage? = null, outlines: List<ViewOutline> = emptyList(),
-                                     referencePins: Map<String, Map<String, Float>> = emptyMap()): WorkspaceRenderedView {
+                                     referencePins: Map<String, List<io.github.psd2live.project.PinPoint>> = emptyMap()): WorkspaceRenderedView {
         val parameters = model.rig.puppet.parameters.associateBy { it.id.raw }
         val unknown = request.parameters.keys - parameters.keys
         require(unknown.isEmpty()) { "Unknown parameter IDs: ${unknown.sorted().joinToString()}" }

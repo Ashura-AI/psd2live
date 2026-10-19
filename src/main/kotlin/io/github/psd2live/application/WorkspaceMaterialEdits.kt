@@ -77,7 +77,7 @@ internal object WorkspaceMaterialEdits {
                 if (request["as_reference"]?.jsonPrimitive?.boolean != true) added else {
                     val first = added.layout.materials.items.drop(document.layout.materials.items.size).firstOrNull()
                         ?: throw IllegalArgumentException("Nothing was imported to use as the reference image")
-                    addReference(added, buildJsonObject { put("material_id", first.id) })
+                    addReference(added, buildJsonObject { put("material_id", first.id); if (request["reference_under"]?.jsonPrimitive?.boolean == true) put("under", true) })
                 }
             }
             FOLDER -> createFolder(document, text("name"), optional("parent_id"), optional("id"))
@@ -442,8 +442,9 @@ internal object WorkspaceMaterialEdits {
         require(opacity in 0f..1f) { "opacity is 0..1" }
         val rotation = request["rotation"]?.jsonPrimitive?.float ?: current?.rotation ?: 0f
         require(rotation.isFinite()) { "rotation must be finite" }
-        val pins = request["pin"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float } ?: current?.pins.orEmpty()
-        require(pins.size <= WorkspaceLayoutEdits.MAX_PINNED && pins.values.all(Float::isFinite)) { "pin holds at most ${WorkspaceLayoutEdits.MAX_PINNED} finite values" }
+        val pins = WorkspaceLayoutEdits.requestedPoints(request) ?: current?.pins.orEmpty()
+        require(pins.size <= WorkspaceLayoutEdits.MAX_POINTS && pins.all { point -> point.size <= WorkspaceLayoutEdits.MAX_PINNED && point.values.all(Float::isFinite) }) {
+            "pins hold at most ${WorkspaceLayoutEdits.MAX_POINTS} points of at most ${WorkspaceLayoutEdits.MAX_PINNED} finite values" }
         return LayoutReference(materialId, rect, opacity, request["visible"]?.jsonPrimitive?.boolean ?: current?.visible ?: true, id,
             ((rotation % 360f) + 360f) % 360f, request["locked"]?.jsonPrimitive?.boolean ?: current?.locked ?: false,
             request["under"]?.jsonPrimitive?.boolean ?: current?.under ?: false, pins)

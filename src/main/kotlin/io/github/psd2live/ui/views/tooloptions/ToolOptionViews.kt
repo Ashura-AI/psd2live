@@ -405,8 +405,8 @@ private fun MenuOption(editor: CanvasEditor, option: ToolOption, onDismiss: () -
         is PinOption -> FloatingMenuPin(option.label(editor), option.value(editor), option.pinned(editor),
             { option.toggle(editor); onAction() }, enabled = option.enabled(editor))
         is ReferencePinsOption -> editor.state.previewModel?.rig?.puppet?.let { puppet ->
-            io.github.psd2live.ui.views.ReferencePinPanel(puppet, editor.state.parameterValues, option.target.pin(editor.state.layout), editor.editable) { ids ->
-                editor.viewModel.toggleReferencePin(option.target, ids); onAction()
+            io.github.psd2live.ui.views.ReferencePinPanel(puppet, editor.state.parameterValues, option.target.pin(editor.state.layout), editor.editable) { point ->
+                editor.viewModel.toggleReferencePoint(option.target, point); onAction()
             }
         }
         is ActionOption -> FloatingMenuRow(

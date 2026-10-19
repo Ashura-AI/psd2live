@@ -227,7 +227,11 @@ internal class WorkspacePreviewBuilder {
      * generators do not read yet show over them as plain meshes ([WorkspaceLayoutPreview]).
      */
     suspend fun build(document: WorkspaceDocument, current: RigPreviewModel? = null,
-                      legacyDrawOrders: Map<String, Float> = current?.config?.drawOrderOverrides.orEmpty()): RigPreviewModel {
+                      legacyDrawOrders: Map<String, Float> = current?.config?.drawOrderOverrides.orEmpty()): RigPreviewModel =
+        // The reference layers in the model sit in its guide-image part.
+        WorkspaceReferenceMeshes.sketched(buildPreview(document, current, legacyDrawOrders), document)
+
+    private suspend fun buildPreview(document: WorkspaceDocument, current: RigPreviewModel?, legacyDrawOrders: Map<String, Float>): RigPreviewModel {
         val context = currentCoroutineContext()
         if (!document.layout.generation.generated) return runInterruptible(Dispatchers.Default) {
             WorkspaceLayoutPreview.ungenerated(document) { context.ensureActive() }

@@ -95,6 +95,8 @@ object WorkspaceViewRenderer {
 		require(unknownIncluded.isEmpty()) { "Unknown included layer IDs: ${unknownIncluded.sorted().joinToString()}" }
 		val unknownAnnotated = annotateLayerIds - knownLayerIds
 		require(unknownAnnotated.isEmpty()) { "Unknown annotation layer IDs: ${unknownAnnotated.sorted().joinToString()}" }
+		// References pinned to another keyform stay out of this pose, quads and those in the model alike.
+		@Suppress("NAME_SHADOWING") val includeLayerIds = includeLayerIds - hiddenReferenceLayerIds
 
 		val typedParameters = parameters.mapKeys { ParameterId(it.key) }
 		val outOfRangeParameters = model.rig.puppet.parameters.mapNotNull { parameter ->

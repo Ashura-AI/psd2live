@@ -98,7 +98,7 @@ internal object WorkspaceReferenceGrid {
         val prefix = request["id_prefix"]?.jsonPrimitive?.content ?: StableIds.stem("refgrid_", materialId, xParameter.id.raw, yParameter?.id?.raw, xs, ys)
         require(prefix.matches(Regex("[A-Za-z0-9_.:-]{1,48}"))) { "id_prefix is 1-48 of A-Z a-z 0-9 _ . : -" }
         var next = document
-        val pins = LinkedHashMap<String, Map<String, Float>>()
+        val pins = LinkedHashMap<String, List<PinPoint>>()
         for ((row, y) in ys.withIndex()) for ((column, x) in xs.withIndex()) {
             val id = "${prefix}_${row}_$column"
             val pixels = LayerCanvasRect(area.left + column * cellW, area.top + row * cellH, cellW, cellH)
@@ -108,7 +108,7 @@ internal object WorkspaceReferenceGrid {
             }
             next = WorkspaceMaterialEdits.crop(next, materialId, pixels, null, label.take(WorkspaceMaterialEdits.MAX_NAME), id, item.folderId, true)
             next = WorkspaceMaterialEdits.place(next, model, id, place, null, id, reference = true)
-            pins[id] = if (yParameter == null) mapOf(xParameter.id.raw to x) else mapOf(xParameter.id.raw to x, yParameter.id.raw to y)
+            pins[id] = listOf(if (yParameter == null) mapOf(xParameter.id.raw to x) else mapOf(xParameter.id.raw to x, yParameter.id.raw to y))
         }
         return next.copy(layout = next.layout.copy(referencePins = next.layout.referencePins + pins))
     }

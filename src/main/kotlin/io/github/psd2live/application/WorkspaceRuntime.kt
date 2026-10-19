@@ -246,8 +246,10 @@ internal class WorkspaceRuntime<M>(
                 val nextRevision = WorkspaceRevisions.of(candidate.document)
                 val previousModel = model
                 if (nextRevision != revision) {
-                    // Later commands must observe the rig produced by earlier commands in this draft.
-                    model = rebuildFrom?.invoke(candidate.document, model) ?: rebuild(candidate.document)
+                    // Later commands must observe the rig produced by earlier commands in this draft. Reference images
+                    // are view data no build reads: moving one keeps the model.
+                    model = if (onlyReferenceImagesChanged(document, candidate.document)) model
+                        else rebuildFrom?.invoke(candidate.document, model) ?: rebuild(candidate.document)
                     document = adopted(candidate.document, model)
                     revision = WorkspaceRevisions.of(document)
                 }
@@ -374,3 +376,8 @@ internal class WorkspaceRuntime<M>(
         mutableState.value = next
     }
 }
+
+/** Whether [after] differs from [before] only in its reference images, which no build of the model reads. */
+internal fun onlyReferenceImagesChanged(before: WorkspaceDocument, after: WorkspaceDocument): Boolean =
+    before.layout.references != after.layout.references &&
+        before.copy(layout = before.layout.copy(references = after.layout.references)) == after

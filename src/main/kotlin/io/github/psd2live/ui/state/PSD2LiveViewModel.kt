@@ -5996,6 +5996,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	/** What the pointer says where no target takes the files. */
 	private fun fileDropHint(carried: CarriedFiles): String? = when {
 		carried.unknown -> null
+		carried.material != null -> tr("drop.hint.material")
 		carried.rasters.isNotEmpty() && _state.value.previewModel == null -> tr("error.importLayerBusy")
 		carried.rasters.isNotEmpty() || carried.materials -> tr("drop.hint.target")
 		else -> tr("drop.hint.unsupported")
@@ -6004,14 +6005,27 @@ class PSD2LiveViewModel : AutoCloseable {
 	/** Files dropped from the system at window pixel ([x], [y]): whatever the target there does with them. */
 	fun dropFiles(files: List<java.io.File>, x: Float?, y: Float?) {
 		val carried = CarriedFiles(files)
-		when (val intent = fileDrops.drop(files, x, y)) {
+		perform(carried, fileDrops.drop(carried, x, y))
+	}
+
+	/** What a drop of [carried] does at its target ([intent]; null: nothing, with a hint). Files and materials alike. */
+	private fun perform(carried: CarriedFiles, intent: FileDropIntent?) {
+		val material = carried.material
+		when (intent) {
 			null -> fileDropHint(carried)?.let(::setStatusText)
 			is FileDropIntent.Open -> openDropped(intent.action)
-			is FileDropIntent.ImportMaterials -> importMaterials(files.map { it.toPath() }, intent.folderId)
+			is FileDropIntent.ImportMaterials -> importMaterials(carried.files.map { it.toPath() }, intent.folderId)
 			is FileDropIntent.InsertLayers -> importLayersFromFiles(carried.rasters, intent.insertion)
-			is FileDropIntent.PlaceOnCanvas -> importLayersFromFiles(carried.rasters, io.github.psd2live.application.ImageLayerInsertion(centre = intent.centre))
-			is FileDropIntent.SetReference -> importMaterials(carried.rasters.take(1).map { it.toPath() }, null, asReference = true)
-			is FileDropIntent.ReplaceImage -> carried.rasters.firstOrNull()?.let { file ->
+			is FileDropIntent.PlaceOnCanvas -> if (material != null) placeMaterial(material.id, intent.centre.first, intent.centre.second, reference = false)
+				else importLayersFromFiles(carried.rasters, io.github.psd2live.application.ImageLayerInsertion(centre = intent.centre))
+			is FileDropIntent.SetReference -> when {
+				// In the layer stack it is in the model: a layer kept as reference.
+				intent.mode == ReferenceMode.LAYER && material != null -> placeMaterial(material.id, reference = true)
+				intent.mode == ReferenceMode.LAYER -> importLayersFromFiles(carried.rasters.take(1), io.github.psd2live.application.ImageLayerInsertion(), asReference = true)
+				material != null -> setLayoutReference(material.id, under = intent.mode == ReferenceMode.BACKGROUND)
+				else -> importMaterials(carried.rasters.take(1).map { it.toPath() }, null, asReference = true, under = intent.mode == ReferenceMode.BACKGROUND)
+			}
+			is FileDropIntent.ReplaceImage -> if (material != null) replaceLayerWithMaterial(intent.layerId, material.id) else carried.rasters.firstOrNull()?.let { file ->
 				val options = _state.value.textureWorkspace
 				queueTextureEdits(listOf(io.github.psd2live.application.WorkspaceTextureEdit.ReplaceImage(intent.layerId,
 					io.github.psd2live.application.WorkspaceTextureImage.File(file.toPath().toAbsolutePath()), options.replaceFit, options.replaceRebuildMesh)))
@@ -6055,7 +6069,7 @@ class PSD2LiveViewModel : AutoCloseable {
         }
     }
 
-    fun importLayersFromFiles(files: List<java.io.File>, insertion: io.github.psd2live.application.ImageLayerInsertion) {
+    fun importLayersFromFiles(files: List<java.io.File>, insertion: io.github.psd2live.application.ImageLayerInsertion, asReference: Boolean = false) {
         if (files.isEmpty()) return
         val current = _state.value
         val expected = workspaceBackend?.snapshot()
@@ -6074,6 +6088,8 @@ class PSD2LiveViewModel : AutoCloseable {
                 if (workspaceBackend?.snapshot()?.state != result.state || _state.value.activeWorkspace.id != workspaceId) return@launch
                 val ids = result.affectedLayerIds
                 val placeId = ids.lastOrNull() ?: return@launch
+                // Imported to be a reference in the layer stack: its mesh goes into the model's reference part.
+                if (asReference) { markLayersReference(ids, true); return@launch }
                 val revealed = revealCanvasLayers(result.state, workspaceId, canvasId, ids)
                 if (workspaceBackend?.snapshot()?.state != revealed || _state.value.activeWorkspace.id != workspaceId) return@launch
                 if (_state.value.activeCanvas.id == canvasId && _state.value.activeCanvas.mode != CanvasMode.EDIT) setCanvasMode(canvasId, CanvasMode.EDIT)
@@ -6101,16 +6117,23 @@ class PSD2LiveViewModel : AutoCloseable {
 	 */
 	val materialDropTargets = java.util.concurrent.ConcurrentHashMap<String, (androidx.compose.ui.geometry.Offset) -> androidx.compose.ui.geometry.Offset?>()
 
-	fun startMaterialDrag(id: String, label: String, position: androidx.compose.ui.geometry.Offset) { _materialDrag.value = MaterialDrag(id, label, position) }
-	fun moveMaterialDrag(position: androidx.compose.ui.geometry.Offset) { _materialDrag.value = _materialDrag.value?.copy(position = position) }
-	fun cancelMaterialDrag() { _materialDrag.value = null }
+	fun startMaterialDrag(id: String, label: String, position: androidx.compose.ui.geometry.Offset) {
+		_materialDrag.value = MaterialDrag(id, label, position)
+		fileDrops.move(CarriedFiles(emptyList(), CarriedMaterial(id, label)), position.x, position.y)
+	}
+	fun moveMaterialDrag(position: androidx.compose.ui.geometry.Offset) {
+		val drag = _materialDrag.value ?: return
+		_materialDrag.value = drag.copy(position = position)
+		fileDrops.move(CarriedFiles(emptyList(), CarriedMaterial(drag.id, drag.label)), position.x, position.y)
+	}
+	fun cancelMaterialDrag() { _materialDrag.value = null; fileDrops.end() }
 
-	/** Drops the carried material where the pointer is: on an edit canvas it is placed centred there. */
+	/** Drops the carried material where the pointer is: whatever the target there does with it, as with files. */
 	fun endMaterialDrag() {
 		val drag = _materialDrag.value ?: return
 		_materialDrag.value = null
-		val at = materialDropTargets.values.firstNotNullOfOrNull { it(drag.position) } ?: return
-		placeMaterial(drag.id, at.x, at.y)
+		val carried = CarriedFiles(emptyList(), CarriedMaterial(drag.id, drag.label))
+		perform(carried, fileDrops.drop(carried, drag.position.x, drag.position.y))
 	}
 
 	/** Adds material [materialId] as a further reference image, in front of the model or [under] it (`layout_add_reference`), or removes every one showing it with null. */
@@ -6150,31 +6173,23 @@ class PSD2LiveViewModel : AutoCloseable {
 	fun orderReference(id: String, index: Int) = layoutEdit(tr("references.order"), io.github.psd2live.application.WorkspaceMaterialEdits.ORDER_REFERENCE,
 		kotlinx.serialization.json.buildJsonObject { put("id", id); put("index", index) })
 
-	/** Pins [target] to keyform [pin] - parameter ID to value - or unpins it with an empty one. */
-	fun setReferencePin(target: ReferenceTarget, pin: Map<String, Float>) = when (target) {
-		is ReferenceTarget.Layer -> pinReferenceLayers(listOf(target.layerId), pin)
-		is ReferenceTarget.Image -> editReference(target.id) {
-			put("pin", kotlinx.serialization.json.JsonObject(pin.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) }))
+	/** Pins [target] to keyform [points] - each parameter ID to value - or unpins it with none. */
+	fun setReferencePin(target: ReferenceTarget, points: List<io.github.psd2live.project.PinPoint>) {
+		val encoded = kotlinx.serialization.json.JsonArray(points.map { point ->
+			kotlinx.serialization.json.JsonObject(point.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) }) })
+		when (target) {
+			is ReferenceTarget.Layer -> layoutEdit(tr(if (points.isEmpty()) "layers.pin.unpinned" else "layers.pin.pinned", 1),
+				io.github.psd2live.application.WorkspaceLayoutEdits.PIN_REFERENCE,
+				kotlinx.serialization.json.buildJsonObject { put("layer_ids", strings(listOf(target.layerId))); put("points", encoded) })
+			is ReferenceTarget.Image -> editReference(target.id) { put("points", encoded) }
 		}
 	}
 
-	/**
-	 * Frees [target] from [parameterIds] when it is pinned to all of them, else pins it to each at the value the canvas
-	 * shows now, keeping its other pins: one pin row of the menu, a track or a 2D pad.
-	 */
-	fun toggleReferencePin(target: ReferenceTarget, parameterIds: List<String>) {
-		val state = _state.value
-		val pin = target.pin(state.layout)
-		if (parameterIds.all { it in pin }) return setReferencePin(target, pin - parameterIds.toSet())
-		val parameters = state.previewModel?.rig?.puppet?.parameters?.filter { it.id.raw in parameterIds } ?: return
-		setReferencePin(target, pin + parameters.associate { it.id.raw to (state.parameterValues[it.id] ?: it.default) })
-	}
-
-	/** Pins [target] to every parameter of [parameterIds] at the pose the canvas shows now. */
-	fun pinReferencePose(target: ReferenceTarget, parameterIds: List<String>) {
-		val state = _state.value
-		val parameters = state.previewModel?.rig?.puppet?.parameters?.filter { it.id.raw in parameterIds } ?: return
-		setReferencePin(target, parameters.associate { it.id.raw to (state.parameterValues[it.id] ?: it.default) })
+	/** Shows [target] at keyform [point] too, or no longer there when it already does. */
+	fun toggleReferencePoint(target: ReferenceTarget, point: io.github.psd2live.project.PinPoint) {
+		val points = target.pin(_state.value.layout)
+		val existing = points.firstOrNull { ReferencePinRows.same(it, point) }
+		setReferencePin(target, if (existing != null) points - existing else points + point)
 	}
 
 	/** Shows [target] behind the model, in the layer stack or in front of it (`reference_set_mode`). */
@@ -6220,7 +6235,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	private fun strings(values: Collection<String>) = kotlinx.serialization.json.JsonArray(values.map { kotlinx.serialization.json.JsonPrimitive(it) })
 
 	/** Reads [files] (images, PSD, CMO3 images, SVG, folders) into the material library under [folderId]: one history edit. */
-	fun importMaterials(files: List<java.nio.file.Path>, folderId: String?, asReference: Boolean = false) {
+	fun importMaterials(files: List<java.nio.file.Path>, folderId: String?, asReference: Boolean = false, under: Boolean = false) {
 		if (files.isEmpty()) return
 		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return
 		val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace
@@ -6234,6 +6249,7 @@ class PSD2LiveViewModel : AutoCloseable {
 				io.github.psd2live.application.WorkspaceMaterialEdits.ADD, kotlinx.serialization.json.buildJsonObject {
 					put("staging", token); folderId?.let { put("folder_id", it) }
 					if (asReference) put("as_reference", true)
+					if (asReference && under) put("reference_under", true)
 				})), MutationAuthor.USER)
 		}
 	}
@@ -6370,6 +6386,16 @@ class PSD2LiveViewModel : AutoCloseable {
 			.filter { !generation.generated || it in generation.pendingLayerIds || it in state.layout.referenceLayerIds }
 	}
 
+	/**
+	 * The selected layers that can be kept as reference: those the stack can move ([reorderableSelection]) and those whose
+	 * mesh the user made, such as imported images.
+	 */
+	fun referenceSelection(state: PSD2LiveState = _state.value): List<String> {
+		val created = state.createdLayerIds
+		return (listOfNotNull(state.selectedLayerId) + state.selectedLayerIds).distinct()
+			.filter { it in reorderableSelection(state) || it in created }
+	}
+
 	/** Keeps [layerIds] as reference layers or gives them back to the model (`layer_mark_reference`). */
 	fun markLayersReference(layerIds: Collection<String>, reference: Boolean) {
 		if (layerIds.isEmpty()) return
@@ -6378,24 +6404,12 @@ class PSD2LiveViewModel : AutoCloseable {
 			kotlinx.serialization.json.buildJsonObject { put("layer_ids", strings(layerIds)); put("reference", reference) })
 	}
 
-	/** Pins reference layers [layerIds] to keyform [pin] - parameter ID to value - or unpins them with an empty one (`layer_pin_reference`). */
-	fun pinReferenceLayers(layerIds: Collection<String>, pin: Map<String, Float>) {
-		if (layerIds.isEmpty()) return
-		layoutEdit(tr(if (pin.isEmpty()) "layers.pin.unpinned" else "layers.pin.pinned", layerIds.size),
-			io.github.psd2live.application.WorkspaceLayoutEdits.PIN_REFERENCE,
-			kotlinx.serialization.json.buildJsonObject {
-				put("layer_ids", strings(layerIds))
-				put("pin", kotlinx.serialization.json.JsonObject(pin.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) }))
-			})
-	}
-
-
 	/**
 	 * Toggles the selected layers between reference and model: all of them back to the model when every one is a
 	 * reference, else all of them to reference. False when none can change.
 	 */
 	fun toggleSelectedLayersReference(): Boolean {
-		val ids = reorderableSelection()
+		val ids = referenceSelection()
 		if (ids.isEmpty()) return false
 		markLayersReference(ids, !ids.all { it in _state.value.layout.referenceLayerIds })
 		return true

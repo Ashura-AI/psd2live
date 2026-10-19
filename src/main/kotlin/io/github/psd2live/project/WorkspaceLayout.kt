@@ -33,7 +33,7 @@ data class WorkspaceLayout(
 	 * Reference layers pinned to a keyform, by layer ID: parameter ID to value. A pinned layer shows only where every
 	 * pinned parameter sits at its value ([ReferencePins]); an unpinned one shows at every pose.
 	 */
-	val referencePins: Map<String, Map<String, Float>> = emptyMap(),
+	val referencePins: Map<String, List<PinPoint>> = emptyMap(),
 ) {
 	val isEmpty: Boolean get() = this == Empty
 
@@ -84,29 +84,45 @@ data class WorkspaceGeneration(
 	}
 }
 
+/** One keyform a reference shows at: parameter ID to value. */
+typealias PinPoint = Map<String, Float>
+
 /**
- * Where pinned reference layers show ([WorkspaceLayout.referencePins]): at a pose whose every pinned parameter lies
- * within [TOLERANCE] of the parameter's range of its pinned value. A parameter the rig no longer has does not hide.
+ * Where pinned references show ([WorkspaceLayout.referencePins], [LayoutReference.pins]): at any of their keyform
+ * points - a pose whose every parameter of the point lies within [TOLERANCE] of the parameter's range of the point's
+ * value. No points shows them at every pose; a parameter the rig no longer has does not hide.
  */
 object ReferencePins {
 	/** The share of a parameter's range a pose may be off a pinned value and still show the layer. */
 	const val TOLERANCE = 0.005f
 
-	/** Whether a layer pinned to [pin] shows at [values] (parameter ID to value, a missing one at its default) of [parameters]. */
-	fun shows(pin: Map<String, Float>?, parameters: Map<String, Parameter>, values: (String) -> Float?): Boolean {
-		if (pin.isNullOrEmpty()) return true
-		return pin.all { (id, value) ->
-			val parameter = parameters[id] ?: return@all true
-			val at = values(id) ?: parameter.default
-			kotlin.math.abs(at - value) <= maxOf(1e-4f, (parameter.max - parameter.min) * TOLERANCE)
-		}
+	/** Whether pose [values] (parameter ID to value, a missing one at its default) of [parameters] sits on [point]. */
+	fun at(point: PinPoint, parameters: Map<String, Parameter>, values: (String) -> Float?): Boolean = point.all { (id, value) ->
+		val parameter = parameters[id] ?: return@all true
+		val at = values(id) ?: parameter.default
+		kotlin.math.abs(at - value) <= maxOf(1e-4f, (parameter.max - parameter.min) * TOLERANCE)
 	}
 
-	/** The layers of [pins] ([WorkspaceLayout.referencePins]) that do not show at [values] of [parameters]. */
-	fun hidden(pins: Map<String, Map<String, Float>>, parameters: List<Parameter>, values: (String) -> Float?): Set<String> {
+	/** Whether a reference pinned to [points] shows at [values] of [parameters]: at one of them, or anywhere without any. */
+	fun shows(points: List<PinPoint>?, parameters: Map<String, Parameter>, values: (String) -> Float?): Boolean =
+		points.isNullOrEmpty() || points.any { at(it, parameters, values) }
+
+	/** The references of [pins] that do not show at [values] of [parameters]. */
+	fun hidden(pins: Map<String, List<PinPoint>>, parameters: List<Parameter>, values: (String) -> Float?): Set<String> {
 		if (pins.isEmpty()) return emptySet()
 		val byId = parameters.associateBy { it.id.raw }
-		return pins.filterTo(LinkedHashMap()) { (_, pin) -> !shows(pin, byId, values) }.keys
+		return pins.filterTo(LinkedHashMap()) { (_, points) -> !shows(points, byId, values) }.keys
+	}
+
+	/** A pin as an archive writes it: one point as the object it always was, several as an array of them. */
+	fun encode(points: List<PinPoint>): JsonElement =
+		if (points.size == 1) encodePoint(points.single()) else JsonArray(points.map(::encodePoint))
+
+	private fun encodePoint(point: PinPoint) = JsonObject(point.toSortedMap().mapValues { JsonPrimitive(it.value) })
+
+	fun decode(value: JsonElement): List<PinPoint> = when (value) {
+		is JsonArray -> value.map { point -> point.jsonObject.mapValues { it.value.jsonPrimitive.float } }
+		else -> listOf(value.jsonObject.mapValues { it.value.jsonPrimitive.float }).filter { it.isNotEmpty() }
 	}
 }
 
@@ -125,8 +141,8 @@ data class LayoutReference(
 	val rotation: Float = 0f,
 	val locked: Boolean = false,
 	val under: Boolean = false,
-	/** The keyform it shows at, as a reference layer's [WorkspaceLayout.referencePins]: empty shows it at every pose. */
-	val pins: Map<String, Float> = emptyMap(),
+	/** The keyform points it shows at, as a reference layer's [WorkspaceLayout.referencePins]: none shows it at every pose. */
+	val pins: List<PinPoint> = emptyList(),
 ) {
 	init {
 		require(opacity in 0f..1f) { "Reference opacity is 0..1" }
@@ -240,7 +256,7 @@ internal object WorkspaceLayoutCodec {
 		if (reference.rotation != 0f) put("rotation", reference.rotation)
 		if (reference.locked) put("locked", true)
 		if (reference.under) put("under", true)
-		if (reference.pins.isNotEmpty()) putJsonObject("pins") { reference.pins.toSortedMap().forEach { (parameter, value) -> put(parameter, value) } }
+		if (reference.pins.isNotEmpty()) put("pins", ReferencePins.encode(reference.pins))
 	}
 
 	private fun decodeReference(value: JsonObject): LayoutReference {
@@ -249,7 +265,7 @@ internal object WorkspaceLayoutCodec {
 			value["opacity"]?.jsonPrimitive?.float ?: 0.5f, value["visible"]?.jsonPrimitive?.boolean ?: true,
 			value["id"]?.jsonPrimitive?.content ?: LayoutReference.FIRST_ID, value["rotation"]?.jsonPrimitive?.float ?: 0f,
 			value["locked"]?.jsonPrimitive?.boolean ?: false, value["under"]?.jsonPrimitive?.boolean ?: false,
-			value["pins"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float }.orEmpty())
+			value["pins"]?.let(ReferencePins::decode).orEmpty())
 	}
 
 	const val LAYOUT = "layout"
@@ -284,7 +300,7 @@ internal object WorkspaceLayoutCodec {
 			} }
 			if (layout.referenceLayerIds.isNotEmpty()) putJsonArray("referenceLayerIds") { layout.referenceLayerIds.sorted().forEach { add(JsonPrimitive(it)) } }
 			if (layout.referencePins.isNotEmpty()) putJsonObject("referencePins") {
-				layout.referencePins.toSortedMap().forEach { (id, pin) -> putJsonObject(id) { pin.toSortedMap().forEach { (parameter, value) -> put(parameter, value) } } }
+				layout.referencePins.toSortedMap().forEach { (id, points) -> put(id, ReferencePins.encode(points)) }
 			}
 		}
 	}
@@ -373,7 +389,7 @@ internal object WorkspaceLayoutCodec {
 					value["styles"]?.jsonPrimitive?.content.orEmpty(), value["defs"]?.jsonPrimitive?.content.orEmpty())
 			},
 			referenceLayerIds = strings(layout?.get("referenceLayerIds")),
-			referencePins = layout?.get("referencePins")?.jsonObject?.mapValues { pin -> pin.value.jsonObject.mapValues { it.value.jsonPrimitive.float } }.orEmpty(),
+			referencePins = layout?.get("referencePins")?.jsonObject?.mapValues { ReferencePins.decode(it.value) }?.filterValues { it.isNotEmpty() }.orEmpty(),
 		)
 	}
 

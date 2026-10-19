@@ -379,7 +379,7 @@ fun CanvasViewportComposable(
 		if (mode == CanvasMode.EDIT) {
 			viewModel.materialDropTargets[canvasId] = ::canvasAt
 			viewModel.fileDrops.register("canvas:$canvasId") zone@{ carried, x, y ->
-				if (!carried.unknown && carried.rasters.isEmpty()) return@zone null
+				if (!carried.placeable) return@zone null
 				val at = canvasAt(Offset(x, y)) ?: return@zone null
 				io.github.psd2live.ui.state.FileDropIntent.PlaceOnCanvas(at.x to at.y, tr("drop.intent.place"))
 			}
@@ -445,10 +445,14 @@ fun CanvasViewportComposable(
 	val selectedReferenceId by viewModel.selectedReferenceId.collectAsState()
 	// Reference images pinned to another keyform than the edit pose, as reference layers pinned away.
 	val pinnedAwayImages = canvasState.pinnedAwayReferenceImageIds
-	// A reference being moved, scaled or turned on this canvas, shown as it goes until the edit lands.
-	var referenceDraft by remember(layoutReferences) { mutableStateOf<io.github.psd2live.project.LayoutReference?>(null) }
-	val shownReferences = layoutReferences.map { (r, raster) -> (referenceDraft?.takeIf { it.id == r.id } ?: r) to raster }
-		.filter { (r, _) -> r.visible && viewOptions.showReference && mode == CanvasMode.EDIT && r.id !in pinnedAwayImages }
+	// A reference being moved, scaled or turned on this canvas, shown as it goes until the edit lands. Only the draw
+	// reads it, so a drag redraws the canvas without composing it again.
+	val referenceDraft = remember { mutableStateOf<io.github.psd2live.project.LayoutReference?>(null) }
+	LaunchedEffect(layoutReferences) { referenceDraft.value = null }
+	val referencesShown = viewOptions.showReference && mode == CanvasMode.EDIT
+	fun shownReferences() = if (!referencesShown) emptyList() else layoutReferences
+		.map { (r, raster) -> (referenceDraft.value?.takeIf { it.id == r.id } ?: r) to raster }
+		.filter { (r, _) -> r.visible && r.id !in pinnedAwayImages }
 	val layerDensity = remember(previewModel) {
 		previewModel?.analysis?.layers?.associate { it.source.id.raw to io.github.psd2live.application.WorkspaceViewRenderer.texelsPerUnit(it.source) }.orEmpty()
 	}
@@ -1487,7 +1491,7 @@ fun CanvasViewportComposable(
 					}
 
 					// 3a''. Reference images and layers under the model: drawn before the artwork, whose frame clears to transparent.
-					for ((reference, raster) in shownReferences) if (reference.under) drawReference(reference, referenceImage(raster), viewport)
+					for ((reference, raster) in shownReferences()) if (reference.under) drawReference(reference, referenceImage(raster), viewport)
 					val referenceLayersShown = mode == CanvasMode.EDIT && showTexture && model.referenceLayerIds.isNotEmpty()
 					if (referenceLayersShown && !viewOptions.referenceLayersOver) drawIntoCanvas { target ->
 						ReferenceLayerPainter.paint(target.nativeCanvas, model, geometry, viewport, targetVisibleLayerIds)
@@ -1570,7 +1574,7 @@ fun CanvasViewportComposable(
 						drawPath(path, io.github.psd2live.ui.views.texture.heatColor(io.github.psd2live.ui.state.TextureDensity.heat(value)).copy(alpha = 0.5f))
 					}
 				}
-				for ((reference, raster) in shownReferences) if (!reference.under) drawReference(reference, referenceImage(raster), viewport)
+				for ((reference, raster) in shownReferences()) if (!reference.under) drawReference(reference, referenceImage(raster), viewport)
 
 				// The Java2D guide pass is the software path's: with the GPU every guide is in its frame.
 				val guideImage = if (gpuReady) null else guideCache.imageFor(guideKey, w, h, panShift(guideKey)) { g ->
@@ -2000,13 +2004,13 @@ fun CanvasViewportComposable(
 			val handled = layoutReferences.firstOrNull { it.first.id == selectedReferenceId }?.first
 				?.takeIf { mode == CanvasMode.EDIT && it.visible && !it.locked && viewOptions.showReference }
 			if (handled != null && viewSize.width > 0) {
-				ReferenceHandles(handled, currentViewportFor(viewSize), onDraft = { referenceDraft = it },
+				ReferenceHandles(handled, currentViewportFor(viewSize), onDraft = { referenceDraft.value = it },
 					onCommit = { rect, rotation -> viewModel.placeReference(handled.id, rect, rotation) })
 			}
-			// While images are carried over the window: targets for what a drop on the canvas itself does not do.
+			// While images or a material are carried: big targets for what a drop on the canvas itself does not do.
 			if (mode == CanvasMode.EDIT) {
 				val selected = canvasState.selectedLayerId?.let { id -> canvasState.analysis?.source?.layers?.firstOrNull { it.id.raw == id } }
-				CanvasFileDropSlots(viewModel, canvasId, selected?.let { it.id.raw to it.name }, Modifier.align(Alignment.TopCenter).padding(top = 52.dp))
+				CanvasDropTiles(viewModel, canvasId, selected?.let { it.id.raw to it.name }, Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp, start = 16.dp, end = 16.dp))
 			}
 			// Bottom-right: display-toggle rail (mirrors the left tool palette).
 			CanvasViewOptionsBar(

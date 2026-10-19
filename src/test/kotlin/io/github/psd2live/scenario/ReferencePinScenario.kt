@@ -51,7 +51,7 @@ class ReferencePinScenario {
 		val ids = (0..1).flatMap { r -> (0..2).map { c -> "angle_${r}_$c" } }
 		expect("placed", now.document.layout.referenceLayerIds.containsAll(ids) && ids.all { id -> now.document.layout.materials.item(id) != null }) {
 			"references ${now.document.layout.referenceLayerIds}" }
-		expect("pinned", now.document.layout.referencePins["angle_1_2"] == mapOf(x.id.raw to xs[2], y.id.raw to ys[1])) {
+		expect("pinned", now.document.layout.referencePins["angle_1_2"] == listOf(mapOf(x.id.raw to xs[2], y.id.raw to ys[1]))) {
 			"pins ${now.document.layout.referencePins}" }
 
 		val render = WorkspaceRenderSession(runtime.read(), { it })
@@ -89,7 +89,7 @@ class ReferencePinScenario {
 		edit("unpin the top left", WorkspaceLayoutEdits.PIN_REFERENCE, req("layer_ids" to listOf("angle_0_0"), "pin" to null))
 		expect("unpinned", "angle_0_0" !in now.document.layout.referencePins) { "${now.document.layout.referencePins.keys}" }
 		reopen()
-		expect("saved", now.document.layout.referencePins.size == 5 && now.document.layout.referencePins["angle_1_0"] == mapOf(x.id.raw to xs[0], y.id.raw to ys[1])) {
+		expect("saved", now.document.layout.referencePins.size == 5 && now.document.layout.referencePins["angle_1_0"] == listOf(mapOf(x.id.raw to xs[0], y.id.raw to ys[1]))) {
 			"pins after reopening ${now.document.layout.referencePins}" }
 		edit("give one back to the model", WorkspaceLayoutEdits.MARK_REFERENCE, req("layer_ids" to listOf("angle_1_1"), "reference" to false))
 		expect("dropped", "angle_1_1" !in now.document.layout.referencePins) { "a model layer kept its pin" }

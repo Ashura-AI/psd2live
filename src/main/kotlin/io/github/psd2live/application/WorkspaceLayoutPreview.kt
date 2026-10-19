@@ -19,9 +19,10 @@ import org.umamo.runtime.model.withDerivedRenderRoot
  * parameters - built by a mesh-only generation of those layers alone ([meshModel]) and laid over the generated model
  * ([augment]). The generated model stays the model's [RigPreviewModel.layoutBase], which builds, replay and export read.
  *
- * Reference layers are not meshed from their pixels and never enter an atlas: each shows as a four-corner quad over
- * its canvas rectangle, there to be picked and moved, which the artwork pass skips; the canvas draws its pixels on
- * their own, under or over the model ([RigPreviewModel.referenceLayerIds]).
+ * Reference layers not in the model yet - before the first generation - are not meshed from their pixels and never
+ * enter an atlas: each shows as a four-corner quad over its canvas rectangle, which the artwork pass skips; the canvas
+ * draws its pixels on their own, under or over the model ([RigPreviewModel.referenceLayerIds]). Once generated, a
+ * reference layer is an ArtMesh of the model ([WorkspaceReferenceMeshes]).
  */
 internal object WorkspaceLayoutPreview {
     private val pipeline = PSD2LivePipeline()
@@ -34,12 +35,13 @@ internal object WorkspaceLayoutPreview {
         val generation = document.layout.generation
         val ids = document.source.layers.mapTo(LinkedHashSet()) { it.id.raw }
         if (!generation.generated) return ids - document.deletedLayerIds
-        return (generation.pendingLayerIds + document.layout.referenceLayerIds).filterTo(LinkedHashSet()) { it in ids }
+        return (generation.pendingLayerIds + (document.layout.referenceLayerIds - WorkspaceReferenceMeshes.meshed(document)))
+            .filterTo(LinkedHashSet()) { it in ids }
     }
 
-    /** The reference layers [document] shows ([WorkspaceLayout.referenceLayerIds]), present and not deleted. */
+    /** The reference layers [document] shows as quads ([WorkspaceLayout.referenceLayerIds]): present, not deleted, not in the model yet. */
     fun referenceIds(document: WorkspaceDocument): Set<String> {
-        val marked = document.layout.referenceLayerIds
+        val marked = document.layout.referenceLayerIds - WorkspaceReferenceMeshes.meshed(document)
         if (marked.isEmpty()) return emptySet()
         return document.source.layers.mapNotNullTo(LinkedHashSet()) { layer -> layer.id.raw.takeIf { it in marked && it !in document.deletedLayerIds } }
     }

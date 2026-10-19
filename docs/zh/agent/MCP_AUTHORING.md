@@ -521,7 +521,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `project_create` | `width`、`height`，可选 `discard_unsaved` | 新建未生成的空工程 |
 | `project_import_layout` | `path`（清单 `.json` 或含清单的 `.zip` 的绝对路径），可选 `discard_unsaved` | 按 [Layout 清单](../spec/LAYOUT_MANIFEST.md) 新建未生成的工程：图片保留原像素铺在 `rect` 上，图层保持清单的上下顺序、组、标签、差分、可见性与不透明度，同时登记为素材并关联；结果同 `project_create` |
 | `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id`、`as_reference` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的各 ArtMesh 图片（与 `project_import_cmo3` 得到的图层像素相同）、SVG（按自身尺寸栅格化）、Layout 清单或含清单的 zip（组成为子文件夹，每层以 `rect` 为默认位置并带上标签）或文件夹（保留嵌套结构，子文件夹成为素材文件夹，跳过隐藏项与其中的清单、zip），作为一个历史节点加入素材库；`as_reference=true` 时第一项同时设为参考图；每张图不超过 16MP |
-| `material_add` | `state`、`staging`，可选 `folder_id`、`as_reference` | `material_import` 读取后实际提交的成员；`staging` 为进程内暂存的内容摘要，一般不直接调用 |
+| `material_add` | `state`、`staging`，可选 `folder_id`、`as_reference`、`reference_under` | `material_import` 读取后实际提交的成员；`staging` 为进程内暂存的内容摘要，一般不直接调用 |
 | `material_list` | 可选 `folder_id`、`recursive`、`query`、`kind`、`unused`、`offset`、`limit`（≤256） | 列出文件夹与条目；`query` 匹配名称和标签（含文件夹标签），`references` 为使用它的图层数；读自 PSD / CMO3 的文件夹带 `origin` 文件名 |
 | `material_get` | `id`，可选 `include_svg` | 条目或文件夹详情；条目返回使用它的 `layers`，SVG 另有 `vector_size`，`include_svg` 时附存储的 SVG 原文 |
 | `material_preview` | `id`，可选 `size`（16–4096，默认 512） | 返回条目或文件夹合成的 PNG 图像 |
@@ -537,7 +537,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `material_adjust` | `state`、`id`，至少一项：`flip`（`horizontal/vertical`）、`hue`（±180）、`saturation`/`lightness`/`contrast`（±100） | 先翻转再调色，尺寸不变；同步图层与 SVG 规则同上 |
 | `material_export_psd` | `state`、`folder_id`、`path`（绝对 `.psd`） | 后台把文件夹写成 PSD：条目按默认位置（无则自左上排开），子文件夹为图层组 |
 | `material_export_png` | `state`、`id`、`path`（绝对 `.png`） | 后台把条目自身像素原样写成 PNG（不缩放），例如把参考图特写交给外部工具画成更清晰的部件 |
-| `layout_set_reference` | `state`，可选 `id`（默认第一张，没有时新建）、`material_id`（null 移除）、`rect`、`opacity`（0–1，默认 0.5）、`visible`、`rotation`（绕中心顺时针的角度）、`locked`、`under`（垫在模型下）、`pin`（参数 ID → 值，只在该关键形显示；`{}` 取消） | 参考图：把条目叠在画布上（或垫在模型下）用于摆放与对照。它不是图层，生成、导出与 Rig 都看不到它；新设时不给 `rect` 则等比放大或缩小到画布内并居中，省略的字段保持原值；参考查询与渲染用第一张；`material_list` 返回第一张（`reference`）与全部（`references`） |
+| `layout_set_reference` | `state`，可选 `id`（默认第一张，没有时新建）、`material_id`（null 移除）、`rect`、`opacity`（0–1，默认 0.5）、`visible`、`rotation`（绕中心顺时针的角度）、`locked`、`under`（垫在模型下）、`points`（关键形点的数组，每个为参数 ID → 值，在任意一个点上显示；`[]` 取消）或单点 `pin` | 参考图：把条目叠在画布上（或垫在模型下）用于摆放与对照。它不是图层，生成、导出与 Rig 都看不到它；新设时不给 `rect` 则等比放大或缩小到画布内并居中，省略的字段保持原值；参考查询与渲染用第一张；`material_list` 返回第一张（`reference`）与全部（`references`） |
 | `layout_add_reference` | `state`、`material_id`，其余字段同上 | 再加一张参考图，画在其他参考图之上 |
 | `layout_order_reference` | `state`、`id`、`index` | 把参考图移到绘制顺序的 `index`（0 最先画） |
 | `reference_set_mode` | `state`、`mode`（`background` / `layer` / `foreground`），`reference_id` 或 `layer_id` 二选一 | 把一个参考移到背景、图层栈或前景：参考图进图层栈成为参考图层，参考图层出栈成为参考图；素材、矩形、显示与钉住保留，参考图的旋转与锁定不带入图层 |
@@ -553,7 +553,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `layer_tag` | `state`、`layer_ids`（1–128），`set` 或 `add`/`remove` | 语义标签：部位词与 `left/right` 决定分类（如 `{hair, front}`、`{eye, iris, left}`），其余为用户标签；已生成图层的分类变化等待 `rig_generate` |
 | `layer_set_variant` | `state`、`layer_id`、`variant`（`none/toggle/switch`），可选 `parameter`、`switch_id` | 差分属性，保留标签 |
 | `layer_mark_reference` | `state`、`layer_ids`（1–128）、`reference` | 设为参考图层（`true`）或恢复为模型图层（`false`）：参考图层留在画布与上下顺序里，但不被生成读取，Rig 与导出都不含它；只接受未生成、待生成与参考图层，已生成图层返回错误；恢复的图层在已生成工程里等待 `rig_generate`。`workspace_inspect scope=generation` 的 `reference_layers` 列出它们 |
-| `layer_pin_reference` | `state`、`layer_ids`（1–128）、`pin`（参数 ID → 值，最多 16 个；`{}` 或 null 取消） | 把参考图层固定到关键形：只在每个固定参数都处在固定值（容差为参数范围的 0.5%）时显示，编辑画布、`view_render_model`、`view_render_pad` 一致；未固定的参考在任何姿态都显示。替换图层原有的固定；恢复为模型图层时固定一并去掉 |
+| `layer_pin_reference` | `state`、`layer_ids`，`points`（关键形点数组）或单点 `pin` | 把参考图层固定到关键形点：每个点为参数 ID → 值（各在参数范围内，最多 16 个参数），参考在任意一个点上显示（每个参数相差不超过范围的 0.5%），其余姿态隐藏；`[]`、`{}` 或 null 取消。替换原有的点 |
 | `reference_place_grid` | `state`、`material_id`、`x_parameter`，可选 `y_parameter`、`x_values`、`y_values`、`columns`、`rows`、`pixel_rect`、`rect`、`id_prefix` | 把一张按关键形网格画成的参考图（如 3×3 的头部角度）均分成格，每格裁成素材并放置为参考图层，固定到对应关键形：列按 `x_values` 从左到右，行按 `y_values` 从上到下，与 `view_render_pad` 的排列相同。值省略时取参数的关键形值（y 从大到小，同 2D pad），此时数量须与 `columns`/`rows` 一致；无 `y_parameter` 时为单行。`pixel_rect` 为网格在图中的像素范围（默认整张），`rect` 为每格在画布上的位置（默认每格等比放入画布并居中）。图层与素材 ID 为 `<id_prefix>_<行>_<列>`。一个历史节点 |
 | `material_mark_reference` | `state`、`ids`（条目或文件夹，1–1024）、`reference` | 条目（文件夹则为其中全部条目）在 `layer_place` 未指定时是否放置为参考图层 |
 | `layer_reorder` | `state`、`layer_ids`（1–128）、`to`（`front/back/forward/backward/above/below`），`above/below` 需 `target` | 调整上下顺序（即基础绘制顺序）：移到最前或最后、越过一个未移动图层、或移到 `target` 正上方或正下方，被移动的图层之间保持原先后。只接受生成器未读过的图层（未生成工程的图层、待生成图层）；已生成图层返回错误，其描画顺序用 `layer_draw_order` 调整 |

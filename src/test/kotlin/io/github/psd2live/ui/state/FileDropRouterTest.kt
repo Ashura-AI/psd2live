@@ -33,7 +33,7 @@ class FileDropRouterTest {
 		val canvas = FileDropIntent.PlaceOnCanvas(1f to 2f, "canvas")
 		router.images("tree", 0f, 100f, intent = tree)
 		router.images("canvas", 100f, 500f, intent = canvas)
-		router.images("slot", 200f, 300f, priority = 10, intent = FileDropIntent.SetReference("slot"))
+		router.images("slot", 200f, 300f, priority = 10, intent = FileDropIntent.SetReference(ReferenceMode.FOREGROUND, "slot"))
 		val png = listOf(file("a.png"))
 		assertTrue(router.move(png, 50f, 0f))
 		assertEquals(tree, router.drag.value?.intent)

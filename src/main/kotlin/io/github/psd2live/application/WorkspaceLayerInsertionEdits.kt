@@ -17,7 +17,9 @@ internal object WorkspaceLayerInsertionEdits {
      * other layer holds. A one-layer build alone would name every image the same.
      */
     private fun meshIds(document: WorkspaceDocument, current: RigPreviewModel, ids: Set<String>): Map<String, String> {
-        val existing = current.rig.layerIdByDrawableId.entries.filter { it.value in ids }.groupBy({ it.value }, { it.key })
+        // A pending layer's quad or plain mesh is no mesh of the rig: its ID is not kept.
+        val existing = current.rig.layerIdByDrawableId.entries.filter { it.value in ids && !WorkspaceLayoutPreview.isPendingMesh(it.key) }
+            .groupBy({ it.value }, { it.key })
         val taken = HashSet<String>()
         current.rig.puppet.drawables.mapTo(taken) { it.id.raw }
         current.authored.rig.puppet.drawables.mapTo(taken) { it.id.raw }

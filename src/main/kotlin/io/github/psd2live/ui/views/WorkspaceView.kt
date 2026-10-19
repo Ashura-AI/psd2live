@@ -889,11 +889,6 @@ private fun HierarchyTreeList(
 				}
 				for ((index, drawable) in rootDrawables.withIndex()) {
 					val isLast = index == rootDrawables.lastIndex
-					val referenceLayer = model.rig.layerIdByDrawableId[drawable.id.raw]?.takeIf { it in model.referenceLayerIds }
-					if (referenceLayer != null) {
-						if (searchFilter.isVisible(drawable.id.raw)) ReferenceTreeRow(referenceLayerRow(state, referenceLayer, drawable.name), TREE_BASE_PADDING_DP.dp, state, viewModel)
-						continue
-					}
 					DrawableTreeItem(
 						drawable = drawable,
 						depth = 0,
@@ -1654,6 +1649,11 @@ private fun DrawableTreeItem(
 	val isEffectiveVisible = layerId == null || layerId in state.effectiveVisibleLayerIds
 
 	if (!searchFilter.isVisible(drawable.id.raw)) {
+		return
+	}
+	// A reference layer is a member of its own kind, wherever it hangs.
+	if (layerId != null && layerId in state.layout.referenceLayerIds) {
+		ReferenceTreeRow(referenceLayerRow(state, layerId, drawable.name), (TREE_BASE_PADDING_DP + depth * TREE_INDENT_STEP_DP).dp, state, viewModel)
 		return
 	}
 

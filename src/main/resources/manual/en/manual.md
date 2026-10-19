@@ -908,26 +908,27 @@ A reversed mask makes an ArtMesh show only outside the mask area, the opposite o
 The change is recorded as one history step and can be undone.
 
 @@ sketch | Placement of Guide Image
-Putting the original art, a draft or character sheets of other angles on the canvas for comparison while you work lets you adjust shapes more accurately. A reference is a kind of member of the hierarchy, with the reference icon; it takes no part in generation and is not exported. It shows in one of three places:
-| Shows as | Description |
-|---|---|
-| Background | Under the whole model; once selected it moves, scales and turns on the canvas, and can be locked |
-| In the layer stack | A layer between the ArtMeshes, stacked by drawing order and adjusted with the transform box like a layer |
-| Foreground | Over the whole model; moves, scales, turns and locks like the background |
+Putting the original art, a draft or character sheets of other angles on the canvas for comparison while you work lets you adjust shapes more accurately. A reference is a kind of member of the hierarchy, with the reference icon, and shows in one of three places; the place decides whether it is in the model:
+| Shows as | In the model | Description |
+|---|---|---|
+| Background | No | Under the whole model, in the editor only; once selected, drag it on the canvas to move, scale and turn it, and lock it |
+| In the layer stack | Yes | Once generated, an ArtMesh of the model among the layers, stacked by drawing order, which can hang under a deformer and deform with it; exports treat it as a guide-image part, left out unless **Export guide image parts** is checked |
+| Foreground | No | Over the whole model; otherwise like the background |
+Before a layout project's first generation, a reference in the layer stack waits with the other layers and enters the model when the project is generated.
 ## Adding a reference
-1. Click the reference button on the hierarchy toolbar or in the display bar at the lower right of the canvas and choose a picture; the reference appears in the foreground. Dragging a picture onto the **Use as reference image** slot above an edit canvas works too.
-2. For a picture already in the material library, right-click the material and choose **Background**, **In the layer stack** or **Foreground** under **Add as reference**.
-A layer already on the canvas that has not been generated yet becomes a reference in the layer stack with **Use as Reference** on the "Layers" panel toolbar or {key:LAYER_TOGGLE_REFERENCE}; see [[edit-parts-sketch]].
+1. Drag a picture or a material onto an edit canvas: big options appear at the bottom - **Background · Reference**, **In the layer stack · Reference**, **Foreground · Reference**, replacing the selected layer's image, and only adding to the library - each saying whether it is in the model; letting go elsewhere on the canvas places an ordinary layer.
+2. Or click the reference button on the hierarchy toolbar or in the canvas display bar (it goes to the foreground), or right-click a material and choose one of the three places under **Add as reference**.
+A layer already on the canvas that has not been generated yet, or an imported image, becomes a reference in the layer stack with **Use as Reference** on the "Layers" panel toolbar or {key:LAYER_TOGGLE_REFERENCE}; see [[edit-parts-sketch]].
 ## Adjusting a reference
-- Click a reference in the hierarchy: a background or foreground one shows handles on the edit canvas - drag inside to move it, a corner to scale it, the knob above to turn it; one in the layer stack takes the transform box.
-- Right-click a reference: **Shows as** moves it between background, layer stack and foreground, keeping its material, place, visibility and pin; the menu also shows or hides it, sets opacity and lock (background and foreground), gives it back to the model (layer stack) and removes it.
+- Click a reference in the hierarchy: a background or foreground one shows handles on the edit canvas - drag inside to move it, a corner to scale it, the knob above to turn it; one in the layer stack takes the transform box like any ArtMesh.
+- Right-click a reference: **Shows as** moves it between background, layer stack and foreground, each marked with whether it is in the model; its material, place, visibility and pin carry over. The menu also shows or hides it, sets opacity and lock (background and foreground), gives it back to the model (layer stack) and removes it.
 - {key:REFERENCE_TOGGLE_SHOWN} shows or hides the background and foreground references on the current canvas.
-## Showing by pose
-References of different angles, such as front, side and looking up, can be stacked in the same place and each shown only in its matching pose:
-1. Pose the model in the parameter panel first.
-2. Right-click the reference; **Pin to Keyform** at the bottom of the menu lists the parameters worth pinning in the parameter panel's shapes - a track with keyform dots for a single parameter, a 2D pad for a pair - marking the pinned value or the current pose. It only pins; nothing in it moves a parameter.
-3. Click a row's pin to pin at the current value or unpin; **Pin at Current Pose** pins all listed parameters at once, and **Unpin** goes back to showing in any pose.
-*> The **Pin to Keyform** submenu of the canvas context menu is the same panel.
+## Showing by keyform
+References of different angles, such as front, side and looking up, can be stacked in one place and each shown only at its keyforms; one reference can show at several:
+1. Right-click the reference; **Pin to Keyform** at the bottom of the menu lists the parameters the model has keyforms on, in the parameter panel's shapes - a track with keyform dots for a single parameter, a 2D pad for a pair.
+2. Click a keyform dot to put a point there (filled), click it again to take it away; with several points the reference shows at any of them and hides at other poses. The grey marker is the current pose.
+3. **Unpin** clears every point, showing the reference at any pose.
+*> The **Pin to Keyform** submenu of the canvas context menu is the same panel. Pins only decide when the editor shows a reference; they are not exported.
 
 @@ hittest | Preparation for Setting Up Collision Detection
 @@ blend-mode | Blend mode

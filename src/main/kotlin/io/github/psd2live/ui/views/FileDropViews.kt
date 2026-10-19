@@ -24,6 +24,11 @@ import androidx.compose.ui.unit.sp
 import io.github.psd2live.ui.state.CarriedFiles
 import io.github.psd2live.ui.state.FileDropIntent
 import io.github.psd2live.ui.state.FileDropRouter
+import io.github.psd2live.ui.state.ReferenceMode
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.frostedGlass
@@ -80,29 +85,49 @@ internal fun FileDragLabel(viewModel: PSD2LiveViewModel) {
 }
 
 /**
- * Above an edit canvas while images are carried: drop on one to use them as the reference image, as the selected
- * layer's new image ([selectedLayer]: ID and name), or only to add them to the material library.
+ * Over an edit canvas while images or a material are carried: big targets, each saying what a drop there does and
+ * whether the result is in the model - a reference behind the model, in the layer stack (in the model, an ArtMesh)
+ * or in front of it, the selected layer's new image ([selectedLayer]: ID and name), or the library only. A drop on the
+ * canvas around them places a layer where it lands.
  */
 @Composable
-internal fun CanvasFileDropSlots(viewModel: PSD2LiveViewModel, canvasId: String, selectedLayer: Pair<String, String>?, modifier: Modifier) {
+internal fun CanvasDropTiles(viewModel: PSD2LiveViewModel, canvasId: String, selectedLayer: Pair<String, String>?, modifier: Modifier) {
 	val drag by viewModel.fileDrops.drag.collectAsState()
 	val carried = drag?.carried ?: return
-	if (!carried.unknown && carried.rasters.isEmpty()) return
+	if (!carried.placeable) return
 	val router = viewModel.fileDrops
-	io.github.psd2live.ui.views.texture.FloatingBar(modifier) {
-		DropSlot(router, "canvas-reference:$canvasId", tr("drop.intent.reference")) { FileDropIntent.SetReference(it) }
-		if (selectedLayer != null) {
-			DropSlot(router, "canvas-replace:$canvasId", tr("drop.intent.replace", selectedLayer.second)) { FileDropIntent.ReplaceImage(selectedLayer.first, it) }
+	val colors = LocalToolColors.current
+	Column(modifier.widthIn(max = 640.dp).frostedGlass(RoundedCornerShape(10.dp), elevation = 8.dp, alpha = 0.9f).padding(10.dp),
+		verticalArrangement = Arrangement.spacedBy(8.dp)) {
+		Text(tr("drop.tiles.title"), color = colors.textMuted, fontSize = 11.sp)
+		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+			for (mode in ReferenceMode.entries) DropTile(router, "canvas-reference-${mode.key}:$canvasId", tr(mode.labelKey) + " · " + tr("references.badge"),
+				tr(mode.descriptionKey), mode == ReferenceMode.LAYER, Modifier.weight(1f)) { label -> FileDropIntent.SetReference(mode, label) }
 		}
-		DropSlot(router, "canvas-library:$canvasId", tr("drop.intent.libraryOnly")) { FileDropIntent.ImportMaterials(null, it) }
+		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+			if (selectedLayer != null) DropTile(router, "canvas-replace:$canvasId", tr("drop.intent.replace", selectedLayer.second), tr("drop.tiles.replace"),
+				true, Modifier.weight(1f)) { label -> FileDropIntent.ReplaceImage(selectedLayer.first, label) }
+			if (carried.material == null) DropTile(router, "canvas-library:$canvasId", tr("drop.intent.libraryOnly"), tr("drop.tiles.library"),
+				false, Modifier.weight(1f)) { label -> FileDropIntent.ImportMaterials(null, label) }
+		}
 	}
 }
 
-/** One target of [CanvasFileDropSlots]: lit while the pointer is on it. */
+/** One target of [CanvasDropTiles]: its title, what it means, and whether it is in the model; lit while the pointer is on it. */
 @Composable
-private fun DropSlot(router: FileDropRouter, id: String, label: String, intent: (String) -> FileDropIntent) {
+private fun DropTile(router: FileDropRouter, id: String, title: String, description: String, inModel: Boolean, modifier: Modifier,
+                     intent: (String) -> FileDropIntent) {
 	val drag by router.drag.collectAsState()
-	Box(Modifier.fileDropZone(router, id, priority = 10) { _, _, _ -> intent(label) }) {
-		io.github.psd2live.ui.views.texture.BarChip(label, selected = drag?.zone == id, onClick = {})
+	val colors = LocalToolColors.current
+	val lit = drag?.zone == id
+	val shape = RoundedCornerShape(8.dp)
+	Column(modifier.height(76.dp).fileDropZone(router, id, priority = 10) { _, _, _ -> intent(title) }
+		.background(if (lit) colors.accent.copy(alpha = 0.26f) else colors.panelBackground.copy(alpha = 0.6f), shape)
+		.border(if (lit) 1.5.dp else 1.dp, if (lit) colors.accent else colors.divider, shape)
+		.padding(horizontal = 10.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+		Text(title, color = if (lit) colors.textPrimary else colors.textPrimary.copy(alpha = 0.9f), fontSize = 13.sp,
+			fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1)
+		Text(tr(if (inModel) "references.inModel" else "references.notInModel"), color = if (inModel) colors.accent else colors.textMuted, fontSize = 10.5.sp, maxLines = 1)
+		Text(description, color = colors.textMuted, fontSize = 10.sp, maxLines = 2)
 	}
 }

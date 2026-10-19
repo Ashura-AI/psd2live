@@ -38,7 +38,7 @@ internal object WorkspaceLayoutEdits {
             MARK_REFERENCE -> markReference(document, request.strings("layer_ids").also { require(it.size in 1..128) { "Give 1..128 layer_ids" } },
                 request.getValue("reference").jsonPrimitive.boolean)
             PIN_REFERENCE -> pinReference(document, model, request.strings("layer_ids").also { require(it.size in 1..128) { "Give 1..128 layer_ids" } },
-                request["pin"]?.takeUnless { it is JsonNull }?.jsonObject?.mapValues { it.value.jsonPrimitive.float }.orEmpty())
+                requireNotNull(requestedPoints(request)) { "Give points (keyform points) or pin (one point)" })
             WorkspaceReferenceGrid.PLACE -> WorkspaceReferenceGrid.apply(document, model, request)
             WorkspaceGenerationEdits.GENERATE -> WorkspaceGenerationEdits.generate(document, model,
                 request["refresh_geometry"]?.jsonArray?.mapTo(LinkedHashSet()) { it.jsonPrimitive.content })
@@ -110,6 +110,10 @@ internal object WorkspaceLayoutEdits {
     fun reorderable(document: WorkspaceDocument, id: String): Boolean =
         id in document.layout.referenceLayerIds || document.layout.generation.let { !it.generated || id in it.pendingLayerIds }
 
+    /** Whether `layer_mark_reference` changes [id]: one [reorderable], or a layer whose mesh the user made (an imported image). */
+    fun markable(document: WorkspaceDocument, id: String): Boolean =
+        reorderable(document, id) || id in WorkspaceReferenceMeshes.createdLayerIds(document)
+
     /**
      * [ids] kept as reference layers ([reference] true) or given back to the model. A reference layer stays in the
      * stack and on the canvas, but no generation reads it, so the rig and exports leave it out. Given back in a
@@ -122,14 +126,15 @@ internal object WorkspaceLayoutEdits {
         val generation = layout.generation
         for (id in ids) {
             require(document.source.layers.any { it.id.raw == id } && id !in document.deletedLayerIds) { "Layer not found: $id" }
-            require(reorderable(document, id)) { "$id was generated: the rig reads it, so it stays a model layer" }
+            require(markable(document, id)) { "$id was generated: the rig reads it, so it stays a model layer" }
         }
         val marked = if (reference) layout.referenceLayerIds + ids else layout.referenceLayerIds - ids.toSet()
         if (marked == layout.referenceLayerIds) return document
         val pending = when {
             !generation.generated -> generation.pendingLayerIds
             reference -> generation.pendingLayerIds - ids.toSet()
-            else -> generation.pendingLayerIds + ids.filter { it in layout.referenceLayerIds }
+            // Given back, a reference in the model keeps its mesh as a model layer; one not in it yet waits for generation.
+            else -> generation.pendingLayerIds + ids.filter { it in layout.referenceLayerIds && it !in WorkspaceReferenceMeshes.createdLayerIds(document) }
         }
         // A layer given back to the model shows at every pose: only reference layers are pinned.
         return document.copy(layout = layout.copy(referenceLayerIds = marked, generation = generation.copy(pendingLayerIds = pending),
@@ -137,26 +142,46 @@ internal object WorkspaceLayoutEdits {
     }
 
     /**
-     * Reference layers [ids] pinned to the keyform [pin] - parameter ID to value - or unpinned when [pin] is empty. A
-     * pinned layer shows only at poses where every pinned parameter sits at its value ([ReferencePins]), so references
-     * of the character turned each way can share one place and each show at its own angle.
+     * Reference layers [ids] pinned to keyform [points] - each parameter ID to value - or unpinned when there are none.
+     * A pinned layer shows only at poses on one of its points ([ReferencePins]), so references of the character turned
+     * each way can share one place and each show at its own angles.
      */
-    fun pinReference(document: WorkspaceDocument, model: RigPreviewModel, ids: List<String>, pin: Map<String, Float>): WorkspaceDocument {
+    fun pinReference(document: WorkspaceDocument, model: RigPreviewModel, ids: List<String>, points: List<PinPoint>): WorkspaceDocument {
         require(ids.distinct().size == ids.size) { "layer_ids repeats a layer" }
         val layout = document.layout
         for (id in ids) {
             require(document.source.layers.any { it.id.raw == id } && id !in document.deletedLayerIds) { "Layer not found: $id" }
             require(id in layout.referenceLayerIds) { "$id is not a reference layer; layer_mark_reference makes it one" }
         }
-        require(pin.size <= MAX_PINNED) { "Pin at most $MAX_PINNED parameters" }
-        val parameters = model.rig.puppet.parameters.associateBy { it.id.raw }
-        for ((id, value) in pin) {
-            val parameter = parameters[id] ?: throw IllegalArgumentException("Unknown parameter: $id")
-            require(value.isFinite() && value in parameter.min..parameter.max) { "$id is ${parameter.min}..${parameter.max}, not $value" }
-        }
-        val next = if (pin.isEmpty()) layout.referencePins - ids.toSet() else layout.referencePins + ids.associateWith { pin }
+        val checked = pinPoints(model, points)
+        val next = if (checked.isEmpty()) layout.referencePins - ids.toSet() else layout.referencePins + ids.associateWith { checked }
         return if (next == layout.referencePins) document else document.copy(layout = layout.copy(referencePins = next))
     }
+
+    /** [points] checked against [model]'s parameters, empty ones and repeats left out. */
+    fun pinPoints(model: RigPreviewModel, points: List<PinPoint>): List<PinPoint> {
+        require(points.size <= MAX_POINTS) { "Pin at most $MAX_POINTS keyform points" }
+        val parameters = model.rig.puppet.parameters.associateBy { it.id.raw }
+        for (point in points) {
+            require(point.size <= MAX_PINNED) { "A keyform point names at most $MAX_PINNED parameters" }
+            for ((id, value) in point) {
+                val parameter = parameters[id] ?: throw IllegalArgumentException("Unknown parameter: $id")
+                require(value.isFinite() && value in parameter.min..parameter.max) { "$id is ${parameter.min}..${parameter.max}, not $value" }
+            }
+        }
+        return points.filter { it.isNotEmpty() }.distinct()
+    }
+
+    /** The keyform points a request gives: `points`, else one `pin` (null or {} for none). */
+    fun requestedPoints(request: JsonObject): List<PinPoint>? {
+        fun point(value: JsonElement) = value.jsonObject.mapValues { it.value.jsonPrimitive.float }
+        request["points"]?.takeIf { it !is JsonNull }?.let { return it.jsonArray.map(::point) }
+        val pin = request["pin"] ?: return null
+        return if (pin is JsonNull) emptyList() else listOf(point(pin)).filter { it.isNotEmpty() }
+    }
+
+    /** The most keyform points one reference shows at. */
+    const val MAX_POINTS = 64
 
     /** The most parameters one reference layer is pinned to. */
     const val MAX_PINNED = 16
@@ -243,7 +268,9 @@ internal object WorkspaceLayoutEdits {
                 "pin" to buildJsonObject {
                     put("type", JsonArray(listOf(JsonPrimitive("object"), JsonPrimitive("null"))));
                     put("additionalProperties", buildJsonObject { put("type", "number") })
-                }), listOf("state", "layer_ids", "pin")),
+                },
+                "points" to array(buildJsonObject { put("type", "object"); put("additionalProperties", buildJsonObject { put("type", "number") }) }, 0, MAX_POINTS)),
+                listOf("state", "layer_ids")),
             WorkspaceReferenceGrid.PLACE to WorkspaceReferenceGrid.schema,
             WorkspaceGenerationEdits.GENERATE to WorkspaceGenerationEdits.schema,
         )
@@ -268,8 +295,8 @@ internal object WorkspaceLayoutEdits {
             "reorders, takes tags and is deleted like a layer placed since the last generation. Given back in a generated project, it waits for rig_generate. " +
             "Only layers the generator has not read change: a generated layer is refused. workspace_inspect lists them (layout.reference_layers). " +
             "One history edit; no change adds none.",
-        PIN_REFERENCE to "Pin 1..128 reference layers to a keyform: pin maps parameter IDs to values (each within its range, at most $MAX_PINNED), and a pinned layer " +
-            "shows only at poses where every pinned parameter sits at its value (within 0.5% of its range) - " +
+        PIN_REFERENCE to "Pin 1..128 reference layers to keyform points: points lists up to $MAX_POINTS points, each mapping parameter IDs to values (each within its range, at most $MAX_PINNED), " +
+            "and a pinned layer shows only at poses on one of its points - every parameter of the point at its value (within 0.5% of its range) - so one reference can show at several keyforms; pin gives a single point. Shows " +
             "on the edit canvas and in view_render_model / view_render_pad; an unpinned one shows at every pose. Pin references of the character turned each way to " +
             "the head angles they show, e.g. {ParamAngleX: 30, ParamAngleY: 0}. pin {} or null unpins. Replaces the layers' pins; giving a layer back to the model " +
             "(layer_mark_reference false) drops its pin. reference_place_grid places and pins a whole sheet at once. One history edit; no change adds none.",

@@ -41,7 +41,7 @@ internal object WorkspaceDocumentEdits {
               rasterWork: WorkspaceRasterWork = WorkspaceRasterWork.Direct,
               assetResources: WorkspaceAssetWorkflow? = null): WorkspaceDocument =
         // A layer an edit gave pixels of its own no longer shows its material.
-        WorkspaceMaterialLinks.reconcile(document, routed(operation, document, model, simulationWork, physicsWork, rasterWork, assetResources))
+        WorkspaceReferenceMeshes.ensure(WorkspaceMaterialLinks.reconcile(document, routed(operation, document, model, simulationWork, physicsWork, rasterWork, assetResources)), model)
 
     private fun routed(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
                        simulationWork: WorkspaceSimulationWork, physicsWork: WorkspacePhysicsWork, rasterWork: WorkspaceRasterWork,

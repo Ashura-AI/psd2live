@@ -49,7 +49,8 @@ internal object WorkspacePadSheet {
         }
 
         val included = request.includeLayerIds ?: visibleLayerIds ?: document.renderVisibleLayers(model)
-        val references = included.filterTo(LinkedHashSet()) { it in model.referenceLayerIds }
+        // Reference layers, as quads or - generated - as meshes of the model.
+        val references = included.filterTo(LinkedHashSet()) { it in document.layout.referenceLayerIds || it in model.referenceLayerIds }
         val modelLayers = included - references
         val show = request.show
         val side = show == WorkspacePadShow.SIDE_BY_SIDE

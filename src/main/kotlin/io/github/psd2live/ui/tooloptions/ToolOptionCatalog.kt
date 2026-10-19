@@ -308,7 +308,8 @@ private fun MutableList<ToolOption>.addLayerActions(editor: CanvasEditor, layerI
     if (layerId == null) return
     // A layer the generator has not read can be kept as reference: on the canvas, out of the rig and exports.
     val layout = editor.state.layout
-    if (layerId in layout.referenceLayerIds || !layout.generation.generated || layerId in layout.generation.pendingLayerIds)
+    if (layerId in layout.referenceLayerIds || !layout.generation.generated || layerId in layout.generation.pendingLayerIds ||
+        layerId in editor.state.createdLayerIds)
         add(ToggleOption("layer.reference", "layers.reference.toggle", { layerId in it.state.layout.referenceLayerIds },
             { e, on -> e.viewModel.markLayersReference(listOf(layerId), on) }, place = OptionPlace.MENU))
     if (layerId in layout.referenceLayerIds) addReferencePins(editor, layerId)
@@ -334,8 +335,8 @@ private fun MutableList<ToolOption>.addLayerActions(editor: CanvasEditor, layerI
 
 /**
  * A reference layer's place and keyform pin, as the hierarchy's reference menu has them: move it behind or in front of
- * the model as a reference image, then its pin as the compact parameter panel - a track or 2D pad per parameter worth
- * pinning, each with its push pin - with pinning the whole pose shown and unpinning.
+ * the model as a reference image, then its pin as the compact parameter panel - a track or 2D pad per keyed parameter,
+ * whose keyform dots each add or take away a point it shows at - and unpinning.
  */
 private fun MutableList<ToolOption>.addReferencePins(editor: CanvasEditor, layerId: String) {
     val target = io.github.psd2live.ui.state.ReferenceTarget.Layer(layerId)
@@ -347,13 +348,8 @@ private fun MutableList<ToolOption>.addReferencePins(editor: CanvasEditor, layer
     if (puppet.parameters.isEmpty()) return
     add(SectionOption("layer.pin", "layers.pin.menu", OptionPlace.MENU, submenu = true, icon = OptionIcon.PIN, alwaysFolds = true))
     add(ReferencePinsOption("layer.pins", target))
-    fun listed(e: CanvasEditor) = io.github.psd2live.ui.state.ReferencePinRows.of(puppet, target.pin(e.state.layout), e.state.parameterValues)
-        .flatMap { row -> row.parameters.map { it.id.raw } }
-    add(ActionOption("layer.pinPose", "layers.pin.pose", { it.editable && listed(it).isNotEmpty() }, { e ->
-        e.viewModel.pinReferencePose(target, listed(e))
-    }, OptionIcon.PIN, place = OptionPlace.MENU))
     if (target.pin(editor.state.layout).isNotEmpty()) add(ActionOption("layer.unpin", "layers.pin.clear", { it.editable }, { e ->
-        e.viewModel.setReferencePin(target, emptyMap())
+        e.viewModel.setReferencePin(target, emptyList())
     }, OptionIcon.CLEAR, place = OptionPlace.MENU))
 }
 

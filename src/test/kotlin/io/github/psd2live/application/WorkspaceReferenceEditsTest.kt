@@ -59,7 +59,9 @@ class WorkspaceReferenceEditsTest {
 		val parameter = model.rig.puppet.parameters.first()
 		val image = WorkspaceMaterialEdits.addReference(document, buildJsonObject {
 			put("material_id", face); put("opacity", 0.5f)
-			put("pin", buildJsonObject { put(parameter.id.raw, parameter.max) })
+			put("points", kotlinx.serialization.json.buildJsonArray {
+				add(buildJsonObject { put(parameter.id.raw, parameter.max) }); add(buildJsonObject { put(parameter.id.raw, parameter.min) })
+			})
 		})
 		val reference = image.layout.references.single()
 		suspend fun mode(document: io.github.psd2live.project.WorkspaceDocument, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) =
@@ -71,12 +73,49 @@ class WorkspaceReferenceEditsTest {
 		assertTrue(layered.layout.references.isEmpty())
 		val layer = layered.layout.referenceLayerIds.single()
 		assertEquals(face, layered.layout.layerMaterials[layer])
-		assertEquals(mapOf(parameter.id.raw to parameter.max), layered.layout.referencePins[layer])
+		assertEquals(listOf(mapOf(parameter.id.raw to parameter.max), mapOf(parameter.id.raw to parameter.min)), layered.layout.referencePins[layer])
 		// And out again in front: an image once more, the layer gone.
 		val front = mode(layered) { put("layer_id", layer); put("mode", "foreground") }
 		val back = front.layout.references.single()
 		assertTrue(!back.under && back.materialId == face && back.pins == reference.pins)
 		assertTrue(front.layout.referenceLayerIds.isEmpty() && front.source.layers.none { it.id.raw == layer })
 		assertEquals(reference.rect, back.rect)
+	}
+
+	@Test
+	fun aReferenceShowsAtAnyOfItsPointsAndOnePointIsWrittenAsBefore() {
+		val parameters = mapOf("A" to org.umamo.runtime.model.Parameter(org.umamo.runtime.model.ParameterId("A"), "A", -30f, 30f, 0f),
+			"B" to org.umamo.runtime.model.Parameter(org.umamo.runtime.model.ParameterId("B"), "B", -1f, 1f, 0f))
+		val points = listOf(mapOf("A" to 30f), mapOf("A" to -30f, "B" to 1f))
+		assertTrue(io.github.psd2live.project.ReferencePins.shows(points, parameters) { mapOf("A" to 30f)[it] })
+		assertTrue(io.github.psd2live.project.ReferencePins.shows(points, parameters) { mapOf("A" to -30f, "B" to 1f)[it] })
+		assertTrue(!io.github.psd2live.project.ReferencePins.shows(points, parameters) { mapOf("A" to -30f)[it] })
+		assertTrue(io.github.psd2live.project.ReferencePins.shows(emptyList(), parameters) { null })
+		val one = io.github.psd2live.project.ReferencePins.encode(listOf(mapOf("B" to 1f, "A" to 2f)))
+		assertEquals(buildJsonObject { put("A", 2f); put("B", 1f) }, one)
+		assertEquals(points, io.github.psd2live.project.ReferencePins.decode(io.github.psd2live.project.ReferencePins.encode(points)))
+	}
+
+	@Test
+	fun aReferenceInTheLayerStackIsAnArtMeshOfTheModelInItsGuidePart() = kotlinx.coroutines.runBlocking {
+		val builder = WorkspacePreviewBuilder()
+		val model = builder.build(document)
+		val placed = WorkspaceDocumentEdits.apply(WorkspaceDocumentOperation(WorkspaceMaterialEdits.PLACE, buildJsonObject {
+			put("material_id", face); put("layer_id", "guide"); put("reference", true)
+		}), document, model)
+		// In a generated project it is in the model at once: its own mesh, no generation waiting for it.
+		assertTrue("guide" in WorkspaceReferenceMeshes.createdLayerIds(placed))
+		assertTrue("guide" !in WorkspaceLayoutPreview.pendingIds(placed))
+		val built = builder.build(placed, model)
+		val mesh = built.rig.puppet.drawables.single { built.rig.layerIdByDrawableId[it.id.raw] == "guide" }
+		val part = built.rig.puppet.parts.single { it.id.raw == WorkspaceReferenceMeshes.PART_ID }
+		assertTrue(part.isSketch && org.umamo.runtime.model.OrgChild.Drawable(mesh.id) in part.children)
+		assertTrue("guide" !in built.referenceLayerIds)
+		// Given back to the model, it keeps its mesh and leaves the guide part.
+		val given = WorkspaceDocumentEdits.apply(WorkspaceDocumentOperation(WorkspaceLayoutEdits.MARK_REFERENCE, buildJsonObject {
+			put("layer_ids", kotlinx.serialization.json.buildJsonArray { add(kotlinx.serialization.json.JsonPrimitive("guide")) }); put("reference", false)
+		}), placed, built)
+		assertTrue("guide" !in given.layout.generation.pendingLayerIds && "guide" in WorkspaceReferenceMeshes.createdLayerIds(given))
+		assertTrue(builder.build(given, built).rig.puppet.parts.none { it.id.raw == WorkspaceReferenceMeshes.PART_ID })
 	}
 }

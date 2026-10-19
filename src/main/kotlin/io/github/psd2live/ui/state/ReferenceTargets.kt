@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.state
 
+import io.github.psd2live.project.PinPoint
 import io.github.psd2live.project.WorkspaceLayout
 import org.umamo.runtime.model.Parameter
 import org.umamo.runtime.model.ParameterId
@@ -13,24 +14,27 @@ sealed interface ReferenceTarget {
 	data class Image(val id: String) : ReferenceTarget
 	data class Layer(val layerId: String) : ReferenceTarget
 
-	/** The keyform [layout] pins it to: parameter ID to value, empty at every pose. */
-	fun pin(layout: WorkspaceLayout): Map<String, Float> = when (this) {
+	/** The keyform points [layout] pins it to (parameter ID to value each); none shows it at every pose. */
+	fun pin(layout: WorkspaceLayout): List<PinPoint> = when (this) {
 		is Image -> layout.reference(id)?.pins.orEmpty()
 		is Layer -> layout.referencePins[layerId].orEmpty()
 	}
 }
 
 /** Where a reference shows, as `reference_set_mode` names it. */
-enum class ReferenceMode(val key: String, val labelKey: String) {
-	BACKGROUND("background", "references.mode.background"),
-	LAYER("layer", "references.mode.layer"),
-	FOREGROUND("foreground", "references.mode.foreground");
+enum class ReferenceMode(val key: String, val labelKey: String, val descriptionKey: String, val inModel: Boolean) {
+	/** Behind the whole model, in the editor only. */
+	BACKGROUND("background", "references.mode.background", "references.mode.background.desc", false),
+	/** In the layer stack: an ArtMesh of the model in its guide-image part. */
+	LAYER("layer", "references.mode.layer", "references.mode.layer.desc", true),
+	/** In front of the whole model, in the editor only. */
+	FOREGROUND("foreground", "references.mode.foreground", "references.mode.foreground.desc", false);
 }
 
 /**
- * The parameters a reference's pin menu shows, in the parameter panel's shapes: a 2D pad for a linked pair, a track
- * for any other. Listed are those it is pinned to, those the edit pose has moved off their default, and their 2D
- * partners - the 2D pads' parameters when nothing has moved - at most [MAX_ROWS] parameters.
+ * The parameters a reference's pin menu offers, in the parameter panel's shapes: a 2D pad for a linked pair, a track
+ * for any other - every parameter keyed somewhere in the rig, and those a point pins. A point is pinned on a row's
+ * keys: one parameter's key on a track, a crossing of both parameters' keys on a pad.
  */
 object ReferencePinRows {
 	sealed interface Row {
@@ -46,14 +50,9 @@ object ReferencePinRows {
 		override val parameters get() = listOf(horizontal, vertical)
 	}
 
-	const val MAX_ROWS = 12
-
-	fun of(puppet: PuppetModel, pin: Map<String, Float>, values: Map<ParameterId, Float>): List<Row> {
-		fun current(parameter: Parameter) = values[parameter.id] ?: parameter.default
-		val moved = puppet.parameters.filter { it.id.raw in pin || kotlin.math.abs(current(it) - it.default) > 1e-4f }.mapTo(LinkedHashSet()) { it.id }
-		val partners = puppet.parameterLinks.filter { it.horizontal in moved || it.vertical in moved }.flatMap { listOf(it.horizontal, it.vertical) }
-		val listed = (moved + partners).ifEmpty { puppet.parameterLinks.flatMap { listOf(it.horizontal, it.vertical) }.toSet() }
-		val parameters = puppet.parameters.filter { it.id in listed }.take(MAX_ROWS)
+	fun of(puppet: PuppetModel, keyed: Set<ParameterId>, points: List<PinPoint>): List<Row> {
+		val pinned = points.flatMapTo(HashSet()) { it.keys }
+		val parameters = puppet.parameters.filter { it.id in keyed || it.id.raw in pinned }
 		val byId = parameters.associateBy { it.id }
 		val paired = HashSet<ParameterId>()
 		val rows = ArrayList<Row>()
@@ -67,5 +66,15 @@ object ReferencePinRows {
 			} else rows += Axis(parameter)
 		}
 		return rows
+	}
+
+	/** Whether [point] is [other] - the same parameters at the same values, as a key read back may round. */
+	fun same(point: PinPoint, other: PinPoint): Boolean =
+		point.keys == other.keys && point.all { (id, value) -> kotlin.math.abs(value - other.getValue(id)) <= 1e-4f }
+
+	/** The points no row of [rows] pins on its own keys: pinned some other way, listed apart. */
+	fun loose(rows: List<Row>, points: List<PinPoint>): List<PinPoint> {
+		val shapes = rows.map { row -> row.parameters.mapTo(HashSet()) { it.id.raw } }
+		return points.filter { point -> shapes.none { it == point.keys } }
 	}
 }

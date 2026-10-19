@@ -201,21 +201,31 @@ class LayoutManifestScenario {
 		expect("the quad follows", corners().let { it[0] == r.left + 10 && it[1] == r.top + 4 }) { "corners ${corners()}" }
 
 		edit("generate", "rig_generate", req())
-		expect("out of the rig", hair !in generated() && hair in shown() && "face" in generated()) { "generated ${generated()}, shown ${shown()}" }
-		apart("apart after generating")
+		// Generated, a reference in the layer stack is in the model: an ArtMesh of its own in the guide-image part, made
+		// from its pixels as an imported image is, never by a generator; exports leave that part out.
+		fun mesh() = now.model.rig.puppet.drawables.single { now.model.rig.layerIdByDrawableId[it.id.raw] == hair }
+		val part = now.model.rig.puppet.parts.singleOrNull { it.id.raw == io.github.psd2live.application.WorkspaceReferenceMeshes.PART_ID }
+		expect("in the model", hair in generated() && hair !in now.model.referenceLayerIds && part != null && part.isSketch &&
+			org.umamo.runtime.model.OrgChild.Drawable(mesh().id) in part.children && "face" in generated()) {
+			"generated ${generated()}, references ${now.model.referenceLayerIds}, parts ${now.model.rig.puppet.parts.map { it.id.raw }}" }
 		expect("never waits", inspect("generation").let { it.getValue("pending_layers").jsonArray.isEmpty() && listed("reference_layers") == listOf(hair) }) {
 			"${inspect("generation")}" }
+		// Its mesh is the model's: edits reach it as any mesh's.
+		edit("move the reference in the model", "layer_transform", req("layer_id" to hair, "translate" to listOf(-10, -4)))
 		edit("the reference moves to the front", WorkspaceLayoutEdits.REORDER, req("layer_ids" to listOf(hair), "to" to "front"))
 		expect("front", stack(now.document.source).first() == "back hair") { "${stack(now.document.source)}" }
 		refused("a generated layer stays a model layer", WorkspaceLayoutEdits.MARK_REFERENCE, req("layer_ids" to listOf("face"), "reference" to true))
 		reopen()
-		expect("kept", now.document.layout.referenceLayerIds == setOf(hair) && hair !in generated()) { "after reopening ${now.document.layout.referenceLayerIds}" }
+		expect("kept", now.document.layout.referenceLayerIds == setOf(hair) && hair in generated()) { "after reopening ${now.document.layout.referenceLayerIds}" }
 
+		// Given back, it keeps its mesh as a model layer, out of the guide-image part.
 		edit("give it back", WorkspaceLayoutEdits.MARK_REFERENCE, req("layer_ids" to listOf(hair), "reference" to false))
-		expect("waits", listed("pending_layers") == listOf(hair) && listed("reference_layers").isEmpty()) { "${inspect("generation")}" }
-		edit("generate it", "rig_generate", req())
-		expect("in the rig", hair in generated()) { "generated ${generated()}" }
-		refused("now generated", WorkspaceLayoutEdits.MARK_REFERENCE, req("layer_ids" to listOf(hair), "reference" to true))
+		expect("a model layer", listed("pending_layers").isEmpty() && listed("reference_layers").isEmpty() && hair in generated() &&
+			now.model.rig.puppet.parts.none { it.id.raw == io.github.psd2live.application.WorkspaceReferenceMeshes.PART_ID }) { "${inspect("generation")}" }
+		// Its mesh is the user's, not a generator's, so it can be a reference again.
+		edit("keep it as reference again", WorkspaceLayoutEdits.MARK_REFERENCE, req("layer_ids" to listOf(hair), "reference" to true))
+		expect("back in the guide part", now.model.rig.puppet.parts.any { it.id.raw == io.github.psd2live.application.WorkspaceReferenceMeshes.PART_ID }) {
+			"parts ${now.model.rig.puppet.parts.map { it.id.raw }}" }
 	}
 
 	/** A manifest's reference layers import as marked materials; placing follows the mark unless the placement says. */

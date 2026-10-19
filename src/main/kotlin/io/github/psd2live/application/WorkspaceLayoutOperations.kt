@@ -52,7 +52,7 @@ internal object WorkspaceLayoutOperations {
 
     /** Request schemas and descriptions of the material edits. */
     val materialSchemas: Map<String, JsonObject> = mapOf(
-        WorkspaceMaterialEdits.ADD to schema(state + mapOf("staging" to string(), "folder_id" to nullableString(), "as_reference" to boolean()), listOf("state", "staging")),
+        WorkspaceMaterialEdits.ADD to schema(state + mapOf("staging" to string(), "folder_id" to nullableString(), "as_reference" to boolean(), "reference_under" to boolean()), listOf("state", "staging")),
         WorkspaceMaterialEdits.FOLDER to schema(state + mapOf("name" to string(), "parent_id" to nullableString(), "id" to string()), listOf("state", "name")),
         WorkspaceMaterialEdits.MOVE to schema(state + mapOf("ids" to strings(1, 1024), "folder_id" to nullableString()), listOf("state", "ids")),
         WorkspaceMaterialEdits.RENAME to schema(state + mapOf("id" to string(), "name" to string()), listOf("state", "id", "name")),
@@ -74,10 +74,14 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialEdits.MARK_REFERENCE to schema(state + mapOf("ids" to strings(1, 1024), "reference" to boolean()), listOf("state", "ids", "reference")),
         WorkspaceMaterialEdits.REFERENCE to schema(state + mapOf("id" to string(), "material_id" to nullableString(), "rect" to rect,
             "opacity" to range(0, 1), "visible" to boolean(), "rotation" to number(), "locked" to boolean(), "under" to boolean(),
-            "pin" to buildJsonObject { put("type", "object"); put("additionalProperties", number()) }), listOf("state")),
+            "pin" to buildJsonObject { put("type", "object"); put("additionalProperties", number()) },
+            "points" to buildJsonObject { put("type", "array"); put("maxItems", WorkspaceLayoutEdits.MAX_POINTS)
+                put("items", buildJsonObject { put("type", "object"); put("additionalProperties", number()) }) }), listOf("state")),
         WorkspaceMaterialEdits.ADD_REFERENCE to schema(state + mapOf("material_id" to string(), "rect" to rect,
             "opacity" to range(0, 1), "visible" to boolean(), "rotation" to number(), "locked" to boolean(), "under" to boolean(),
-            "pin" to buildJsonObject { put("type", "object"); put("additionalProperties", number()) }), listOf("state", "material_id")),
+            "pin" to buildJsonObject { put("type", "object"); put("additionalProperties", number()) },
+            "points" to buildJsonObject { put("type", "array"); put("maxItems", WorkspaceLayoutEdits.MAX_POINTS)
+                put("items", buildJsonObject { put("type", "object"); put("additionalProperties", number()) }) }), listOf("state", "material_id")),
         WorkspaceMaterialEdits.ORDER_REFERENCE to schema(state + mapOf("id" to string(), "index" to buildJsonObject { put("type", "integer"); put("minimum", 0) }),
             listOf("state", "id", "index")),
         WorkspaceReferenceModes.OP to schema(state + mapOf("reference_id" to string(), "layer_id" to string(),
@@ -121,7 +125,7 @@ internal object WorkspaceLayoutOperations {
     )
 
     val materialDescriptions: Map<String, String> = mapOf(
-        WorkspaceMaterialEdits.ADD to "Add materials material_import read and staged (staging token) to the library under folder_id; material_import runs it; as_reference=true also lays the first of them over the canvas as the reference image. One history edit.",
+        WorkspaceMaterialEdits.ADD to "Add materials material_import read and staged (staging token) to the library under folder_id; material_import runs it; as_reference=true also lays the first of them over the canvas as a reference image (behind the model with reference_under=true). One history edit.",
         WorkspaceMaterialEdits.FOLDER to "Create a folder in the material library under parent_id (top level when omitted); give id to name it for later batch members. One history edit.",
         WorkspaceMaterialEdits.MOVE to "Move material items and folders into folder_id (null: the top level). A folder cannot move into itself. One history edit.",
         WorkspaceMaterialEdits.RENAME to "Rename a material item or folder. One history edit.",
@@ -141,7 +145,7 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialEdits.ADOPT to "Give every present layer that shows no material one of its own, in the library folder Layers (its groups as subfolders). Projects made before every layer had a material have such layers; imports and edits give new layers materials themselves. One history edit; nothing to do adds none.",
         WorkspaceMaterialEdits.MARK_REFERENCE to "Mark material items - and every item in the folders given - to place as reference layers (reference true) or as model layers (false) " +
             "when layer_place does not say. A layout manifest's reference layers import marked. Placed layers already on the canvas keep what they are; layer_mark_reference changes them. One history edit.",
-        WorkspaceMaterialEdits.REFERENCE to "Set reference image id (default the first, made when there is none): a material item laid over the canvas - or under the model with under=true - at opacity (default 0.5), turned rotation degrees clockwise about its centre, to place layers against and compare the model with; locked=true keeps it from moving on the canvas; pin maps parameter IDs to values so it shows only at that keyform, as a reference layer's layer_pin_reference ({} shows it at every pose); material_id=null removes it. The reference queries and renders use the first one. " +
+        WorkspaceMaterialEdits.REFERENCE to "Set reference image id (default the first, made when there is none): a material item laid over the canvas - or under the model with under=true - at opacity (default 0.5), turned rotation degrees clockwise about its centre, to place layers against and compare the model with; locked=true keeps it from moving on the canvas; points lists keyform points (parameter ID to value) it shows at, any of them, as a reference layer's layer_pin_reference - pin gives one, [] or {} shows it at every pose; material_id=null removes it. The reference queries and renders use the first one. " +
             "It is not a layer: generation, export and the rig never see it. Without rect a new material is fitted into the canvas and centred (scaled up or down, aspect kept); " +
             "omitted fields keep their values; material_id null removes it, visible false hides it. view_render_model draws it with reference {mode: over, under or difference}; " +
             "material_crop takes close-ups from it by canvas rectangle. One history edit.",

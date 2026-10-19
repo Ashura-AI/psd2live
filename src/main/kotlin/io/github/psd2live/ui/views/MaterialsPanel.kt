@@ -458,9 +458,11 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				if (item != null && layer != null) add(MenuLine.Action(tr("materials.menu.replace"), { close(); vm.replaceLayerWithMaterial(layer, item.id) }))
 				// One reference, three places to show it - the hierarchy's reference menu moves it between them later.
 				add(MenuLine.Section(tr("materials.menu.addReference")))
-				if (item != null) add(MenuLine.Action(tr("references.mode.background"), { close(); vm.setLayoutReference(item.id, under = true) }))
-				add(MenuLine.Action(tr("references.mode.layer"), { close(); vm.placeMaterial(target, reference = true) }, enabled = items.isNotEmpty()))
-				if (item != null) add(MenuLine.Action(tr("references.mode.foreground"), { close(); vm.setLayoutReference(item.id) }))
+				val out = tr("references.notInModel")
+				if (item != null) add(MenuLine.Action(tr("references.mode.background"), { close(); vm.setLayoutReference(item.id, under = true) }, trailing = out))
+				add(MenuLine.Action(tr("references.mode.layer"), { close(); vm.placeMaterial(target, reference = true) }, enabled = items.isNotEmpty(),
+					trailing = tr("references.inModel")))
+				if (item != null) add(MenuLine.Action(tr("references.mode.foreground"), { close(); vm.setLayoutReference(item.id) }, trailing = out))
 				add(MenuLine.Rule)
 				if (item?.kind == MaterialKind.VECTOR) add(MenuLine.Action(tr("materials.menu.resolution"), { close(); resolution = item.id },
 					trailing = "${item.raster.width}×${item.raster.height}"))
