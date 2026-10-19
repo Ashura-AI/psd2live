@@ -3,23 +3,49 @@ package io.github.psd2live.ui.views
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.*
+import androidx.compose.material.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import io.github.psd2live.core.interior.*
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.ParameterKeyMarks
 import io.github.psd2live.ui.components.*
 import io.github.psd2live.ui.state.*
 import io.github.psd2live.ui.theme.LocalToolColors
+import io.github.psd2live.ui.theme.LocalToolTypography
+import io.github.psd2live.ui.views.physics.FieldLabel
+import io.github.psd2live.ui.views.physics.PhysicsRowDivider
+import io.github.psd2live.ui.views.physics.PhysicsSection
+import java.util.Locale
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.*
+
+private val INTERIOR_SECTIONS = setOf("audition", "shape", "motion", "more", "binding", "folds")
+private val INTERIOR_OPEN = INTERIOR_SECTIONS - "more"
+
+/** Transmission presets, as the direction row offers them: label key, from, to. */
+private val INTERIOR_DIRECTIONS =
+	listOf(
+		Triple("interior.direction.down", InteriorPoint(.5f, .05f), InteriorPoint(.5f, .95f)),
+		Triple("interior.direction.up", InteriorPoint(.5f, .95f), InteriorPoint(.5f, .05f)),
+		Triple("interior.direction.right", InteriorPoint(.05f, .5f), InteriorPoint(.95f, .5f)),
+		Triple("interior.direction.left", InteriorPoint(.95f, .5f), InteriorPoint(.05f, .5f)),
+	)
+
+/** Icon turn per preset: the icon points down. */
+private val INTERIOR_DIRECTION_DEGREES = listOf(0f, 180f, -90f, 90f)
 
 /** Native dock: authoring settings persist; audition and view isolation are temporary. */
 @Composable
 internal fun InteriorPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
 	val preview = state.previewModel
 	val target =
 		preview
@@ -29,16 +55,131 @@ internal fun InteriorPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 			?.firstOrNull { it.value == state.selectedLayerId }
 			?.key ?: state.selectedLayerId
 	val drawable = preview?.rig?.puppet?.drawables?.singleOrNull { it.id.raw == target }
-	if (drawable?.mesh == null) {
-		Text(tr("interior.select"), color = colors.textMuted, modifier = Modifier.padding(12.dp))
-		return
-	}
 	val effect = state.rigEdits.interiorEffects.singleOrNull { it.target == target }
+	var open by remember { mutableStateOf(INTERIOR_OPEN) }
+	val current = vm.interior.statusTarget == target && vm.interior.statusGeneration == state.projectOpenGeneration
+	Column(Modifier.fillMaxSize()) {
+		InteriorToolbar(
+			vm,
+			state,
+			drawable = drawable?.takeIf { it.mesh != null },
+			effect = effect,
+			busy = vm.interior.busy && current,
+			error = vm.interior.error?.takeIf { current },
+			onOpen = { open = it },
+		)
+		if (drawable?.mesh == null || target == null) {
+			Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+				Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+					InteriorIconView(InteriorIcon.SHAPE, colors.textDisabled, size = 24.dp)
+					Text(
+						tr("interior.select"),
+						style = typography.caption.copy(fontSize = 10.5.sp),
+						color = colors.textMuted,
+						textAlign = TextAlign.Center,
+					)
+				}
+			}
+			return@Column
+		}
+		InteriorBody(vm, state, preview, target, drawable, effect, open) { open = it }
+	}
+}
+
+/** Enable, solo and delete, the expand pair, and below them what the last edit is doing. */
+@Composable
+private fun InteriorToolbar(
+	vm: PSD2LiveViewModel,
+	state: PSD2LiveState,
+	drawable: Drawable?,
+	effect: NativeInteriorEffect?,
+	busy: Boolean,
+	error: String?,
+	onOpen: (Set<String>) -> Unit,
+) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val solo = vm.interior.soloActiveFor(state)
+	val labels = listOf(tr("interior.enabled"), tr(if (solo) "interior.restoreView" else "interior.solo"), tr("interior.delete"))
+	PanelToolbar(
+		labels = labels,
+		iconCount = 5,
+		secondary =
+			if (!busy && error == null) null
+			else {
+				{
+					Text(
+						error ?: tr("interior.busy"),
+						style = typography.caption.copy(fontSize = 10.sp),
+						color = if (error != null) colors.error else colors.textMuted,
+						maxLines = 2,
+						overflow = TextOverflow.Ellipsis,
+						modifier = Modifier.padding(horizontal = 4.dp),
+					)
+				}
+			},
+	) { labelsShown ->
+		PanelToolSwitch(
+			labels[0],
+			showLabel = labelsShown > 0,
+			checked = effect?.enabled == true,
+			onCheckedChange = { value ->
+				if (!value) vm.interior.stopTrial()
+				vm.interior.put(
+					buildJsonObject {
+						put("target", drawable!!.id.raw)
+						put("enabled", value)
+					}
+				)
+			},
+			enabled = drawable != null,
+			tooltip = tr("interior.enabledTip"),
+		)
+		PanelToolButton(
+			labels[1],
+			showLabel = labelsShown > 1,
+			onClick = { vm.interior.toggleSolo() },
+			enabled = drawable != null,
+			tooltip = tr("interior.soloTip"),
+			active = solo,
+		) {
+			InteriorIconView(InteriorIcon.SOLO, if (solo) colors.accent else colors.textPrimary, size = 11.dp)
+		}
+		PanelToolbarSeparator()
+		PanelToolButton(
+			labels[2],
+			showLabel = labelsShown > 2,
+			onClick = { drawable?.let { vm.interior.delete(it.id.raw) } },
+			enabled = drawable != null && effect != null,
+			tooltip = tr("interior.delete"),
+		) {
+			IconTrash(modifier = Modifier.size(11.dp), tint = colors.textPrimary)
+		}
+		Spacer(Modifier.weight(1f))
+		PanelExpandCollapseButtons(
+			onExpandAll = { onOpen(INTERIOR_SECTIONS) },
+			onCollapseAll = { onOpen(emptySet()) },
+			enabled = effect?.enabled == true,
+		)
+	}
+}
+
+@Composable
+private fun InteriorBody(
+	vm: PSD2LiveViewModel,
+	state: PSD2LiveState,
+	preview: io.github.psd2live.core.RigPreviewModel,
+	target: String,
+	drawable: Drawable,
+	effect: NativeInteriorEffect?,
+	open: Set<String>,
+	onOpen: (Set<String>) -> Unit,
+) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val caption = typography.caption.copy(fontSize = 10.sp)
 	val draft = vm.interior.draft(drawable.id.raw, effect)
 	val issue = remember(effect, preview) { effect?.issue(preview.authored.rig.puppet) }
-	var details by remember(target) { mutableStateOf(false) }
-	var binding by remember(target) { mutableStateOf(false) }
-	var guideOpen by remember(target) { mutableStateOf(false) }
 	fun request() = buildJsonObject {
 		put("target", target)
 		put("enabled", effect?.enabled ?: true)
@@ -110,346 +251,249 @@ internal fun InteriorPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 			last = now
 		}
 	}
-	Column(
-		Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(9.dp),
-		verticalArrangement = Arrangement.spacedBy(7.dp),
-	) {
-		Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-			CompactCheckbox(
-				effect?.enabled == true,
-				{ value ->
-					if (!value) vm.interior.stopTrial()
-					vm.interior.put(
-						buildJsonObject {
-							put("target", target)
-							put("enabled", value)
-						}
+	fun toggle(key: String) = onOpen(if (key in open) open - key else open + key)
+	@Composable fun icon(icon: InteriorIcon): @Composable () -> Unit = { InteriorIconView(icon, colors.accent) }
+
+	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+		Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+				Text(
+					drawable.name,
+					style = typography.body.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
+					color = colors.textPrimary,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
+					modifier = Modifier.weight(1f),
+				)
+				if (effect?.enabled == true)
+					Text(
+						effect.sources.joinToString(" · ") { it.name },
+						style = typography.monoSmall,
+						color = colors.textMuted,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
 					)
-				},
-				label = tr("interior.enabled"),
-			)
-			CompactButton(
-				tr(
-					if (vm.interior.soloActiveFor(state)) "interior.restoreView"
-					else "interior.solo"
-				),
-				{ vm.interior.toggleSolo() },
-			)
-			if (effect != null)
-				CompactButton(tr("interior.delete"), { vm.interior.delete(drawable.id.raw) })
-		}
-		Text(drawable.name, color = colors.textPrimary)
-		vm.interior.error
-			?.takeIf {
-				vm.interior.statusTarget == target &&
-					vm.interior.statusGeneration == state.projectOpenGeneration
 			}
-			?.let { Text(it, color = colors.accent) }
-		if (
-			vm.interior.busy &&
-				vm.interior.statusTarget == target &&
-				vm.interior.statusGeneration == state.projectOpenGeneration
-		)
-			LinearProgressIndicator(Modifier.fillMaxWidth())
+			when {
+				effect?.enabled != true -> Text(tr("interior.disabledHint"), style = caption, color = colors.textMuted)
+				issue != null -> {
+					Text(tr(issue), style = caption, color = colors.warning)
+					CompactButton(tr("interior.regenerate"), ::save, isPrimary = true, height = 22.dp)
+				}
+			}
+		}
+		PhysicsRowDivider()
 		if (effect?.enabled != true) return@Column
-		if (issue != null) {
-			Text(tr(issue), color = colors.accent)
-			CompactButton(tr("interior.regenerate"), ::save)
-		}
-		if (state.activeCanvas.mode != CanvasMode.EDIT) {
-			CompactButton(
-				tr("interior.editAudition"),
-				{ vm.setCanvasMode(state.activeCanvas.id, CanvasMode.EDIT) },
-			)
-		}
-		val axes = effect.sources
-		val value = vm.interior.poseTarget ?: (0f to 0f)
-		fun parameterValue(p: Parameter, v: Float) =
-			p.default + v * (if (v < 0) p.default - p.min else p.max - p.default)
-		fun normalized(p: Parameter, v: Float) =
-			(v - p.default) / (if (v < p.default) p.default - p.min else p.max - p.default)
-		ParameterPad2D(
-			axes[0],
-			axes[1],
-			{ parameterValue(axes[0], value.first) },
-			{ parameterValue(axes[1], value.second) },
-			issue != null || state.activeCanvas.mode != CanvasMode.EDIT,
-			issue != null || state.activeCanvas.mode != CanvasMode.EDIT,
-			ParameterKeyMarks(listOf(axes[0].min, axes[0].default, axes[0].max), emptyList()),
-			emptyList(),
-			emptyList(),
-			ParameterKeyMarks(listOf(axes[1].min, axes[1].default, axes[1].max), emptyList()),
-			Modifier.fillMaxWidth().height(106.dp),
-			onChange = { x, y ->
-				vm.interior.mouse = false
-				vm.interior.poseTarget = normalized(axes[0], x) to normalized(axes[1], y)
-				vm.interior.startTrial(effect)
-			},
-			reverseY = true,
-		)
-		Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-			CompactButton(
-				tr("interior.neutral"),
-				{
-					vm.interior.poseTarget = 0f to 0f
-					vm.interior.startTrial(effect)
-				},
-			)
-			CompactButton(tr("interior.stop"), { vm.interior.stopTrial() })
-			CompactCheckbox(
-				vm.interior.mouse,
-				{
-					vm.interior.mouse = it
-					if (it) {
-						vm.interior.poseTarget = 0f to 0f
+		val editing = state.activeCanvas.mode == CanvasMode.EDIT
+
+		PhysicsSection(tr("interior.audition"), "audition" in open, { toggle("audition") }, icon = icon(InteriorIcon.AUDITION)) {
+			if (!editing) {
+				Text(tr("interior.auditionEditOnly"), style = caption, color = colors.textMuted)
+				CompactButton(
+					tr("interior.editAudition"),
+					{ vm.setCanvasMode(state.activeCanvas.id, CanvasMode.EDIT) },
+					height = 22.dp,
+				)
+			} else {
+				val axes = effect.sources
+				val value = vm.interior.poseTarget ?: (0f to 0f)
+				fun parameterValue(p: Parameter, v: Float) =
+					p.default + v * (if (v < 0) p.default - p.min else p.max - p.default)
+				fun normalized(p: Parameter, v: Float) =
+					(v - p.default) / (if (v < p.default) p.default - p.min else p.max - p.default)
+				ParameterPad2D(
+					axes[0],
+					axes[1],
+					{ parameterValue(axes[0], value.first) },
+					{ parameterValue(axes[1], value.second) },
+					issue != null,
+					issue != null,
+					ParameterKeyMarks(listOf(axes[0].min, axes[0].default, axes[0].max), emptyList()),
+					emptyList(),
+					emptyList(),
+					ParameterKeyMarks(listOf(axes[1].min, axes[1].default, axes[1].max), emptyList()),
+					Modifier.fillMaxWidth().height(106.dp),
+					onChange = { x, y ->
+						vm.interior.mouse = false
+						vm.interior.poseTarget = normalized(axes[0], x) to normalized(axes[1], y)
 						vm.interior.startTrial(effect)
-					}
-				},
-				label = tr("interior.mouse"),
-			)
-		}
-		InteriorAmount(
-			"interior.horizontal",
-			draft.shape.horizontal,
-			0f..2f,
-			{ draft.shape = draft.shape.copy(horizontal = it) },
-			::save,
-		)
-		InteriorAmount(
-			"interior.vertical",
-			draft.shape.vertical,
-			0f..2f,
-			{ draft.shape = draft.shape.copy(vertical = it) },
-			::save,
-		)
-		InteriorAmount(
-			"interior.bulge",
-			draft.shape.bulge,
-			0f..2f,
-			{ draft.shape = draft.shape.copy(bulge = it) },
-			::save,
-		)
-		InteriorAmount(
-			"interior.press",
-			draft.shape.press,
-			0f..2f,
-			{ draft.shape = draft.shape.copy(press = it) },
-			::save,
-		)
-		InteriorAmount(
-			"interior.folds",
-			draft.shape.folds,
-			0f..2f,
-			{ draft.shape = draft.shape.copy(folds = it) },
-			::save,
-		)
-		InteriorAmount(
-			"interior.contour",
-			draft.shape.contour,
-			0f..1f,
-			{ draft.shape = draft.shape.copy(contour = it) },
-			::save,
-		)
-		CompactCheckbox(
-			draft.motion.enabled,
-			{
-				draft.motion = draft.motion.copy(enabled = it)
-				save()
-			},
-			label = tr("interior.dynamics"),
-		)
-		if (draft.motion.enabled) {
-			InteriorAmount(
-				"interior.response",
-				draft.motion.responseSeconds,
-				0f..0.6f,
-				{ draft.motion = draft.motion.copy(responseSeconds = it) },
-				::save,
-			)
-			InteriorAmount(
-				"interior.transmission",
-				draft.motion.transmissionSeconds,
-				0f..0.5f,
-				{ draft.motion = draft.motion.copy(transmissionSeconds = it) },
-				::save,
-			)
-			InteriorAmount(
-				"interior.strength",
-				draft.motion.transmissionStrength,
-				0f..1f,
-				{ draft.motion = draft.motion.copy(transmissionStrength = it) },
-				::save,
-			)
-			Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-				for ((title, a, b) in
-					listOf(
-						Triple("↓", InteriorPoint(.5f, .05f), InteriorPoint(.5f, .95f)),
-						Triple("↑", InteriorPoint(.5f, .95f), InteriorPoint(.5f, .05f)),
-						Triple("→", InteriorPoint(.05f, .5f), InteriorPoint(.95f, .5f)),
-						Triple("←", InteriorPoint(.95f, .5f), InteriorPoint(.05f, .5f)),
-					)) CompactButton(
-					title,
-					{
-						draft.motion = draft.motion.copy(from = a, to = b)
-						save()
 					},
+					reverseY = true,
 				)
-			}
-		}
-		CompactButton(tr("interior.more"), { details = !details })
-		if (details) {
-			InteriorAmount(
-				"interior.sensitivityX",
-				draft.motion.sensitivityX,
-				.1f..1f,
-				{ draft.motion = draft.motion.copy(sensitivityX = it) },
-				::save,
-			)
-			InteriorAmount(
-				"interior.sensitivityY",
-				draft.motion.sensitivityY,
-				.1f..1f,
-				{ draft.motion = draft.motion.copy(sensitivityY = it) },
-				::save,
-			)
-			for (end in 0..1) for (axis in 0..1) {
-				val p = if (end == 0) draft.motion.from else draft.motion.to
-				InteriorAmount(
-					"interior.${if(end==0)"from" else "to"}${if(axis==0)"X" else "Y"}",
-					if (axis == 0) p.x else p.y,
-					0f..1f,
-					{ v ->
-						val next = if (axis == 0) p.copy(x = v) else p.copy(y = v)
-						if (
-							kotlin.math.hypot(
-								(next.x - (if (end == 0) draft.motion.to else draft.motion.from).x)
-									.toDouble(),
-								(next.y - (if (end == 0) draft.motion.to else draft.motion.from).y)
-									.toDouble(),
-							) >= .05
-						)
-							draft.motion =
-								if (end == 0) draft.motion.copy(from = next)
-								else draft.motion.copy(to = next)
-					},
-					::save,
-				)
-			}
-		}
-		CompactButton(tr("interior.binding"), { binding = !binding })
-		if (binding)
-			for (axis in 0..1) {
-				var expanded by remember { mutableStateOf(false) }
-				Box {
+				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
 					CompactButton(
-						"${if(axis==0)"X" else "Y"}: " +
-							(effect.sources.getOrNull(axis)?.name ?: tr("interior.newParameter")),
-						{ expanded = true },
-					)
-					DropdownMenu(expanded, { expanded = false }) {
-						DropdownMenuItem({
-							draft.sources = draft.sources.toMutableList().also { it[axis] = "" }
-							expanded = false
-							save()
-						}) {
-							Text(tr("interior.newParameter"))
-						}
-						preview.rig.puppet.parameters
-							.filter {
-								it.kind == ParameterKind.NORMAL &&
-									!it.repeat &&
-									it.min < it.default &&
-									it.default < it.max
-							}
-							.forEach { p ->
-								DropdownMenuItem({
-									draft.sources =
-										draft.sources.toMutableList().also { it[axis] = p.id.raw }
-									expanded = false
-									save()
-								}) {
-									Text(p.name)
-								}
-							}
-					}
-				}
-			}
-		CompactButton(tr("interior.guides"), { guideOpen = !guideOpen })
-		if (guideOpen) {
-			val raster =
-				preview.analysis.layers
-					.singleOrNull { it.source.id.raw == state.selectedLayerId }
-					?.source
-					?.raster
-			draft.guides.forEachIndexed { i, g ->
-				Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-					Text("${tr("interior.fold")} ${i+1}", color = colors.textPrimary)
-					CompactCheckbox(
-						g.pitchOnly,
-						{ v ->
-							draft.guides =
-								draft.guides.toMutableList().also { it[i] = g.copy(pitchOnly = v) }
-							save()
-						},
-						label = tr("interior.pitchOnly"),
-					)
-					CompactButton(
-						"×",
+						tr("interior.neutral"),
 						{
-							draft.guides = draft.guides.filterIndexed { n, _ -> n != i }
-							save()
+							vm.interior.poseTarget = 0f to 0f
+							vm.interior.startTrial(effect)
 						},
+						enabled = issue == null,
+						leadingIcon = { IconReset(modifier = Modifier.size(10.dp), tint = colors.textPrimary) },
+						height = 22.dp,
 					)
-				}
-				InteriorAmount(
-					"interior.foldAmount",
-					g.amount,
-					0f..2f,
-					{ v ->
-						draft.guides =
-							draft.guides.toMutableList().also { it[i] = g.copy(amount = v) }
-					},
-					::save,
-				)
-				InteriorAmount(
-					"interior.radius",
-					g.radius,
-					1f..maxOf(2f, (raster?.width ?: 128).toFloat()),
-					{ v ->
-						draft.guides =
-							draft.guides.toMutableList().also { it[i] = g.copy(radius = v) }
-					},
-					::save,
-				)
-				g.points.forEachIndexed { j, p ->
-					for (a in 0..1) InteriorAmount(
-						if (a == 0) "interior.pointX" else "interior.pointY",
-						if (a == 0) p.x else p.y,
-						0f..maxOf(
-								1f,
-								(if (a == 0) raster?.width else raster?.height)?.toFloat() ?: 1f,
-							),
-						{ v ->
-							val next = if (a == 0) p.copy(x = v) else p.copy(y = v)
-							val pts = g.points.toMutableList().also { it[j] = next }
-							if (pts.zipWithNext().all { (x, y) -> x != y })
-								draft.guides =
-									draft.guides.toMutableList().also {
-										it[i] = g.copy(points = pts)
-									}
+					CompactButton(tr("interior.stop"), { vm.interior.stopTrial() }, height = 22.dp)
+					Spacer(Modifier.weight(1f))
+					CompactToggleChip(
+						tr("interior.mouse"),
+						vm.interior.mouse,
+						{
+							val on = !vm.interior.mouse
+							vm.interior.mouse = on
+							if (on) {
+								vm.interior.poseTarget = 0f to 0f
+								vm.interior.startTrial(effect)
+							}
 						},
-						::save,
+						enabled = issue == null,
+						leadingIcon = {
+							IconMouse(
+								vm.interior.mouse,
+								modifier = Modifier.size(11.dp),
+								tint = if (vm.interior.mouse) colors.accent else colors.textMuted,
+							)
+						},
+						showCheckWhenSelected = false,
 					)
 				}
 			}
-			CompactButton(
-				tr("interior.addFold"),
-				{
+		}
+
+		val shapeReset: @Composable RowScope.() -> Unit = {
+			CompactIconButton(
+				onClick = {
+					draft.shape = InteriorSurfaceSettings()
+					save()
+				},
+				tooltip = tr("interior.shapeReset"),
+				size = 18.dp,
+			) {
+				IconReset(modifier = Modifier.size(11.dp), tint = colors.textMuted)
+			}
+		}
+		PhysicsSection(
+			tr("interior.shape"),
+			"shape" in open,
+			{ toggle("shape") },
+			icon = icon(InteriorIcon.SHAPE),
+			trailing = shapeReset.takeIf { draft.shape != InteriorSurfaceSettings() },
+		) {
+			InteriorSlider("interior.horizontal", draft.shape.horizontal, 0f..2f, { draft.shape = draft.shape.copy(horizontal = it) }, ::save)
+			InteriorSlider("interior.vertical", draft.shape.vertical, 0f..2f, { draft.shape = draft.shape.copy(vertical = it) }, ::save)
+			InteriorSlider("interior.bulge", draft.shape.bulge, 0f..2f, { draft.shape = draft.shape.copy(bulge = it) }, ::save)
+			InteriorSlider("interior.press", draft.shape.press, 0f..2f, { draft.shape = draft.shape.copy(press = it) }, ::save)
+			InteriorSlider("interior.folds", draft.shape.folds, 0f..2f, { draft.shape = draft.shape.copy(folds = it) }, ::save)
+			InteriorSlider("interior.contour", draft.shape.contour, 0f..1f, { draft.shape = draft.shape.copy(contour = it) }, ::save)
+		}
+
+		val motionOn = draft.motion.enabled
+		val motionSwitch: @Composable RowScope.() -> Unit = {
+			PanelToolSwitch(
+				tr("interior.dynamics"),
+				showLabel = false,
+				checked = motionOn,
+				onCheckedChange = {
+					draft.motion = draft.motion.copy(enabled = it)
+					save()
+				},
+				enabled = true,
+				tooltip = tr("interior.dynamicsTip"),
+			)
+		}
+		PhysicsSection(tr("interior.dynamics"), "motion" in open, { toggle("motion") }, icon = icon(InteriorIcon.MOTION), trailing = motionSwitch) {
+			InteriorSlider("interior.response", draft.motion.responseSeconds, 0f..0.6f, { draft.motion = draft.motion.copy(responseSeconds = it) }, ::save, enabled = motionOn)
+			InteriorSlider("interior.transmission", draft.motion.transmissionSeconds, 0f..0.5f, { draft.motion = draft.motion.copy(transmissionSeconds = it) }, ::save, enabled = motionOn)
+			InteriorSlider("interior.strength", draft.motion.transmissionStrength, 0f..1f, { draft.motion = draft.motion.copy(transmissionStrength = it) }, ::save, enabled = motionOn)
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+				FieldLabel(tr("interior.direction"))
+				INTERIOR_DIRECTIONS.forEachIndexed { i, (key, from, to) ->
+					val selected = draft.motion.from == from && draft.motion.to == to
+					CompactToggleChip(
+						"",
+						selected,
+						{
+							draft.motion = draft.motion.copy(from = from, to = to)
+							save()
+						},
+						enabled = motionOn,
+						leadingIcon = {
+							InteriorIconView(
+								InteriorIcon.DIRECTION,
+								if (!motionOn) colors.textDisabled else if (selected) colors.accent else colors.textMuted,
+								size = 11.dp,
+								degrees = INTERIOR_DIRECTION_DEGREES[i],
+							)
+						},
+						showCheckWhenSelected = false,
+						tooltip = tr(key),
+					)
+				}
+			}
+		}
+
+		PhysicsSection(tr("interior.more"), "more" in open, { toggle("more") }, icon = icon(InteriorIcon.MOTION)) {
+			InteriorSlider("interior.sensitivityX", draft.motion.sensitivityX, .1f..1f, { draft.motion = draft.motion.copy(sensitivityX = it) }, ::save)
+			InteriorSlider("interior.sensitivityY", draft.motion.sensitivityY, .1f..1f, { draft.motion = draft.motion.copy(sensitivityY = it) }, ::save)
+			for (end in 0..1) {
+				val p = if (end == 0) draft.motion.from else draft.motion.to
+				val other = if (end == 0) draft.motion.to else draft.motion.from
+				fun set(next: InteriorPoint) {
+					// The two ends must stay apart, or the transmission has no direction.
+					if (kotlin.math.hypot((next.x - other.x).toDouble(), (next.y - other.y).toDouble()) >= .05)
+						draft.motion = if (end == 0) draft.motion.copy(from = next) else draft.motion.copy(to = next)
+				}
+				InteriorPointRow(
+					tr(if (end == 0) "interior.from" else "interior.to"),
+					p,
+					1f,
+					1f,
+					decimals = 2,
+					step = .05,
+					onChange = ::set,
+					onFinish = ::save,
+				)
+			}
+		}
+
+		PhysicsSection(tr("interior.binding"), "binding" in open, { toggle("binding") }, icon = icon(InteriorIcon.BINDING)) {
+			val candidates =
+				remember(preview) {
+					preview.rig.puppet.parameters.filter {
+						it.kind == ParameterKind.NORMAL && !it.repeat && it.min < it.default && it.default < it.max
+					}
+				}
+			val names = remember(preview) { preview.rig.puppet.parameters.associate { it.id.raw to it.name } }
+			for (axis in 0..1) {
+				val selected = draft.sources.getOrElse(axis) { "" }
+				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+					FieldLabel(tr(if (axis == 0) "interior.axisX" else "interior.axisY"))
+					CompactDropdown(
+						(listOf("") + candidates.map { it.id.raw } + selected).distinct(),
+						selected,
+						{ id ->
+							draft.sources = draft.sources.toMutableList().also { it[axis] = id }
+							save()
+						},
+						Modifier.weight(1f),
+						itemLabel = { if (it.isEmpty()) tr("interior.newParameter") else names[it] ?: it },
+						height = 22.dp,
+					)
+				}
+			}
+		}
+
+		val raster =
+			preview.analysis.layers
+				.singleOrNull { it.source.id.raw == state.selectedLayerId }
+				?.source
+				?.raster
+		val addFold: @Composable RowScope.() -> Unit = {
+			CompactIconButton(
+				onClick = {
 					if (raster != null) {
 						draft.guides =
 							draft.guides +
 								InteriorGuide(
-									"fold" + System.nanoTime(),
+									nextInteriorFoldId(draft.guides),
 									listOf(
 										InteriorPoint(raster.width * .5f, raster.height * .2f),
 										InteriorPoint(raster.width * .5f, raster.height * .8f),
@@ -459,29 +503,150 @@ internal fun InteriorPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 						save()
 					}
 				},
-			)
+				enabled = raster != null,
+				tooltip = tr("interior.addFold"),
+				size = 18.dp,
+			) {
+				IconAdd(modifier = Modifier.size(10.dp), tint = colors.textPrimary)
+			}
+		}
+		PhysicsSection(
+			tr("interior.guides"),
+			"folds" in open,
+			{ toggle("folds") },
+			count = draft.guides.size,
+			icon = icon(InteriorIcon.FOLDS),
+			trailing = addFold,
+		) {
+			if (draft.guides.isEmpty()) Text(tr("interior.noFolds"), style = caption, color = colors.textMuted)
+			draft.guides.forEachIndexed { i, g ->
+				fun replace(next: InteriorGuide) {
+					draft.guides = draft.guides.toMutableList().also { it[i] = next }
+				}
+				InspectorSectionBox("${tr("interior.fold")} ${i + 1}") {
+					Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+						CompactToggleChip(
+							tr("interior.pitchOnly"),
+							g.pitchOnly,
+							{
+								replace(g.copy(pitchOnly = !g.pitchOnly))
+								save()
+							},
+							tooltip = tr("interior.pitchOnlyTip"),
+						)
+						Spacer(Modifier.weight(1f))
+						CompactIconButton(
+							onClick = {
+								draft.guides = draft.guides.filterIndexed { n, _ -> n != i }
+								save()
+							},
+							tooltip = tr("interior.removeFold"),
+							size = 18.dp,
+						) {
+							IconTrash(modifier = Modifier.size(11.dp))
+						}
+					}
+					InteriorSlider("interior.foldAmount", g.amount, 0f..2f, { replace(g.copy(amount = it)) }, ::save)
+					InteriorSlider(
+						"interior.radius",
+						g.radius,
+						1f..maxOf(2f, (raster?.width ?: 128).toFloat()),
+						{ replace(g.copy(radius = it)) },
+						::save,
+						format = "%.0f",
+					)
+					g.points.forEachIndexed { j, p ->
+						InteriorPointRow(
+							tr("interior.point", j + 1),
+							p,
+							maxOf(1f, raster?.width?.toFloat() ?: 1f),
+							maxOf(1f, raster?.height?.toFloat() ?: 1f),
+							decimals = 0,
+							step = 1.0,
+							onChange = { next ->
+								val pts = g.points.toMutableList().also { it[j] = next }
+								if (pts.zipWithNext().all { (a, b) -> a != b }) replace(g.copy(points = pts))
+							},
+							onFinish = ::save,
+						)
+					}
+				}
+			}
 		}
 	}
 }
 
+/** A labelled slider that edits the draft while dragged and submits on release. */
 @Composable
-private fun InteriorAmount(
+private fun InteriorSlider(
 	key: String,
 	value: Float,
 	range: ClosedFloatingPointRange<Float>,
 	change: (Float) -> Unit,
 	finish: () -> Unit,
+	enabled: Boolean = true,
+	format: String = "%.2f",
 ) {
 	val colors = LocalToolColors.current
-	Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-		Text(tr(key), color = colors.textPrimary, modifier = Modifier.width(100.dp))
+	val typography = LocalToolTypography.current
+	Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+		FieldLabel(tr(key))
 		CompactSlider(
 			value,
-			change,
+			{ change(((it * 100f).toInt() / 100f).coerceIn(range)) },
 			onValueChangeFinished = finish,
 			modifier = Modifier.weight(1f),
 			valueRange = range,
+			enabled = enabled,
 		)
-		Text("%.2f".format(value), color = colors.textMuted, modifier = Modifier.width(38.dp))
+		Text(
+			String.format(Locale.US, format, value),
+			style = typography.monoSmall,
+			color = if (enabled) colors.textPrimary else colors.textDisabled,
+			modifier = Modifier.width(34.dp),
+		)
+	}
+}
+
+/** A point as two number fields; [onFinish] submits once a field's edit ends. */
+@Composable
+private fun InteriorPointRow(
+	label: String,
+	point: InteriorPoint,
+	maxX: Float,
+	maxY: Float,
+	decimals: Int,
+	step: Double,
+	onChange: (InteriorPoint) -> Unit,
+	onFinish: () -> Unit,
+) {
+	val colors = LocalToolColors.current
+	val axis = LocalToolTypography.current.caption.copy(fontSize = 9.5.sp)
+	Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+		FieldLabel(label)
+		Text("X", style = axis, color = colors.textMuted)
+		CompactNumberSpinner(
+			point.x.toDouble(),
+			{ onChange(point.copy(x = it.toFloat())) },
+			Modifier.weight(1f),
+			min = 0.0,
+			max = maxX.toDouble(),
+			step = step,
+			decimals = decimals,
+			height = 22.dp,
+			onEditEnd = onFinish,
+		)
+		Text("Y", style = axis, color = colors.textMuted)
+		CompactNumberSpinner(
+			point.y.toDouble(),
+			{ onChange(point.copy(y = it.toFloat())) },
+			Modifier.weight(1f),
+			min = 0.0,
+			max = maxY.toDouble(),
+			step = step,
+			decimals = decimals,
+			height = 22.dp,
+			onEditEnd = onFinish,
+		)
 	}
 }

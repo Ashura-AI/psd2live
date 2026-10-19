@@ -620,3 +620,58 @@ internal fun DrawScope.drawSimSectionIcon(icon: SimSectionIcon, color: Color) {
         }
     }
 }
+
+/** The interior panel's sections, its solo view and its transmission direction (drawn pointing down). */
+internal enum class InteriorIcon { AUDITION, SHAPE, MOTION, BINDING, FOLDS, SOLO, DIRECTION }
+
+@Composable
+internal fun InteriorIconView(icon: InteriorIcon, color: Color, size: Dp = 12.dp, degrees: Float = 0f) {
+    Canvas(Modifier.size(size)) { IconPen(this, color).run { turned(degrees) { drawInteriorIcon(icon) } } }
+}
+
+private fun IconPen.drawInteriorIcon(icon: InteriorIcon) {
+    when (icon) {
+        // The 2D pad with its handle.
+        InteriorIcon.AUDITION -> {
+            panel(3f, 3f, 12f, 12f)
+            line(9f, 5f, 9f, 13f, ICON_FINE)
+            line(5f, 9f, 13f, 9f, ICON_FINE)
+            dot(11.4f, 6.6f, 1.9f)
+        }
+        // A surface bulging over its base.
+        InteriorIcon.SHAPE -> {
+            val dome = path { m(2.6f, 13.4f); q(9f, 1.8f, 15.4f, 13.4f); z() }
+            fill(dome, soft)
+            outline(dome)
+        }
+        // A swing easing into its follower.
+        InteriorIcon.MOTION -> {
+            outline(path { m(2.4f, 12.4f); c(5.6f, 12.4f, 5.4f, 5.6f, 9f, 5.6f); c(12.6f, 5.6f, 12.4f, 12.4f, 15.6f, 12.4f) })
+            dot(9f, 5.6f, 1.6f)
+        }
+        // Two parameter sliders.
+        InteriorIcon.BINDING -> {
+            line(2.6f, 5.6f, 15.4f, 5.6f)
+            dot(6.4f, 5.6f, 2.2f)
+            line(2.6f, 12.4f, 15.4f, 12.4f)
+            dot(11.8f, 12.4f, 2.2f)
+        }
+        // Two creases.
+        InteriorIcon.FOLDS -> for (x in listOf(6f, 12f)) {
+            outline(path { m(x, 2.6f); q(x - 2.6f, 5.8f, x, 9f); q(x + 2.6f, 12.2f, x, 15.4f) })
+        }
+        // A sight on the layer.
+        InteriorIcon.SOLO -> {
+            ring(9f, 9f, 5.4f)
+            dot(9f, 9f, 1.6f)
+            line(9f, 1.8f, 9f, 4f)
+            line(9f, 14f, 9f, 16.2f)
+            line(1.8f, 9f, 4f, 9f)
+            line(14f, 9f, 16.2f, 9f)
+        }
+        InteriorIcon.DIRECTION -> {
+            line(9f, 3f, 9f, 14.6f)
+            chevron(9f, 14.6f, 0f, 1f, 4f)
+        }
+    }
+}

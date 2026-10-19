@@ -68,6 +68,15 @@ class NativeInteriorEffectTest {
 		}
 
 	@Test
+	fun `new fold IDs come from the guides, never a clock`() {
+		fun fold(id: String) = InteriorGuide(id, listOf(InteriorPoint(0f, 0f), InteriorPoint(1f, 1f)), InteriorGuidePurpose.FOLD)
+		assertEquals("fold0", nextInteriorFoldId(emptyList()))
+		assertEquals("fold2", nextInteriorFoldId(listOf(fold("fold0"), fold("fold1"))))
+		assertEquals("fold3", nextInteriorFoldId(listOf(fold("fold1"), fold("fold2"))))
+		assertEquals("fold1", nextInteriorFoldId(listOf(fold("fold0"))))
+	}
+
+	@Test
 	fun nativeRecipeRetainsTheOriginalMeshAndReplaysAndExportsTheSameMotion() {
 		val p = preview()
 		val authored = p.authored.rig.puppet

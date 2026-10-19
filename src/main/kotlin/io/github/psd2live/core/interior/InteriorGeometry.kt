@@ -43,6 +43,10 @@ internal data class InteriorGuide(
 	}
 }
 
+/** The first `fold<n>` no guide uses, counting from the guide count: the same name every replay, never a clock. */
+internal fun nextInteriorFoldId(guides: List<InteriorGuide>): String =
+	generateSequence(guides.size) { it + 1 }.map { "fold$it" }.first { id -> guides.none { it.id == id } }
+
 /**
  * A private copy of the mesh: callers cannot invalidate a compiled plan by editing their arrays.
  */
