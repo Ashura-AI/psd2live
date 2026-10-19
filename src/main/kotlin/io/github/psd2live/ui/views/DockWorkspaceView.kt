@@ -309,10 +309,12 @@ internal fun DockWorkspaceView(
     // fresh viewport while its durable session and editor stay keyed by workspace/canvas id.
     // Reusing movableContent across a changing split tree retained stale pointer/focus nodes,
     // especially for the canvas that existed before a second canvas was added.
-    fun content(id: String): @Composable () -> Unit = {
-        key(workspace.id, id) {
-            DockModuleContent(id, state, viewModel)
-        }
+    // Modules read the state where they are composed, so the dock around them (headers, tabs, splitters) only
+    // takes the state without the pose and skips its composition while the pose alone changes.
+    val latestState = rememberUpdatedState(state)
+    val dockState = withoutPose(state)
+    val content: (String) -> @Composable () -> Unit = remember(workspace.id, viewModel) {
+        { id -> { key(workspace.id, id) { DockModuleContent(id, latestState.value, viewModel) } } }
     }
     DisposableEffect(session) { onDispose { session.cancel() } }
 	// Tutorial / programmatic focus: select a dock module tab and bring floating modules back.
@@ -377,7 +379,7 @@ internal fun DockWorkspaceView(
                     session.workspaceBounds = { screenBounds(coordinates, mainWindow) }
                 }) {
                     visibleRoot?.let {
-                        DockTree(it, session, Modifier.fillMaxSize(), mainWindow, state, viewModel, ::content)
+                        DockTree(it, session, Modifier.fillMaxSize(), mainWindow, dockState, viewModel, content)
                         DockJunctionOverlay(it, session, mainWindow)
                     }
                         ?: Box(Modifier.fillMaxSize().background(
@@ -1167,31 +1169,45 @@ private val POSELESS_MODULES = setOf("hierarchy", "skeleton", "history", "log", 
 private fun withoutPose(state: PSD2LiveState): PSD2LiveState {
 	val held = remember { arrayOfNulls<PSD2LiveState>(1) }
 	val previous = held[0]
-	val shown = if (previous != null && previous !== state && previous.withoutPoseValues() == state.withoutPoseValues()) previous else state
+	val shown = if (previous != null && previous !== state && previous.withPoseOf(state) == state) previous else state
 	held[0] = shown
 	return shown
 }
 
 /**
- * This state with the pose values left out wherever they are kept: the state, each workspace's pose and canvas, and
- * the edit count each authored value bumps.
+ * This state with [other]'s pose values wherever they are kept: the state, each workspace's pose and canvas, and the
+ * edit count each authored value bumps. Equal to [other] when the two differ only in the pose. What is the same
+ * object in both stays so, which keeps the comparison from walking into it.
  */
-private fun PSD2LiveState.withoutPoseValues(): PSD2LiveState = copy(
-	parameterValues = emptyMap(),
-	previewParameterValues = emptyMap(),
-	projectEditVersion = 0,
-	workspaces = workspaces.map { workspace ->
-		workspace.copy(
-			pose = workspace.pose?.copy(parameterValues = emptyMap(), previewParameterValues = emptyMap()),
-			canvases = workspace.canvases.map { canvas ->
-				canvas.copy(
-					editSession = canvas.editSession.copy(presentation = canvas.editSession.presentation.copy(parameterValues = emptyMap(), previewParameterValues = emptyMap())),
-					previewSession = canvas.previewSession.copy(presentation = canvas.previewSession.presentation.copy(parameterValues = emptyMap(), previewParameterValues = emptyMap())),
-				)
-			},
+private fun PSD2LiveState.withPoseOf(other: PSD2LiveState): PSD2LiveState {
+	val shared = workspaces.size == other.workspaces.size
+	val workspaces = if (!shared || workspaces === other.workspaces) workspaces
+		else workspaces.mapIndexed { index, workspace -> workspace.withPoseOf(other.workspaces[index]) }
+	return copy(
+		parameterValues = other.parameterValues,
+		previewParameterValues = other.previewParameterValues,
+		projectEditVersion = other.projectEditVersion,
+		workspaces = if (shared && workspaces.indices.all { workspaces[it] === other.workspaces[it] }) other.workspaces else workspaces,
+	)
+}
+
+private fun EditorWorkspace.withPoseOf(other: EditorWorkspace): EditorWorkspace {
+	if (this === other) return other
+	if (id != other.id || canvases.size != other.canvases.size) return this
+	val pose = if (pose == null || other.pose == null) pose
+		else pose.copy(parameterValues = other.pose.parameterValues, previewParameterValues = other.pose.previewParameterValues)
+	val canvases = canvases.mapIndexed { index, canvas ->
+		val next = other.canvases[index]
+		if (canvas === next) next else canvas.copy(
+			editSession = canvas.editSession.copy(presentation = canvas.editSession.presentation.copy(
+				parameterValues = next.editSession.presentation.parameterValues, previewParameterValues = next.editSession.presentation.previewParameterValues)),
+			previewSession = canvas.previewSession.copy(presentation = canvas.previewSession.presentation.copy(
+				parameterValues = next.previewSession.presentation.parameterValues, previewParameterValues = next.previewSession.presentation.previewParameterValues)),
 		)
-	},
-)
+	}
+	val result = copy(pose = pose, canvases = canvases)
+	return if (result == other) other else result
+}
 
 @Composable
 private fun DockModuleContent(

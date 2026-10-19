@@ -197,6 +197,9 @@ class PreviewFpsTool {
 					report.appendLine("  compositions per second:")
 					compositions.entries.sortedByDescending { it.value }.take(40)
 						.forEach { report.appendLine("    %8.1f  %s".format(it.value / seconds.toDouble(), it.key)) }
+					report.appendLine("  compositions per second, psd2live:")
+					compositions.entries.filter { it.key.startsWith("io.github.psd2live") }.sortedByDescending { it.value }.take(40)
+						.forEach { report.appendLine("    %8.1f  %s".format(it.value / seconds.toDouble(), it.key)) }
 				}
 				if (recording != null) report.append(hotMethods(jfrFile))
 				if (setting("PSD2LIVE_CAPTURE", "0") == "1") {
