@@ -160,6 +160,8 @@ internal fun HelpNav(selected: HelpTab, page: String, onSelect: (HelpTab) -> Uni
 		onClick = { onOpenPage(node.id) },
 		indent = 12.dp * depth,
 		trailingContent = { ManualStatusTag(node.status, compact = true) },
+		// An empty chevron slot: a page's title starts where its folder's children start, past the folder's own.
+		icon = {},
 	)
 
 	@Composable
@@ -217,8 +219,8 @@ private fun ManualLegend() {
 	Manual.Status.entries.forEach { status ->
 		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 			ManualStatusTag(status, compact = true)
-			Text(tr(status.labelKey + ".desc"), style = typography.caption.copy(fontSize = 9.5.sp), color = colors.textMuted,
-				maxLines = 2, overflow = TextOverflow.Ellipsis)
+			Text(tr(status.labelKey + ".desc"), style = typography.caption.copy(fontSize = 9.5.sp, lineHeight = 12.sp),
+				color = colors.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
 		}
 	}
 }
