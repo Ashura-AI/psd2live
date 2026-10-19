@@ -443,6 +443,7 @@ fun CanvasViewportComposable(
 		io.github.psd2live.core.PreviewRenderer.rasterImage(raster.width, raster.height, raster.rgba).toComposeImageBitmap()
 	}
 	val selectedReferenceId by viewModel.selectedReferenceId.collectAsState()
+	val referenceOpacityDraft = viewModel.referenceOpacityDraft.collectAsState()
 	// Reference images pinned to another keyform than the edit pose, as reference layers pinned away.
 	val pinnedAwayImages = canvasState.pinnedAwayReferenceImageIds
 	// A reference being moved, scaled or turned on this canvas, shown as it goes until the edit lands. Only the draw
@@ -452,6 +453,7 @@ fun CanvasViewportComposable(
 	val referencesShown = viewOptions.showReference && mode == CanvasMode.EDIT
 	fun shownReferences() = if (!referencesShown) emptyList() else layoutReferences
 		.map { (r, raster) -> (referenceDraft.value?.takeIf { it.id == r.id } ?: r) to raster }
+		.map { (r, raster) -> (referenceOpacityDraft.value?.takeIf { it.first == r.id }?.let { r.copy(opacity = it.second) } ?: r) to raster }
 		.filter { (r, _) -> r.visible && r.id !in pinnedAwayImages }
 	val layerDensity = remember(previewModel) {
 		previewModel?.analysis?.layers?.associate { it.source.id.raw to io.github.psd2live.application.WorkspaceViewRenderer.texelsPerUnit(it.source) }.orEmpty()
@@ -2000,12 +2002,12 @@ fun CanvasViewportComposable(
 					),
 				)
 			}
-			// The selected reference image's handles: move, scale about its centre, turn.
+			// References use the same transform frame, handles and drag rules as the model selection.
 			val handled = layoutReferences.firstOrNull { it.first.id == selectedReferenceId }?.first
-				?.takeIf { mode == CanvasMode.EDIT && it.visible && !it.locked && viewOptions.showReference }
+				?.takeIf { mode == CanvasMode.EDIT && it.visible && !it.locked && viewOptions.showReference && it.id !in pinnedAwayImages }
 			if (handled != null && viewSize.width > 0) {
 				ReferenceHandles(handled, currentViewportFor(viewSize), onDraft = { referenceDraft.value = it },
-					onCommit = { rect, rotation -> viewModel.placeReference(handled.id, rect, rotation) })
+					onCommit = { rect, rotation -> viewModel.placeReference(handled.id, rect, rotation) }, onAction = { focusRequester.requestFocus() })
 			}
 			// While images or a material are carried: big targets for what a drop on the canvas itself does not do.
 			if (mode == CanvasMode.EDIT) {

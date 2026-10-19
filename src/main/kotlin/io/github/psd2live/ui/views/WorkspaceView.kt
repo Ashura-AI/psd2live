@@ -1964,6 +1964,13 @@ private fun DrawableTreeItem(
 				CompactMenuDivider()
 
 				CompactMenuSection(tr("canvas.hierarchy.menuSettings"))
+				val canReference = !state.layout.generation.generated || layerId in state.layout.generation.pendingLayerIds || layerId in state.createdLayerIds
+				CompactMenuItem(
+					text = tr("layers.reference.toggle"),
+					enabled = canReference && !state.isBusy && !state.workspaceEditBusy,
+					onClick = { showMenu = false; viewModel.markLayersReference(listOf(layerId), true) },
+					icon = { IconReferenceImage(tint = colors.textMuted, size = 13.dp) },
+				)
                 CompactMenuItem(
                     text = if (viewModel.depthSplitMiddleIds(drawable.id.raw).isNotEmpty())
                         tr("editor.depthSplit.quick", drawable.name) else tr("editor.depthSplit.menu"),

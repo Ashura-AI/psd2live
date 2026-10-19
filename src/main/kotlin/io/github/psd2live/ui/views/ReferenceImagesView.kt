@@ -1,10 +1,8 @@
 package io.github.psd2live.ui.views
 
-import kotlinx.serialization.json.put
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -12,22 +10,23 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -35,7 +34,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.isAltPressed
+import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,40 +53,39 @@ import io.github.psd2live.core.CanvasViewport
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.project.LayerCanvasRect
 import io.github.psd2live.project.LayoutReference
+import io.github.psd2live.project.PinPoint
+import io.github.psd2live.ui.BoundingHandle
+import io.github.psd2live.ui.CanvasCursors
+import io.github.psd2live.ui.TransformDrag
+import io.github.psd2live.ui.TransformHandles
 import io.github.psd2live.ui.components.CompactIconButton
-import io.github.psd2live.ui.components.CompactMenuDivider
-import io.github.psd2live.ui.components.CompactMenuHeader
-import io.github.psd2live.ui.components.CompactMenuItem
-import io.github.psd2live.ui.components.CompactMenuSection
+import io.github.psd2live.ui.components.IconEye
+import io.github.psd2live.ui.components.IconLock
 import io.github.psd2live.ui.components.IconPin
-import io.github.psd2live.ui.components.TreeContextMenu
+import io.github.psd2live.ui.components.IconTrash
+import io.github.psd2live.ui.drawTransformBox
 import io.github.psd2live.ui.parameterKeyMarks
+import io.github.psd2live.ui.state.PSD2LiveState
+import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.state.ReferenceMode
 import io.github.psd2live.ui.state.ReferencePinRows
 import io.github.psd2live.ui.state.ReferenceTarget
-import androidx.compose.ui.input.pointer.onPointerEvent
-import org.umamo.runtime.model.Parameter
-import io.github.psd2live.project.PinPoint
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import org.umamo.runtime.model.ParameterId
-import org.umamo.runtime.model.PuppetModel
-import io.github.psd2live.ui.components.IconAdd
-import io.github.psd2live.ui.components.IconEye
-import io.github.psd2live.ui.components.IconLock
-import io.github.psd2live.ui.components.IconTrash
-import io.github.psd2live.ui.state.PSD2LiveState
-import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.handCursor
-import io.github.psd2live.ui.theme.selectOrOpen
-import kotlin.math.atan2
+import io.github.psd2live.ui.transformHandleAt
+import io.github.psd2live.ui.views.texture.FloatingMenuRow
+import io.github.psd2live.ui.views.texture.FloatingMenuSection
+import io.github.psd2live.ui.views.texture.FloatingMenuSlider
+import io.github.psd2live.ui.views.texture.FloatingMenuSubmenuRow
+import io.github.psd2live.ui.views.tooloptions.GlidingColumn
+import io.github.psd2live.ui.views.tooloptions.MenuSecondLevel
 import kotlin.math.cos
-import kotlin.math.hypot
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.serialization.json.put
+import org.umamo.runtime.model.Parameter
+import org.umamo.runtime.model.ParameterId
+import org.umamo.runtime.model.PuppetModel
 
 /** [reference]'s pixels where it sits on the canvas, turned about its centre, as [viewport] shows the canvas. */
 internal fun DrawScope.drawReference(reference: LayoutReference, image: ImageBitmap, viewport: CanvasViewport) {
@@ -309,147 +314,160 @@ internal fun ReferenceTreeRow(row: ReferenceRow, startPadding: androidx.compose.
 				IconEye(row.visible, Modifier.size(12.dp), if (row.visible) (if (selected) colors.selectionText else colors.textMuted) else colors.textDisabled.copy(alpha = 0.5f))
 			}
 		}
-		TreeContextMenu(expanded = menu, onDismissRequest = { menu = false }, clickOffset = menuAt, minWidth = 236.dp) {
+		PressMenu(expanded = menu, onDismissRequest = { menu = false }, press = menuAt) {
 			ReferenceMenu(row, state, viewModel) { menu = false }
 		}
 	}
 }
 
-/**
- * What a reference does, the same for an image and a layer: where it shows, shown or hidden, its pin as a compact
- * parameter panel, and removing it; an image also fades and locks, a layer can go back to the model.
- */
+/** Reference actions share the canvas menu's rows, continuous values and cascading pin panel. */
 @Composable
-private fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: PSD2LiveViewModel, close: () -> Unit) {
+internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: PSD2LiveViewModel, close: () -> Unit) {
 	val colors = LocalToolColors.current
-	CompactMenuHeader(row.name, badge = tr("references.badge"), icon = { IconReferenceImage(tint = colors.accent, size = 12.dp) })
-	CompactMenuSection(tr("references.mode"))
-	// Where it shows says whether it is in the model: only in the layer stack is it an ArtMesh of the rig.
-	for (mode in ReferenceMode.entries) CompactMenuItem(tr(mode.labelKey), onClick = { close(); if (mode != row.mode) viewModel.setReferenceMode(row.target, mode) },
-		active = mode == row.mode, trailingText = tr(if (mode.inModel) "references.inModel" else "references.notInModel"))
-	CompactMenuDivider()
-	CompactMenuItem(tr(if (row.visible) "references.hide" else "references.show"), onClick = { close(); viewModel.setReferenceVisible(row.target, !row.visible) },
-		icon = { IconEye(row.visible, Modifier.size(12.dp), colors.textMuted) })
 	val image = row.target as? ReferenceTarget.Image
-	if (image != null && row.opacity != null) {
-		val opacity = row.opacity
-		// The fade steps a quarter at a time and keeps the menu open.
-		CompactMenuItem(tr("references.opacity"), onClick = {
-			viewModel.editReference(image.id) { put("opacity", if (opacity >= 0.99f) 0.25f else minOf(1f, opacity + 0.25f)) }
-		}, trailingText = "${(opacity * 100).roundToInt()}%")
-		CompactMenuItem(tr(if (row.locked) "references.unlock" else "references.lock"), onClick = { close(); viewModel.editReference(image.id) { put("locked", !row.locked) } },
-			icon = { IconLock(row.locked, Modifier.size(12.dp), colors.textMuted) })
-	}
 	val layer = row.target as? ReferenceTarget.Layer
-	if (layer != null) CompactMenuItem(tr("references.toModel"), onClick = { close(); viewModel.markLayersReference(listOf(layer.layerId), false) })
 	val puppet = state.previewModel?.rig?.puppet
-	if (puppet != null && puppet.parameters.isNotEmpty()) {
-		CompactMenuSection(tr("layers.pin.menu"))
-		val points = row.target.pin(state.layout)
-		ReferencePinPanel(puppet, state.parameterValues, points, enabled = state.analysis != null) { point -> viewModel.toggleReferencePoint(row.target, point) }
-		if (points.isNotEmpty()) CompactMenuItem(tr("layers.pin.clear"), onClick = { viewModel.setReferencePin(row.target, emptyList()) })
+	var pinsOpen by remember { mutableStateOf(false) }
+	var opacity by remember(row.target, row.opacity) { mutableStateOf(row.opacity ?: 1f) }
+	val editable = !state.isBusy && !state.workspaceEditBusy
+	val rows = mutableListOf<Pair<Boolean, @Composable () -> Unit>>()
+	fun add(highlight: Boolean = true, content: @Composable () -> Unit) { rows += highlight to content }
+	add(false) { FloatingMenuSection(row.name) }
+	for (mode in ReferenceMode.entries) add {
+		FloatingMenuRow(tr(mode.labelKey), { close(); if (mode != row.mode) viewModel.setReferenceMode(row.target, mode) },
+			selected = mode == row.mode, enabled = editable, trailing = tr(if (mode.inModel) "references.inModel" else "references.notInModel"))
 	}
-	CompactMenuDivider()
-	CompactMenuItem(tr("references.remove"), onClick = { close(); viewModel.removeReference(row.target) }, danger = true,
-		icon = { IconTrash(Modifier.size(12.dp), colors.textMuted) })
-}
-
-/** What a gesture on a [ReferenceHandles] does. */
-private enum class ReferenceDrag { MOVE, SCALE, ROTATE }
-
-/**
- * Handles for the selected [reference] on an edit canvas laid out by [viewport]: drag inside to move it, a corner to
- * scale it about its centre, the knob above to turn it. [onDraft] shows the gesture as it goes (null: as it was);
- * [onCommit] keeps it, once per gesture. The handles take the pointer only near the reference.
- */
-@Composable
-internal fun ReferenceHandles(reference: LayoutReference, viewport: CanvasViewport, onDraft: (LayoutReference?) -> Unit,
-                              onCommit: (LayerCanvasRect, Float) -> Unit) {
-	val colors = LocalToolColors.current
-	val density = LocalDensity.current
-	val margin = with(density) { 34.dp.toPx() }
-	val knob = with(density) { 22.dp.toPx() }
-	val reach = with(density) { 10.dp.toPx() }
-	var draft by remember(reference) { mutableStateOf(reference) }
-	val shown = draft
-	val scale = viewport.scale.toFloat()
-	val width = shown.rect.width * scale; val height = shown.rect.height * scale
-	val centre = Offset(viewport.x(shown.rect.left).toFloat() + width / 2f, (viewport.offsetY + shown.rect.top * viewport.scale).toFloat() + height / 2f)
-	val turn = Math.toRadians(shown.rotation.toDouble())
-	// The box holding the turned reference and its knob, upright: the gesture reads the pointer in screen directions.
-	val extentX = (kotlin.math.abs(width / 2f * cos(turn)) + kotlin.math.abs(height / 2f * sin(turn))).toFloat() + margin
-	val extentY = (kotlin.math.abs(width / 2f * sin(turn)) + kotlin.math.abs(height / 2f * cos(turn))).toFloat() + margin
-	val current by rememberUpdatedState(shown)
-	val start by rememberUpdatedState(reference)
-	Box(Modifier
-		.offset { IntOffset((centre.x - extentX).roundToInt(), (centre.y - extentY).roundToInt()) }
-		.size(with(density) { (extentX * 2f).toDp() }, with(density) { (extentY * 2f).toDp() })
-		.drawBehind {
-			val c = Offset(size.width / 2f, size.height / 2f)
-			rotate(shown.rotation, c) {
-				val topLeft = Offset(c.x - width / 2f, c.y - height / 2f)
-				drawRect(colors.accent, topLeft, androidx.compose.ui.geometry.Size(width, height), style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
-				val half = 4.5.dp.toPx()
-				for (corner in listOf(topLeft, topLeft + Offset(width, 0f), topLeft + Offset(0f, height), topLeft + Offset(width, height))) {
-					drawRect(colors.panelBackground, corner - Offset(half, half), androidx.compose.ui.geometry.Size(half * 2, half * 2))
-					drawRect(colors.accent, corner - Offset(half, half), androidx.compose.ui.geometry.Size(half * 2, half * 2), style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+	add { FloatingMenuRow(tr(if (row.visible) "references.hide" else "references.show"), { close(); viewModel.setReferenceVisible(row.target, !row.visible) },
+		enabled = editable, icon = { IconEye(row.visible, Modifier.size(12.dp), it) }) }
+	if (image != null && row.opacity != null) {
+		add(false) {
+			FloatingMenuSlider(tr("references.opacity"), opacity, { opacity = it; viewModel.previewReferenceOpacity(image.id, it) },
+				0f..1f, "${(opacity * 100).roundToInt()}%", enabled = editable,
+				onValueChangeFinished = { viewModel.commitReferenceOpacity(image.id, opacity) })
+		}
+		add { FloatingMenuRow(tr(if (row.locked) "references.unlock" else "references.lock"), { close(); viewModel.editReference(image.id) { put("locked", !row.locked) } },
+			enabled = editable, icon = { IconLock(row.locked, Modifier.size(12.dp), it) }) }
+	}
+	if (layer != null) add {
+		FloatingMenuRow(tr("references.toModel"), { close(); viewModel.markLayersReference(listOf(layer.layerId), false) }, enabled = editable)
+	}
+	if (puppet != null && puppet.parameters.isNotEmpty()) add {
+		FloatingMenuSubmenuRow(tr("layers.pin.menu"), pinsOpen, { pinsOpen = true },
+			icon = { IconPin(row.pinned, Modifier.size(12.dp), it) })
+	}
+	add { FloatingMenuRow(tr("references.remove"), { close(); viewModel.removeReference(row.target) }, enabled = editable,
+		icon = { IconTrash(Modifier.size(12.dp), colors.error) }) }
+	val pinIndex = if (puppet != null && puppet.parameters.isNotEmpty()) rows.lastIndex - 1 else -1
+	Row(verticalAlignment = Alignment.Top) {
+		GlidingColumn(Modifier.width(236.dp), rows.size, { rows[it].first }, onHover = { if (it != pinIndex) pinsOpen = false }) { rows[it].second() }
+		MenuSecondLevel("pins".takeIf { pinsOpen }) {
+			if (puppet != null) {
+				val points = row.target.pin(state.layout)
+				GlidingColumn(Modifier.width(236.dp), if (points.isEmpty()) 2 else 3, { it == 2 }) { i ->
+					when (i) {
+						0 -> FloatingMenuSection(tr("layers.pin.menu"))
+						1 -> ReferencePinPanel(puppet, state.parameterValues, points, enabled = editable && state.analysis != null) { viewModel.toggleReferencePoint(row.target, it) }
+						2 -> FloatingMenuRow(tr("layers.pin.clear"), { viewModel.setReferencePin(row.target, emptyList()) }, enabled = editable)
+					}
 				}
-				val knobAt = Offset(c.x, topLeft.y - knob)
-				drawLine(colors.accent, Offset(c.x, topLeft.y), knobAt, 1.dp.toPx())
-				drawCircle(colors.accent, half, knobAt)
 			}
 		}
-		.pointerInput(Unit) {
+	}
+}
+
+/** The shared transform control, with a fixed pointer origin throughout each gesture. */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+internal fun ReferenceHandles(reference: LayoutReference, viewport: CanvasViewport, onDraft: (LayoutReference?) -> Unit,
+                              onCommit: (LayerCanvasRect, Float) -> Unit, onAction: () -> Unit = {}) {
+	val colors = LocalToolColors.current
+	val density = LocalDensity.current
+	val handles = TransformHandles(unit = density.density)
+	var draft by remember(reference) { mutableStateOf(reference) }
+	var anchorUv by remember(reference.id) { mutableStateOf<Offset?>(null) }
+	var hover by remember { mutableStateOf(BoundingHandle.NONE) }
+	var active by remember { mutableStateOf(BoundingHandle.NONE) }
+	var pointer by remember { mutableStateOf<Offset?>(null) }
+	var heldOrigin by remember { mutableStateOf<Offset?>(null) }
+	var heldSize by remember { mutableStateOf<Offset?>(null) }
+	val frame = draft.transformFrame(viewport).withAnchor(anchorUv)
+	val radians = Math.toRadians(frame.angleDeg.toDouble())
+	val margin = 40f * handles.unit
+	val extentX = (kotlin.math.abs(frame.bounds.width / 2f * cos(radians)) + kotlin.math.abs(frame.bounds.height / 2f * sin(radians))).toFloat() + margin
+	val extentY = (kotlin.math.abs(frame.bounds.width / 2f * sin(radians)) + kotlin.math.abs(frame.bounds.height / 2f * cos(radians))).toFloat() + margin
+	val left = minOf(frame.pivot.x - extentX, frame.anchor.x - margin)
+	val top = minOf(frame.pivot.y - extentY, frame.anchor.y - margin)
+	val origin = heldOrigin ?: Offset(kotlin.math.floor(left), kotlin.math.floor(top))
+	val extent = heldSize ?: Offset(maxOf(frame.pivot.x + extentX, frame.anchor.x + margin) - left,
+		maxOf(frame.pivot.y + extentY, frame.anchor.y + margin) - top)
+	val currentFrame by rememberUpdatedState(frame)
+	val currentOrigin by rememberUpdatedState(origin)
+	val currentExtent by rememberUpdatedState(extent)
+	val currentViewport by rememberUpdatedState(viewport)
+	val currentReference by rememberUpdatedState(reference)
+	val showDraft by rememberUpdatedState(onDraft)
+	val commit by rememberUpdatedState(onCommit)
+	val focus by rememberUpdatedState(onAction)
+	val cursor = if (active != BoundingHandle.NONE) active else hover
+	Box(Modifier
+		.offset { IntOffset(origin.x.roundToInt(), origin.y.roundToInt()) }
+		.size(with(density) { extent.x.toDp() }, with(density) { extent.y.toDp() })
+		.pointerHoverIcon(PointerIcon(CanvasCursors.transform(cursor, frame.angleDeg)))
+		.onPointerEvent(PointerEventType.Move) { event ->
+			val at = event.changes.first().position + currentOrigin
+			pointer = at
+			hover = transformHandleAt(at, currentFrame, handles)
+		}
+		.onPointerEvent(PointerEventType.Exit) { if (active == BoundingHandle.NONE) { hover = BoundingHandle.NONE; pointer = null } }
+		.drawBehind {
+			translate(-origin.x, -origin.y) {
+				drawTransformBox(frame, cursor, colors, handles, pointer = pointer, active = active != BoundingHandle.NONE)
+			}
+		}
+		.pointerInput(reference.id, handles) {
 			awaitEachGesture {
 				val down = awaitFirstDown()
-				val from = start
-				val c = Offset(size.width / 2f, size.height / 2f)
-				// Where the press lands on the reference itself, turned back upright.
-				fun upright(p: Offset): Offset {
-					val t = -Math.toRadians(current.rotation.toDouble()); val d = p - c
-					return Offset((d.x * cos(t) - d.y * sin(t)).toFloat(), (d.x * sin(t) + d.y * cos(t)).toFloat())
-				}
-				val w = from.rect.width * scale / 2f; val h = from.rect.height * scale / 2f
-				val at = upright(down.position)
-				val kind = when {
-					hypot(at.x, at.y + h + knob) <= reach -> ReferenceDrag.ROTATE
-					listOf(-w to -h, w to -h, -w to h, w to h).any { (x, y) -> hypot(at.x - x, at.y - y) <= reach } -> ReferenceDrag.SCALE
-					kotlin.math.abs(at.x) <= w && kotlin.math.abs(at.y) <= h -> ReferenceDrag.MOVE
-					else -> return@awaitEachGesture
-				}
+				if (!currentEvent.buttons.isPrimaryPressed) return@awaitEachGesture
+				val from = currentReference
+				val pressedFrame = currentFrame
+				val pressedOrigin = currentOrigin
+				val press = down.position + pressedOrigin
+				val handle = transformHandleAt(press, pressedFrame, handles)
+				if (handle == BoundingHandle.NONE) return@awaitEachGesture
+				heldOrigin = pressedOrigin
+				heldSize = currentExtent
+				active = handle
 				down.consume()
-				val grabbed = down.position - c
-				val grabAngle = atan2(grabbed.y.toDouble(), grabbed.x.toDouble())
-				var moved = from
+				val drag = TransformDrag(handle, pressedFrame.bounds, pressedFrame.pivot, pressedFrame.angleDeg, press, pressedFrame.anchor)
+				val scale = currentViewport.scale.toFloat()
 				var last = from
-				while (true) {
-					val event = awaitPointerEvent()
-					val change = event.changes.firstOrNull { it.id == down.id } ?: break
-					if (!change.pressed) break
-					change.consume()
-					val p = change.position - Offset(size.width / 2f, size.height / 2f)
-					val next = when (kind) {
-						ReferenceDrag.MOVE -> {
-							val d = change.position - change.previousPosition
-							moved = moved.copy(rect = moved.rect.copy(left = moved.rect.left + d.x / scale, top = moved.rect.top + d.y / scale))
-							moved
+				var released = false
+				try {
+					while (true) {
+						val event = awaitPointerEvent()
+						val change = event.changes.firstOrNull { it.id == down.id } ?: break
+						if (!change.pressed) { released = true; break }
+						if (change.isConsumed) break
+						val at = change.position + pressedOrigin
+						pointer = at
+						if (handle == BoundingHandle.ANCHOR) anchorUv = pressedFrame.anchorDraggedTo(at, handles.unit)
+						else {
+							val result = drag.apply(at, null, event.keyboardModifiers.isShiftPressed, event.keyboardModifiers.isAltPressed)
+							last = from.transformed(pressedFrame, result, scale)
+							draft = last
+							showDraft(last)
 						}
-						ReferenceDrag.SCALE -> {
-							val factor = (hypot(p.x, p.y) / hypot(grabbed.x, grabbed.y).coerceAtLeast(1f)).coerceIn(0.02f, 50f)
-							val nw = from.rect.width * factor; val nh = from.rect.height * factor
-							val cx = from.rect.left + from.rect.width / 2f; val cy = from.rect.top + from.rect.height / 2f
-							from.copy(rect = LayerCanvasRect(cx - nw / 2f, cy - nh / 2f, nw, nh))
-						}
-						ReferenceDrag.ROTATE -> {
-							val angle = Math.toDegrees(atan2(p.y.toDouble(), p.x.toDouble()) - grabAngle).toFloat()
-							from.copy(rotation = (((from.rotation + angle) % 360f) + 360f) % 360f)
-						}
+						change.consume()
 					}
-					last = next
-					draft = next
-					onDraft(next)
+					if (released && last != from) commit(last.rect, last.rotation)
+					else { draft = from; showDraft(null) }
+				} finally {
+					if (!released) { draft = from; showDraft(null) }
+					active = BoundingHandle.NONE
+					heldOrigin = null
+					heldSize = null
+					focus()
 				}
-				if (last != from) onCommit(last.rect, last.rotation) else onDraft(null)
 			}
 		})
 }

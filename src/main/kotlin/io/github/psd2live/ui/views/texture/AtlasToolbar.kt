@@ -621,6 +621,8 @@ internal fun FloatingMenuSlider(
 	display: String,
 	logarithmic: Boolean = false,
 	enabled: Boolean = true,
+	onValueChangeStarted: () -> Unit = {},
+	onValueChangeFinished: () -> Unit = {},
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
@@ -633,9 +635,11 @@ internal fun FloatingMenuSlider(
 			val start = ln(valueRange.start)
 			val end = ln(valueRange.endInclusive)
 			CompactSlider(ln(clamped), { onValueChange(exp(it).coerceIn(valueRange.start, valueRange.endInclusive)) },
-				valueRange = start..end, modifier = slider, height = 12.dp, enabled = enabled)
+				valueRange = start..end, modifier = slider, height = 12.dp, enabled = enabled,
+				onValueChangeStarted = onValueChangeStarted, onValueChangeFinished = onValueChangeFinished)
 		} else {
-			CompactSlider(clamped, onValueChange, valueRange = valueRange, modifier = slider, height = 12.dp, enabled = enabled)
+			CompactSlider(clamped, onValueChange, valueRange = valueRange, modifier = slider, height = 12.dp, enabled = enabled,
+				onValueChangeStarted = onValueChangeStarted, onValueChangeFinished = onValueChangeFinished)
 		}
 		Text(display, color = if (enabled) colors.textPrimary else colors.textMuted, style = typography.monoSmall.copy(fontSize = 9.5.sp),
 			maxLines = 1, textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.width(40.dp))

@@ -292,7 +292,6 @@ private fun <T> choiceLabel(editor: CanvasEditor, option: ChoiceOption<T>): Stri
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun ToolOptionMenu(editor: CanvasEditor, onDismiss: () -> Unit, onAction: () -> Unit = {}) {
-    val colors = LocalToolColors.current
     val entries = menuEntries(editor, menuOptions(editor))
     var openId by remember { mutableStateOf<String?>(null) }
     val open = entries.filterIsInstance<MenuEntry.Level>().firstOrNull { it.id == openId }
@@ -315,35 +314,39 @@ internal fun ToolOptionMenu(editor: CanvasEditor, onDismiss: () -> Unit, onActio
                 )
             }
         }
-        // The second level appears at its full width, fading and sliding in from the menu's side: animating the
-        // width instead would move the popup's frame every frame.
-        AnimatedVisibility(
-            open != null,
-            enter = fadeIn(tween(Motion.Fade, easing = LinearOutSlowInEasing)) + slideInHorizontally(tween(Motion.Fade, easing = FastOutSlowInEasing)) { -it / 12 },
-            exit = fadeOut(tween(Motion.Instant, easing = FastOutLinearInEasing)),
-        ) {
-            val rule = colors.border.copy(alpha = 0.5f)
-            val level = open ?: return@AnimatedVisibility
-            // Keyed by the group, so switching groups brings the new rows in one after another again.
-            key(level.id) {
-                val choice = level.choice
-                val rows = if (choice != null) choice.choices(editor).size else level.options.size
-                GlidingColumn(
-                    modifier = Modifier
-                        .padding(start = 4.dp)
-                        .drawBehind { drawLine(rule, androidx.compose.ui.geometry.Offset(0f, 4f), androidx.compose.ui.geometry.Offset(0f, size.height - 4f), 1f) }
-                        .padding(start = 4.dp)
-                        .width(196.dp),
-                    count = rows + 1,
-                    highlights = { i -> i > 0 && (choice != null || rowHighlights(level.options[i - 1])) },
-                ) { i ->
-                    when {
-                        i == 0 -> FloatingMenuSection(level.label)
-                        choice != null -> MenuChoiceRadio(editor, choice, i - 1)
-                        else -> MenuOption(editor, level.options[i - 1], onDismiss, onAction)
-                    }
+        MenuSecondLevel(open?.id) {
+            val level = open ?: return@MenuSecondLevel
+            val choice = level.choice
+            val rows = if (choice != null) choice.choices(editor).size else level.options.size
+            GlidingColumn(
+                modifier = Modifier.width(196.dp),
+                count = rows + 1,
+                highlights = { i -> i > 0 && (choice != null || rowHighlights(level.options[i - 1])) },
+            ) { i ->
+                when {
+                    i == 0 -> FloatingMenuSection(level.label)
+                    choice != null -> MenuChoiceRadio(editor, choice, i - 1)
+                    else -> MenuOption(editor, level.options[i - 1], onDismiss, onAction)
                 }
             }
+        }
+    }
+}
+
+/** Shared second-level placement and motion for canvas and hierarchy context menus. */
+@Composable
+internal fun MenuSecondLevel(id: String?, content: @Composable () -> Unit) {
+    val colors = LocalToolColors.current
+    AnimatedVisibility(
+        id != null,
+        enter = fadeIn(tween(Motion.Fade, easing = LinearOutSlowInEasing)) + slideInHorizontally(tween(Motion.Fade, easing = FastOutSlowInEasing)) { -it / 12 },
+        exit = fadeOut(tween(Motion.Instant, easing = FastOutLinearInEasing)),
+    ) {
+        val rule = colors.border.copy(alpha = 0.5f)
+        key(id) {
+            Box(Modifier.padding(start = 4.dp)
+                .drawBehind { drawLine(rule, androidx.compose.ui.geometry.Offset(0f, 4f), androidx.compose.ui.geometry.Offset(0f, size.height - 4f), 1f) }
+                .padding(start = 4.dp)) { content() }
         }
     }
 }

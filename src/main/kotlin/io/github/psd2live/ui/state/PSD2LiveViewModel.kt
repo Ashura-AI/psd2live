@@ -5948,9 +5948,9 @@ class PSD2LiveViewModel : AutoCloseable {
         put("wrap", settings.wrap)
     }
 
-    private fun runWorkspaceCommand(after: suspend () -> Unit = {}, action: suspend (String) -> WorkspaceMutationResult) {
+    private fun runWorkspaceCommand(after: suspend () -> Unit = {}, onFinished: () -> Unit = {}, action: suspend (String) -> WorkspaceMutationResult) {
         // The command would act on a state the running edit is about to replace; say so rather than drop it.
-        if (_state.value.workspaceEditBusy) { setErrorMessage(tr("error.workspaceCommandBusy")); return }
+        if (_state.value.workspaceEditBusy) { onFinished(); setErrorMessage(tr("error.workspaceCommandBusy")); return }
         flushEditorFields()
         val workspace = requireNotNull(workspaceBackend)
         val expected = workspace.snapshot()
@@ -5965,7 +5965,7 @@ class PSD2LiveViewModel : AutoCloseable {
             } catch (failure: Exception) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
                 updateState { it.copy(errorMessage = failure.message) }
-            } finally { updateState { it.copy(canvasEditBusy = false) } }
+            } finally { onFinished(); updateState { it.copy(canvasEditBusy = false) } }
         }
     }
 	/** A hierarchy drag commits one structure journal edit; old v1 parentOverrides are never rewritten. */
@@ -6158,6 +6158,23 @@ class PSD2LiveViewModel : AutoCloseable {
 	val selectedReferenceId: kotlinx.coroutines.flow.StateFlow<String?> = _selectedReferenceId
 
 	fun selectReference(id: String?) { _selectedReferenceId.value = id }
+
+	private val _referenceOpacityDraft = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, Float>?>(null)
+	/** Transient feedback shared by all canvases; only the release is a document edit. */
+	val referenceOpacityDraft: kotlinx.coroutines.flow.StateFlow<Pair<String, Float>?> = _referenceOpacityDraft
+
+	fun previewReferenceOpacity(id: String, opacity: Float) { _referenceOpacityDraft.value = id to opacity.coerceIn(0f, 1f) }
+
+	fun commitReferenceOpacity(id: String, opacity: Float) {
+		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen || _state.value.workspaceEditBusy }
+		if (workspace == null) { _referenceOpacityDraft.value = null; return }
+		val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace
+		runWorkspaceCommand(onFinished = { _referenceOpacityDraft.value = null }) { state ->
+			port.applyDocumentEdits(state, tr("references.edited"), listOf(io.github.psd2live.application.WorkspaceDocumentOperation(
+				io.github.psd2live.application.WorkspaceMaterialEdits.REFERENCE,
+				kotlinx.serialization.json.buildJsonObject { put("id", id); put("opacity", opacity.coerceIn(0f, 1f)) })), MutationAuthor.USER)
+		}
+	}
 
 	/** Changes reference image [id] with the fields [fields] puts (`layout_set_reference`): one history edit. */
 	fun editReference(id: String, fields: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) =
