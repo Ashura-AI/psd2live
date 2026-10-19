@@ -29,7 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -133,8 +133,9 @@ internal fun PageNavItem(
 	Row(
 		Modifier.fillMaxWidth().height(24.dp)
 			// The gutter fills the row's whole height, square, outside the row's rounded fill, so the bars of
-			// neighbouring rows join into one column.
-			.then(if (gutter == null) Modifier else Modifier.drawBehind {
+			// neighbouring rows join into one column; it is drawn over the row so hover and selection never hide it.
+			.then(if (gutter == null) Modifier else Modifier.drawWithContent {
+				drawContent()
 				drawRect(if (enabled) gutter else gutter.copy(alpha = 0.45f), topLeft = Offset(4.dp.toPx(), 0f), size = Size(3.dp.toPx(), size.height))
 			})
 			.padding(horizontal = 4.dp)
