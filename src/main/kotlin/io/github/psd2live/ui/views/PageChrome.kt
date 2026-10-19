@@ -146,14 +146,16 @@ internal fun PageNavItem(
 			}
 			Spacer(Modifier.width(8.dp))
 		}
-		Text(label, style = typography.body.copy(fontSize = 11.5.sp,
-			fontWeight = if (bold) FontWeight.SemiBold else if (selected) FontWeight.Medium else FontWeight.Normal),
-			color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-		if (badge) {
-			Spacer(Modifier.width(6.dp))
-			NewBadge()
+		// The title and its badge take every width the trailing items leave, so those always sit flush right.
+		Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+			Text(label, style = typography.body.copy(fontSize = 11.5.sp,
+				fontWeight = if (bold) FontWeight.SemiBold else if (selected) FontWeight.Medium else FontWeight.Normal),
+				color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+			if (badge) {
+				Spacer(Modifier.width(6.dp))
+				NewBadge()
+			}
 		}
-		Spacer(Modifier.weight(1f))
 		trailing?.takeIf { it.isNotBlank() }?.let {
 			Text(it, style = typography.monoSmall.copy(fontSize = 10.sp), color = colors.textMuted, modifier = Modifier.padding(end = 6.dp))
 		}
