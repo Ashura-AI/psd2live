@@ -283,7 +283,7 @@ internal fun StartNavPanel(state: PSD2LiveState, viewModel: PSD2LiveViewModel, a
 			onClick = { viewModel.setStartSection(StartSection.GENERATE) }) {
 			WorkspacePresetIcon(WorkspacePreset.EDIT, it, Modifier.size(13.dp))
 		}
-		PageNavItem(tr("start.nav.layout"), section == StartSection.LAYOUT, badge = true, onClick = { viewModel.setStartSection(StartSection.LAYOUT) }) {
+		PageNavItem(tr("start.nav.layout"), section == StartSection.LAYOUT, onClick = { viewModel.setStartSection(StartSection.LAYOUT) }) {
 			WorkspacePresetIcon(WorkspacePreset.LAYOUT, it, Modifier.size(13.dp))
 		}
 		PageNavItem(tr("start.nav.cmo3"), section == StartSection.CMO3, onClick = { viewModel.setStartSection(StartSection.CMO3) }) {
@@ -293,7 +293,7 @@ internal fun StartNavPanel(state: PSD2LiveState, viewModel: PSD2LiveViewModel, a
 		PageNavItem(tr("start.nav.updates"), section == StartSection.UPDATES, onClick = { viewModel.setStartSection(StartSection.UPDATES) }) {
 			IconInfo(modifier = Modifier.size(13.dp), tint = it)
 		}
-		PageNavItem(tr("canvas.start.quickStart"), false, enabled = actions.onOpenTutorialCatalog != null,
+		PageNavItem(tr("canvas.start.quickStart"), false, enabled = actions.onOpenTutorialCatalog != null, badge = true,
 			onClick = { actions.onOpenTutorialCatalog?.invoke() }) { IconPlay(modifier = Modifier.size(12.dp), tint = it) }
 		PageNavItem(tr("page.help"), false, trailing = state.keymap.labelFor(ShortcutAction.OPEN_HELP),
 			onClick = { viewModel.showPage(AppPage.HELP) }) { PageIcon(AppPage.HELP, it, Modifier.size(13.dp)) }
