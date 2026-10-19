@@ -1866,13 +1866,6 @@ private fun LinkedParameterPad(
 	val xChanged by remember(horizontal) { derivedStateOf { abs(liveValue(horizontal, rowState, viewModel) - horizontal.default) > 0.001f } }
 	val yChanged by remember(vertical) { derivedStateOf { abs(liveValue(vertical, rowState, viewModel) - vertical.default) > 0.001f } }
 	var rowCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-	val density = LocalDensity.current
-	val currentPadHeight by rememberUpdatedState(padHeight)
-	val changePadHeight by rememberUpdatedState(onPadHeightChange)
-	var resizeCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-	val resizeInteraction = remember { MutableInteractionSource() }
-	val resizeHovered by resizeInteraction.collectIsHoveredAsState()
-	var resizing by remember { mutableStateOf(false) }
 
 	Row(
 		modifier = Modifier
@@ -1921,46 +1914,7 @@ private fun LinkedParameterPad(
 				onGestureStart = viewModel::beginParameterScrub,
 				onGestureEnd = viewModel::endParameterScrub,
 			)
-			TooltipArea(tooltip = { ParameterTooltip(tr("parameters.padHeightTooltip")) }) {
-				Box(
-					Modifier.fillMaxWidth().height(ParamRowDividerWidth)
-						.onGloballyPositioned { resizeCoords = it }
-						.hoverable(resizeInteraction)
-						.semantics { contentDescription = tr("parameters.padHeightTooltip") }
-						.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.S_RESIZE_CURSOR)))
-						.pointerInput(density) {
-							awaitEachGesture {
-								val down = awaitFirstDown()
-								val splitter = resizeCoords ?: return@awaitEachGesture
-								if (!splitter.isAttached) return@awaitEachGesture
-								val startMouseY = splitter.positionInWindow().y + down.position.y
-								val startHeight = currentPadHeight
-								down.consume()
-								resizing = true
-								try {
-									while (true) {
-										val event = awaitPointerEvent()
-										val change = event.changes.firstOrNull { it.id == down.id } ?: break
-										if (!change.pressed) break
-										change.consume()
-										if (splitter.isAttached) {
-											val mouseY = splitter.positionInWindow().y + change.position.y
-											val delta = with(density) { (mouseY - startMouseY).toDp() }
-											changePadHeight((startHeight + delta).coerceIn(64.dp, 320.dp))
-										}
-									}
-								} finally {
-									resizing = false
-								}
-							}
-						},
-					contentAlignment = Alignment.Center,
-				) {
-					Box(Modifier.fillMaxWidth().padding(horizontal = ParamTrackInsetHorizontal)
-						.height(if (resizeHovered || resizing) 1.5.dp else 0.5.dp)
-						.background(if (resizeHovered || resizing) colors.accent else colors.divider))
-				}
-			}
+			PadHeightHandle(padHeight, onPadHeightChange)
 		}
 		Column(
 			modifier = Modifier.width(ParamRowInputWidth),
@@ -1993,6 +1947,152 @@ private fun LinkedParameterPad(
 			}
 		}
 		ParameterDragHandle(onDragPress = onDragPress, rowCoords = rowCoords)
+	}
+}
+
+/** The bar under a pad that drags its height, shared by the parameter panel and panels that pose their own pair. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun PadHeightHandle(padHeight: Dp, onPadHeightChange: (Dp) -> Unit) {
+	val colors = LocalToolColors.current
+	val density = LocalDensity.current
+	val currentPadHeight by rememberUpdatedState(padHeight)
+	val changePadHeight by rememberUpdatedState(onPadHeightChange)
+	var resizeCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+	val resizeInteraction = remember { MutableInteractionSource() }
+	val resizeHovered by resizeInteraction.collectIsHoveredAsState()
+	var resizing by remember { mutableStateOf(false) }
+	TooltipArea(tooltip = { ParameterTooltip(tr("parameters.padHeightTooltip")) }) {
+		Box(
+			Modifier.fillMaxWidth().height(ParamRowDividerWidth)
+				.onGloballyPositioned { resizeCoords = it }
+				.hoverable(resizeInteraction)
+				.semantics { contentDescription = tr("parameters.padHeightTooltip") }
+				.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.S_RESIZE_CURSOR)))
+				.pointerInput(density) {
+					awaitEachGesture {
+						val down = awaitFirstDown()
+						val splitter = resizeCoords ?: return@awaitEachGesture
+						if (!splitter.isAttached) return@awaitEachGesture
+						val startMouseY = splitter.positionInWindow().y + down.position.y
+						val startHeight = currentPadHeight
+						down.consume()
+						resizing = true
+						try {
+							while (true) {
+								val event = awaitPointerEvent()
+								val change = event.changes.firstOrNull { it.id == down.id } ?: break
+								if (!change.pressed) break
+								change.consume()
+								if (splitter.isAttached) {
+									val mouseY = splitter.positionInWindow().y + change.position.y
+									val delta = with(density) { (mouseY - startMouseY).toDp() }
+									changePadHeight((startHeight + delta).coerceIn(64.dp, 320.dp))
+								}
+							}
+						} finally {
+							resizing = false
+						}
+					}
+				},
+			contentAlignment = Alignment.Center,
+		) {
+			Box(Modifier.fillMaxWidth().padding(horizontal = ParamTrackInsetHorizontal)
+				.height(if (resizeHovered || resizing) 1.5.dp else 0.5.dp)
+				.background(if (resizeHovered || resizing) colors.accent else colors.divider))
+		}
+	}
+}
+
+/**
+ * A linked pair drawn exactly as the parameter panel draws one - names, pad, value boxes and resets, with the
+ * pad height it keeps for the pair - for a panel that poses the pair itself (the interior audition) rather than
+ * the model's pose. [onChange] receives parameter values.
+ */
+@Composable
+internal fun ParameterPairPad(
+	horizontal: Parameter,
+	vertical: Parameter,
+	xValue: () -> Float,
+	yValue: () -> Float,
+	enabled: Boolean,
+	horizontalKeys: ParameterKeyMarks?,
+	verticalKeys: ParameterKeyMarks?,
+	onChange: (Float, Float) -> Unit,
+	reverseY: Boolean = false,
+) {
+	val colors = LocalToolColors.current
+	var padHeight by remember(horizontal.id, vertical.id) {
+		mutableStateOf(AppSettings.parameterPadHeight(horizontal.id.raw, vertical.id.raw).dp)
+	}
+	val x by rememberUpdatedState(xValue)
+	val y by rememberUpdatedState(yValue)
+	val xChanged by remember(horizontal) { derivedStateOf { abs(x() - horizontal.default) > 0.001f } }
+	val yChanged by remember(vertical) { derivedStateOf { abs(y() - vertical.default) > 0.001f } }
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(start = ParamRowNameStart, top = 3.dp, bottom = 3.dp)
+			.height(padHeight),
+		verticalAlignment = Alignment.CenterVertically,
+	) {
+		Column(Modifier.width(AppSettings.parameterNameWidth.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+			ParameterName(horizontal)
+			ParameterName(vertical)
+		}
+		ParameterNameDivider(pad = true)
+		Column(Modifier.weight(1f).fillMaxHeight()) {
+			ParameterPad2D(
+				horizontal = horizontal,
+				vertical = vertical,
+				xValue = xValue,
+				yValue = yValue,
+				xLocked = !enabled,
+				yLocked = !enabled,
+				horizontalKeys = horizontalKeys,
+				highlightedX = emptyList(),
+				highlightedY = emptyList(),
+				verticalKeys = verticalKeys,
+				modifier = Modifier.weight(1f).fillMaxWidth().alpha(if (enabled) 1f else 0.45f),
+				onChange = onChange,
+				reverseY = reverseY,
+			)
+			PadHeightHandle(padHeight) {
+				padHeight = it
+				AppSettings.setParameterPadHeight(horizontal.id.raw, vertical.id.raw, it.value)
+			}
+		}
+		Column(
+			modifier = Modifier.width(ParamRowInputWidth),
+			verticalArrangement = Arrangement.spacedBy(8.dp),
+			horizontalAlignment = Alignment.End,
+		) {
+			ParameterValueInput(horizontal, xValue) { if (enabled) onChange(it, yValue()) }
+			ParameterValueInput(vertical, yValue) { if (enabled) onChange(xValue(), it) }
+		}
+		Spacer(Modifier.width(ParamRowInputSpacer))
+		Column(
+			modifier = Modifier.width(ParamRowResetWidth),
+			verticalArrangement = Arrangement.spacedBy(6.dp),
+		) {
+			CompactIconButton(
+				onClick = { onChange(horizontal.default, yValue()) },
+				enabled = enabled && xChanged,
+				size = ParamRowResetWidth,
+				tooltip = tr("parameters.resetTooltip"),
+			) {
+				IconReset(modifier = Modifier.size(8.dp), tint = colors.textMuted)
+			}
+			CompactIconButton(
+				onClick = { onChange(xValue(), vertical.default) },
+				enabled = enabled && yChanged,
+				size = ParamRowResetWidth,
+				tooltip = tr("parameters.resetTooltip"),
+			) {
+				IconReset(modifier = Modifier.size(8.dp), tint = colors.textMuted)
+			}
+		}
+		Spacer(Modifier.width(ParamRowHandleWidth))
 	}
 }
 

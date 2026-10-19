@@ -141,6 +141,19 @@ class PSD2LiveViewModel : AutoCloseable {
 			editorFor = ::canvasEditorFor,
 			editVisibility = { editCanvasVisibility(it) },
 			setView = { zoom, x, y, canvas, mode -> setCanvasView(zoom, x, y, canvas, mode) },
+			progress = { busy ->
+				val working = tr("interior.busy")
+				updateState {
+					it.copy(
+						canvasEditBusy = busy,
+						statusText = if (busy) working else if (it.statusText == working) tr("status.ready") else it.statusText,
+					)
+				}
+			},
+			failed = { message ->
+				addLog(message, level = LogLevel.WARNING, tag = "Interior")
+				updateState { it.copy(statusText = message) }
+			},
 		)
 	}
     /** Transient hover input; changing it invalidates the canvas without writing document state. */

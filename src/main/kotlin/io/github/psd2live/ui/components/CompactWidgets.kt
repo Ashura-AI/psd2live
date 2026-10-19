@@ -1395,12 +1395,12 @@ fun CompactToggleChip(
 			) {
 				if (leadingIcon != null) {
 					leadingIcon()
-					Spacer(Modifier.width(3.dp))
+					if (text.isNotEmpty()) Spacer(Modifier.width(3.dp))
 				} else if (selected && showCheckWhenSelected) {
 					IconCheck(modifier = Modifier.size(9.dp), tint = contentColor)
 					Spacer(Modifier.width(3.dp))
 				}
-				Text(
+				if (text.isNotEmpty()) Text(
 					text = text,
 					style = typography.body.copy(
 						fontSize = 10.5.sp,

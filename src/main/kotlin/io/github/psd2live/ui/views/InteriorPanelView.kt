@@ -57,15 +57,12 @@ internal fun InteriorPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	val drawable = preview?.rig?.puppet?.drawables?.singleOrNull { it.id.raw == target }
 	val effect = state.rigEdits.interiorEffects.singleOrNull { it.target == target }
 	var open by remember { mutableStateOf(INTERIOR_OPEN) }
-	val current = vm.interior.statusTarget == target && vm.interior.statusGeneration == state.projectOpenGeneration
 	Column(Modifier.fillMaxSize()) {
 		InteriorToolbar(
 			vm,
 			state,
 			drawable = drawable?.takeIf { it.mesh != null },
 			effect = effect,
-			busy = vm.interior.busy && current,
-			error = vm.interior.error?.takeIf { current },
 			onOpen = { open = it },
 		)
 		if (drawable?.mesh == null || target == null) {
@@ -86,38 +83,21 @@ internal fun InteriorPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	}
 }
 
-/** Enable, solo and delete, the expand pair, and below them what the last edit is doing. */
+/** Enable, solo and delete, and the expand pair; edits report progress in the status bar, so nothing here moves. */
 @Composable
 private fun InteriorToolbar(
 	vm: PSD2LiveViewModel,
 	state: PSD2LiveState,
 	drawable: Drawable?,
 	effect: NativeInteriorEffect?,
-	busy: Boolean,
-	error: String?,
 	onOpen: (Set<String>) -> Unit,
 ) {
 	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
 	val solo = vm.interior.soloActiveFor(state)
 	val labels = listOf(tr("interior.enabled"), tr(if (solo) "interior.restoreView" else "interior.solo"), tr("interior.delete"))
 	PanelToolbar(
 		labels = labels,
 		iconCount = 5,
-		secondary =
-			if (!busy && error == null) null
-			else {
-				{
-					Text(
-						error ?: tr("interior.busy"),
-						style = typography.caption.copy(fontSize = 10.sp),
-						color = if (error != null) colors.error else colors.textMuted,
-						maxLines = 2,
-						overflow = TextOverflow.Ellipsis,
-						modifier = Modifier.padding(horizontal = 4.dp),
-					)
-				}
-			},
 	) { labelsShown ->
 		PanelToolSwitch(
 			labels[0],
@@ -218,7 +198,7 @@ private fun InteriorBody(
 			} catch (e: kotlinx.coroutines.CancellationException) {
 				throw e
 			} catch (e: Exception) {
-				vm.interior.error = e.message
+				vm.interior.fail(e.message ?: e.toString())
 			}
 		}
 	}
@@ -286,7 +266,38 @@ private fun InteriorBody(
 		if (effect?.enabled != true) return@Column
 		val editing = state.activeCanvas.mode == CanvasMode.EDIT
 
-		PhysicsSection(tr("interior.audition"), "audition" in open, { toggle("audition") }, icon = icon(InteriorIcon.AUDITION)) {
+		val auditionTools: @Composable RowScope.() -> Unit = {
+			val mouse = vm.interior.mouse
+			CompactIconButton(
+				onClick = {
+					vm.interior.mouse = !mouse
+					if (!mouse) {
+						vm.interior.poseTarget = 0f to 0f
+						vm.interior.startTrial(effect)
+					}
+				},
+				enabled = editing && issue == null,
+				tooltip = tr("interior.mouse"),
+				size = 18.dp,
+			) {
+				IconMouse(mouse, modifier = Modifier.size(12.dp), tint = if (mouse) colors.accent else colors.textMuted)
+			}
+			CompactIconButton(
+				onClick = { vm.interior.stopTrial() },
+				enabled = editing && vm.interior.poseTarget != null,
+				tooltip = tr("interior.stop"),
+				size = 18.dp,
+			) {
+				IconPause(modifier = Modifier.size(10.dp), tint = colors.textMuted)
+			}
+		}
+		PhysicsSection(
+			tr("interior.audition"),
+			"audition" in open,
+			{ toggle("audition") },
+			icon = icon(InteriorIcon.AUDITION),
+			trailing = auditionTools,
+		) {
 			if (!editing) {
 				Text(tr("interior.auditionEditOnly"), style = caption, color = colors.textMuted)
 				CompactButton(
@@ -295,24 +306,21 @@ private fun InteriorBody(
 					height = 22.dp,
 				)
 			} else {
+				// The audition pose is the pair the effect reads, posed here as the parameter panel poses it.
 				val axes = effect.sources
-				val value = vm.interior.poseTarget ?: (0f to 0f)
+				fun pose() = vm.interior.poseTarget ?: (0f to 0f)
 				fun parameterValue(p: Parameter, v: Float) =
 					p.default + v * (if (v < 0) p.default - p.min else p.max - p.default)
 				fun normalized(p: Parameter, v: Float) =
 					(v - p.default) / (if (v < p.default) p.default - p.min else p.max - p.default)
-				ParameterPad2D(
+				ParameterPairPad(
 					axes[0],
 					axes[1],
-					{ parameterValue(axes[0], value.first) },
-					{ parameterValue(axes[1], value.second) },
-					issue != null,
-					issue != null,
-					ParameterKeyMarks(listOf(axes[0].min, axes[0].default, axes[0].max), emptyList()),
-					emptyList(),
-					emptyList(),
-					ParameterKeyMarks(listOf(axes[1].min, axes[1].default, axes[1].max), emptyList()),
-					Modifier.fillMaxWidth().height(106.dp),
+					{ parameterValue(axes[0], pose().first) },
+					{ parameterValue(axes[1], pose().second) },
+					enabled = issue == null,
+					horizontalKeys = ParameterKeyMarks(listOf(axes[0].min, axes[0].default, axes[0].max), emptyList()),
+					verticalKeys = ParameterKeyMarks(listOf(axes[1].min, axes[1].default, axes[1].max), emptyList()),
 					onChange = { x, y ->
 						vm.interior.mouse = false
 						vm.interior.poseTarget = normalized(axes[0], x) to normalized(axes[1], y)
@@ -320,41 +328,6 @@ private fun InteriorBody(
 					},
 					reverseY = true,
 				)
-				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-					CompactButton(
-						tr("interior.neutral"),
-						{
-							vm.interior.poseTarget = 0f to 0f
-							vm.interior.startTrial(effect)
-						},
-						enabled = issue == null,
-						leadingIcon = { IconReset(modifier = Modifier.size(10.dp), tint = colors.textPrimary) },
-						height = 22.dp,
-					)
-					CompactButton(tr("interior.stop"), { vm.interior.stopTrial() }, height = 22.dp)
-					Spacer(Modifier.weight(1f))
-					CompactToggleChip(
-						tr("interior.mouse"),
-						vm.interior.mouse,
-						{
-							val on = !vm.interior.mouse
-							vm.interior.mouse = on
-							if (on) {
-								vm.interior.poseTarget = 0f to 0f
-								vm.interior.startTrial(effect)
-							}
-						},
-						enabled = issue == null,
-						leadingIcon = {
-							IconMouse(
-								vm.interior.mouse,
-								modifier = Modifier.size(11.dp),
-								tint = if (vm.interior.mouse) colors.accent else colors.textMuted,
-							)
-						},
-						showCheckWhenSelected = false,
-					)
-				}
 			}
 		}
 
@@ -419,7 +392,7 @@ private fun InteriorBody(
 							InteriorIconView(
 								InteriorIcon.DIRECTION,
 								if (!motionOn) colors.textDisabled else if (selected) colors.accent else colors.textMuted,
-								size = 11.dp,
+								size = 13.dp,
 								degrees = INTERIOR_DIRECTION_DEGREES[i],
 							)
 						},

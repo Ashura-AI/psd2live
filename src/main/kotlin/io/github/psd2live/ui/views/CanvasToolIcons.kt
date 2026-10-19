@@ -669,9 +669,12 @@ private fun IconPen.drawInteriorIcon(icon: InteriorIcon) {
             line(1.8f, 9f, 4f, 9f)
             line(14f, 9f, 16.2f, 9f)
         }
+        // The edge the motion starts from, and the wave it sends across the layer, strongest where it lands.
         InteriorIcon.DIRECTION -> {
-            line(9f, 3f, 9f, 14.6f)
-            chevron(9f, 14.6f, 0f, 1f, 4f)
+            line(3.4f, 3f, 14.6f, 3f)
+            for ((y, alpha) in listOf(9.6f to 0.45f, 15f to 1f)) {
+                outline(path { m(4.6f, y - 3.2f); l(9f, y); l(13.4f, y - 3.2f) }, tint = color.copy(alpha = color.alpha * alpha))
+            }
         }
     }
 }

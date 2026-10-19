@@ -19,6 +19,10 @@ internal class InteriorController(
 	private val editorFor: (String) -> CanvasEditor,
 	private val editVisibility: (CanvasVisibilityIntent) -> Unit,
 	private val setView: (Float, Float, Float, String, CanvasMode) -> Unit,
+	/** The status bar's task indicator: on while an edit runs, off when the latest one ends. */
+	private val progress: (Boolean) -> Unit = {},
+	/** Where a failed edit or draft preview is reported, beside the indicator. */
+	private val failed: (String) -> Unit = {},
 ) : AutoCloseable {
 	fun put(request: JsonObject) = edit("interior_put", request)
 
@@ -132,6 +136,12 @@ internal class InteriorController(
 	internal var statusGeneration = -1L
 	internal var busy by mutableStateOf(false)
 	internal var error by mutableStateOf<String?>(null)
+		private set
+
+	internal fun fail(message: String) {
+		error = message
+		failed(message)
+	}
 	internal var frameRequest by mutableStateOf(0)
 	internal var mouse by mutableStateOf(false)
 	internal var neutralBounds: FloatArray? = null
@@ -172,6 +182,7 @@ internal class InteriorController(
 		editJob?.cancel()
 		error = null
 		busy = true
+		progress(true)
 		editJob = scope.launch {
 			try {
 				delay(180)
@@ -202,9 +213,12 @@ internal class InteriorController(
 			} catch (e: kotlinx.coroutines.CancellationException) {
 				throw e
 			} catch (e: Exception) {
-				if (revision == editRevision) error = e.message ?: e.toString()
+				if (revision == editRevision) fail(e.message ?: e.toString())
 			} finally {
-				if (revision == editRevision) busy = false
+				if (revision == editRevision) {
+					busy = false
+					progress(false)
+				}
 			}
 		}
 	}
