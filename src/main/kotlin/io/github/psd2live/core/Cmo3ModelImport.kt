@@ -277,7 +277,12 @@ internal object Cmo3ModelImport {
         return RigPreviewModel(analysis, atlas, rig, config, bundle, PreviewRigSources.of(base))
     }
 
-    fun baseRig(source: SourceArt, config: PipelineConfig, normalizeAllTextures: Boolean = false): Pair<PackedAtlas, BuiltRig> {
+    /**
+     * The imported model's rig over a texture atlas packed from its current layers, as any project packs its own: the
+     * imported model is not written back as it came, so every edit of its pixels reaches the atlas and the exports.
+     * [normalizeAllTextures] false keeps the imported pages for the layers no edit changed.
+     */
+    fun baseRig(source: SourceArt, config: PipelineConfig, normalizeAllTextures: Boolean = true): Pair<PackedAtlas, BuiltRig> {
         val doc = decode(requireNotNull(config.rigEdits.importedCmo3))
         val ids = config.rigEdits.importedLayerIds
         val layers = source.layers.associateBy { it.id.raw }
@@ -289,7 +294,7 @@ internal object Cmo3ModelImport {
         val bounds = puppet.drawables.mapNotNull { d -> d.mesh?.positions?.takeIf { it.isNotEmpty() }?.let { d.id.raw to bounds(it) } }.toMap()
         val rig = BuiltRig(puppet, doc.pages, bounds, ids, source.widthPx / 2f, source.heightPx / 2f,
             source.widthPx / 2f, source.heightPx / 2f, emptyList())
-        config.generationSource?.let { original ->
+        (config.generationSource ?: source.takeIf { normalizeAllTextures })?.let { original ->
             val baseline = original.layers.associateBy { it.id.raw }
             val migrated = config.rigEdits.authoringJournal.mapNotNullTo(HashSet()) { record ->
                 when (record["op"]?.jsonPrimitive?.content) {

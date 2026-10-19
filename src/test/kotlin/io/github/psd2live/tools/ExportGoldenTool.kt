@@ -44,7 +44,7 @@ class ExportGoldenTool {
 				}
 				for (asset in preview.runtimeBundle.assets.sortedBy { it.path }) report.appendLine("$sample-$variant preview:${asset.path} ${sha256(asset.bytes)}")
 			}
-			// An imported CMO3 keeps its own atlas page list and page bindings apart from the packed pages.
+			// An imported CMO3 goes through its own import path: its atlas is packed again from the layers it brings.
 			val plainCmo3 = File(out, "$label/$sample-plain/$sample.cmo3").readBytes()
 			val (incoming, settings) = io.github.psd2live.core.Cmo3ModelImport.prepare(plainCmo3, io.github.psd2live.core.Cmo3ImportMode.NEW, null,
 				plain.config.copy(exportJson = false))

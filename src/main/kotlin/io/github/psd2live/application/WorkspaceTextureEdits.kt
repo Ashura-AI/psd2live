@@ -504,7 +504,6 @@ internal object WorkspaceTextureEdits {
     private fun replace(document: WorkspaceDocument, model: RigPreviewModel, edit: WorkspaceTextureEdit.ReplaceImage,
                         checkCancelled: () -> Unit): WorkspaceDocument {
         val layer = sourceLayer(document, edit.layerId)
-        require(document.rigEdits.importedCmo3 == null) { "Replacing the image of an imported CMO3 layer is not supported" }
         val raster = raster(edit.image, checkCancelled)
         checkCancelled()
         val fit = if (edit.fit == WorkspaceImageFit.CONTAIN) LayerImageReplace.Fit.CONTAIN else LayerImageReplace.Fit.STRETCH
