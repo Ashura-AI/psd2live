@@ -41,7 +41,7 @@ In daily use you only need to remember one file type: `.psd2live` is the project
 |---|---|
 | `.psd` | Layered PSD, the source for generating a model |
 | `.cmo3` | Cubism Editor model project; can create a new project or replace the current model |
-| `.png` `.webp` `.tiff` `.bmp` | Drag onto the hierarchy tree or use **Import Layer…** to add as a single layer |
+| `.png` `.webp` `.tiff` `.bmp` | Drag onto the hierarchy tree (into or beside the node the insertion mark shows), onto an edit canvas (placed where you let go), or use **Import Layer…** to add as a single layer; it is also added to the material library |
 | `.svg` and other images | Import into a Layout project's material library |
 ## Export
 | Extension | Description |
@@ -452,7 +452,7 @@ Looking for the Parts palette: the hierarchy of objects is in the **Hierarchy** 
 - The eye icon toggles visibility; selecting in the tree stays in sync with the canvas highlight.
 - Dragging a node under another deformer changes its parent, and dragging it to "Drop here to move it to the root" moves it to the root level.
 - Right-click a layer for: solo, draw order, mesh, add parent deformer or deform path, import layer, delete layer.
-- Drag a PNG / WebP / TIFF / BMP onto a node to import it as a new layer under that node.
+- Drag a PNG / WebP / TIFF / BMP onto the hierarchy tree: on a deformer it goes under it, on the upper or lower half of a mesh it is inserted in front of or behind it (an insertion line shows where), on empty space it goes to the root. The label by the pointer says what letting go does, and a place that takes nothing does not drop.
 - The draw-order ruler beside the tree zooms with the wheel, reorders by dragging, and takes a value on double-click.
 {tutorial=HIERARCHY}
 
@@ -627,7 +627,7 @@ A Layout project lets you place parts on the canvas and tag them first, then gen
 - **From a PSD**: import the PSD as usual and the project generates the rig directly; each PSD layer is also registered as a material and linked to its layer on the canvas.
 - **From a Layout manifest**: a manifest written by an external tool (JSON, or a zip with it in the root) is opened the way a PSD is; the layers are placed per the manifest and not yet generated.
 ## Placing and generating
-1. In the Materials panel click **Import** or **Import folder**, or drag files straight onto the panel. PNG, BMP, TIFF, WebP, JPEG and SVG are supported, plus the layered images inside a PSD or CMO3; a PSD becomes a folder, and layer groups become subfolders.
+1. In the Materials panel click **Import** or **Import folder**, or drag files straight onto the panel. PNG, BMP, TIFF, WebP, JPEG and SVG are supported, plus a PSD's layers and a CMO3's ArtMesh images; a PSD becomes a folder, and layer groups become subfolders.
 2. Drag a material or a whole folder onto the canvas, or right-click **Place on canvas**.
 3. In **Object** mode use the transform box to move, scale and mirror layers; none of these resample pixels.
 4. In the "Layers" panel's **Tags** column write the part and side, and in the **Variant** column set [[variants]].
@@ -639,7 +639,8 @@ Layers not yet generated move up or down one step with {key:LAYER_FORWARD} / {ke
 - Drag a material to another folder to move it; right-click to rename, create a folder or delete. A material in use by a layer cannot be deleted. Tags on a folder carry to every layer placed from it.
 - Double-click a material to open a separate material window, where you can zoom, paint, flip and recolor; every layer using that material updates together.
 - Right-click a material and choose **Replace selected layer's image**: the layer's position and size on the canvas stay the same and only the pixels change; see [[psd-re-import]].
-- Reference images such as the original art or drafts can be placed as reference layers; see [[sketch]].
+- Every layer has a material as the one source of its pixels: importing a PSD, a CMO3 or images and splitting a layer register them. When layers share a material, painting any of them paints the material; to change only one, right-click **Make material its own**. In older projects, layers without a material are offered **Add to library** at the top of the Materials panel.
+- Reference images such as the original art or drafts can be placed as reference images or reference layers; see [[sketch]].
 
 @@ modeling | Modeling
 @@ psd-import-folder | PSD Import
@@ -907,8 +908,13 @@ A reversed mask makes an ArtMesh show only outside the mask area, the opposite o
 The change is recorded as one history step and can be undone.
 
 @@ sketch | Placement of Guide Image
-Putting the original art, a draft or character sheets of other angles on the canvas for comparison while you work lets you adjust shapes more accurately. Reference images are imported as materials and placed on the canvas as reference layers: shown, but taking no part in generation and not exported.
-## Placing a reference image
+Putting the original art, a draft or character sheets of other angles on the canvas for comparison while you work lets you adjust shapes more accurately. There are two kinds: a **reference image** lies over the canvas or under the model and can be selected, moved and turned at any time; a **reference layer** is a material placed in the layer stack and can show by pose. Neither takes part in generation or is exported.
+## Reference images
+1. Click **+** in the "Reference images" group at the top of the hierarchy panel, or the reference button in the display bar at the lower right of the canvas, and choose a picture; or drag a picture onto the **Use as reference image** slot above an edit canvas, or right-click a material and choose **Add as reference image**.
+2. Click one in the group and its handles appear on the edit canvas: drag inside to move it, a corner to scale it, the knob above to turn it.
+3. Each row of the group shows or hides it, steps its opacity, lays it over or under the model, locks it in place, reorders or removes it; a locked one has no handles.
+{key:REFERENCE_TOGGLE_SHOWN} shows or hides the reference images on the current canvas.
+## Placing a reference layer
 1. In the Materials panel **Import** the reference image.
 2. Right-click the material and choose **Place as reference layer**. With **Place as reference by default** turned on, every layer dragged from that material onto the canvas is a reference layer.
 3. Adjust position and size with the transform box.
