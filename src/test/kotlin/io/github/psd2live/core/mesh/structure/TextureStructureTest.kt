@@ -111,6 +111,22 @@ class TextureStructureTest {
 	}
 
 	@Test
+	fun minimumLengthUsesSourcePixelsAfterDownsampling() {
+		val canvas = Canvas(192, 192)
+		for (scale in listOf(1, 2, 4)) {
+			val image = TextureStructure.Working.of(canvas.w, canvas.h, canvas.rgba, scale, null) {}
+			val zero = FloatArray(image.w * image.h)
+			val responses = TextureStructure.Responses(zero, zero, zero, zero, zero,
+				FloatArray(zero.size) { 1f }, FloatArray(zero.size) { 1f }, ByteArray(zero.size) { 2 }, zero, zero, zero)
+			val chain = TextureStructure.Chain(mutableListOf(Point(20.5, 20.5), Point(25.5, 20.5), Point(30.5, 20.5)),
+				false, TextureStructure.End.FREE, TextureStructure.End.FREE)
+			val lines = TextureStructure.Classifier.classify(image, responses, listOf(chain), StructureSettings(minLength = 16.0)) {}
+			assertEquals(if (scale == 1) 0 else 1, lines.size, "scale=$scale, source length=${10 * scale}")
+			assertTrue(TextureStructure.Classifier.classify(image, responses, listOf(chain), StructureSettings(minLength = 64.0)) {}.isEmpty())
+		}
+	}
+
+	@Test
 	fun theSameDrawingGivesTheSameLines() {
 		assertEquals(creased().analyze().lines, creased().analyze().lines)
 	}

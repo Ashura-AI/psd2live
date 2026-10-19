@@ -80,7 +80,7 @@ internal object TextureStructure {
 
 	/** Working planes: OKLab channels with the outside filled from the inside, and the material and its depth. */
 	internal class Working(val w: Int, val h: Int, val l: FloatArray, val a: FloatArray, val b: FloatArray,
-	                       val inside: BooleanArray, val depth: FloatArray) {
+	                       val inside: BooleanArray, val depth: FloatArray, val scale: Int) {
 		companion object {
 			fun of(width: Int, height: Int, rgba: ByteArray, f: Int, domain: List<List<Point>>?, checkpoint: () -> Unit): Working {
 				val w = (width + f - 1) / f; val h = (height + f - 1) / f
@@ -110,7 +110,7 @@ internal object TextureStructure {
 				// The silhouette is not texture: outside pixels take the material's own colours so that no blur
 				// sees the outline as a step.
 				for (plane in arrayOf(l, ca, cb)) fillOutside(plane, solid, w, h, checkpoint)
-				return Working(w, h, l, ca, cb, inside, chamfer(inside, w, h))
+				return Working(w, h, l, ca, cb, inside, chamfer(inside, w, h), f)
 			}
 
 			private fun fillOutside(plane: FloatArray, solid: BooleanArray, w: Int, h: Int, checkpoint: () -> Unit) {
@@ -457,7 +457,7 @@ internal object TextureStructure {
 		             checkpoint: () -> Unit): List<StructureLine> {
 			val w = image.w
 			fun index(p: Point) = p.y.toInt().coerceIn(0, image.h - 1) * w + p.x.toInt().coerceIn(0, w - 1)
-			val minimum = settings.minLength / max(1, ceil(max(image.w, image.h) / MAX_SIDE.toDouble()).toInt())
+			val minimum = settings.minLength / image.scale
 			val out = ArrayList<StructureLine>()
 			val strokes = ArrayList<Pair<StructureLine, Boolean>>()
 			val arms = ArrayList<Arm>()
