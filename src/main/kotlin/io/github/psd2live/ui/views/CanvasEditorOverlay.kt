@@ -122,6 +122,12 @@ internal fun BoxScope.CanvasEditorOverlay(
     // Root position of the canvas. Passed so a sidebar or log toggle cannot skip this overlay:
     // zoom and pan are unchanged, and a skipped draw leaves the mesh points at the old place.
     placementOrigin: Offset = Offset.Zero,
+    // The window compositor draws the overlay over the edit canvas's artwork when that is composited ([CompositedCanvas]).
+    gpu: io.github.psd2live.render.WindowGpu? = null,
+    gpuViewId: String = "",
+    gpuLayer: String? = null,
+    composited: Boolean = false,
+    placementOriginState: androidx.compose.runtime.State<Offset> = androidx.compose.runtime.rememberUpdatedState(placementOrigin),
     viewModel: PSD2LiveViewModel,
     keymap: Keymap,
     // Selection must be parameters: Compose may skip this overlay when only StateFlow selection
@@ -163,7 +169,8 @@ internal fun BoxScope.CanvasEditorOverlay(
         }
     }
 
-    Canvas(Modifier.fillMaxSize()) {
+    // Over the artwork's hole, which that canvas cleared already.
+    CompositedCanvas(Modifier.fillMaxSize(), gpu, gpuViewId, composited, placementOriginState, order = 1, clear = false, layer = gpuLayer) {
         // placementOrigin changes when the dock moves this canvas. The read keeps the draw from
         // being reused at the previous window position.
         placementOrigin.x

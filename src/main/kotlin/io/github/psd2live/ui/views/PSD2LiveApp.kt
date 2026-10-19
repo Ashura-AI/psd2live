@@ -670,7 +670,9 @@ fun FrameWindowScope.PSD2LiveApp(
 					)
 					// Selection / tool hint bar ("已选 N 个对象 / M 个控制点 · …")
 					if (task == null) {
-						StatusBar(state, viewModel, Modifier.tutorialTarget(TutorialTargetId.STATUS_BAR))
+						// The bar shows no pose: a dragged slider or a playing preview leaves it (and its tooltip area, whose
+						// positioning callback asks for the whole window again) as it was.
+						StatusBar(withoutPose(state), viewModel, Modifier.tutorialTarget(TutorialTargetId.STATUS_BAR))
 					} else {
 						Spacer(Modifier.fillMaxWidth().height(24.dp).tutorialTarget(TutorialTargetId.STATUS_BAR))
 					}

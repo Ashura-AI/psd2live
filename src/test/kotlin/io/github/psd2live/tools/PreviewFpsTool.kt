@@ -49,7 +49,7 @@ import kotlin.test.Test
  *   the GPU; PSD2LIVE_COMPOSITOR=0 (`psd2live.compositor=false`) draws without the window compositor, to compare
  * - PSD2LIVE_SCRUB=EDIT|PREVIEW: instead of playback, drags a parameter slider the way the panel does (begin, samples,
  *   release) on a canvas in that mode; on EDIT the window's frames are the ones counted. PSD2LIVE_SCRUB_PARAMETER picks
- *   the parameter (default the first), PSD2LIVE_SCRUB_HZ the pointer samples per second (default 240)
+ *   the parameter (default the first), PSD2LIVE_SCRUB_HZ the pointer samples per second (default 240; 0.001 sends one, for a still frame to capture)
  * - PSD2LIVE_GESTURE=hover|deform: on the edit canvas, circles over the face mesh with its vertices shown, or drags
  *   all its points in Deform mode, through the editor's entry points (the system pointer is never moved)
  *
@@ -298,7 +298,9 @@ class PreviewFpsTool {
 			var n = 0L
 			while (running) {
 				val due = start + n++ * period
-				while (System.nanoTime() < due) Thread.onSpinWait()
+				// A low PSD2LIVE_SCRUB_HZ (a single sample, for a still frame to capture) must not hold up the finish.
+				while (running && System.nanoTime() < due) Thread.onSpinWait()
+				if (!running) break
 				val t = (System.nanoTime() - start) / 1e9
 				SwingUtilities.invokeLater {
 					val begin = System.nanoTime()

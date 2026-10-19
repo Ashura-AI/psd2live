@@ -350,8 +350,9 @@ internal fun DockWorkspaceView(
 				Modifier.fillMaxWidth().height(28.dp).tutorialTarget(TutorialTargetId.WORKSPACE_STRIP),
 				verticalAlignment = Alignment.CenterVertically,
 			) {
+                // The strip shows no pose; its chips' positioning callbacks would ask for the whole window on each.
                 WorkspaceStrip(
-                    state,
+                    withoutPose(state),
                     viewModel,
                     layoutModules = session.root?.allModules()?.toSet().orEmpty(),
                     onResetLayout = {
@@ -1166,7 +1167,7 @@ private val POSELESS_MODULES = setOf("hierarchy", "skeleton", "history", "log", 
  * pose, a slider being dragged), so a panel that does not show the pose skips its composition.
  */
 @Composable
-private fun withoutPose(state: PSD2LiveState): PSD2LiveState {
+internal fun withoutPose(state: PSD2LiveState): PSD2LiveState {
 	val held = remember { arrayOfNulls<PSD2LiveState>(1) }
 	val previous = held[0]
 	val shown = if (previous != null && previous !== state && previous.withPoseOf(state) == state) previous else state

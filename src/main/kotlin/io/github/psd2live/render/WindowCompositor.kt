@@ -28,6 +28,16 @@ class CompositedView(
 	val top: Float,
 	val width: Float,
 	val height: Float,
+	/** Views paint from the lowest [order] up: an edit canvas's overlay over its artwork. */
+	val order: Int = 0,
+	/**
+	 * Views of one [layer] (the edit canvas's artwork and overlay) paint together into a texture multisampled like
+	 * the window's picture, drawn again only when one of them is [stale]: their shapes antialias as they would in the
+	 * picture, an overlay blends with the artwork under it, and an unchanged frame is one texture. Null paints onto the
+	 * window every frame.
+	 */
+	val layer: String? = null,
+	val stale: () -> Boolean = { true },
 	/** Draws the view at the origin on [canvas] with [frame], the view's latest texture (null before its first). */
 	val paint: (canvas: Canvas, frame: GpuFrame?) -> Unit,
 )
@@ -47,6 +57,7 @@ class CompositedView(
  */
 internal class WindowCompositor(private val gpu: WindowGpu, private val inner: SkikoRenderDelegate) {
 	private val views = ConcurrentHashMap<String, CompositedView>()
+	@Volatile private var painted: List<Map.Entry<String, CompositedView>> = emptyList()
 	private val invalidated = AtomicBoolean(true)
 	private var hooked: Boolean? = null
 	private var sceneLazy: Lazy<*>? = null
@@ -57,18 +68,31 @@ internal class WindowCompositor(private val gpu: WindowGpu, private val inner: S
 	private var image: Image? = null
 	private var width = 0
 	private var height = 0
+	private val layers = HashMap<String, Layer>()
 
-	/** Frames whose Compose picture was replayed, and all frames: how often the cache held, for the tools. */
-	val pictureFrames = AtomicLong()
-	val frames = AtomicLong()
+	private class Layer(val surface: Surface, val width: Int, val height: Int) {
+		var image: Image? = null
+		fun close() { image?.close(); surface.close() }
+	}
+
+	/** Frames whose Compose picture was replayed, and all frames: how often the cache held, for the tools. Kept by
+	 * the window, so a compositor made again for a wrapped delegate goes on counting. */
+	private val pictureFrames get() = gpu.pictureFrames
+	private val frames get() = gpu.composedFrames
 
 	/** Whether this frame composites: canvases leave holes for their views only then. */
 	@Volatile var active = false
 		private set
 
-	fun show(viewId: String, view: CompositedView) { views[viewId] = view }
+	fun show(viewId: String, view: CompositedView) { views[viewId] = view; sortViews() }
 
-	fun hide(viewId: String) { views.remove(viewId) }
+	fun hide(viewId: String) { if (views.remove(viewId) != null) sortViews() }
+
+	private fun sortViews() = synchronized(views) {
+		// Views of different places do not overlap: only a layer's members need an order, and they stay together.
+		painted = views.entries.map { java.util.AbstractMap.SimpleImmutableEntry(it) }
+			.sortedWith(compareBy({ it.value.layer ?: it.key }, { it.value.order }))
+	}
 
 	/** Draws the next frame of the picture as the window did (no holes, no cache). */
 	fun invalidate() = invalidated.set(true)
@@ -113,18 +137,57 @@ internal class WindowCompositor(private val gpu: WindowGpu, private val inner: S
 		}
 		picture.close()
 		val (dx, dy) = sceneOffset()
-		for ((viewId, view) in views) {
+		val shown = painted
+		var i = 0
+		while (i < shown.size) {
+			val view = shown[i].value
+			val layer = view.layer
+			var end = i + 1
+			if (layer != null) while (end < shown.size && shown[end].value.layer == layer) end++
 			canvas.save()
 			canvas.translate(dx + view.left, dy + view.top)
 			canvas.clipRect(Rect.makeWH(view.width, view.height))
 			try {
-				view.paint(canvas, gpu.resources.frame(viewId))
+				val image = layer?.let { layerImage(it, shown.subList(i, end), skia) }
+				if (image != null) canvas.drawImage(image, 0f, 0f)
+				else for (k in i until end) shown[k].value.paint(canvas, gpu.resources.frame(shown[k].key))
 			} finally {
 				canvas.restore()
 			}
+			i = end
+		}
+		if (layers.isNotEmpty()) {
+			val kept = shown.mapNotNullTo(HashSet()) { it.value.layer }
+			layers.entries.removeIf { (name, layer) -> (name !in kept).also { if (it) layer.close() } }
 		}
 		image?.let { canvas.drawImage(it, 0f, 0f) }
 		return true
+	}
+
+	/** The [members] of a layer painted into its texture, again when one is stale; null without such a texture. */
+	private fun layerImage(name: String, members: List<Map.Entry<String, CompositedView>>, skia: DirectContext): Image? {
+		val first = members.first().value
+		val w = kotlin.math.ceil(first.width).toInt().coerceAtLeast(1)
+		val h = kotlin.math.ceil(first.height).toInt().coerceAtLeast(1)
+		var layer = layers[name]
+		var redraw = layer?.image == null || members.any { it.value.stale() }
+		if (layer == null || layer.width != w || layer.height != h) {
+			layers.remove(name)?.close()
+			val info = ImageInfo(w, h, ColorType.RGBA_8888, ColorAlphaType.PREMUL, ColorSpace.sRGB)
+			val props = SurfaceProps(gpu.pixelGeometry ?: PixelGeometry.UNKNOWN)
+			val surface = MultisampledWindow.target(skia, info, props) ?: return null
+			layer = Layer(surface, w, h).also { layers[name] = it }
+			redraw = true
+		}
+		if (redraw) {
+			layer.image?.close(); layer.image = null
+			val target = layer.surface
+			target.notifyContentWillChange(org.jetbrains.skia.ContentChangeMode.DISCARD)
+			target.canvas.clear(0)
+			for ((viewId, view) in members) view.paint(target.canvas, gpu.resources.frame(viewId))
+			layer.image = target.makeImageSnapshot()
+		}
+		return layer.image
 	}
 
 	companion object {

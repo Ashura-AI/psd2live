@@ -177,7 +177,9 @@ class WindowGpu internal constructor(
 	val compositing: Boolean get() = compositor?.active == true
 
 	/** The compositor's frames and the frames its picture was replayed in, for the development tools. */
-	val compositorFrames: Pair<Long, Long> get() = compositor?.let { it.frames.get() to it.pictureFrames.get() } ?: (0L to 0L)
+	val compositorFrames: Pair<Long, Long> get() = composedFrames.get() to pictureFrames.get()
+	internal val composedFrames = java.util.concurrent.atomic.AtomicLong()
+	internal val pictureFrames = java.util.concurrent.atomic.AtomicLong()
 
 	internal val contentScale: Float get() = runCatching { layer.contentScale }.getOrDefault(1f)
 	private var capabilities: org.lwjgl.opengl.GLCapabilities? = null

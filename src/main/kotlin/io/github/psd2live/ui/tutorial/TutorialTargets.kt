@@ -94,12 +94,16 @@ fun Modifier.tutorialTarget(id: TutorialTargetId): Modifier = composed {
 	DisposableEffect(id, registry, owner) {
 		onDispose { registry.clearOwned(id, owner) }
 	}
-	onGloballyPositioned { coordinates ->
-		if (!coordinates.isAttached) {
-			registry.clearOwned(id, owner)
-			return@onGloballyPositioned
+	// Remembered: a new callback on each recomposition of the target updates the node, which asks for the window's
+	// positions again and so for its whole picture to be drawn again (a pose change recomposes the canvas tools).
+	val onPositioned = remember(id, registry, owner) {
+		{ coordinates: androidx.compose.ui.layout.LayoutCoordinates ->
+			if (!coordinates.isAttached) {
+				registry.clearOwned(id, owner)
+			} else {
+				registry.updateOwned(id, owner, coordinates.boundsInWindow())
+			}
 		}
-		val rect = coordinates.boundsInWindow()
-		registry.updateOwned(id, owner, rect)
 	}
+	onGloballyPositioned(onPositioned)
 }

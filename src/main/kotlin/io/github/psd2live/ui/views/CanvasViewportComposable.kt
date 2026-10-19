@@ -207,7 +207,8 @@ fun CanvasViewportComposable(
 	val sized = viewSize.width > 0 && viewSize.height > 0
 	// Window position of this canvas. Dock toggles move the canvas without changing zoom or pan;
 	// the mesh overlay has to redraw on that move or its picture stays at the old place.
-	var canvasOrigin by remember { mutableStateOf(Offset.Zero) }
+	val canvasOriginState = remember { mutableStateOf(Offset.Zero) }
+	var canvasOrigin by canvasOriginState
 	val showMesh = viewOptions.showMesh
 	val showTexture = viewOptions.showTexture
 	val showRotation = viewOptions.showRotation
@@ -588,6 +589,8 @@ fun CanvasViewportComposable(
 	val pumpInterval = frameIntervalNanos(previewFrameRate)
 	// The window whose Skia context this preview draws in; the frame's texture lives there.
 	val previewGpu = remember(gpuPrimary, awtWindow) { SkiaGpu.of(awtWindow) }
+	// The GPU edit canvas and its overlay are composited together: the overlay paints over the artwork's hole.
+	val editComposited = mode == CanvasMode.EDIT && gpuReady && previewModel != null
 	// Read where the canvas draws: each requested frame redraws it, and the draw runs the GPU work first. Not while
 	// the window composites the canvas's frame under its picture ([previewHole]): a frame then draws nothing here.
 	val previewTick = remember { androidx.compose.runtime.mutableIntStateOf(0) }
@@ -1186,7 +1189,9 @@ fun CanvasViewportComposable(
                 zoomAt(change.position.x, change.position.y, delta)
 			},
 	) {
-		Canvas(modifier = Modifier.fillMaxSize()) {
+		// The edit canvas is drawn by the window compositor under its picture when it composites: a pose, a hover or
+		// a dragged point then records this canvas and its overlay again, not the whole window.
+		CompositedCanvas(Modifier.fillMaxSize(), previewGpu, "$gpuKey/art", editComposited, canvasOriginState, layer = gpuKey) {
 			// Same placement read as the mesh overlay, so both pictures invalidate together.
 			canvasOrigin.x
 			val w = size.width.toInt().coerceAtLeast(1)
@@ -1196,7 +1201,7 @@ fun CanvasViewportComposable(
 			if (model == null) {
 				// The welcome surface is an application page, not a transparent artwork canvas.
 				drawRect(color = colors.windowBackground)
-				return@Canvas
+				return@CompositedCanvas
 			}
 
 			when (background.kind) {
@@ -1822,6 +1827,11 @@ fun CanvasViewportComposable(
                 viewport = vp,
                 viewportFor = viewportFor,
                 placementOrigin = canvasOrigin,
+                gpu = previewGpu,
+                gpuViewId = "$gpuKey/overlay",
+                gpuLayer = gpuKey,
+                composited = editComposited,
+                placementOriginState = canvasOriginState,
                 viewModel = viewModel,
                 keymap = canvasState.keymap,
                 selectedLayerId = canvasState.selectedLayerId,
