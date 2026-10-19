@@ -29,6 +29,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -128,7 +131,13 @@ internal fun PageNavItem(
 		else -> colors.textPrimary
 	}
 	Row(
-		Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 4.dp)
+		Modifier.fillMaxWidth().height(24.dp)
+			// The gutter fills the row's whole height, square, outside the row's rounded fill, so the bars of
+			// neighbouring rows join into one column.
+			.then(if (gutter == null) Modifier else Modifier.drawBehind {
+				drawRect(if (enabled) gutter else gutter.copy(alpha = 0.45f), topLeft = Offset(4.dp.toPx(), 0f), size = Size(3.dp.toPx(), size.height))
+			})
+			.padding(horizontal = 4.dp)
 			.clip(RoundedCornerShape(3.dp))
 			.background(when {
 				selected -> colors.selection
@@ -141,8 +150,7 @@ internal fun PageNavItem(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		if (gutter != null) {
-			Box(Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(1.5.dp)).background(if (enabled) gutter else gutter.copy(alpha = 0.45f)))
-			Spacer(Modifier.width(7.dp + indent))
+			Spacer(Modifier.width(10.dp + indent))
 		} else {
 			Box(Modifier.width(2.dp).height(14.dp).clip(RoundedCornerShape(1.dp)).background(if (selected) colors.accent else Color.Transparent))
 			Spacer(Modifier.width(8.dp + indent))

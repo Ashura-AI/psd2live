@@ -236,7 +236,7 @@ private fun ManualLegend() {
 		Manual.Status.entries.forEach { status ->
 			BarTooltip(tr(status.labelKey + ".desc")) {
 				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-					Box(Modifier.width(3.dp).height(11.dp).clip(RoundedCornerShape(1.5.dp)).background(manualStatusColor(status)))
+					Box(Modifier.width(3.dp).height(12.dp).background(manualStatusColor(status)))
 					Text(tr(status.labelKey), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, maxLines = 1)
 				}
 			}
