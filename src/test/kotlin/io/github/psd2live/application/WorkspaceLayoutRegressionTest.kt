@@ -82,4 +82,17 @@ class WorkspaceLayoutRegressionTest {
             MutationAuthor.USER).commit.capture.document
         assertEquals(document.layout.layerMaterials["hair"], linked.layout.layerMaterials["face"])
     }
+
+    @Test fun aCmo3ReplacementKeepsTheMaterialLibraryButNoLayerState() {
+        val document = WorkspaceMaterialEdits.addLinked(Characters.head(false), "head.psd")
+        val material = document.layout.materials.items.first()
+        val layout = document.layout.copy(
+            reference = LayoutReference(material.id, LayerCanvasRect(0f, 0f, 10f, 10f)),
+            layerTags = mapOf("hair" to setOf("mine")), generation = WorkspaceGeneration.NotGenerated)
+        val kept = replacedLayout(layout)
+        assertEquals(layout.materials, kept.materials)
+        assertEquals(layout.reference, kept.reference)
+        assertTrue(kept.layerMaterials.isEmpty() && kept.layerTags.isEmpty())
+        assertEquals(WorkspaceGeneration.Generated, kept.generation)
+    }
 }

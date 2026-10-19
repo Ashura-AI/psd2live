@@ -41,6 +41,7 @@ object DesktopDropTarget {
 	sealed interface DroppedAction {
 		data class OpenProject(val file: File) : DroppedAction
 		data class OpenPsd(val file: File, val outputDir: File? = null) : DroppedAction
+		data class OpenCmo3(val file: File) : DroppedAction
 		data class SetOutputDir(val dir: File) : DroppedAction
 		data class Unsupported(val files: List<File>, val message: String) : DroppedAction
 	}
@@ -48,16 +49,19 @@ object DesktopDropTarget {
 	private val installedComponents = Collections.newSetFromMap(WeakHashMap<Component, Boolean>())
 
 	/**
-	 * Installs recursive drop target listening on a Window and all its descendant components.
+	 * Installs recursive drop target listening on a Window and all its descendant components. [onFilesDropped]
+	 * receives the drop point in window pixels ([windowPixels]), the space Compose's `positionInWindow` reports.
 	 */
 	fun install(
 		window: Window,
 		onDragStateChanged: ((Boolean) -> Unit)? = null,
-		onFilesDropped: (files: List<File>, screenLocation: java.awt.Point?) -> Unit,
+		onFilesDropped: (files: List<File>, windowLocation: java.awt.Point?) -> Unit,
 	) {
 		val installTask = {
 			val activeDragCount = AtomicInteger(0)
-			val listener = createListener(activeDragCount, onDragStateChanged, onFilesDropped)
+			val listener = createListener(activeDragCount, onDragStateChanged) { files, screen ->
+				onFilesDropped(files, screen?.let { windowPixels(window, it) })
+			}
 
 			installRecursively(window, listener)
 			if (window is RootPaneContainer) {
@@ -185,6 +189,21 @@ object DesktopDropTarget {
 		}
 	}
 
+	/** [screen], an AWT screen point, in the pixels Compose lays [window]'s content out in. */
+	private fun windowPixels(window: Window, screen: java.awt.Point): java.awt.Point? = runCatching {
+		val content = (window as? RootPaneContainer)?.contentPane ?: window
+		val origin = content.locationOnScreen
+		val transform = window.graphicsConfiguration?.defaultTransform
+		windowPixels(screen, origin, transform?.scaleX ?: 1.0, transform?.scaleY ?: 1.0)
+	}.getOrNull()
+
+	/**
+	 * [screen] relative to [contentOrigin], both in AWT's logical units, times the display scale: with
+	 * `sun.java2d.uiScale.enabled` AWT reports logical units while Compose lays out in device pixels.
+	 */
+	internal fun windowPixels(screen: java.awt.Point, contentOrigin: java.awt.Point, scaleX: Double, scaleY: Double) =
+		java.awt.Point(Math.round((screen.x - contentOrigin.x) * scaleX).toInt(), Math.round((screen.y - contentOrigin.y) * scaleY).toInt())
+
 	private fun chooseAction(sourceActions: Int, requestedAction: Int): Int {
 		return when {
 			(sourceActions and DnDConstants.ACTION_COPY) != 0 -> DnDConstants.ACTION_COPY
@@ -275,6 +294,7 @@ object DesktopDropTarget {
 	 * Resolves a list of dropped files into a typed action:
 	 * - .psd2live project -> OpenProject
 	 * - .psd file -> OpenPsd (attaching any companion directory as output directory)
+	 * - .cmo3 model -> OpenCmo3, imported as a new project
 	 * - layout manifest (.json, or a .zip holding one) -> OpenPsd, opened as a Layout project
 	 * - directory -> searches inside for .psd2live or .psd; if neither, treats as output directory
 	 * - others -> Unsupported
@@ -296,6 +316,8 @@ object DesktopDropTarget {
 			val companionDir = files.firstOrNull { it.isDirectory }
 			return DroppedAction.OpenPsd(psdFile, companionDir)
 		}
+
+		files.firstOrNull { it.isFile && it.extension.equals("cmo3", ignoreCase = true) }?.let { return DroppedAction.OpenCmo3(it) }
 
 		// A layout manifest opens as a Layout project; any other JSON or zip stays unsupported.
 		val manifest = files.firstOrNull { it.isFile && (it.extension.equals("json", ignoreCase = true) || it.extension.equals("zip", ignoreCase = true)) &&

@@ -230,12 +230,9 @@ fun FrameWindowScope.PSD2LiveApp(
 			DesktopDropTarget.install(
 				window = window,
 				onDragStateChanged = { isDraggingOver = it },
-				onFilesDropped = { files, screenLocation ->
+				onFilesDropped = { files, windowLocation ->
 					// Files dropped on the materials panel go into the material library, whatever they are.
-					val materialsTarget = screenLocation?.let { point ->
-						val origin = window.locationOnScreen
-						viewModel.materialsImportHitTest?.invoke(point.x - (origin?.x ?: 0), point.y - (origin?.y ?: 0))
-					}
+					val materialsTarget = windowLocation?.let { point -> viewModel.materialsImportHitTest?.invoke(point.x, point.y) }
 					if (materialsTarget != null && viewModel.state.value.analysis != null) {
 						viewModel.importMaterials(files.map { it.toPath() }, materialsTarget.folderId)
 						return@install
@@ -245,20 +242,14 @@ fun FrameWindowScope.PSD2LiveApp(
 					// Transparent rasters never go through the PSD/project drop path once a preview
 					// exists — otherwise Unsupported messaging looks like a PSD hijack.
 					if (rasters.isNotEmpty() && hasPreview) {
-						val target = screenLocation?.let { point ->
-							val origin = window.locationOnScreen
-							val windowX = if (origin != null) point.x - origin.x else point.x
-							val windowY = if (origin != null) point.y - origin.y else point.y
-							viewModel.hierarchyImportHitTest?.invoke(windowX, windowY)
-						} ?: io.github.psd2live.core.HierarchyImportTarget(
-							parentDeformerId = null,
-							label = tr("canvas.hierarchy.root"),
-						)
+						val target = windowLocation?.let { point -> viewModel.hierarchyImportHitTest?.invoke(point.x, point.y) }
+							?: io.github.psd2live.core.HierarchyImportTarget(parentDeformerId = null, label = tr("canvas.hierarchy.root"))
 						viewModel.importLayersFromFiles(rasters, target.parentDeformerId, target.label)
 						return@install
 					}
+					// Nothing to import into yet: a hint, not an error.
 					if (rasters.isNotEmpty() && !hasPreview) {
-						viewModel.setErrorMessage(tr("error.importLayerBusy"))
+						viewModel.setStatusText(tr("error.importLayerBusy"))
 						return@install
 					}
 					when (val action = DesktopDropTarget.resolveDropAction(files)) {
@@ -273,6 +264,9 @@ fun FrameWindowScope.PSD2LiveApp(
 								viewModel.setInputPath(action.file.absolutePath)
 								viewModel.analyze(discardUnsaved = true)
 							}
+						}
+						is DesktopDropTarget.DroppedAction.OpenCmo3 -> {
+							viewModel.importCmo3(action.file.toPath(), io.github.psd2live.core.Cmo3ImportMode.NEW)
 						}
 						is DesktopDropTarget.DroppedAction.SetOutputDir -> {
 							viewModel.setOutputPath(action.dir.absolutePath)

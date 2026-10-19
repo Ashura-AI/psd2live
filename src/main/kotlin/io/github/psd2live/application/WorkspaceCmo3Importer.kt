@@ -43,7 +43,8 @@ internal class WorkspaceCmo3Importer(
             Cmo3ModelImport.prepare(bytes, mode, current?.model, base)
         }
         val document = WorkspaceDocument(source, config.layerVisibility, config.deletedLayerIds, config.layerOverrides,
-            config.parentOverrides, config.rigEdits, WorkspaceSettingsCodec.encode(config), config.meshOverrides)
+            config.parentOverrides, config.rigEdits, WorkspaceSettingsCodec.encode(config), config.meshOverrides,
+            layout = current?.document?.layout?.let(::replacedLayout) ?: WorkspaceLayout.Empty)
         progress(0.6f, "Rebuilding imported document")
         val preview = build(document, current?.model)
         progress(0.9f, "Committing imported document")
@@ -73,6 +74,14 @@ internal class WorkspaceCmo3Importer(
         return result
     }
 }
+
+/**
+ * What a CMO3 replacement keeps of the [replaced] document's Layout: the material library, the reference image and
+ * the drawing kit. Everything kept per source layer goes, since the model brings layers of its own, and the imported
+ * model counts as generated.
+ */
+internal fun replacedLayout(replaced: WorkspaceLayout): WorkspaceLayout =
+    WorkspaceLayout(materials = replaced.materials, reference = replaced.reference, drawingKit = replaced.drawingKit)
 
 internal fun WorkspaceCommit<RigPreviewModel>.mutation(summary: String) = WorkspaceMutationResult(
     capture.historyHead, capture.revision, if (applied) capture.document.source.layers.map { it.id.raw } else emptyList(), summary,

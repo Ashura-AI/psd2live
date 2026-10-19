@@ -636,7 +636,7 @@ private fun HierarchyTreeList(
 			val container = containerCoordinates ?: return@hit null
 			if (!container.isAttached) return@hit null
 			val origin = container.positionInWindow()
-			// Tolerate DPI / coordinate-space drift between AWT drop points and Compose layout.
+			// Tolerate a drop just past the tree's edges.
 			val pad = 8f
 			val localX = windowX - origin.x
 			val localY = windowY - origin.y
