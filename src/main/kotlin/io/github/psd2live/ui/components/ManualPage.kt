@@ -1,8 +1,15 @@
 package io.github.psd2live.ui.components
 
 import androidx.compose.foundation.BorderStroke
-import io.github.psd2live.ui.views.texture.glideItem
-import io.github.psd2live.ui.views.texture.MenuGlide
+import io.github.psd2live.ui.views.tooloptions.GlidingColumn
+import io.github.psd2live.ui.views.texture.FloatingMenuRow
+import io.github.psd2live.ui.views.texture.BarTooltip
+import io.github.psd2live.ui.views.PressMenu
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.hoverable
 import io.github.psd2live.ui.theme.handCursor
 import io.github.psd2live.ui.theme.LocalToolTypography
 import androidx.compose.ui.text.style.TextOverflow
@@ -215,30 +222,52 @@ internal fun ManualPageContent(
 	val typography = io.github.psd2live.ui.theme.LocalToolTypography.current
 	val bodyStyle = typography.caption.copy(fontSize = 11.5.sp, lineHeight = 17.sp, color = colors.textPrimary)
 
-	// Where it is: the folders, as the Cubism pages' breadcrumb.
-	val trail = remember(page.id, language) {
-		listOf(tr(if (page.root == Manual.Root.MANUAL) "help.tab.manual" else "help.tab.tutorials")) +
-			Manual.ancestors(page.id).map { texts[it.id]?.title ?: it.id }
-	}
-	Text(trail.joinToString("  ›  "), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted)
+	val blocks = remember(text?.body) { parseManualBlocks(text?.body.orEmpty()) }
+	// The page's step-by-step tutorials and paths gather in its heading, top right; the text keeps the rest.
+	val tutorials = blocks.filter { it is ManualBlock.Tutorial || it is ManualBlock.Path }
+	val cubism = Manual.cubismUrl(page, language)
 
-	Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-			Text(text?.title ?: page.id, style = typography.title.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold), color = colors.textPrimary,
-				modifier = Modifier.weight(1f, fill = false))
-			ManualStatusTag(page.status)
+	Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+		Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+			// Where it is: the folders, as the Cubism pages' breadcrumb.
+			val trail = remember(page.id, language) {
+				listOf(tr(if (page.root == Manual.Root.MANUAL) "help.tab.manual" else "help.tab.tutorials")) +
+					Manual.ancestors(page.id).map { texts[it.id]?.title ?: it.id }
+			}
+			Text(trail.joinToString("  ›  "), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted)
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+				Text(text?.title ?: page.id, style = typography.title.copy(fontSize = 18.sp, fontWeight = FontWeight.Bold), color = colors.textPrimary,
+					modifier = Modifier.weight(1f, fill = false))
+				ManualStatusTag(page.status)
+			}
+			// What the tag means, then the Cubism page as a link in the same line.
+			Text(buildAnnotatedString {
+				append(tr(page.status.labelKey + ".desc"))
+				if (cubism != null) {
+					append("   ")
+					withLink(LinkAnnotation.Clickable("cubism", TextLinkStyles(SpanStyle(color = colors.accent),
+						hoveredStyle = SpanStyle(color = colors.accentHover, textDecoration = TextDecoration.Underline))) { onOpenUrl(cubism) }) {
+						append(tr(if (page.root == Manual.Root.MANUAL) "help.manual.cubismPage" else "help.manual.cubismTutorial") + " ↗")
+					}
+				}
+			}, style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 15.sp), color = colors.textMuted)
 		}
-		Text(tr(page.status.labelKey + ".desc"), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textMuted)
-		Manual.cubismUrl(page, language)?.let { url ->
-			Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-				CompactButton(tr(if (page.root == Manual.Root.MANUAL) "help.manual.cubismPage" else "help.manual.cubismTutorial"),
-					onClick = { onOpenUrl(url) }, height = 22.dp)
+		if (tutorials.isNotEmpty() && onStartTutorial != null) {
+			Column(Modifier.widthIn(max = 280.dp), verticalArrangement = Arrangement.spacedBy(5.dp), horizontalAlignment = Alignment.End) {
+				tutorials.forEach { block ->
+					when (block) {
+						is ManualBlock.Tutorial -> ManualTutorialButton(tr("help.manual.interactive"), tr(block.id.titleKey), tr(block.id.descKey)) {
+							onStartTutorial(block.id, TutorialPath.defaultFor(block.id))
+						}
+						is ManualBlock.Path -> ManualPathButton(block.path, onStartTutorial)
+						else -> {}
+					}
+				}
 			}
 		}
 	}
 	Divider(color = colors.divider, thickness = 1.dp)
 
-	val blocks = remember(text?.body) { parseManualBlocks(text?.body.orEmpty()) }
 	fun inline(value: String) = manualInline(value, colors, keymap, texts, onOpenPage)
 	blocks.forEach { block ->
 		when (block) {
@@ -300,8 +329,7 @@ internal fun ManualPageContent(
 					}
 				}
 			}
-			is ManualBlock.Tutorial -> if (onStartTutorial != null) ManualTutorialCard(block.id) { onStartTutorial(block.id, TutorialPath.defaultFor(block.id)) }
-			is ManualBlock.Path -> if (onStartTutorial != null) ManualTutorialPathCard(block.path, onStartTutorial)
+			is ManualBlock.Tutorial, is ManualBlock.Path -> {}
 		}
 	}
 	page.embed?.let { embed(it) }
@@ -342,61 +370,51 @@ private fun ManualChip(text: String, color: Color) {
 		modifier = Modifier.clip(RoundedCornerShape(3.dp)).background(color.copy(alpha = 0.16f)).padding(horizontal = 5.dp))
 }
 
-/** A step-by-step tutorial chapter inside an article: its tag, title and what it teaches, and the button that starts it. */
+/**
+ * A step-by-step tutorial in a page's heading: its tag and title on one compact line, what it teaches on hover, the
+ * whole of it a button.
+ */
 @Composable
-private fun ManualTutorialCard(id: TutorialId, onStart: () -> Unit) {
+private fun ManualTutorialButton(tag: String, title: String, about: String?, trailing: (@Composable () -> Unit)? = null, onClick: () -> Unit) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	Row(
-		Modifier.fillMaxWidth().height(IntrinsicSize.Min).clip(RoundedCornerShape(4.dp)).background(colors.highlight.copy(alpha = 0.07f))
-			.border(BorderStroke(1.dp, colors.highlight.copy(alpha = 0.35f)), RoundedCornerShape(4.dp)),
-		verticalAlignment = Alignment.CenterVertically,
-	) {
-		Box(Modifier.width(3.dp).fillMaxHeight().background(colors.highlight))
-		Column(Modifier.weight(1f).padding(horizontal = 10.dp, vertical = 7.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-				ManualChip(tr("help.manual.interactive"), colors.highlight)
-				Text(tr(id.titleKey), style = typography.caption.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold), color = colors.textPrimary)
-			}
-			Text(tr(id.descKey), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
+	val interaction = remember { MutableInteractionSource() }
+	val hovered by interaction.collectIsHoveredAsState()
+	BarTooltip(about) {
+		Row(
+			Modifier.height(24.dp).clip(RoundedCornerShape(4.dp))
+				.background(colors.highlight.copy(alpha = if (hovered) 0.18f else 0.08f))
+				.border(BorderStroke(1.dp, colors.highlight.copy(alpha = 0.35f)), RoundedCornerShape(4.dp))
+				.hoverable(interaction)
+				.clickable(interactionSource = interaction, indication = null, onClick = onClick).handCursor()
+				.padding(start = 6.dp, end = 8.dp),
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+		) {
+			IconPlay(Modifier.size(10.dp), colors.highlight)
+			ManualChip(tag, colors.highlight)
+			Text(title, style = typography.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold), color = colors.textPrimary,
+				maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+			trailing?.invoke()
 		}
-		CompactButton(tr("tutorial.path.start"), onClick = onStart, isPrimary = true, height = 22.dp, modifier = Modifier.padding(end = 10.dp))
 	}
 }
 
-/** A whole step-by-step path inside an article: its chapters, each started on its own, or all in turn. */
+/** A whole tutorial path in a page's heading: the button starts it from the first chapter; its arrow lists the chapters. */
 @Composable
-private fun ManualTutorialPathCard(path: TutorialPath, onStart: (TutorialId, TutorialPath) -> Unit) {
+private fun ManualPathButton(path: TutorialPath, onStart: (TutorialId, TutorialPath) -> Unit) {
 	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	Column(
-		Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)).background(colors.highlight.copy(alpha = 0.07f))
-			.border(BorderStroke(1.dp, colors.highlight.copy(alpha = 0.35f)), RoundedCornerShape(4.dp)).padding(10.dp),
-		verticalArrangement = Arrangement.spacedBy(6.dp),
-	) {
-		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-			ManualChip(tr("help.manual.interactivePath"), colors.highlight)
-			Text(tr(path.titleKey), style = typography.body.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold), color = colors.textPrimary,
-				modifier = Modifier.weight(1f))
-			CompactButton(tr("tutorial.path.start"), onClick = { onStart(path.chapters.first(), path) }, isPrimary = true, height = 22.dp)
-		}
-		Text(tr(path.descKey), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
-		MenuGlide {
-			Column(Modifier.fillMaxWidth()) {
-				path.chapters.forEachIndexed { index, id ->
-					Row(
-						Modifier.fillMaxWidth().glideItem(enabled = true)
-							.clickable(indication = null, interactionSource = null) { onStart(id, path) }.handCursor()
-							.padding(horizontal = 4.dp, vertical = 4.dp),
-						verticalAlignment = Alignment.CenterVertically,
-						horizontalArrangement = Arrangement.spacedBy(8.dp),
-					) {
-						Text("%02d".format(index + 1), style = typography.monoSmall.copy(fontSize = 9.5.sp, fontWeight = FontWeight.Bold), color = colors.highlight)
-						Text(tr(id.titleKey), style = typography.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold), color = colors.textPrimary)
-						Text(tr(id.descKey), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, maxLines = 1,
-							overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-					}
-				}
+	val density = LocalDensity.current
+	var menu by remember { mutableStateOf(false) }
+	Box {
+		ManualTutorialButton(tr("help.manual.interactivePath"), tr(path.titleKey), tr(path.descKey), trailing = {
+			Box(Modifier.size(16.dp).clip(RoundedCornerShape(3.dp)).clickable(indication = null, interactionSource = null) { menu = true }.handCursor(),
+				contentAlignment = Alignment.Center) { IconChevron(menu, Modifier.size(10.dp), colors.textMuted) }
+		}) { onStart(path.chapters.first(), path) }
+		PressMenu(menu, Offset(0f, with(density) { 26.dp.toPx() }), onDismissRequest = { menu = false }) {
+			GlidingColumn(Modifier.width(280.dp), path.chapters.size, highlights = { true }) { index ->
+				val id = path.chapters[index]
+				FloatingMenuRow("%02d  ".format(index + 1) + tr(id.titleKey), { menu = false; onStart(id, path) }, hint = tr(id.descKey))
 			}
 		}
 	}
