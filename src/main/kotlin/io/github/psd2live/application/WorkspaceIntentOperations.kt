@@ -60,7 +60,8 @@ internal fun registerIntentOperations(registry: WorkspaceOperationRegistry, port
         "Author a parameter's shapes in one history step. Creates parameter.id when the model lacks it (name defaults to the ID), " +
             "keys every shape target at the parameter default so its current form stays neutral, then deforms each target at its value " +
             "with rig_deform operations. Other axes bound directly to a target take their defaults unless shape.key names them. " +
-            "Compiles to parameter_create, keyform_apply seed and rig_deform members of one atomic batch; returns its job.",
+            "mirror also writes each shape reflected across the canvas at the opposite value (2*default - value), so one side authors both. " +
+            "Compiles to parameter_create, keyform_apply seed, rig_deform and keyform_apply mirror members of one atomic batch; returns its job.",
         intentSchema(mapOf(
             "parameter" to strict(mapOf(
                 "id" to parameterFields.getValue("parameter_id"),
@@ -78,6 +79,10 @@ internal fun registerIntentOperations(registry: WorkspaceOperationRegistry, port
                     },
                     "operations" to deformChange.getValue("operations"), "selection" to deformChange.getValue("selection"),
                 ), listOf("target", "value", "operations")))
+            },
+            "mirror" to buildJsonObject {
+                put("type", "boolean")
+                put("description", "Also write every shape reflected across the canvas at the opposite value: a turn authored to one side makes the other. Needs the opposite value in range.")
             },
         ), listOf("parameter", "shapes")),
     ) { request, queries -> compileAxis(request, queries) }
@@ -197,7 +202,22 @@ private fun compileAxis(request: JsonObject, queries: WorkspaceQueries): Pair<St
             }
         }
     })
-    return "Author $parameterId on ${axesByTarget.size} target(s)" to edits
+    if (request["mirror"]?.jsonPrimitive?.boolean == true) edits += WorkspaceDocumentOperation("keyform_apply", buildJsonObject {
+        putJsonArray("changes") {
+            shapes.forEach { shape ->
+                val target = shape.getValue("target").jsonPrimitive.content
+                add(buildJsonObject {
+                    put("op", "mirror"); put("target", target)
+                    put("from", key(target, shape["key"]?.jsonObject, shape.getValue("value").jsonPrimitive.float))
+                    // The authored axis flips whatever its name; the shape's other axes keep the default rule.
+                    // A parameter this batch creates is not in the snapshot yet, so it is named on its own.
+                    put("reflect", JsonArray((listOf(parameterId) + snapshot.parameters.filter { p -> p.id != parameterId &&
+                        p.kind == "normal" && io.github.psd2live.core.KeyformMirror.reflectsByName(p.id, p.min, p.default, p.max) }.map { it.id }).map(::JsonPrimitive)))
+                })
+            }
+        }
+    })
+    return "Author $parameterId on ${axesByTarget.size} target(s)${if (request["mirror"]?.jsonPrimitive?.boolean == true) ", mirrored" else ""}" to edits
 }
 
 private val overviewSchema: JsonObject by lazy {

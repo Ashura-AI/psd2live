@@ -3673,6 +3673,122 @@ internal class CanvasEditor(
         return true
     }
 
+    /** A keyform mirror the deform menu can run (see [KeyformMirror]). */
+    enum class KeyformMirrorAction {
+        /** The key in hand reflected onto the opposite key: a head turned one way made from the other. */
+        TO_OPPOSITE_KEY,
+        /** The opposite key reflected onto the key in hand. */
+        FROM_OPPOSITE_KEY,
+        /** The key in hand reflected onto the opposite-side object at its mirrored key: the right eye from the left. */
+        TO_OPPOSITE_OBJECT,
+        /** The key in hand flipped left to right about the object's own center. */
+        IN_PLACE,
+        /** Every key on the side the pose is on reflected onto the other side. */
+        ALL_KEYS,
+        /** Every key reflected onto the opposite-side object. */
+        ALL_KEYS_TO_OBJECT,
+    }
+
+    /** The mirror commands of one action, what its label names, and the pose that shows what it writes (null stays). */
+    internal class KeyformMirrorPlan(val commands: List<JsonObject>, val label: String, val shows: Map<String, Float>?)
+
+    /**
+     * What [action] would mirror on the objects in hand - the target and every other selected layer's mesh - at the key
+     * each is edited at, or null when it has nothing to mirror. Cheap enough for a menu to ask on every frame: it only
+     * names the commands; [mirrorKeyform] compiles them.
+     */
+    internal fun keyformMirrorPlan(action: KeyformMirrorAction): KeyformMirrorPlan? {
+        if (hierarchyMode != EditHierarchyMode.DEFORM) return null
+        val source = state.previewModel?.rig?.puppet ?: return null
+        val primary = target(source) ?: return null
+        val layers = LinkedHashSet(objects).apply { state.selectedLayerId?.let(::add) }
+        val targets = (listOf(primary) + if (primary.kind == "mesh") layers.mapNotNull { target(source, it, null)?.takeIf { t -> t.kind == "mesh" } } else emptyList())
+            .distinctBy { it.id }
+        val parameters = source.parameters.associateBy { it.id.raw }
+        val reflect = source.parameters.filter { KeyformMirror.reflects(source, it) }.mapTo(HashSet()) { it.id.raw }
+        val pose = pose
+        fun Map<String, Float>.json() = JsonObject(mapValues { JsonPrimitive(it.value) })
+        fun same(a: Map<String, Float>, b: Map<String, Float>) = a.keys == b.keys && a.all { (id, v) -> abs(v - b.getValue(id)) <= org.umamo.runtime.eval.EPS_KEY }
+        val commands = mutableListOf<JsonObject>()
+        val partners = mutableListOf<String>()
+        var shows: Map<String, Float>? = null
+        var keyLabel = ""
+        for (target in targets) {
+            val axes = target.geometry.axes.mapTo(LinkedHashSet()) { it.parameterId.raw }
+            val key = canvasDeformationCoordinate(source, target.geometry.axes, pose, deformationParameters)
+            // Mirrors read ordinary keyforms; a key on a blend shape, or none at all, has nothing for them.
+            if (key.isEmpty() || key.keys.any { parameters[it]?.kind != ParameterKind.NORMAL }) continue
+            fun mirror(fields: JsonObjectBuilder.() -> Unit) = buildJsonObject { put("op", KeyformMirror.OP); put("target", "${target.kind}:${target.id}"); fields() }
+            val partner = if (action == KeyformMirrorAction.TO_OPPOSITE_OBJECT || action == KeyformMirrorAction.ALL_KEYS_TO_OBJECT)
+                (if (target.kind == "mesh") boneMirrorDrawables()[target.id] else null)
+                    ?: KeyformMirror.counterpart(source, RigTargetRef(RigTargetKind.fromString(target.kind), target.id))?.id
+            else null
+            when (action) {
+                KeyformMirrorAction.TO_OPPOSITE_KEY, KeyformMirrorAction.FROM_OPPOSITE_KEY -> {
+                    val opposite = runCatching { KeyformMirror.mirroredKey(source, key, axes, reflect) }.getOrNull() ?: continue
+                    if (same(opposite, key)) continue
+                    val (from, to) = if (action == KeyformMirrorAction.TO_OPPOSITE_KEY) key to opposite else opposite to key
+                    commands += mirror { put("from", from.json()); put("key", to.json()) }
+                    if (action == KeyformMirrorAction.TO_OPPOSITE_KEY) shows = opposite
+                    keyLabel = describeKey(source, opposite.filter { (id, v) -> key[id]?.let { abs(it - v) > org.umamo.runtime.eval.EPS_KEY } != false })
+                }
+                KeyformMirrorAction.IN_PLACE -> commands += mirror { put("from", key.json()); put("key", key.json()) }
+                KeyformMirrorAction.TO_OPPOSITE_OBJECT -> {
+                    if (partner == null) continue
+                    val partnerAxes = RigGeometryTools.geometry(source, target.kind, partner, emptyMap()).axes.mapTo(HashSet()) { it.parameterId.raw }
+                    val opposite = runCatching { KeyformMirror.mirroredKey(source, key, partnerAxes, reflect) }.getOrNull() ?: continue
+                    commands += mirror { put("destination", "${target.kind}:$partner"); put("from", key.json()) }
+                    partners += partner
+                    if (opposite.any { (id, v) -> abs((pose[id] ?: parameters.getValue(id).default) - v) > org.umamo.runtime.eval.EPS_KEY }) shows = opposite
+                }
+                KeyformMirrorAction.ALL_KEYS -> {
+                    if (axes.none { it in reflect }) continue
+                    commands += mirror { put("all_keys", true); put("side", KeyformMirror.sideOf(source, key, reflect) ?: "positive") }
+                }
+                KeyformMirrorAction.ALL_KEYS_TO_OBJECT -> {
+                    if (partner == null || axes.isEmpty()) continue
+                    commands += mirror { put("destination", "${target.kind}:$partner"); put("all_keys", true) }
+                    partners += partner
+                }
+            }
+        }
+        if (commands.isEmpty()) return null
+        val label = when (action) {
+            KeyformMirrorAction.TO_OPPOSITE_KEY, KeyformMirrorAction.FROM_OPPOSITE_KEY -> keyLabel
+            KeyformMirrorAction.TO_OPPOSITE_OBJECT, KeyformMirrorAction.ALL_KEYS_TO_OBJECT -> partners.singleOrNull()?.let { id ->
+                source.drawables.firstOrNull { it.id.raw == id }?.name ?: source.deformers.firstOrNull { it.id.raw == id }?.name ?: id
+            } ?: tr("editor.mirror.objects", partners.size)
+            else -> ""
+        }
+        return KeyformMirrorPlan(commands, label, shows)
+    }
+
+    /** [key]'s parameters by name with their values, as a menu row names a key. */
+    private fun describeKey(model: PuppetModel, key: Map<String, Float>): String = key.entries.joinToString(", ") { (id, value) ->
+        val name = model.parameters.firstOrNull { it.id.raw == id }?.name?.ifBlank { null } ?: id
+        "$name ${if (value == round(value)) value.toInt().toString() else "%.2f".format(java.util.Locale.ROOT, value).trimEnd('0').trimEnd('.')}"
+    }
+
+    /**
+     * Runs [action] as one history step. Each object's mirror is tried alone first and left out when it has nothing to
+     * write (a key with no opposite, a source without keys), so one such object does not stop the rest; then the pose
+     * moves to the key written, so the canvas shows the result.
+     */
+    fun mirrorKeyform(action: KeyformMirrorAction) {
+        val plan = keyformMirrorPlan(action) ?: return
+        val source = state.previewModel?.rig?.puppet ?: return
+        var failure: String? = null
+        val commands = plan.commands.filter { command ->
+            runCatching { KeyformMirror.compile(source, command).isNotEmpty() }.onFailure { failure = it.message }.getOrDefault(false)
+        }
+        if (commands.isEmpty()) { error = failure ?: tr("editor.mirror.nothing"); return }
+        val shows = plan.shows
+        val committed = commitBatch(commands) {
+            if (shows != null) viewModel.setParameterValues(shows.mapKeys { ParameterId(it.key) })
+        }
+        if (!committed && error == null) error = tr("editor.mirror.nothing")
+    }
+
     /**
      * Runs a topology op on the mesh selection.
      *

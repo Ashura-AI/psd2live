@@ -36,7 +36,7 @@ Intent tools are ordinary public operations in the registry (callable under both
 | Tool | Compiles to | Notes |
 | --- | --- | --- |
 | `workspace_overview` | Read-only query | One capture returns the canvas, parameters, layers, deformer hierarchy (with parent and child count), mesh count, physics groups (input/output parameters) and motion clips; each list carries `total` and is cut to `limit` (1–500, default 200) |
-| `author_axis` | `parameter_create` (when the parameter does not exist) → `keyform_apply` seed → `rig_deform` | Creates `parameter.id` when it does not exist (`name` defaults to the ID); when it exists, any given `min/max/default` must match the current values. Each shape target is first seeded at the parameter's default so the current shape becomes the neutral shape (skipped when the axis already has a key at the default and no `key` is given); then `rig_deform`'s `operations/selection` run at `value`. Other axes bound directly on the target take their own defaults; `key` can give values for combined angles. Rejected when `value` equals the default. The engine creates the new axis's keys at min/default/max |
+| `author_axis` | `parameter_create` (when the parameter does not exist) → `keyform_apply` seed → `rig_deform` | Creates `parameter.id` when it does not exist (`name` defaults to the ID); when it exists, any given `min/max/default` must match the current values. Each shape target is first seeded at the parameter's default so the current shape becomes the neutral shape (skipped when the axis already has a key at the default and no `key` is given); then `rig_deform`'s `operations/selection` run at `value`. Other axes bound directly on the target take their own defaults; `key` can give values for combined angles. Rejected when `value` equals the default. With `mirror: true` each shape is also mirrored onto the opposite value (`2×default − value`, which must be in range), so authoring one side makes both. The engine creates the new axis's keys at min/default/max |
 | `author_physics` | `physics_put` → `physics_fit` | Fields as in `physics_put`, plus `fit_target` (10–300, default 100; `null` skips fitting). With only `id` and `fit_target`, only an existing group is refitted; rejected when neither changes anything. Output parameters need authored shapes already |
 | `author_compile` | Read-only query | Returns the members an intent would commit; see below |
 
@@ -75,7 +75,7 @@ Intent tools themselves have no dry run. `author_compile` compiles the same inte
 | `job_list` | Optional `project_id`, `offset`, `limit` | Page through in-app jobs |
 | `job_cancel` | `request_id`, `id` | Request cancellation; a commit that already finished keeps the completed status |
 | `rig_deform` | `state`, `changes` inside `request` | Edits continuous Mesh / Warp shapes at explicit parameter keys |
-| `keyform_apply` | `state`, `changes` inside `request` | `op: seed/copy/set/delete`; edits keyform sets, scalar / color channels and rotation shapes; when a rotation `set` gives only some fields (for example only `angle`), the other fields take the rotation's current values at that key |
+| `keyform_apply` | `state`, `changes` inside `request` | `op: seed/copy/set/delete/mirror`; edits keyform sets, scalar / color channels and rotation shapes; when a rotation `set` gives only some fields (for example only `angle`), the other fields take the rotation's current values at that key |
 | `rig_create_warp` | `name`, `targets`; optional `id`, `rows/columns`, `fit_local` | Creates an independent warp in the background for meshes sharing a parent warp, also as an atomic batch member; the terminal status returns `target` |
 | `object_edit_appearance` | `state`, `edits` inside `request` | Ordered edits to names, visibility, structure and so on; for a mesh `bind`, `space=local` keeps local coordinates and keyforms (inherited motion and position change with the new parent), while `space=canvas` converts the rest mesh, keyforms and blend shapes through the new parent so the mesh stays in place on the canvas at the default pose (hierarchy drag and drop and reparenting in the inspector use this); deformer `move` only accepts `space=local` |
 | `rig_edit_structure` | `state`, `edits` inside `request` | Static object properties, deformer deletion and Part membership, parameter folders and XY links |
@@ -462,6 +462,20 @@ Call `skeleton_propose` first to inspect the skeleton inferred from the current 
 `rig_deform` operations include `translate`, `scale`, `rotate`, `arc`, `curve` and `landmarks`. Coordinates use a normalized convention within fixed input bounds, X right, Y down, angles in degrees. Selections and falloff can limit the affected range; arbitrary per-point mesh arrays are not accepted.
 
 `keyform_apply op=seed` samples the existing shape at the given key; `copy` copies an explicit source key; `set` writes channels or rotation shapes; `delete` removes the corresponding key data. A new parameter produces no motion by itself; shapes must be bound to it.
+
+`keyform_apply op=mirror` reflects a keyform across a vertical canvas line. On commit it expands into ordinary `set` (and `copy`) entries, so replay never computes the reflection again:
+
+| Field | Meaning |
+| --- | --- |
+| `target` | The source mesh, Warp or rotation deformer |
+| `destination` | A target of the same kind; defaults to `target` (the same object); `auto` finds the object on the other side by L/R, Left/Right or 左/右 in its ID or name |
+| `from` / `all_keys` | The source key; or `all_keys: true` for every keyform cell of the source, on one object only the keys on `side` (`positive`, the default, or `negative`) |
+| `key` | The destination key; by default derived from `from`: left-right parameters flip about their default, a sided parameter (ParamEyeLOpen) switches to its other side when the destination binds that or neither, and destination axes left out take their defaults. Given explicitly, it must include every axis bound directly to the destination |
+| `reflect` | The parameters that flip; by default the ordinary parameters whose range is symmetric about the default and that are a 2D link's horizontal axis or whose ID ends in X or Z |
+| `axis_x` | Canvas x of the mirror line; defaults to the midpoint of the two objects' rest bounding-box centers (one object: its own center) |
+| `channels` | What to carry over: `geometry` and `copy` channel names; geometry only by default |
+
+A mirror covers the object's own deformation: both objects' points are mapped to the canvas through their parents at the default pose, each source point's move from its rest shape has its x reversed, is interpolated on the source triangles (a Warp's cells split corner to corner) at the target point's reflected position, and is mapped back into the target's parent space; a rotation deformer mirrors its origin's move and reverses its angle change. Symmetric objects and pairs correspond point to point. Blend shape keys are not supported.
 
 `path_get / path_list / path_preview / path_put / path_delete / path_deform` points use mesh local coordinates and support read-only queries, preview, binding and baking keyforms. Paths are an editing aid; for compatibility see [Deform paths](../guide/DEFORM_PATHS.md).
 

@@ -331,14 +331,29 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         put("glueIntensity", number()); put("flipX", boolean()); put("flipY", boolean())
     })
     val formBase = buildJsonObject { put("target", string()); put("key", key) }
-    registerJsonOperation("form", "Author key collections atomically. seed captures interpolated geometry without changing other keys. copy transfers selected channels (omit for all) from an explicit source key. set writes scalar/color channels or a rotation form, never mesh point arrays. Keys name only the destination object's axes, not the viewing pose. A keyed drawOrder channel: " + WorkspaceDrawOrderSchemas.GUIDE,
+    fun described(schema: JsonObject, text: String) = JsonObject(schema + ("description" to JsonPrimitive(text)))
+    registerJsonOperation("form", "Author key collections atomically. seed captures interpolated geometry without changing other keys. copy transfers selected channels (omit for all) from an explicit source key. set writes scalar/color channels or a rotation form, never mesh point arrays. " +
+        "mirror reflects a keyform across a vertical canvas line onto the opposite key of the same object (from {ParamAngleX:30} writes ParamAngleX -30), onto the opposite-side object (destination, or \"auto\" to pair by L/R id or name), or in place; it writes ordinary keyforms. " +
+        "Keys name only the destination object's axes, not the viewing pose. A keyed drawOrder channel: " + WorkspaceDrawOrderSchemas.GUIDE,
         buildJsonObject { put("state", string()); put("changes", arraySchema(oneOf(listOf(
             variant("op", "seed", formBase, listOf("target", "key")),
             variant("op", "copy", JsonObject(formBase + buildJsonObject { put("from", key); put("destination", string()); put("channels", arraySchema(string(), 1, 8)) }), listOf("target", "from", "key")),
             variant("op", "set", JsonObject(formBase + buildJsonObject { put("channels", channels); put("geometry", objectSchema(buildJsonObject {
                 put("originX", number()); put("originY", number()); put("angle", number()); put("scale", number())
             })) }), listOf("target", "key")),
-            variant("op", "delete", buildJsonObject { put("target", string()); put("parameter", string()); put("value", number()); put("channel", string()) }, listOf("target", "parameter"))
+            variant("op", "delete", buildJsonObject { put("target", string()); put("parameter", string()); put("value", number()); put("channel", string()) }, listOf("target", "parameter")),
+            variant("op", "mirror", buildJsonObject {
+                put("target", described(string(), "Source mesh, warp or rotation."))
+                put("destination", described(string(), "Destination of the same kind; default the target; \"auto\" pairs the opposite-side object by L/R in its id or name."))
+                put("from", described(key, "Source key. Omit with all_keys."))
+                put("key", described(key, "Destination key; default from with reflected parameters flipped about their default and sided parameters (ParamEyeLOpen) swapped for their opposite where the destination binds it or neither, missing destination axes at default."))
+                put("all_keys", described(boolean(), "Mirror every keyform cell of the target. On one object only the keys on side are sources."))
+                put("side", described(choices("positive", "negative"), "With all_keys on one object: which side of the first reflected parameter off its default is copied over; default positive."))
+                put("axis_x", described(number(), "Canvas x of the mirror line; default midway between the two objects' rest centers (one object: its own)."))
+                put("reflect", described(arraySchema(string(), 0, 64), "Parameters whose value flips about the default; default the symmetric-range ones that are a 2D pad's horizontal axis or end in X or Z."))
+                put("channels", described(arraySchema(choices("geometry", "opacity", "drawOrder", "multiplyColor", "screenColor", "glueIntensity", "flipX", "flipY"), 1, 8),
+                    "What to carry over: the reflected geometry and channel values as they are at from; default geometry only."))
+            }, listOf("target"))
         )), 1, 128)) }, listOf("state", "changes"), true) { a -> workspace.authorRig(a.text("state"), a.getValue("changes").jsonArray, MutationAuthor.AGENT).compact() }
 
     registerJsonOperation("rig", "Create a fitted independent Warp for meshes sharing a parent. Existing keyforms and UVs migrate; the parent lattice constrains fit precision. Use deform directly when no independent motion layer is needed. Returned target is the new Warp.",

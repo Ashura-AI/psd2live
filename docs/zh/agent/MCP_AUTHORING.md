@@ -36,7 +36,7 @@
 | 工具 | 编译为 | 说明 |
 | --- | --- | --- |
 | `workspace_overview` | 只读查询 | 一次捕获返回画布、参数、图层、变形器层级（含父级与子对象数）、网格数、物理组（输入/输出参数）与动作片段；每个列表带 `total`，按 `limit`（1–500，默认 200）截取 |
-| `author_axis` | `parameter_create`（参数不存在时）→ `keyform_apply` seed → `rig_deform` | `parameter.id` 不存在时创建（`name` 缺省为 ID）；已存在时给出的 `min/max/default` 必须与现值一致。每个形状目标先在参数默认值处 seed，使当前形状成为中立形（该轴已在默认值有关键点且未给 `key` 时跳过）；再在 `value` 处执行 `rig_deform` 的 `operations/selection`。目标上直接绑定的其他轴取各自默认值，`key` 可指定组合角的取值。`value` 等于默认值时拒绝。新参数轴的关键点由引擎按 min/默认/max 建立 |
+| `author_axis` | `parameter_create`（参数不存在时）→ `keyform_apply` seed → `rig_deform` | `parameter.id` 不存在时创建（`name` 缺省为 ID）；已存在时给出的 `min/max/default` 必须与现值一致。每个形状目标先在参数默认值处 seed，使当前形状成为中立形（该轴已在默认值有关键点且未给 `key` 时跳过）；再在 `value` 处执行 `rig_deform` 的 `operations/selection`。目标上直接绑定的其他轴取各自默认值，`key` 可指定组合角的取值。`value` 等于默认值时拒绝。`mirror: true` 时再把每个形状镜像到相反值（`2×默认值 − value`，须在范围内），一侧写完两侧都有。新参数轴的关键点由引擎按 min/默认/max 建立 |
 | `author_physics` | `physics_put` → `physics_fit` | 字段同 `physics_put`，另加 `fit_target`（10–300，默认 100；`null` 跳过拟合）。只给 `id` 与 `fit_target` 时只重新拟合已有组；两者都不改时拒绝。输出参数需已有作者形状 |
 | `author_compile` | 只读查询 | 返回意图将提交的成员，见下文 |
 
@@ -77,7 +77,7 @@
 | `job_list` | 可选 `project_id`、`offset`、`limit` | 分页查询应用内任务 |
 | `job_cancel` | `request_id`、`id` | 请求取消；已完成提交保留 completed 状态 |
 | `rig_deform` | `request` 内 `state`、`changes` | 在明确参数键上编辑 Mesh / Warp 连续形状 |
-| `keyform_apply` | `request` 内 `state`、`changes` | `op: seed/copy/set/delete`，编辑关键形集合、标量 / 颜色通道与旋转形状；旋转 `set` 只给部分字段（例如只给 `angle`）时，其余字段取该旋转在此关键点处的现值 |
+| `keyform_apply` | `request` 内 `state`、`changes` | `op: seed/copy/set/delete/mirror`，编辑关键形集合、标量 / 颜色通道与旋转形状；旋转 `set` 只给部分字段（例如只给 `angle`）时，其余字段取该旋转在此关键点处的现值 |
 | `rig_create_warp` | `name`、`targets`；可选 `id`、`rows/columns`、`fit_local` | 后台创建共用父 Warp 的 Mesh 的独立 Warp，也支持原子批量；终态返回 `target` |
 | `object_edit_appearance` | `request` 内 `state`、`edits` | 名称、显隐、结构等有序编辑；网格 `bind` 的 `space=local` 保留局部坐标与关键形（继承的运动与位置随新父级改变），`space=canvas` 把静止网格、关键形与混合形经新父级换算，使网格在默认姿态下留在画布原位（层级树拖放与检查器改父级即用此项）；变形器 `move` 只接受 `space=local` |
 | `rig_edit_structure` | `request` 内 `state`、`edits` | 静态对象属性、变形器删除与 Part 归属、参数文件夹和 XY 关联 |
@@ -464,6 +464,20 @@ GUI 参数定义、文件夹位置和参数关键点可组合为一次共享提�
 `rig_deform` 操作包括 `translate`、`scale`、`rotate`、`arc`、`curve`、`landmarks`。坐标使用固定输入边界中的归一化约定，X 向右、Y 向下，角度以度表示。选区与衰减可限制作用范围；不接收任意网格逐点数组。
 
 `keyform_apply op=seed` 在指定键采样已有形状；`copy` 复制明确来源键；`set` 写通道或旋转形状；`delete` 删除相应键数据。新建参数本身不会产生运动，需要形状与参数绑定。
+
+`keyform_apply op=mirror` 把关键形沿竖直画布线左右镜像，提交时展开为普通 `set`（及 `copy`），重放不再计算镜像：
+
+| 字段 | 含义 |
+| --- | --- |
+| `target` | 来源网格、Warp 或旋转变形器 |
+| `destination` | 同类目标；缺省为 `target`（同一对象）；`auto` 按 ID 或名称中的 L/R、Left/Right、左/右找另一侧对象 |
+| `from` / `all_keys` | 来源键；或 `all_keys: true` 处理来源的全部关键形格点，同一对象时只取 `side`（`positive` 缺省 / `negative`）一侧的键 |
+| `key` | 目标键；缺省由 `from` 推出：左右参数以默认值为中心取反，带侧别的参数（ParamEyeLOpen）在目标绑定其另一侧或两者都未绑定时换成另一侧，目标缺少的轴取默认值。显式给出时须包含目标的全部直接绑定轴 |
+| `reflect` | 取反的参数；缺省为范围以默认值对称、且为二维关联横轴或 ID 以 X、Z 结尾的普通参数 |
+| `axis_x` | 镜像线的画布 x；缺省为两对象默认姿势包围盒中心的中点（同一对象即自身中心） |
+| `channels` | 携带的内容：`geometry` 与 `copy` 的通道名；缺省只镜像几何 |
+
+镜像的是对象自身的形变：两对象的点以默认姿势的父级映射到画布，来源各点相对默认形状的位移取 x 反向后，按目标点的镜像位置在来源三角形（Warp 为格子对角分割）上插值，再映射回目标的父级空间；旋转变形器镜像原点位移并把角度变化取反。对称对象或成对对象点对点对应。不支持融合变形键。
 
 `path_get / path_list / path_preview / path_put / path_delete / path_deform` 点使用 Mesh 局部坐标，支持只读查询、预览、绑定和烘焙关键形。路径是编辑辅助，兼容性见[变形路径](../guide/DEFORM_PATHS.md)。
 

@@ -732,6 +732,8 @@ fun CanvasViewportComposable(
 			ShortcutAction.SELECTION_STYLE_BOX -> { editor.selectionStyle = SelectionStyle.BOX; true }
 			ShortcutAction.SELECTION_STYLE_LASSO -> { editor.selectionStyle = SelectionStyle.LASSO; true }
 			ShortcutAction.SELECT_LINKED -> { editor.selectLinked(); true }
+			ShortcutAction.MIRROR_KEYFORM -> editor.editable && editor.keyformMirrorPlan(CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_KEY) != null &&
+				true.also { editor.mirrorKeyform(CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_KEY) }
 			ShortcutAction.LAYER_TO_FRONT -> viewModel.reorderSelectedLayers("front")
 			ShortcutAction.LAYER_FORWARD -> viewModel.reorderSelectedLayers("forward")
 			ShortcutAction.LAYER_BACKWARD -> viewModel.reorderSelectedLayers("backward")

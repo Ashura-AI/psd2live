@@ -437,7 +437,27 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
         // The whole mesh, made again from the layer's pixels, beside the edits to its points.
         addLayerActions(editor, editor.targetLayerId(target), target?.id)
     }
+    if (!editing && target != null) addKeyformMirror()
     if (editor.tool in SELECTION_TOOLS || editor.tool == CanvasTool.TRANSFORM) addSelectionActions(objectMode = false)
+}
+
+/**
+ * Deform: the keyform mirrors, in one submenu - the key in hand onto its opposite key and back, onto the object on
+ * the other side, flipped in place, and every key at once. Each row names where it writes and is off when it has
+ * nothing to mirror ([CanvasEditor.keyformMirrorPlan]).
+ */
+private fun MutableList<ToolOption>.addKeyformMirror() {
+    add(SectionOption("mirror", "editor.mirror.menu", OptionPlace.MENU, submenu = true, icon = OptionIcon.MIRROR, alwaysFolds = true))
+    for ((action, labelKey) in listOf(
+        CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_KEY to "editor.mirror.toOppositeKey",
+        CanvasEditor.KeyformMirrorAction.FROM_OPPOSITE_KEY to "editor.mirror.fromOppositeKey",
+        CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_OBJECT to "editor.mirror.toOppositeObject",
+        CanvasEditor.KeyformMirrorAction.IN_PLACE to "editor.mirror.inPlace",
+        CanvasEditor.KeyformMirrorAction.ALL_KEYS to "editor.mirror.allKeys",
+        CanvasEditor.KeyformMirrorAction.ALL_KEYS_TO_OBJECT to "editor.mirror.allKeysToObject",
+    )) add(ActionOption("mirror.${action.name.lowercase()}", labelKey, { it.editable && it.keyformMirrorPlan(action) != null },
+        { it.mirrorKeyform(action) }, OptionIcon.MIRROR, labelArgs = { e -> listOf(e.keyformMirrorPlan(action)?.label ?: "…") },
+        place = OptionPlace.MENU))
 }
 
 private val TOPOLOGY_ACTIONS = listOf(

@@ -124,9 +124,28 @@ internal object RigAuthoringJournal {
         require(commands.size in 1..128) { "Use 1..128 edits" }
         var current = model
         val journal = mutableListOf<JsonObject>()
+        fun record(op: String, compiled: JsonObject) {
+            // Ask against the model *before* this command is applied: the question is whether the slot
+            // already holds what the command writes, and applying first would make every command look
+            // like a no-op. Dropping the ineffective ones here is what lets the workspace funnel's
+            // change guard fire — see RigCommandDelta.
+            // A dropped command must not reach the returned model either: replay of the journal never sees
+            // it, and a canvas_geometry edit inside the no-op tolerance still re-derives the mesh's UVs, so
+            // keeping it here would preview pixels the committed rig does not have.
+            val applied = apply(current, compiled)
+            if ((op != "parameter_keys" || applied !== current) && !RigCommandDelta.isNoOp(current, compiled)) {
+                journal += compiled
+                current = applied
+            }
+        }
         for (element in commands) {
             val command = element.jsonObject
             val op = command.text("op")
+            // A mirror is materialized as the sets and copies it computes, each recorded as its own entry.
+            if (op == KeyformMirror.OP) {
+                KeyformMirror.compile(current, command).forEach { record(it.text("op"), it) }
+                continue
+            }
             val compiled = when (op) {
                 "deform", "seed" -> {
                     val ref = target(current, command.text("target"))
@@ -216,18 +235,7 @@ internal object RigAuthoringJournal {
                 "canvas_create_glue", "canvas_glue_edit" -> JsonObject(command - "pose")
                 else -> error("Unknown authoring operation: $op")
             }
-            // Ask against the model *before* this command is applied: the question is whether the slot
-            // already holds what the command writes, and applying first would make every command look
-            // like a no-op. Dropping the ineffective ones here is what lets the workspace funnel's
-            // change guard fire — see RigCommandDelta.
-            // A dropped command must not reach the returned model either: replay of the journal never sees
-            // it, and a canvas_geometry edit inside the no-op tolerance still re-derives the mesh's UVs, so
-            // keeping it here would preview pixels the committed rig does not have.
-            val applied = apply(current, compiled)
-            if ((op != "parameter_keys" || applied !== current) && !RigCommandDelta.isNoOp(current, compiled)) {
-                journal += compiled
-                current = applied
-            }
+            record(op, compiled)
         }
         return current to journal
     }

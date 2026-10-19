@@ -534,6 +534,12 @@ internal fun OptionIconView(icon: OptionIcon, tint: Color) {
         OptionIcon.MATERIAL -> GridIcon(modifier, tint) { box(2f, 6.5f, 8f, 5f, 2.5f); box(8f, 6.5f, 8f, 5f, 2.5f) }
         OptionIcon.UNLINK -> GridIcon(modifier, tint) { box(1f, 6.5f, 6.5f, 5f, 2.5f); box(10.5f, 6.5f, 6.5f, 5f, 2.5f) }
         OptionIcon.PIN -> IconPin(pinned = false, modifier = modifier, tint = tint)
+        // A shape and its reflection across a dashed axis.
+        OptionIcon.MIRROR -> GridIcon(modifier, tint) {
+            outline(path { m(9f, 1.6f); l(9f, 16.4f) }, ICON_FINE, dash = floatArrayOf(1.6f, 1.8f))
+            shape(path { m(6.6f, 4f); l(6.6f, 14f); l(1.8f, 14f); z() })
+            outline(path { m(11.4f, 4f); l(11.4f, 14f); l(16.2f, 14f); z() })
+        }
     }
 }
 

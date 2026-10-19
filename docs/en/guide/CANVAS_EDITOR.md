@@ -54,6 +54,18 @@ A point's shape says what it is: mesh vertices are round, Warp control points sq
 
 Objects without bound parameters edit the base shape; bound objects edit the current parameter combination. When the target is a mesh deformer (Warp), the mode bar switches between **Vertices** (edit the grid points) and **Bezier**: in Bezier only the cyan anchors and amber handles can be dragged, and the detailed grid is dimmed and not editable; for other objects the two do not differ and are not shown. Set the target values in the Parameters panel first, then adjust the control points. Check the object's own axes and the motion inherited from its parents, so a parent's pose is not mistaken for a direct binding of the current object.
 
+**Mirror keyform** in the Deform mode canvas context menu reflects the keyform at the current key across a vertical line. The result is written as ordinary keyforms and can be undone:
+
+| Action | What it does |
+| --- | --- |
+| Mirror to opposite key | Mirrors the current key onto its opposite key (AngleX 30 → −30), then moves the pose there to show the result; shortcut `Shift+M` |
+| Mirror from opposite key | The reverse: the opposite key's shape replaces the current key |
+| Mirror to the opposite object | Writes to the same kind of object on the other side (left eye → right eye); the key is mirrored too: sided parameters switch side (EyeLOpen → EyeROpen) and left-right parameters flip |
+| Flip in place | Flips the current key about the object's own center |
+| Mirror all keys to the other side / to the opposite object | All keys at once; on one object only the keys on the side the pose is on are copied |
+
+Left-right parameters are those whose range is symmetric about the default and that are the horizontal axis of a 2D link or whose ID ends in X or Z (AngleX, AngleZ, BodyAngleX, EyeBallX and so on). The opposite object is paired by layer semantics first, then by L/R, Left/Right or 左/右 in its ID or name. A mirror covers only the object's own deformation, in the frame of its parents at the default pose; mirror the parents' keyforms separately. With several layers selected each mesh is mirrored, committed as one history step.
+
 ## Multiple canvases, parameters and animation
 
 All canvases of a workspace share the parameter pose, parameter locks and playback controls. Switching between edit and preview, changing focus or hiding a canvas never swaps back to another pose. Selection, tool, camera and display settings are still kept per canvas; different workspaces keep their own poses.
