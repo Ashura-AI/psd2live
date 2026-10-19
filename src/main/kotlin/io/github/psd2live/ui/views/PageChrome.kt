@@ -30,7 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -106,6 +105,8 @@ internal fun PageNavGroup(text: String) {
  * A contents row: the tree's selection colours with the menus' accent edge on the selected one. [indent] nests it under
  * a folder row; [trailingContent] sits at its end after [trailing]. A [gutter] colour turns the edge into a thin status
  * bar, like a diff gutter, shown whether or not the row is selected; selection then shows by the row's fill alone.
+ * A [flush] row, and every row with a gutter, fills the list edge to edge with square corners, so a column of them
+ * reads as one strip.
  */
 @Composable
 internal fun PageNavItem(
@@ -119,8 +120,10 @@ internal fun PageNavItem(
 	bold: Boolean = false,
 	trailingContent: (@Composable () -> Unit)? = null,
 	gutter: Color? = null,
+	flush: Boolean = false,
 	icon: (@Composable (Color) -> Unit)? = null,
 ) {
+	val edgeToEdge = flush || gutter != null
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val interaction = remember { MutableInteractionSource() }
@@ -136,10 +139,9 @@ internal fun PageNavItem(
 			// neighbouring rows join into one column; it is drawn over the row so hover and selection never hide it.
 			.then(if (gutter == null) Modifier else Modifier.drawWithContent {
 				drawContent()
-				drawRect(if (enabled) gutter else gutter.copy(alpha = 0.45f), topLeft = Offset(4.dp.toPx(), 0f), size = Size(3.dp.toPx(), size.height))
+				drawRect(if (enabled) gutter else gutter.copy(alpha = 0.45f), size = Size(3.dp.toPx(), size.height))
 			})
-			.padding(horizontal = 4.dp)
-			.clip(RoundedCornerShape(3.dp))
+			.then(if (edgeToEdge) Modifier else Modifier.padding(horizontal = 4.dp).clip(RoundedCornerShape(3.dp)))
 			.background(when {
 				// A row with a gutter is selected and hovered in washes of the gutter's own colour, hover the paler.
 				selected -> gutter?.copy(alpha = 0.18f) ?: colors.selection
@@ -151,8 +153,8 @@ internal fun PageNavItem(
 			.handCursor(enabled),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
-		if (gutter != null) {
-			Spacer(Modifier.width(10.dp + indent))
+		if (edgeToEdge) {
+			Spacer(Modifier.width(14.dp + indent))
 		} else {
 			Box(Modifier.width(2.dp).height(14.dp).clip(RoundedCornerShape(1.dp)).background(if (selected) colors.accent else Color.Transparent))
 			Spacer(Modifier.width(8.dp + indent))

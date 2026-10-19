@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -183,6 +184,7 @@ internal fun HelpNav(selected: HelpTab, page: String, onSelect: (HelpTab) -> Uni
 						bold = depth == 0,
 						onClick = { if (open) expanded -= node.id else expanded += node.id },
 						indent = 12.dp * depth,
+						flush = true,
 						icon = { tint -> IconChevron(open, Modifier.size(11.dp), tint) },
 					)
 					if (open) Tree(node.children, depth + 1)
@@ -220,7 +222,7 @@ internal fun HelpNav(selected: HelpTab, page: String, onSelect: (HelpTab) -> Uni
 					Tree(Manual.trees[root].orEmpty(), 0)
 				}
 				PageNavGroup(tr("help.nav.more"))
-				others.forEach { tab -> PageNavItem(tr(tab.labelKey), tab == selected, onClick = { onSelect(tab) }) }
+				others.forEach { tab -> PageNavItem(tr(tab.labelKey), tab == selected, onClick = { onSelect(tab) }, flush = true) }
 			}
 		}
 	}
@@ -232,12 +234,15 @@ internal fun HelpNav(selected: HelpTab, page: String, onSelect: (HelpTab) -> Uni
 private fun ManualLegend() {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+	FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
 		Manual.Status.entries.forEach { status ->
 			BarTooltip(tr(status.labelKey + ".desc")) {
-				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-					Box(Modifier.width(3.dp).height(12.dp).background(manualStatusColor(status)))
-					Text(tr(status.labelKey), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, maxLines = 1)
+				// Each entry is a small piece of a row: the gutter bar, the row's pale wash, the word.
+				val color = manualStatusColor(status)
+				Row(Modifier.height(18.dp).background(color.copy(alpha = 0.08f)), verticalAlignment = Alignment.CenterVertically) {
+					Box(Modifier.width(3.dp).fillMaxHeight().background(color))
+					Text(tr(status.labelKey), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, maxLines = 1,
+						modifier = Modifier.padding(start = 6.dp, end = 7.dp))
 				}
 			}
 		}
