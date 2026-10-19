@@ -193,9 +193,12 @@ class LayoutManifestScenario {
 			"references ${now.model.referenceLayerIds}, atlas ${now.model.atlas.placementByLayerId.keys}, ${quad().mesh!!.vertexCount} vertices" }
 		apart("apart before generating")
 		val r = now.document.source.layers.single { it.id.raw == hair }.canvasRect()
-		expect("over its rectangle", corners() == listOf(r.left, -r.top, r.right, -r.top, r.right, -r.bottom, r.left, -r.bottom)) { "corners ${corners()} for $r" }
+		expect("over its rectangle", corners() == listOf(r.left, r.top, r.right, r.top, r.right, r.bottom, r.left, r.bottom)) { "corners ${corners()} for $r" }
+		// Evaluated like every root mesh: on the canvas where the rectangle is, not mirrored over its top edge.
+		val world = RigCanvasSupport.evaluateExact(now.model, emptyMap()).worldPositions.getValue(quad().id)
+		expect("drawn over its rectangle", world[1] == -r.top && world[5] == -r.bottom) { "evaluated corners ${world.toList()} for $r" }
 		edit("move the reference", "layer_transform", req("layer_id" to hair, "translate" to listOf(10, 4)))
-		expect("the quad follows", corners().let { it[0] == r.left + 10 && it[1] == -(r.top + 4) }) { "corners ${corners()}" }
+		expect("the quad follows", corners().let { it[0] == r.left + 10 && it[1] == r.top + 4 }) { "corners ${corners()}" }
 
 		edit("generate", "rig_generate", req())
 		expect("out of the rig", hair !in generated() && hair in shown() && "face" in generated()) { "generated ${generated()}, shown ${shown()}" }

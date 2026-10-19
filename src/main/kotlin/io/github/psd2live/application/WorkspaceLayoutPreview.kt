@@ -182,9 +182,9 @@ internal object WorkspaceLayoutPreview {
             val canvas = RasterMeshPlacement.shown(floatArrayOf(r.left, r.top, r.right, r.top, r.right, r.bottom, r.left, r.bottom), layer.transform)
             val id = meshId(layer.id.raw)
             bounds[id] = Bounds(r.left, r.top, r.right, r.bottom)
-            // Root meshes are in canvas units with y up.
+            // Root meshes are in canvas units, y down as the canvas runs; evaluation turns them into world space.
             Drawable(DrawableId(id), layer.name, null, BlendMode.Normal, emptyList(),
-                DrawableMesh(FloatArray(8) { if (it % 2 == 1) -canvas[it] else canvas[it] }, floatArrayOf(0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f), intArrayOf(0, 1, 2, 0, 2, 3)),
+                DrawableMesh(canvas, floatArrayOf(0f, 0f, 1f, 0f, 1f, 1f, 0f, 1f), intArrayOf(0, 1, 2, 0, 2, 3)),
                 null, drawOrder = REFERENCE_DRAW_ORDER, opacity = layer.opacity)
         }
         val puppet = model.rig.puppet
