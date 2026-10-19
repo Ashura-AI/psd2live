@@ -101,7 +101,8 @@ internal fun PageNavGroup(text: String) {
 
 /**
  * A contents row: the tree's selection colours with the menus' accent edge on the selected one. [indent] nests it under
- * a folder row; [trailingContent] sits at its end after [trailing].
+ * a folder row; [trailingContent] sits at its end after [trailing]. A [gutter] colour turns the edge into a thin status
+ * bar, like a diff gutter, shown whether or not the row is selected; selection then shows by the row's fill alone.
  */
 @Composable
 internal fun PageNavItem(
@@ -114,6 +115,7 @@ internal fun PageNavItem(
 	indent: Dp = 0.dp,
 	bold: Boolean = false,
 	trailingContent: (@Composable () -> Unit)? = null,
+	gutter: Color? = null,
 	icon: (@Composable (Color) -> Unit)? = null,
 ) {
 	val colors = LocalToolColors.current
@@ -138,8 +140,13 @@ internal fun PageNavItem(
 			.handCursor(enabled),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
-		Box(Modifier.width(2.dp).height(14.dp).clip(RoundedCornerShape(1.dp)).background(if (selected) colors.accent else Color.Transparent))
-		Spacer(Modifier.width(8.dp + indent))
+		if (gutter != null) {
+			Box(Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(1.5.dp)).background(if (enabled) gutter else gutter.copy(alpha = 0.45f)))
+			Spacer(Modifier.width(7.dp + indent))
+		} else {
+			Box(Modifier.width(2.dp).height(14.dp).clip(RoundedCornerShape(1.dp)).background(if (selected) colors.accent else Color.Transparent))
+			Spacer(Modifier.width(8.dp + indent))
+		}
 		if (icon != null) {
 			Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
 				icon(if (selected) colors.selectionText else if (enabled) colors.textMuted else colors.textDisabled)

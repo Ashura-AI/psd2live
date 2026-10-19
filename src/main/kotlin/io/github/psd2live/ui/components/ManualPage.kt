@@ -37,9 +37,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
@@ -177,31 +174,15 @@ internal fun manualInline(
 	append(text.substring(last))
 }
 
-/**
- * The chip that says how a page compares with Cubism, in the status' colour. Every chip is as wide as the widest
- * status label in the current language, so a column of them lines up whatever each one says.
- */
+/** The chip in a page's heading that says how it compares with Cubism, in the status' colour. */
 @Composable
-internal fun ManualStatusTag(status: Manual.Status, modifier: Modifier = Modifier, compact: Boolean = false) {
+internal fun ManualStatusTag(status: Manual.Status, modifier: Modifier = Modifier) {
 	val color = manualStatusColor(status)
-	val style = TextStyle(fontSize = if (compact) 8.5.sp else 10.sp, fontWeight = FontWeight.SemiBold)
-	val padding = if (compact) 4.dp else 6.dp
-	val measurer = rememberTextMeasurer()
-	val density = LocalDensity.current
-	val language = I18n.currentLanguage
-	val width = remember(language, compact, density) {
-		val widest = Manual.Status.entries.maxOf { measurer.measure(tr(it.labelKey), style, maxLines = 1).size.width }
-		with(density) { widest.toDp() } + padding * 2
-	}
-	Box(
-		modifier.width(width).clip(RoundedCornerShape(3.dp)).background(color.copy(alpha = 0.16f))
-			.padding(vertical = if (compact) 0.dp else 1.dp),
-		contentAlignment = Alignment.Center,
-	) {
-		Text(tr(status.labelKey), style = style, color = color, maxLines = 1, softWrap = false)
-	}
+	Text(tr(status.labelKey), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = color, maxLines = 1, softWrap = false,
+		modifier = modifier.clip(RoundedCornerShape(3.dp)).background(color.copy(alpha = 0.16f)).padding(horizontal = 6.dp, vertical = 1.dp))
 }
 
+/** A status' colour: the manual contents' gutter bars and the page heading's chip. */
 @Composable
 internal fun manualStatusColor(status: Manual.Status): Color {
 	val colors = LocalToolColors.current

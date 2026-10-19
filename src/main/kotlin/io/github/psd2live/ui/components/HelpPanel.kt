@@ -34,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.agent.AgentOperationDoc
@@ -46,6 +45,11 @@ import io.github.psd2live.ui.views.PageNavGroup
 import io.github.psd2live.ui.state.Keymap
 import io.github.psd2live.ui.views.PanelSearch
 import io.github.psd2live.ui.views.PanelToolbar
+import io.github.psd2live.ui.views.PanelExpandCollapseButtons
+import io.github.psd2live.ui.views.texture.BarTooltip
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.draw.clip
 import io.github.psd2live.ui.state.HelpTab
 import io.github.psd2live.ui.views.PageBody
 import io.github.psd2live.ui.views.PageNavItem
@@ -162,7 +166,7 @@ internal fun HelpNav(selected: HelpTab, page: String, onSelect: (HelpTab) -> Uni
 		enabled = node.opens,
 		onClick = { onOpenPage(node.id) },
 		indent = 12.dp * depth,
-		trailingContent = { ManualStatusTag(node.status, compact = true) },
+		gutter = manualStatusColor(node.status),
 		// An empty chevron slot: a page's title starts where its folder's children start, past the folder's own.
 		icon = {},
 	)
@@ -189,7 +193,15 @@ internal fun HelpNav(selected: HelpTab, page: String, onSelect: (HelpTab) -> Uni
 	}
 
 	Column(Modifier.fillMaxSize()) {
-		PanelToolbar(search = PanelSearch(query, { query = it }, tr("help.manual.filter"))) { Spacer(Modifier.weight(1f)) }
+		val folders = remember { Manual.trees.values.flatMap { Manual.flatten(it) }.filterIsInstance<Manual.Folder>().map { it.id } }
+		PanelToolbar(iconCount = 2, search = PanelSearch(query, { query = it }, tr("help.manual.filter"))) {
+			Spacer(Modifier.weight(1f))
+			PanelExpandCollapseButtons(
+				onExpandAll = { expanded.clear(); expanded += folders },
+				onCollapseAll = { expanded.clear(); expanded += Manual.ancestors(page).map { it.id }.filter { inTree } },
+				enabled = needle.isEmpty(),
+			)
+		}
 		PageNavList(
 			onStep = { step ->
 				if (stops.isNotEmpty()) {
@@ -214,16 +226,20 @@ internal fun HelpNav(selected: HelpTab, page: String, onSelect: (HelpTab) -> Uni
 	}
 }
 
-/** What the four tags mean, under the contents: each tag with its sentence. */
+/** What the gutter colours mean, under the contents: one bar and word each, the sentence on hover. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ManualLegend() {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	Manual.Status.entries.forEach { status ->
-		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-			ManualStatusTag(status, compact = true)
-			Text(tr(status.labelKey + ".desc"), style = typography.caption.copy(fontSize = 9.5.sp, lineHeight = 12.sp),
-				color = colors.textMuted, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+	FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+		Manual.Status.entries.forEach { status ->
+			BarTooltip(tr(status.labelKey + ".desc")) {
+				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+					Box(Modifier.width(3.dp).height(11.dp).clip(RoundedCornerShape(1.5.dp)).background(manualStatusColor(status)))
+					Text(tr(status.labelKey), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted, maxLines = 1)
+				}
+			}
 		}
 	}
 }
