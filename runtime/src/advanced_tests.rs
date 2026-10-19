@@ -36,7 +36,7 @@ const ELBOW: [f32; 2] = [0.0, 100.0];
 /// An upper arm (home, at the origin) and a forearm turning about the elbow on parameter 0. The mesh hangs
 /// from the upper arm: its first two vertices on the upper arm, the rest along the forearm, baked rigidly at
 /// every key and so interpolated along chords between them.
-fn arm() -> (Rig, Vec<f32>) {
+pub(crate) fn arm() -> (Rig, Vec<f32>) {
     let forearm: Vec<[f32; 2]> = vec![[10.0, 40.0], [-10.0, 80.0], [0.0, 60.0], [20.0, 120.0], [-15.0, 160.0]];
     let rest: Vec<f32> = forearm.iter().enumerate().flat_map(|(i, p)| if i < 2 { [p[0], p[1]] } else { [p[0] + ELBOW[0], p[1] + ELBOW[1]] }).collect();
     let offsets = KEYS.iter().map(|k| {

@@ -35,6 +35,7 @@ import kotlin.test.Test
  *
  * - PSD2LIVE_WORKSPACE: a workspace preset (PREVIEW, ANIMATION, PHYSICS, EDIT, ...) or ID; default the opening one
  * - PSD2LIVE_BACKENDS: CUBISM,P2LRT (default both)
+ * - PSD2LIVE_ADVANCED=1: p2lrt's advanced mode, including paused live simulation and its availability status
  * - PSD2LIVE_VSYNC=0: frames as fast as they render, so the period is the cost rather than a multiple of the refresh
  * - PSD2LIVE_ADAPTIVE=1: vsync stops waiting while frames miss the refresh (AdaptiveVsync)
  * - PSD2LIVE_GPU=1: Skia's flush of each frame on the CPU, and the frame's GPU time (timer queries)
@@ -105,7 +106,7 @@ class PreviewFpsTool {
 				else workspace.importPsd(path.toString(), true)
 			}
 			waitFor(60, "model") { vm.state.value.previewModel != null && !vm.state.value.isBusy }
-			SwingUtilities.invokeAndWait { vm.dismissMeshSplitBatch() }
+			SwingUtilities.invokeAndWait { vm.leaveStartPage(); vm.dismissMeshSplitBatch() }
 			System.getenv("PSD2LIVE_WORKSPACE")?.takeIf { it.isNotBlank() }?.let { name ->
 				SwingUtilities.invokeAndWait {
 					vm.setActiveWorkspace(vm.state.value.workspaces.firstOrNull { it.id == name || it.preset.name.equals(name, true) }?.id ?: name)
@@ -132,12 +133,22 @@ class PreviewFpsTool {
 			val backends = setting("PSD2LIVE_BACKENDS", PreviewBackend.entries.joinToString(",") { it.name })
 				.split(',').map { PreviewBackend.valueOf(it.trim()) }
 			for (backend in if (scrub == CanvasMode.EDIT) backends.take(1) else backends) {
-				SwingUtilities.invokeAndWait { vm.selectPreviewBackend(backend) }
+				SwingUtilities.invokeAndWait {
+					io.github.psd2live.ui.state.AppSettings.previewAdvanced = setting("PSD2LIVE_ADVANCED", "0") == "1"
+					vm.selectPreviewBackend(backend)
+				}
 				val key = vm.canvasRenderKey(vm.state.value.activeCanvas.id, CanvasMode.PREVIEW)
 				val flow = vm.sdkFrameFor(key)
 				if (scrub != CanvasMode.EDIT) runCatching { waitFor(60, "$backend frames") { flow.value?.backend == backend } }
-					.onFailure { report.appendLine("$backend: ${it.message}; status ${vm.state.value.sdkStatus}"); continue }
+					.onFailure {
+						report.appendLine("$backend: ${it.message}; status ${vm.state.value.sdkStatus}")
+						report.appendLine(capture(window.get()!!, File(out, "${backend.name.lowercase()}-failed.png")))
+						if (backend == PreviewBackend.P2LRT) throw it
+						continue
+					}
 				Thread.sleep(1500)
+				report.appendLine("$backend advanced: requested ${io.github.psd2live.ui.state.AppSettings.previewAdvanced}, " +
+					"active ${flow.value?.advanced}, available ${flow.value?.advancedAvailable}")
 				val label = when {
 					gesture != null -> "edit $gesture"
 					scrub == CanvasMode.EDIT -> "edit scrub"

@@ -51,6 +51,32 @@ fn current(handle: *mut Handle) -> f32 {
 }
 
 #[test]
+fn model_instances_reuse_fitted_skinning_and_keep_their_poses_independent() {
+    let model = Arc::new(Model::new(crate::advanced_tests::arm().0));
+    let first = Box::into_raw(Box::new(Handle::new(model.clone())));
+    let second = Box::into_raw(Box::new(Handle::new(model.clone())));
+    unsafe {
+        assert_eq!(p2l_set_advanced(first, crate::advanced::SKIN), crate::advanced::SKIN);
+        let fitted = model.skinning[1].get().unwrap().clone();
+        assert_eq!(Arc::strong_count(&fitted), 3); // model, first rig and this reference
+        p2l_set_advanced(second, crate::advanced::SKIN);
+        assert_eq!(Arc::strong_count(&fitted), 4);
+        p2l_set_parameter(first, 0, 15.0);
+        p2l_set_parameter(second, 0, -45.0);
+        p2l_evaluate(first);
+        p2l_evaluate(second);
+        let vertices = (*first).evaluator.pose.vertices.clone();
+        assert_ne!(vertices, (*second).evaluator.pose.vertices);
+        p2l_set_advanced(first, 0);
+        p2l_set_advanced(first, crate::advanced::SKIN);
+        assert!(Arc::ptr_eq(&fitted, model.skinning[1].get().unwrap()));
+        assert_eq!((*first).evaluator.pose.vertices, vertices);
+        p2l_rig_free(first);
+        p2l_rig_free(second);
+    }
+}
+
+#[test]
 fn a_panic_fails_the_handle_instead_of_unwinding_into_the_host() {
     let handle = rig_on(triangle(None));
     unsafe {

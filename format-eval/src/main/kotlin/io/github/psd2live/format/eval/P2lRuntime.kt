@@ -21,6 +21,9 @@ public class P2lRuntime private constructor(private val native: Bindings) {
 	private interface Bindings : Library {
 		fun p2l_rig_load(bytes: ByteArray, len: Long, error: ByteArray, errorCapacity: Long): Pointer?
 		fun p2l_rig_free(rig: Pointer)
+		fun p2l_model_load(bytes: ByteArray, len: Long, flags: Int, error: ByteArray, errorCapacity: Long): Pointer?
+		fun p2l_model_free(model: Pointer)
+		fun p2l_rig_create(model: Pointer, error: ByteArray, errorCapacity: Long): Pointer?
 		fun p2l_rig_failure(rig: Pointer): String?
 		fun p2l_version(): String
 		fun p2l_abi_version(): Int
@@ -29,6 +32,7 @@ public class P2lRuntime private constructor(private val native: Bindings) {
 		fun p2l_parameter_values(rig: Pointer): Pointer
 		fun p2l_evaluate(rig: Pointer)
 		fun p2l_update(rig: Pointer, dt: Float)
+		fun p2l_update_stages(rig: Pointer, dt: Float, stages: Int)
 		fun p2l_physics_reset(rig: Pointer)
 		fun p2l_clip_count(rig: Pointer): Int
 		fun p2l_clip_id(rig: Pointer, index: Int): String?
@@ -78,6 +82,28 @@ public class P2lRuntime private constructor(private val native: Bindings) {
 
 	public fun load(ir: RigIR): Rig = load(P2lrt.write(ir))
 
+	/** Reads a model once; instances share its immutable data and fitted skinning, with independent poses and simulation. */
+	public fun loadModel(bytes: ByteArray): Model {
+		val error = ByteArray(512)
+		val handle = native.p2l_model_load(bytes, bytes.size.toLong(), 0, error, error.size.toLong())
+			?: throw IllegalArgumentException(error.toString(Charsets.UTF_8).substringBefore('\u0000'))
+		return Model(handle)
+	}
+
+	public inner class Model internal constructor(private var handle: Pointer?) : AutoCloseable {
+		@Synchronized public fun createRig(): Rig {
+			val error = ByteArray(512)
+			val rig = native.p2l_rig_create(checkNotNull(handle) { "The model is closed" }, error, error.size.toLong())
+				?: throw IllegalArgumentException(error.toString(Charsets.UTF_8).substringBefore('\u0000'))
+			return Rig(rig)
+		}
+
+		@Synchronized override fun close() {
+			handle?.let(native::p2l_model_free)
+			handle = null
+		}
+	}
+
 	/** One loaded rig. Not thread-safe; [close] frees it. */
 	public inner class Rig internal constructor(private var handle: Pointer?) : AutoCloseable {
 		private fun h() = checkNotNull(handle) { "The rig is closed" }
@@ -112,6 +138,12 @@ public class P2lRuntime private constructor(private val native: Bindings) {
 		/** Advances clips and physics by [dt] seconds, then evaluates; throws as [evaluate] does. */
 		public fun update(dt: Float) {
 			native.p2l_update(h(), dt)
+			checkWorking()
+		}
+
+		/** Advances only live simulation over the host's complete pose; motion and physics are already composed by the host. */
+		public fun updateSimulation(dt: Float) {
+			native.p2l_update_stages(h(), dt, 32) // P2L_STAGE_SIM
 			checkWorking()
 		}
 
@@ -177,7 +209,11 @@ public class P2lRuntime private constructor(private val native: Bindings) {
 		public val advancedAvailable: Int get() = native.p2l_advanced_available(h())
 
 		/** Turns advanced [features] on, the rest off; returns those now on. */
-		public fun setAdvanced(features: Int): Int = native.p2l_set_advanced(h(), features)
+		public fun setAdvanced(features: Int): Int {
+			val enabled = native.p2l_set_advanced(h(), features)
+			checkWorking()
+			return enabled
+		}
 
 		public fun resetSimulation(): Unit = native.p2l_sim_reset(h())
 

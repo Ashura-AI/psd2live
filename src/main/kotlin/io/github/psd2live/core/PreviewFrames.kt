@@ -22,6 +22,8 @@ data class PreviewFrame(
 	val backend: PreviewBackend = PreviewBackend.CUBISM,
 	/** Drawn with the runtime's advanced mode (skinning, exact links, live simulation). */
 	val advanced: Boolean = false,
+	/** Features carried by the compiled model (skin 1, exact links 2, simulation 4, collision 8). */
+	val advancedAvailable: Int = 0,
 )
 
 /** One frame a preview canvas asks for. Camera values are Cubism's: [scale] fits the canvas height, offsets in clip units. */
@@ -48,8 +50,9 @@ data class PreviewRenderRequest(
 	/** The p2lrt runtime's advanced mode; Cubism ignores it. */
 	val advanced: Boolean = false,
 	/**
-	 * The preview's physics switch. In p2lrt's advanced mode it, not playback, runs the live simulation and the
-	 * runtime's physics: on, they step with the frame clock even while paused; off, the baked swing shows.
+	 * The preview's physics switch. In p2lrt's advanced mode it controls live simulation independently of playback:
+	 * on, simulation steps with the frame clock even while paused; off, the baked swing shows. Physics is
+	 * already present in the workspace pose and is never evaluated a second time by the preview.
 	 */
 	val physics: Boolean = true,
 )

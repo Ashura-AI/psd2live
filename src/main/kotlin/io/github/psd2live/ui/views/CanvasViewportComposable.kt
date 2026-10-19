@@ -433,6 +433,8 @@ fun CanvasViewportComposable(
 		.collectAsState(frameFlow.value?.backend)
 	val sdkFrameAdvanced by remember(frameFlow) { frameFlow.map { it?.advanced == true }.distinctUntilChanged() }
 		.collectAsState(frameFlow.value?.advanced == true)
+	val sdkFrameAdvancedAvailable by remember(frameFlow) { frameFlow.map { it?.advancedAvailable ?: 0 }.distinctUntilChanged() }
+		.collectAsState(frameFlow.value?.advancedAvailable ?: 0)
 	val simulatedFrame by viewModel.simulationFrames.collectAsState()
 	// The Layout reference images and their pixels, laid over or under Edit canvases; follows only those parts of the state.
 	val layoutReferences by remember(viewModel) {
@@ -2026,7 +2028,11 @@ fun CanvasViewportComposable(
 					sdkFrameBackend == io.github.psd2live.core.PreviewBackend.P2LRT -> "${fpsStr}${tr(
 						if (previewModel.hasRuntimePhysics) "canvas.preview.p2lrtPhysicsOn" else "canvas.preview.p2lrtPhysicsOff",
 						zoomPct,
-					)}" + if (sdkFrameAdvanced) tr("canvas.preview.advancedOn") else ""
+					)}" + when {
+						sdkFrameAdvanced -> tr("canvas.preview.advancedOn")
+						previewAdvanced -> tr(if (sdkFrameAdvancedAvailable == 0) "canvas.preview.advancedUnavailable" else "canvas.preview.advancedNeedsPhysics")
+						else -> ""
+					}
 					sdkFrameBackend != null -> "${fpsStr}${tr(
 						if (previewModel.hasRuntimePhysics) "canvas.preview.cubismPhysicsOn" else "canvas.preview.cubismPhysicsOff",
 						zoomPct,

@@ -70,6 +70,8 @@ struct Group {
 /// What every rig loaded from one file shares, read-only: the rig and the strings and indices handed out about it.
 pub struct Model {
     rig: Rig,
+    /// Fitted skinning for each SKIN/EXACT_LINKS combination, initialized by a host's preparation thread.
+    skinning: [std::sync::OnceLock<Arc<crate::advanced::PreparedSkinning>>; 4],
     parameter_ids: Vec<CString>,
     parameter_names: Vec<CString>,
     mesh_ids: Vec<CString>,
@@ -158,6 +160,7 @@ impl Model {
         let gui = rig.gui.as_ref();
         let gui_nodes = gui.map_or(&[][..], |g| &g.nodes[..]);
         Model {
+            skinning: std::array::from_fn(|_| std::sync::OnceLock::new()),
             parameter_ids: c_strings(rig.parameters.iter().map(|p| &p.id)),
             parameter_names: c_strings(rig.parameters.iter().map(|p| &p.name)),
             mesh_ids: c_strings(rig.meshes.iter().map(|m| &m.id)),
@@ -1692,7 +1695,10 @@ pub unsafe extern "C" fn p2l_advanced_available(handle: *const Handle) -> u32 {
 #[no_mangle]
 pub unsafe extern "C" fn p2l_set_advanced(handle: *mut Handle, features: u32) -> u32 {
     with_mut!(handle, 0, |h| {
-        let on = h.advanced.set(&h.model.rig, features);
+        let features = features & Advanced::available(&h.model.rig);
+        let key = (features & (crate::advanced::SKIN | crate::advanced::EXACT_LINKS)) as usize;
+        let skinning = h.model.skinning[key].get_or_init(|| Advanced::prepare_skinning(&h.model.rig, features)).clone();
+        let on = h.advanced.set_prepared(&h.model.rig, features, skinning);
         evaluate(h);
         track_changes(h);
         on

@@ -15,6 +15,7 @@
 use crate::eval::{deformer_frame, mesh_local, span, Pose, Transform};
 use crate::rig::{Rig, Skin};
 use crate::sim::{self, PlacedCollider, SimState, Solver};
+use std::sync::Arc;
 
 pub const SKIN: u32 = 1;
 pub const EXACT_LINKS: u32 = 2;
@@ -90,6 +91,15 @@ struct SkinState {
     weight: Vec<f32>,
 }
 
+/// Pose-independent skinning data, shared by instances of a model. Exact links change the fitted frames,
+/// so each combination of SKIN and EXACT_LINKS has its own preparation.
+#[derive(Default)]
+pub(crate) struct PreparedSkinning {
+    skins: Vec<SkinState>,
+    skin_of: Vec<Option<usize>>,
+    arc_of: Vec<Option<usize>>,
+}
+
 /// One simulation as it runs: its particles, and the time not yet stepped.
 struct SimRun {
     state: SimState,
@@ -115,11 +125,7 @@ pub struct Advanced {
     /// Wind the host adds to every simulation, world space (y up).
     wind: [f32; 2],
     enabled: u32,
-    skins: Vec<SkinState>,
-    /// The skin of each mesh, by index into [skins].
-    skin_of: Vec<Option<usize>>,
-    /// The arc of each deformer, by index into the rig's arcs.
-    arc_of: Vec<Option<usize>>,
+    skinning: Arc<PreparedSkinning>,
     cells: Vec<(usize, f32)>,
 }
 
@@ -143,25 +149,38 @@ impl Advanced {
 
     /// Turns on [features] that [rig] offers, the rest off; returns those now on.
     pub fn set(&mut self, rig: &Rig, features: u32) -> u32 {
+        self.set_prepared(rig, features, Self::prepare_skinning(rig, features))
+    }
+
+    pub(crate) fn prepare_skinning(rig: &Rig, features: u32) -> Arc<PreparedSkinning> {
         let features = features & Advanced::available(rig);
-        self.arc_of = vec![None; rig.deformer_count_with_bones()];
+        let mut prepared = PreparedSkinning {
+            skin_of: vec![None; rig.meshes.len()],
+            arc_of: vec![None; rig.deformer_count_with_bones()],
+            ..Default::default()
+        };
         if features & EXACT_LINKS != 0 {
             for (i, arc) in rig.extensions.arcs.iter().enumerate() {
-                self.arc_of[arc.deformer] = Some(i);
+                prepared.arc_of[arc.deformer] = Some(i);
             }
         }
         // The arcs shape the bone frames the skins are fitted to.
-        self.enabled = features & EXACT_LINKS;
-        self.skins.clear();
-        self.skin_of = vec![None; rig.meshes.len()];
+        let mut fitting = Advanced { enabled: features & EXACT_LINKS, skinning: Arc::new(prepared), ..Default::default() };
         if features & SKIN != 0 {
             for (i, skin) in rig.extensions.skins.iter().enumerate() {
-                if let Some(state) = self.prepare(rig, i, skin) {
-                    self.skin_of[skin.mesh] = Some(self.skins.len());
-                    self.skins.push(state);
+                if let Some(state) = fitting.prepare(rig, i, skin) {
+                    let prepared = Arc::get_mut(&mut fitting.skinning).unwrap();
+                    prepared.skin_of[skin.mesh] = Some(prepared.skins.len());
+                    prepared.skins.push(state);
                 }
             }
         }
+        fitting.skinning
+    }
+
+    pub(crate) fn set_prepared(&mut self, rig: &Rig, features: u32, skinning: Arc<PreparedSkinning>) -> u32 {
+        let features = features & Advanced::available(rig);
+        self.skinning = skinning;
         // Collision only acts inside a simulation.
         let features = if features & SIM == 0 { features & !COLLISION } else { features };
         self.runs = if features & SIM == 0 { Vec::new() } else { rig.extensions.simulations.iter().map(SimRun::new).collect() };
@@ -321,7 +340,7 @@ impl Advanced {
         if self.enabled & EXACT_LINKS == 0 {
             return None;
         }
-        self.arc_of.get(d).copied().flatten().map(|i| &rig.extensions.arcs[i])
+        self.skinning.arc_of.get(d).copied().flatten().map(|i| &rig.extensions.arcs[i])
     }
 
     /// The frames of the [needed] deformers and virtual bones at [values].
@@ -469,8 +488,8 @@ impl Advanced {
         if self.enabled & SKIN == 0 {
             return;
         }
-        let Some(index) = self.skin_of.get(m).copied().flatten() else { return };
-        let state = &self.skins[index];
+        let Some(index) = self.skinning.skin_of.get(m).copied().flatten() else { return };
+        let state = &self.skinning.skins[index];
         let skin = &rig.extensions.skins[state.skin];
         let home = rig.meshes[m].parent.expect("a skinned mesh hangs from its home");
         let mut cells = std::mem::take(&mut self.cells);

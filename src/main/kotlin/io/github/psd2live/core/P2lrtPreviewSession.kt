@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.SwingUtilities
 
@@ -20,13 +21,16 @@ import javax.swing.SwingUtilities
  *
  * Like the Cubism session, the workspace clock supplies the whole pose and the runtime only evaluates it. In
  * advanced mode each view's rig also steps its live simulation and skins along arcs (`p2l_set_advanced`); the
- * runtime's own physics then follows the same inputs as the editor's, and its idle behaviors stay off.
+ * workspace's physics is kept as supplied, and the runtime's idle behaviors stay off. Skinning is fitted on the
+ * compiler thread and shared by all views of the loaded model.
  */
 class P2lrtPreviewSession(
 	private val onFrame: (PreviewFrame) -> Unit,
 	private val onStatus: (String?) -> Unit,
 ) : AutoCloseable {
-	private class Loaded(val generation: Long, val bytes: ByteArray, val pages: List<java.awt.image.BufferedImage>)
+	private class Loaded(val generation: Long, val model: P2lRuntime.Model, val pages: List<java.awt.image.BufferedImage>)
+	private class PendingModel(val generation: Long, val model: RigPreviewModel)
+	private class Delivery(val generation: Long, val frame: PreviewFrame)
 
 	private class View(val rig: P2lRuntime.Rig, val gpu: WindowGpu, val generation: Long) {
 		var advanced = -1
@@ -44,13 +48,13 @@ class P2lrtPreviewSession(
 
 	private val compiler = Executors.newSingleThreadExecutor { Thread(it, "p2lrt-preview-compile").apply { isDaemon = true } }
 	private val latestRender = CanvasLatestQueue<PreviewRenderRequest>()
-	private val renderScheduled = ConcurrentHashMap<WindowGpu, AtomicBoolean>()
-	private val latestDelivery = CanvasLatestQueue<PreviewFrame>()
+	private val renderScheduled = ConcurrentHashMap<WindowGpu, CanvasRenderWake>()
+	private val latestDelivery = CanvasLatestQueue<Delivery>()
 	private val deliveryScheduled = AtomicBoolean(false)
-	private val pendingModel = AtomicReference<RigPreviewModel?>(null)
+	private val pendingModel = AtomicReference<PendingModel?>(null)
 	private val compileScheduled = AtomicBoolean(false)
 	private val lock = Any()
-	@Volatile private var generation = 0L
+	private val generation = AtomicLong()
 	@Volatile private var loaded: Loaded? = null
 	@Volatile private var closed = false
 	private var runtime: P2lRuntime? = null
@@ -64,8 +68,10 @@ class P2lrtPreviewSession(
 	/** Compiles [model] to `.p2lrt` in the background and plays it; requests coalesce to the newest model. */
 	fun load(model: RigPreviewModel) {
 		if (closed) return
-		generation++
-		pendingModel.set(model)
+		synchronized(lock) {
+			if (closed) return
+			pendingModel.set(PendingModel(generation.incrementAndGet(), model))
+		}
 		scheduleCompile()
 	}
 
@@ -81,21 +87,39 @@ class P2lrtPreviewSession(
 	private fun drainCompiles() {
 		try {
 			while (!closed) {
-				val model = pendingModel.getAndSet(null) ?: break
-				val target = generation
+				val pending = pendingModel.getAndSet(null) ?: break
+				val model = pending.model
+				val target = pending.generation
 				val result = runCatching {
 					val rt = synchronized(lock) {
 						runtime ?: (P2lRuntime.load() ?: error("The PSD2Live runtime library is not available")).also { runtime = it }
 					}
 					val bytes = P2lrt.write(RigIrCompiler.compile(model, simulations = true))
-					rt.load(bytes).close() // validated here, off the render thread
-					Loaded(target, bytes, model.atlas.pages.map { it.image })
+					val shared = rt.loadModel(bytes)
+					try {
+						shared.createRig().use { rig ->
+							// Fitting is cached on the shared native model, including for future views and mode switches.
+							rig.setAdvanced(rig.advancedAvailable)
+						}
+						Loaded(target, shared, model.atlas.pages.map { it.image })
+					} catch (failure: Throwable) {
+						shared.close()
+						throw failure
+					}
 				}
-				result.onFailure { postStatus("compile p2lrt: ${it.message ?: it.javaClass.simpleName}") }
+				result.onFailure {
+					synchronized(lock) {
+						if (target == generation.get()) { loaded?.model?.close(); loaded = null }
+					}
+					postStatus("compile p2lrt: ${it.message ?: it.javaClass.simpleName}", target)
+				}
 				val next = result.getOrNull() ?: continue
-				if (target != generation) continue
-				loaded = next
-				postStatus("ready")
+				val accepted = synchronized(lock) {
+					if (closed || target != generation.get()) false
+					else { loaded?.model?.close(); loaded = next; true }
+				}
+				if (!accepted) { next.model.close(); continue }
+				postStatus("ready", target)
 				// Every view renders its last request again with the new rig.
 				val gpus = synchronized(lock) { lastRequests.values.mapNotNull { it.gpu }.toSet() }
 				gpus.forEach(::scheduleRender)
@@ -109,15 +133,26 @@ class P2lrtPreviewSession(
 	fun render(request: PreviewRenderRequest) {
 		if (closed || request.width <= 0 || request.height <= 0) return
 		val gpu = request.gpu ?: return postStatus("The preview needs a window drawn with OpenGL")
-		latestRender.put(request.viewId, request)
-		synchronized(lock) { lastRequests[request.viewId] = request }
+		synchronized(lock) {
+			if (closed) return
+			lastRequests[request.viewId] = request
+			latestRender.put(request.viewId, request)
+		}
 		scheduleRender(gpu)
 	}
 
 	private fun scheduleRender(gpu: WindowGpu) {
-		val flag = renderScheduled.getOrPut(gpu) { AtomicBoolean(false) }
-		if (closed || loaded == null || !flag.compareAndSet(false, true)) return
-		gpu.post { resources -> try { drainRenders(gpu, resources) } finally { flag.set(false) } }
+		val wake = renderScheduled.getOrPut(gpu) { CanvasRenderWake() }
+		if (closed || loaded == null || !wake.request()) return
+		postRender(gpu, wake)
+	}
+
+	private fun postRender(gpu: WindowGpu, wake: CanvasRenderWake) {
+		gpu.post { resources ->
+			wake.begin()
+			try { drainRenders(gpu, resources) }
+			finally { if (wake.finish() && !closed) postRender(gpu, wake) }
+		}
 	}
 
 	private fun drainRenders(gpu: WindowGpu, resources: GpuResources) {
@@ -133,19 +168,22 @@ class P2lrtPreviewSession(
 		others.forEach { latestRender.putIfAbsent(it.viewId, it) }
 		// A new rig redraws this window's views that asked for nothing since.
 		val stale = synchronized(lock) {
-			lastRequests.values.filter { it.gpu === gpu && it.viewId !in rendered && views[it.viewId]?.generation != current.generation }
+			lastRequests.values.filter {
+				it.gpu === gpu && it.viewId !in rendered &&
+					(views[it.viewId]?.generation != current.generation || views[it.viewId]?.gpu !== gpu)
+			}
 		}
 		stale.forEach { renderFrame(current, resources, gpu, it) }
 		others.mapNotNull { it.gpu }.toSet().forEach(::scheduleRender)
 	}
 
 	private fun renderFrame(current: Loaded, resources: GpuResources, gpu: WindowGpu, request: PreviewRenderRequest): Unit = synchronized(lock) {
-		val rt = runtime ?: return
+		if (closed || loaded !== current || lastRequests[request.viewId]?.gpu !== gpu) return
 		try {
 			var view = views[request.viewId]
 			if (view == null || view.generation != current.generation || view.gpu !== gpu) {
 				view?.rig?.close()
-				view = View(rt.load(current.bytes).also { it.behaviors(0) }, gpu, current.generation)
+				view = View(current.model.createRig().also { it.behaviors(0) }, gpu, current.generation)
 				views[request.viewId] = view
 			}
 			val context = resources.service(serviceKey) { ContextRenderer(P2lrtGlRenderer()) }
@@ -165,8 +203,6 @@ class P2lrtPreviewSession(
 			}
 			if (view.advanced != features) {
 				rig.setAdvanced(features)
-				rig.resetPhysics()
-				if (features and SIM != 0) rig.resetSimulation()
 				view.advanced = features
 				view.lastFrameNanos = 0L
 			}
@@ -179,7 +215,7 @@ class P2lrtPreviewSession(
 				// Stepped by the frame clock, not playback: a paused preview with physics on keeps swinging.
 				val elapsed = if (view.lastFrameNanos == 0L) 0f else ((request.frameTimeNanos - view.lastFrameNanos) / 1e9f).coerceIn(0f, 0.1f)
 				view.lastFrameNanos = request.frameTimeNanos
-				rig.update(elapsed)
+				rig.updateSimulation(elapsed)
 			} else {
 				rig.evaluate()
 			}
@@ -199,8 +235,8 @@ class P2lrtPreviewSession(
 			postFrame(PreviewFrame(
 				width = request.width, height = request.height, parameters = parameters, animationEnabled = request.animationEnabled,
 				viewId = request.viewId, cameraScale = request.scale, cameraOffsetX = request.offsetX, cameraOffsetY = request.offsetY,
-				backend = PreviewBackend.P2LRT, advanced = features != 0,
-			))
+				backend = PreviewBackend.P2LRT, advanced = features != 0, advancedAvailable = rig.advancedAvailable,
+			), current.generation)
 		} catch (failure: Throwable) {
 			postStatus(failure.message ?: failure.javaClass.simpleName)
 		}
@@ -213,35 +249,39 @@ class P2lrtPreviewSession(
 		view.gpu.post { resources -> synchronized(lock) { view.rig.close() }; resources.release(viewId) }
 	}
 
-	private fun postFrame(frame: PreviewFrame) {
-		latestDelivery.put(frame.viewId, frame)
+	private fun postFrame(frame: PreviewFrame, generation: Long) {
+		latestDelivery.put(frame.viewId, Delivery(generation, frame))
 		if (deliveryScheduled.compareAndSet(false, true)) SwingUtilities.invokeLater(::deliver)
 	}
 
 	private fun deliver() {
 		try {
-			val frame = latestDelivery.poll()
-			if (!closed && frame != null) onFrame(frame)
+			val delivery = latestDelivery.poll()
+			if (!closed && delivery != null && delivery.generation == loaded?.generation) onFrame(delivery.frame)
 		} finally {
 			deliveryScheduled.set(false)
 			if (!closed && !latestDelivery.isEmpty() && deliveryScheduled.compareAndSet(false, true)) SwingUtilities.invokeLater(::deliver)
 		}
 	}
 
-	private fun postStatus(status: String?) {
-		if (!closed) SwingUtilities.invokeLater { if (!closed) onStatus(status) }
+	private fun postStatus(status: String?, target: Long? = null) {
+		if (!closed) SwingUtilities.invokeLater {
+			if (!closed && (target == null || target == generation.get())) onStatus(status)
+		}
 	}
 
 	override fun close() {
 		if (closed) return
 		closed = true
-		generation++
+		generation.incrementAndGet()
 		latestRender.clear()
 		latestDelivery.clear()
 		pendingModel.set(null)
 		compiler.shutdownNow()
 		val byGpu = synchronized(lock) {
 			lastRequests.clear()
+			loaded?.model?.close()
+			loaded = null
 			views.entries.groupBy({ it.value.gpu }, { it.key to it.value }).also { views.clear() }
 		}
 		for ((gpu, entries) in byGpu) gpu.post { resources ->

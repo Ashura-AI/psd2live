@@ -34,7 +34,13 @@ internal object SimExport {
 		val colliders = ArrayList<ColliderIR>()
 		for (edit in sims) {
 			val bake = edit.bake?.takeIf { edit.enabled } ?: continue
-			val scene = runCatching { SimScene.build(model, edit).also { it.calibrate(model) } }.getOrNull() ?: continue
+			val scene = try {
+				SimScene.build(model, edit).also { it.calibrate(model) }
+			} catch (cancelled: java.util.concurrent.CancellationException) {
+				throw cancelled
+			} catch (failure: Exception) {
+				throw IllegalStateException("Cannot prepare runtime simulation '${edit.id}': ${failure.message}", failure)
+			}
 			val ids = edit.colliders.mapIndexed { k, c ->
 				val id = "${edit.id}#$k"
 				colliders += ColliderIR(id, capsule = c.b != c.a, mesh = c.mesh, vertexA = c.a, vertexB = c.b, radiusA = c.radius, radiusB = c.radiusB, friction = c.friction)
