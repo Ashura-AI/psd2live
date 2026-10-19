@@ -64,6 +64,14 @@ internal object WorkspaceMaterialQueries {
                 putJsonArray("rect") { reference.rect.let { listOf(it.left, it.top, it.width, it.height) }.forEach { add(JsonPrimitive(it)) } }
                 put("opacity", reference.opacity); put("visible", reference.visible)
             } }
+            if (state.layout.references.isNotEmpty()) putJsonArray("references") {
+                for (reference in state.layout.references) add(buildJsonObject {
+                    put("id", reference.id); put("material_id", reference.materialId)
+                    putJsonArray("rect") { reference.rect.let { listOf(it.left, it.top, it.width, it.height) }.forEach { add(JsonPrimitive(it)) } }
+                    put("opacity", reference.opacity); put("visible", reference.visible); put("rotation", reference.rotation)
+                    put("locked", reference.locked); put("under", reference.under)
+                })
+            }
             put("folders", JsonArray(rows.take(folders.size).drop(offset).take(limit)))
             val itemRows = rows.drop(folders.size)
             val itemOffset = (offset - folders.size).coerceAtLeast(0)

@@ -54,9 +54,11 @@ internal object WorkspaceMaterialEdits {
     const val REFERENCE = "layout_set_reference"
     const val CROP = "material_crop"
     const val MARK_REFERENCE = "material_mark_reference"
+    const val ADD_REFERENCE = "layout_add_reference"
+    const val ORDER_REFERENCE = "layout_order_reference"
     const val FORK = "material_fork"
     const val ADOPT = "material_adopt_layers"
-    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, FORK, ADOPT, REFERENCE, CROP, MARK_REFERENCE) + WorkspaceMaterialPixels.supported +
+    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, FORK, ADOPT, REFERENCE, ADD_REFERENCE, ORDER_REFERENCE, CROP, MARK_REFERENCE) + WorkspaceMaterialPixels.supported +
         WorkspaceDrawingEdits.supported + WorkspaceMaterialPeel.supported
     const val MAX_NAME = 128
 
@@ -71,11 +73,11 @@ internal object WorkspaceMaterialEdits {
         fun strings(key: String) = request[key]?.jsonArray?.map { it.jsonPrimitive.content }
         return when (operation.operation) {
             ADD -> add(document, WorkspaceMaterialStaging.get(text("staging")), optional("folder_id")).let { added ->
-                // as_reference: the first new material becomes the reference image, fitted to the canvas.
+                // as_reference: the first new material becomes a further reference image, fitted to the canvas.
                 if (request["as_reference"]?.jsonPrimitive?.boolean != true) added else {
                     val first = added.layout.materials.items.drop(document.layout.materials.items.size).firstOrNull()
                         ?: throw IllegalArgumentException("Nothing was imported to use as the reference image")
-                    reference(added, buildJsonObject { put("material_id", first.id) })
+                    addReference(added, buildJsonObject { put("material_id", first.id) })
                 }
             }
             FOLDER -> createFolder(document, text("name"), optional("parent_id"), optional("id"))
@@ -90,6 +92,8 @@ internal object WorkspaceMaterialEdits {
                 request["at"]?.jsonArray?.map { it.jsonPrimitive.float }?.also { require(it.size == 2) { "at takes [x, y]" } },
                 optional("layer_id"), request["reference"]?.jsonPrimitive?.boolean)
             REFERENCE -> reference(document, request)
+            ADD_REFERENCE -> addReference(document, request)
+            ORDER_REFERENCE -> orderReference(document, text("id"), request.getValue("index").jsonPrimitive.int)
             MARK_REFERENCE -> markReference(document, strings("ids").orEmpty(), request.getValue("reference").jsonPrimitive.boolean)
             CROP -> crop(document, text("id"), request["rect"]?.jsonObject?.let(::rect), request["canvas_rect"]?.jsonObject?.let(::rect),
                 optional("name"), optional("new_id"), if ("folder_id" in request) optional("folder_id") else null, "folder_id" in request)
@@ -222,7 +226,9 @@ internal object WorkspaceMaterialEdits {
         }
         library.items.filter { it.folderId in folders }.mapTo(items) { it.id }
         val used = references(document, items)
-        document.layout.reference?.materialId?.let { require(it !in items) { "The reference image shows $it; clear or change it with layout_set_reference first" } }
+        document.layout.references.firstOrNull { it.materialId in items }?.let {
+            throw IllegalArgumentException("Reference image ${it.id} shows ${it.materialId}; remove or change it with layout_set_reference first")
+        }
         require(used.isEmpty()) {
             "Materials in use cannot be deleted; delete these layers first: " + used.entries.joinToString("; ") { (item, layers) -> "$item by ${layers.joinToString()}" }
         }
@@ -382,15 +388,44 @@ internal object WorkspaceMaterialEdits {
         return next
     }
 
+    private fun WorkspaceDocument.withReferences(references: List<LayoutReference>) =
+        if (references == layout.references) this else copy(layout = layout.copy(references = references))
+
     /**
-     * The reference image set, changed or cleared ([LayoutReference]). A new material without a rect is fitted
-     * into the canvas and centred, scaled up or down; omitted fields keep their values.
+     * A reference image set, changed or cleared ([LayoutReference]): the one `id` names, else the first, made when
+     * there is none; material_id null removes it. A new material without a rect is fitted into the canvas and
+     * centred, scaled up or down; omitted fields keep their values.
      */
     fun reference(document: WorkspaceDocument, request: JsonObject): WorkspaceDocument {
-        val current = document.layout.reference
-        val materialField = request["material_id"]
-        if (materialField is JsonNull) return if (current == null) document else document.copy(layout = document.layout.copy(reference = null))
-        val materialId = materialField?.jsonPrimitive?.content ?: current?.materialId
+        val references = document.layout.references
+        val id = request["id"]?.jsonPrimitive?.content
+        val current = if (id == null) references.firstOrNull()
+            else references.firstOrNull { it.id == id } ?: throw IllegalArgumentException("Reference image not found: $id")
+        if (request["material_id"] is JsonNull) return document.withReferences(references.filter { it !== current })
+        val next = referenceFrom(document, current, request, current?.id ?: LayoutReference.FIRST_ID)
+        return document.withReferences(if (current == null) references + next else references.map { if (it === current) next else it })
+    }
+
+    /** A further reference image, on top of the others (`layout_add_reference`). */
+    fun addReference(document: WorkspaceDocument, request: JsonObject): WorkspaceDocument {
+        val references = document.layout.references
+        val material = requireNotNull(request["material_id"]?.takeUnless { it is JsonNull }) { "Give material_id" }.jsonPrimitive.content
+        val taken = references.mapTo(HashSet()) { it.id }
+        val id = if (LayoutReference.FIRST_ID !in taken) LayoutReference.FIRST_ID
+            else StableIds.fresh(StableIds.stem("ref_", material, references.size)) { it in taken }
+        return document.withReferences(references + referenceFrom(document, null, request, id))
+    }
+
+    /** Reference image [id] moved to [index] in the drawing order (`layout_order_reference`). */
+    fun orderReference(document: WorkspaceDocument, id: String, index: Int): WorkspaceDocument {
+        val references = document.layout.references
+        val moving = references.firstOrNull { it.id == id } ?: throw IllegalArgumentException("Reference image not found: $id")
+        require(index in references.indices) { "index is 0..${references.lastIndex}" }
+        return document.withReferences(references.filter { it !== moving }.toMutableList().apply { add(index, moving) })
+    }
+
+    private fun referenceFrom(document: WorkspaceDocument, current: LayoutReference?, request: JsonObject, id: String): LayoutReference {
+        val materialId = request["material_id"]?.jsonPrimitive?.content ?: current?.materialId
             ?: throw IllegalArgumentException("No reference is set; give material_id")
         val item = document.layout.materials.item(materialId) ?: throw IllegalArgumentException("Material item not found: $materialId")
         val width = document.source.widthPx.toFloat(); val height = document.source.heightPx.toFloat()
@@ -404,9 +439,11 @@ internal object WorkspaceMaterialEdits {
         require(rect.width > 0f && rect.height > 0f && listOf(rect.left, rect.top, rect.width, rect.height).all(Float::isFinite)) { "rect needs a finite positive size" }
         val opacity = request["opacity"]?.jsonPrimitive?.float ?: current?.opacity ?: 0.5f
         require(opacity in 0f..1f) { "opacity is 0..1" }
-        val visible = request["visible"]?.jsonPrimitive?.boolean ?: current?.visible ?: true
-        val next = LayoutReference(materialId, rect, opacity, visible)
-        return if (next == current) document else document.copy(layout = document.layout.copy(reference = next))
+        val rotation = request["rotation"]?.jsonPrimitive?.float ?: current?.rotation ?: 0f
+        require(rotation.isFinite()) { "rotation must be finite" }
+        return LayoutReference(materialId, rect, opacity, request["visible"]?.jsonPrimitive?.boolean ?: current?.visible ?: true, id,
+            ((rotation % 360f) + 360f) % 360f, request["locked"]?.jsonPrimitive?.boolean ?: current?.locked ?: false,
+            request["under"]?.jsonPrimitive?.boolean ?: current?.under ?: false)
     }
 
     /**
@@ -421,7 +458,7 @@ internal object WorkspaceMaterialEdits {
         require((rect == null) != (canvasRect == null)) { "Give rect (material pixels) or canvas_rect (canvas units), not both" }
         val canvasW = document.source.widthPx; val canvasH = document.source.heightPx
         // Where the item's pixels sit on this canvas: the reference rectangle, else its own placement made for this canvas.
-        val sits = document.layout.reference?.takeIf { it.materialId == id }?.rect
+        val sits = document.layout.references.firstOrNull { it.materialId == id && it.rotation == 0f }?.rect
             ?: item.placement?.takeIf { item.placementWidth == canvasW && item.placementHeight == canvasH }
         val sx = sits?.let { it.width / item.raster.width }; val sy = sits?.let { it.height / item.raster.height }
         val pixels = rect ?: run {

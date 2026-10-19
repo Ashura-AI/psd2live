@@ -135,7 +135,7 @@ CMO3 的完整模型仍用 `project_import_cmo3` 导入，不进入 Layout 流�
 
 ### 参考图与特写
 
-`WorkspaceLayout.reference`（`LayoutReference`）把一个素材条目叠在画布上，供摆放和对照：素材 ID、画布矩形、不透明度、显示与否。它是文档数据（随工程保存、可撤销），但不是图层，生成视图、Rig 与导出都不含它；被参考图使用的素材不能删除。`layout_set_reference` 设置、修改或清除，新设时默认等比缩放到画布内并居中。
+`WorkspaceLayout.references`（`LayoutReference` 列表，按绘制顺序）把素材条目叠在画布上或垫在模型下，供摆放和对照：ID、素材 ID、画布矩形、绕中心的顺时针旋转、不透明度、显示、锁定与是否在模型下方。它们是文档数据（随工程保存、可撤销），但不是图层，生成视图、Rig 与导出都不含它们；被参考图使用的素材不能删除。`layout_set_reference` 设置、修改或移除 `id` 所指的一张（省略时为第一张，没有时新建），`layout_add_reference` 再加一张，`layout_order_reference` 调整顺序；新设时默认等比缩放到画布内并居中。参考查询（取色、轮廓、吸附）、`material_crop` 的 `canvas_rect` 与 `view_render_model` 的 `reference` 用第一张。只有一张时归档仍写成原来的单个 `reference` 对象，新字段取默认值时不写，旧工程读写不变；多于一张写 `references` 数组。
 
 `material_crop` 从条目无损裁出新条目：`rect` 为条目像素，`canvas_rect` 为画布单位（经参考图矩形，或条目按本画布的默认摆放换算）。新条目的默认摆放就是这些像素在画布上的位置，放置时落回原处。`material_export_png` 把条目原样写成 PNG。典型用法是从参考图截取头部、眼睛等特写，交给外部放大或重绘成更清晰的分层部件，再导入并按特写的位置放置——部件的像素多于参考图，图层摆在同样大小的矩形里，纹理就更密。导入的图片没有位置，`material_set_placement` 的 `from` 让它取特写的位置。
 
@@ -150,7 +150,7 @@ CMO3 的完整模型仍用 `project_import_cmo3` 导入，不进入 Layout 流�
 
 从最前面的部件开始，每一步在上一步剩下的图上继续，被挡的部分由生成模型补出。外部生成工具不在主线，见 `comfy-tools` 分支。
 
-`view_render_model` 可同时画参考图：`reference.mode` 为 `over`（盖在模型上）、`under`（垫在模型下）或 `difference`（逐通道差值，重合处为黑，结果附 `referenceDifference` 平均差值 0–1），`opacity` 覆盖参考图自身的不透明度；`density` 按图层纹理密度着色（每画布单位 ¼ 纹理像素以下为蓝、1 为绿、4 以上为橙，与纹理工作区热力图同一色阶），结果附 `texelDensity`。编辑画布右下的显示开关里有「参考图」（文档有参考图时出现，按其不透明度盖在作品上）与「纹理密度」；素材右键菜单可设为参考图、调整不透明度（按 25% 递进）与清除。
+`view_render_model` 可同时画参考图：`reference.mode` 为 `over`（盖在模型上）、`under`（垫在模型下）或 `difference`（逐通道差值，重合处为黑，结果附 `referenceDifference` 平均差值 0–1），`opacity` 覆盖参考图自身的不透明度；`density` 按图层纹理密度着色（每画布单位 ¼ 纹理像素以下为蓝、1 为绿、4 以上为橙，与纹理工作区热力图同一色阶），结果附 `texelDensity`。编辑画布右下的显示开关里有「参考图」（有参考图时切换显示，快捷键 Alt+R；没有时点击添加）与「纹理密度」。层级面板顶部的「参考图」分组列出每一张：显示、不透明度（按 25% 递进）、上方/下方、锁定、调整顺序与移除，`+` 添加图片；选中未锁定的一张后，编辑画布上出现它的手柄：拖动内部移动，拖角点绕中心等比缩放，拖上方的圆点旋转，一次拖动一条历史。素材右键菜单可添加为参考图、调整其不透明度与移除；把图片拖到编辑画布上方的「设为参考图」槽也会新增一张。
 
 ### 矢量绘制
 
@@ -211,7 +211,9 @@ CMO3 的完整模型仍用 `project_import_cmo3` 导入，不进入 Layout 流�
 | `material_list` / `material_get` / `material_preview` | 查询 | 列表（分页、筛选）、详情（含引用图层）、PNG 预览 |
 | `material_export_psd` | 输出，任务 | 文件夹导出为 PSD |
 | `material_export_png` | 输出，任务 | 条目原样写成 PNG |
-| `layout_set_reference` | 文档 | 设置、修改或清除参考图 |
+| `layout_set_reference` | 文档 | 设置、修改或移除一张参考图（旋转、锁定、上下方） |
+| `layout_add_reference` | 文档 | 新增一张参考图 |
+| `layout_order_reference` | 文档 | 调整参考图的绘制顺序 |
 | `material_crop` | 文档 | 无损裁出新条目，记住画布位置 |
 | `material_set_placement` | 文档 | 设置条目的默认位置（矩形或取另一条目的位置） |
 | `material_peel` | 文档 | 用去掉部件的生成图剥离部件，新建部件与其下的图两个条目 |

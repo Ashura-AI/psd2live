@@ -77,12 +77,12 @@ internal class WorkspaceCmo3Importer(
 }
 
 /**
- * What a CMO3 replacement keeps of the [replaced] document's Layout: the material library, the reference image and
+ * What a CMO3 replacement keeps of the [replaced] document's Layout: the material library, the reference images and
  * the drawing kit. Everything kept per source layer goes, since the model brings layers of its own, and the imported
  * model counts as generated.
  */
 internal fun replacedLayout(replaced: WorkspaceLayout): WorkspaceLayout =
-    WorkspaceLayout(materials = replaced.materials, reference = replaced.reference, drawingKit = replaced.drawingKit)
+    WorkspaceLayout(materials = replaced.materials, references = replaced.references, drawingKit = replaced.drawingKit)
 
 internal fun WorkspaceCommit<RigPreviewModel>.mutation(summary: String) = WorkspaceMutationResult(
     capture.historyHead, capture.revision, if (applied) capture.document.source.layers.map { it.id.raw } else emptyList(), summary,

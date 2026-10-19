@@ -537,7 +537,9 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `material_adjust` | `state`、`id`，至少一项：`flip`（`horizontal/vertical`）、`hue`（±180）、`saturation`/`lightness`/`contrast`（±100） | 先翻转再调色，尺寸不变；同步图层与 SVG 规则同上 |
 | `material_export_psd` | `state`、`folder_id`、`path`（绝对 `.psd`） | 后台把文件夹写成 PSD：条目按默认位置（无则自左上排开），子文件夹为图层组 |
 | `material_export_png` | `state`、`id`、`path`（绝对 `.png`） | 后台把条目自身像素原样写成 PNG（不缩放），例如把参考图特写交给外部工具画成更清晰的部件 |
-| `layout_set_reference` | `state`，可选 `material_id`（null 清除）、`rect`、`opacity`（0–1，默认 0.5）、`visible` | 参考图：把条目叠在画布上用于摆放与对照。它不是图层，生成、导出与 Rig 都看不到它；新设时不给 `rect` 则等比放大或缩小到画布内并居中，省略的字段保持原值；`material_list` 返回当前参考图 |
+| `layout_set_reference` | `state`，可选 `id`（默认第一张，没有时新建）、`material_id`（null 移除）、`rect`、`opacity`（0–1，默认 0.5）、`visible`、`rotation`（绕中心顺时针的角度）、`locked`、`under`（垫在模型下） | 参考图：把条目叠在画布上（或垫在模型下）用于摆放与对照。它不是图层，生成、导出与 Rig 都看不到它；新设时不给 `rect` 则等比放大或缩小到画布内并居中，省略的字段保持原值；参考查询与渲染用第一张；`material_list` 返回第一张（`reference`）与全部（`references`） |
+| `layout_add_reference` | `state`、`material_id`，其余字段同上 | 再加一张参考图，画在其他参考图之上 |
+| `layout_order_reference` | `state`、`id`、`index` | 把参考图移到绘制顺序的 `index`（0 最先画） |
 | `material_crop` | `state`、`id`，`rect`（条目像素）或 `canvas_rect`（画布单位，条目须为参考图或按本画布摆放），可选 `name`、`new_id`、`folder_id` | 无损裁出新条目，新条目记住这些像素在画布上的位置，`layer_place` 不给 `rect` 时正好落回参考图上；保留标签与文件夹 |
 | `material_set_placement` | `state`、`id`，`canvas_rect`（null 清除）或 `from`（另一条目） | 设置条目在画布上的默认位置，像素不变；外部从特写生成的高清图取特写的位置，多出的像素即更高的纹理密度 |
 | `material_peel` | `state`、`id`（当前图）、`revealed`（同尺寸、去掉部件后的生成图），可选 `region`（同尺寸蒙版，白或不透明处可能是部件）、`threshold`（[低, 高] 色差 0–255，默认 [8, 30]）、`grow`、`core`、`close`（默认 2）、`band`（默认 24）、`color_match`（默认 true）、`keep`（部件上的 `[x, y]` 点，条目像素，1–64 个）、`compare_scale`（1–8，默认 1）、`name`、`part_id`、`base_id` | 剥离一个部件，新建两个放在 `id` 位置的条目：部件（`id` 自身像素，透明度来自两图差异，限制在 `region` 加 `grow` 内，`core` 把收缩后的蒙版强制并入，`keep` 只保留与这些点相连的块，丢掉远处碎点）与其下的图（只在部件区域取 `revealed`，按周围 `band` 像素宽的未改动区域做 Lab 颜色匹配）。部件之外保留原像素，部件叠回即原图；整图色调偏移（各通道差值中位数）不计为差异；生成图是从较小尺寸放大来的时，`compare_scale` 给出放大倍数，在原生成尺寸上比较，放大带来的线条差异不计入。从最前面的部件开始，在新底图上继续剥下一个 |

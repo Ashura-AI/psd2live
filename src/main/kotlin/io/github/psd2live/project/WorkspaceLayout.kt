@@ -20,8 +20,8 @@ data class WorkspaceLayout(
 	val layerMaterials: Map<String, String> = emptyMap(),
 	val generation: WorkspaceGeneration = WorkspaceGeneration.Generated,
 	val materials: MaterialLibrary = MaterialLibrary.Empty,
-	/** The image laid over the canvas to place layers against; never a layer, so never generated or exported. */
-	val reference: LayoutReference? = null,
+	/** The images laid over or under the canvas to place layers against, in drawing order; never layers, so never generated or exported. */
+	val references: List<LayoutReference> = emptyList(),
 	/** What every vector drawing shares: colour tokens, class rules and definitions ([DrawingKit]). */
 	val drawingKit: DrawingKit? = null,
 	/**
@@ -36,6 +36,11 @@ data class WorkspaceLayout(
 	val referencePins: Map<String, Map<String, Float>> = emptyMap(),
 ) {
 	val isEmpty: Boolean get() = this == Empty
+
+	/** The first reference image: the one the reference queries and renders compare against. */
+	val reference: LayoutReference? get() = references.firstOrNull()
+
+	fun reference(id: String): LayoutReference? = references.firstOrNull { it.id == id }
 
 	/** [layerTags] and [layerMaterials] without layers no longer in [layerIds]. */
 	fun retaining(layerIds: Set<String>): WorkspaceLayout = copy(
@@ -106,11 +111,29 @@ object ReferencePins {
 }
 
 /**
- * The reference image: material [materialId] shown over [rect] on the canvas at [opacity], to place and compare
- * layers against. It is view data in the document - saved and undone with it - but no layer.
+ * A reference image: material [materialId] shown over [rect] on the canvas, turned [rotation] degrees clockwise about
+ * its centre, at [opacity], over the model or [under] it, to place and compare layers against. A [locked] one cannot
+ * be moved on the canvas. It is view data in the document - saved and undone with it - but no layer.
  */
-data class LayoutReference(val materialId: String, val rect: LayerCanvasRect, val opacity: Float = 0.5f, val visible: Boolean = true) {
-	init { require(opacity in 0f..1f) { "Reference opacity is 0..1" } }
+data class LayoutReference(
+	val materialId: String,
+	val rect: LayerCanvasRect,
+	val opacity: Float = 0.5f,
+	val visible: Boolean = true,
+	val id: String = FIRST_ID,
+	val rotation: Float = 0f,
+	val locked: Boolean = false,
+	val under: Boolean = false,
+) {
+	init {
+		require(opacity in 0f..1f) { "Reference opacity is 0..1" }
+		require(rotation.isFinite()) { "Reference rotation must be finite" }
+	}
+
+	companion object {
+		/** The ID of a document's first reference image, which documents with a single one keep. */
+		const val FIRST_ID = "reference"
+	}
 }
 
 /**
@@ -204,11 +227,31 @@ data class MaterialLibrary(val folders: List<MaterialFolder> = emptyList(), val 
  * ([rasterRef]) and read back through [rasterOf].
  */
 internal object WorkspaceLayoutCodec {
+	private fun encodeReference(reference: LayoutReference) = buildJsonObject {
+		put("materialId", reference.materialId)
+		putJsonArray("rect") { reference.rect.let { listOf(it.left, it.top, it.width, it.height) }.forEach { add(JsonPrimitive(it)) } }
+		put("opacity", reference.opacity)
+		if (!reference.visible) put("visible", false)
+		// Written only when not the default, so a document from before these fields reads and writes as it was.
+		if (reference.id != LayoutReference.FIRST_ID) put("id", reference.id)
+		if (reference.rotation != 0f) put("rotation", reference.rotation)
+		if (reference.locked) put("locked", true)
+		if (reference.under) put("under", true)
+	}
+
+	private fun decodeReference(value: JsonObject): LayoutReference {
+		val rect = value.getValue("rect").jsonArray.map { it.jsonPrimitive.float }
+		return LayoutReference(value.getValue("materialId").jsonPrimitive.content, LayerCanvasRect(rect[0], rect[1], rect[2], rect[3]),
+			value["opacity"]?.jsonPrimitive?.float ?: 0.5f, value["visible"]?.jsonPrimitive?.boolean ?: true,
+			value["id"]?.jsonPrimitive?.content ?: LayoutReference.FIRST_ID, value["rotation"]?.jsonPrimitive?.float ?: 0f,
+			value["locked"]?.jsonPrimitive?.boolean ?: false, value["under"]?.jsonPrimitive?.boolean ?: false)
+	}
+
 	const val LAYOUT = "layout"
 	const val MATERIALS = "materials"
 
 	fun encodeLayout(layout: WorkspaceLayout): JsonObject? {
-		if (layout.layerTags.isEmpty() && layout.layerMaterials.isEmpty() && layout.generation == WorkspaceGeneration.Generated && layout.reference == null && layout.drawingKit == null &&
+		if (layout.layerTags.isEmpty() && layout.layerMaterials.isEmpty() && layout.generation == WorkspaceGeneration.Generated && layout.references.isEmpty() && layout.drawingKit == null &&
 			layout.referenceLayerIds.isEmpty() && layout.referencePins.isEmpty()) return null
 		return buildJsonObject {
 			if (layout.layerTags.isNotEmpty()) putJsonObject("layerTags") {
@@ -226,12 +269,9 @@ internal object WorkspaceLayoutCodec {
 				}
 				if (generation.refreshLayerIds.isNotEmpty()) putJsonArray("refreshLayerIds") { generation.refreshLayerIds.sorted().forEach { add(JsonPrimitive(it)) } }
 			}
-			layout.reference?.let { reference -> putJsonObject("reference") {
-				put("materialId", reference.materialId)
-				putJsonArray("rect") { reference.rect.let { listOf(it.left, it.top, it.width, it.height) }.forEach { add(JsonPrimitive(it)) } }
-				put("opacity", reference.opacity)
-				if (!reference.visible) put("visible", false)
-			} }
+			// One reference image keeps the single object documents had before there could be several.
+			layout.references.singleOrNull()?.let { put("reference", encodeReference(it)) }
+			if (layout.references.size > 1) putJsonArray("references") { layout.references.forEach { add(encodeReference(it)) } }
 			layout.drawingKit?.let { kit -> putJsonObject("drawingKit") {
 				if (kit.colors.isNotEmpty()) putJsonObject("colors") { kit.colors.toSortedMap().forEach { (name, value) -> put(name, value) } }
 				if (kit.styles.isNotEmpty()) put("styles", kit.styles)
@@ -321,11 +361,8 @@ internal object WorkspaceLayoutCodec {
 			layerMaterials = layout?.get("layerMaterials")?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty(),
 			generation = generation,
 			materials = library,
-			reference = layout?.get("reference")?.jsonObject?.let { value ->
-				val rect = value.getValue("rect").jsonArray.map { it.jsonPrimitive.float }
-				LayoutReference(value.getValue("materialId").jsonPrimitive.content, LayerCanvasRect(rect[0], rect[1], rect[2], rect[3]),
-					value["opacity"]?.jsonPrimitive?.float ?: 0.5f, value["visible"]?.jsonPrimitive?.boolean ?: true)
-			},
+			references = layout?.get("references")?.jsonArray?.map { decodeReference(it.jsonObject) }
+				?: listOfNotNull(layout?.get("reference")?.jsonObject?.let(::decodeReference)),
 			drawingKit = layout?.get("drawingKit")?.jsonObject?.let { value ->
 				DrawingKit(value["colors"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty(),
 					value["styles"]?.jsonPrimitive?.content.orEmpty(), value["defs"]?.jsonPrimitive?.content.orEmpty())

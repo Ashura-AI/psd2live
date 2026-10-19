@@ -72,8 +72,12 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialEdits.FORK to schema(state + mapOf("layer_ids" to strings(1, 128)), listOf("state", "layer_ids")),
         WorkspaceMaterialEdits.ADOPT to schema(state, listOf("state")),
         WorkspaceMaterialEdits.MARK_REFERENCE to schema(state + mapOf("ids" to strings(1, 1024), "reference" to boolean()), listOf("state", "ids", "reference")),
-        WorkspaceMaterialEdits.REFERENCE to schema(state + mapOf("material_id" to nullableString(), "rect" to rect,
-            "opacity" to range(0, 1), "visible" to boolean()), listOf("state")),
+        WorkspaceMaterialEdits.REFERENCE to schema(state + mapOf("id" to string(), "material_id" to nullableString(), "rect" to rect,
+            "opacity" to range(0, 1), "visible" to boolean(), "rotation" to number(), "locked" to boolean(), "under" to boolean()), listOf("state")),
+        WorkspaceMaterialEdits.ADD_REFERENCE to schema(state + mapOf("material_id" to string(), "rect" to rect,
+            "opacity" to range(0, 1), "visible" to boolean(), "rotation" to number(), "locked" to boolean(), "under" to boolean()), listOf("state", "material_id")),
+        WorkspaceMaterialEdits.ORDER_REFERENCE to schema(state + mapOf("id" to string(), "index" to buildJsonObject { put("type", "integer"); put("minimum", 0) }),
+            listOf("state", "id", "index")),
         WorkspaceMaterialEdits.CROP to schema(state + mapOf("id" to string(), "rect" to rect, "canvas_rect" to rect, "name" to string(),
             "new_id" to string(), "folder_id" to nullableString()), listOf("state", "id")),
         WorkspaceMaterialPixels.SET_PIXELS to schema(state + mapOf("id" to string(), "staging" to string()), listOf("state", "id", "staging")),
@@ -132,10 +136,12 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialEdits.ADOPT to "Give every present layer that shows no material one of its own, in the library folder Layers (its groups as subfolders). Projects made before every layer had a material have such layers; imports and edits give new layers materials themselves. One history edit; nothing to do adds none.",
         WorkspaceMaterialEdits.MARK_REFERENCE to "Mark material items - and every item in the folders given - to place as reference layers (reference true) or as model layers (false) " +
             "when layer_place does not say. A layout manifest's reference layers import marked. Placed layers already on the canvas keep what they are; layer_mark_reference changes them. One history edit.",
-        WorkspaceMaterialEdits.REFERENCE to "Set the reference image: a material item laid over the canvas at opacity (default 0.5) to place layers against and compare the model with. " +
+        WorkspaceMaterialEdits.REFERENCE to "Set reference image id (default the first, made when there is none): a material item laid over the canvas - or under the model with under=true - at opacity (default 0.5), turned rotation degrees clockwise about its centre, to place layers against and compare the model with; locked=true keeps it from moving on the canvas; material_id=null removes it. The reference queries and renders use the first one. " +
             "It is not a layer: generation, export and the rig never see it. Without rect a new material is fitted into the canvas and centred (scaled up or down, aspect kept); " +
-            "omitted fields keep their values; material_id null clears it, visible false hides it. view_render_model draws it with reference {mode: over, under or difference}; " +
+            "omitted fields keep their values; material_id null removes it, visible false hides it. view_render_model draws it with reference {mode: over, under or difference}; " +
             "material_crop takes close-ups from it by canvas rectangle. One history edit.",
+        WorkspaceMaterialEdits.ADD_REFERENCE to "Add a further reference image on top of the others, with the fields of layout_set_reference; without a rect it is fitted into the canvas and centred. One history edit.",
+        WorkspaceMaterialEdits.ORDER_REFERENCE to "Move reference image id to index in the drawing order (0 draws first). One history edit.",
         WorkspaceMaterialEdits.CROP to "Crop a material item into a new item, losslessly: rect in the item's own pixels, or canvas_rect in canvas units when the item is the reference image " +
             "(or placed on this canvas by its own placement). The new item remembers where its pixels sit on the canvas, so layer_place without rect lands it on the reference; " +
             "material_export_png writes it to a file, for example to draw a sharper version of the part from it. It keeps the item's tags and folder unless folder_id is given; " +
@@ -187,6 +193,8 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialEdits.PLACE -> "Placed material ${request.getValue("material_id").jsonPrimitive.content}"
         WorkspaceMaterialPixels.PAINT -> "Painted material ${request.getValue("id").jsonPrimitive.content}"
         WorkspaceMaterialEdits.REFERENCE -> "Set the reference image"
+        WorkspaceMaterialEdits.ADD_REFERENCE -> "Added a reference image"
+        WorkspaceMaterialEdits.ORDER_REFERENCE -> "Reordered the reference images"
         WorkspaceMaterialEdits.CROP -> "Cropped material ${request.getValue("id").jsonPrimitive.content}"
         WorkspaceMaterialEdits.UNLINK, WorkspaceMaterialEdits.FORK -> "Gave ${request.getValue("layer_ids").jsonArray.size} layer(s) materials of their own"
         WorkspaceMaterialEdits.ADOPT -> "Gave every layer a material"
@@ -210,7 +218,9 @@ internal object WorkspaceLayoutOperations {
             "references" to s.integer(0), "reference" to s.boolean()), setOf("id", "name", "kind", "width", "height", "tags", "references"))
         s.obj(mapOf("folder_id" to s.handle(), "path" to s.array(s.obj(mapOf("id" to s.handle(), "name" to s.string()))),
             "total" to s.integer(0), "folders" to s.array(folder), "items" to s.array(item), "next" to s.integer(1),
-            "reference" to s.obj(mapOf("material_id" to s.handle(), "rect" to s.vector(4), "opacity" to s.number(), "visible" to s.boolean()))),
+            "reference" to s.obj(mapOf("material_id" to s.handle(), "rect" to s.vector(4), "opacity" to s.number(), "visible" to s.boolean())),
+            "references" to s.array(s.obj(mapOf("id" to s.handle(), "material_id" to s.handle(), "rect" to s.vector(4), "opacity" to s.number(),
+                "visible" to s.boolean(), "rotation" to s.number(), "locked" to s.boolean(), "under" to s.boolean())))),
             setOf("path", "total", "folders", "items"))
     }
     val getSchema: JsonObject by lazy {

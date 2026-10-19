@@ -285,6 +285,8 @@ internal fun CanvasViewOptionsBar(
 	showSourcePixels: Boolean = false,
 	/** The document has a Layout reference image to lay over the canvas. */
 	hasReference: Boolean = false,
+	/** Shown with no reference image yet: the toggle then adds one instead. */
+	onAddReference: (() -> Unit)? = null,
 	hasReferenceLayers: Boolean = false,
 	/** Edit canvases can tint layers by their texture density. */
 	showDensity: Boolean = false,
@@ -317,6 +319,13 @@ internal fun CanvasViewOptionsBar(
 				isChecked = options.showReference,
 				icon = { IconReferenceImage(tint = it) },
 				onClick = { apply(options.copy(showReference = !options.showReference)) },
+			)
+		} else if (onAddReference != null) {
+			RailToggle(
+				label = tr("references.add"),
+				isChecked = false,
+				icon = { IconReferenceImage(tint = it) },
+				onClick = onAddReference,
 			)
 		}
 		if (hasReferenceLayers) {

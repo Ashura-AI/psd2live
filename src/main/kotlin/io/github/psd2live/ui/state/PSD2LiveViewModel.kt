@@ -6113,12 +6113,48 @@ class PSD2LiveViewModel : AutoCloseable {
 		placeMaterial(drag.id, at.x, at.y)
 	}
 
-	/** Lays material [materialId] over the canvas as the Layout reference image, or clears it with null (`layout_set_reference`). */
-	fun setLayoutReference(materialId: String?, opacity: Float? = null) = layoutEdit(tr("materials.referenceSet"),
-		io.github.psd2live.application.WorkspaceMaterialEdits.REFERENCE, kotlinx.serialization.json.buildJsonObject {
-			put("material_id", materialId?.let { kotlinx.serialization.json.JsonPrimitive(it) } ?: kotlinx.serialization.json.JsonNull)
-			opacity?.let { put("opacity", kotlinx.serialization.json.JsonPrimitive(it)) }
-		})
+	/** Adds material [materialId] as a further reference image (`layout_add_reference`), or removes every one showing it with null. */
+	fun setLayoutReference(materialId: String?, opacity: Float? = null, removing: String? = null) {
+		if (materialId == null) {
+			val ids = _state.value.layout.references.filter { removing == null || it.materialId == removing }.map { it.id }
+			if (ids.isNotEmpty()) workspaceBackend?.let { backend ->
+				val port: io.github.psd2live.application.WorkspaceDocumentPort = backend
+				runWorkspaceCommand { state -> port.applyDocumentEdits(state, tr("references.removed"), ids.map { id ->
+					io.github.psd2live.application.WorkspaceDocumentOperation(io.github.psd2live.application.WorkspaceMaterialEdits.REFERENCE,
+						kotlinx.serialization.json.buildJsonObject { put("id", id); put("material_id", kotlinx.serialization.json.JsonNull) })
+				}, MutationAuthor.USER) }
+			}
+			return
+		}
+		layoutEdit(tr("materials.referenceSet"), io.github.psd2live.application.WorkspaceMaterialEdits.ADD_REFERENCE,
+			kotlinx.serialization.json.buildJsonObject { put("material_id", materialId); opacity?.let { put("opacity", it) } })
+	}
+
+	private val _selectedReferenceId = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+	/** The reference image whose handles the edit canvases show; process state, never saved. */
+	val selectedReferenceId: kotlinx.coroutines.flow.StateFlow<String?> = _selectedReferenceId
+
+	fun selectReference(id: String?) { _selectedReferenceId.value = id }
+
+	/** Changes reference image [id] with the fields [fields] puts (`layout_set_reference`): one history edit. */
+	fun editReference(id: String, fields: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) =
+		layoutEdit(tr("references.edited"), io.github.psd2live.application.WorkspaceMaterialEdits.REFERENCE,
+			kotlinx.serialization.json.buildJsonObject { put("id", id); fields() })
+
+	fun removeReference(id: String) {
+		if (_selectedReferenceId.value == id) _selectedReferenceId.value = null
+		layoutEdit(tr("references.removed"), io.github.psd2live.application.WorkspaceMaterialEdits.REFERENCE,
+			kotlinx.serialization.json.buildJsonObject { put("id", id); put("material_id", kotlinx.serialization.json.JsonNull) })
+	}
+
+	fun orderReference(id: String, index: Int) = layoutEdit(tr("references.order"), io.github.psd2live.application.WorkspaceMaterialEdits.ORDER_REFERENCE,
+		kotlinx.serialization.json.buildJsonObject { put("id", id); put("index", index) })
+
+	/** Reference image [id] moved, scaled or turned on the canvas to [rect] and [rotation]. */
+	fun placeReference(id: String, rect: io.github.psd2live.project.LayerCanvasRect, rotation: Float) = editReference(id) {
+		put("rect", kotlinx.serialization.json.buildJsonObject { put("left", rect.left); put("top", rect.top); put("width", rect.width); put("height", rect.height) })
+		put("rotation", rotation)
+	}
 
 	private fun layoutEdit(summary: String, operation: String, request: kotlinx.serialization.json.JsonObject) {
 		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return

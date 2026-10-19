@@ -676,6 +676,11 @@ private fun HierarchyTreeList(
 			)
 		}
 
+		// The reference images sit above the rig they are laid against: shown, hidden, locked, selected for handles.
+		ReferenceImagesSection(state, viewModel, onAdd = {
+			val files = NativeFilePicker.chooseMaterialFiles()
+			if (files.isNotEmpty()) viewModel.importMaterials(files.take(1).map { it.toPath() }, null, asReference = true)
+		})
 		// Tree Body with Container Hit-Testing & Overlay and Draw Order Ruler
 		Row(
 			modifier = Modifier

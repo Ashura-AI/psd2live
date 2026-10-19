@@ -53,7 +53,7 @@ internal class WorkspaceRenderSession(
             val set = captured.document.layout.reference ?: throw IllegalArgumentException("No reference image is set; layout_set_reference sets one")
             val item = requireNotNull(captured.document.layout.materials.item(set.materialId)) { "Reference material not found: ${set.materialId}" }
             ViewReferenceImage(PreviewRenderer.rasterImage(item.raster.width, item.raster.height, item.raster.rgba), set.rect, view.mode,
-                view.opacity ?: set.opacity)
+                view.opacity ?: set.opacity, set.rotation)
         }
         val outlines = request.outlineMaterialIds.map { id ->
             val item = captured.document.layout.materials.item(id) ?: throw IllegalArgumentException("Material item not found: $id")

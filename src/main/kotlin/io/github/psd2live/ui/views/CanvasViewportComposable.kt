@@ -432,14 +432,21 @@ fun CanvasViewportComposable(
 	val sdkFrameAdvanced by remember(frameFlow) { frameFlow.map { it?.advanced == true }.distinctUntilChanged() }
 		.collectAsState(frameFlow.value?.advanced == true)
 	val simulatedFrame by viewModel.simulationFrames.collectAsState()
-	// The Layout reference image and its pixels, laid over Edit canvases; follows only those parts of the state.
-	val layoutReference by remember(viewModel) {
-		viewModel.state.map { s -> s.layout.reference?.let { r -> s.layout.materials.item(r.materialId)?.raster?.let { r to it } } }
+	// The Layout reference images and their pixels, laid over or under Edit canvases; follows only those parts of the state.
+	val layoutReferences by remember(viewModel) {
+		viewModel.state.map { s -> s.layout.references.mapNotNull { r -> s.layout.materials.item(r.materialId)?.raster?.let { r to it } } }
 			.distinctUntilChanged()
-	}.collectAsState(null)
-	val referenceImage = remember(layoutReference?.second) {
-		layoutReference?.second?.let { raster -> io.github.psd2live.core.PreviewRenderer.rasterImage(raster.width, raster.height, raster.rgba).toComposeImageBitmap() }
+	}.collectAsState(emptyList())
+	// Each material's pixels converted once while they stay the same pixels.
+	val referenceImages = remember { java.util.WeakHashMap<org.umamo.format.art.LayerRaster, androidx.compose.ui.graphics.ImageBitmap>() }
+	fun referenceImage(raster: org.umamo.format.art.LayerRaster) = referenceImages.getOrPut(raster) {
+		io.github.psd2live.core.PreviewRenderer.rasterImage(raster.width, raster.height, raster.rgba).toComposeImageBitmap()
 	}
+	val selectedReferenceId by viewModel.selectedReferenceId.collectAsState()
+	// A reference being moved, scaled or turned on this canvas, shown as it goes until the edit lands.
+	var referenceDraft by remember(layoutReferences) { mutableStateOf<io.github.psd2live.project.LayoutReference?>(null) }
+	val shownReferences = layoutReferences.map { (r, raster) -> (referenceDraft?.takeIf { it.id == r.id } ?: r) to raster }
+		.filter { (r, _) -> r.visible && viewOptions.showReference && mode == CanvasMode.EDIT }
 	val layerDensity = remember(previewModel) {
 		previewModel?.analysis?.layers?.associate { it.source.id.raw to io.github.psd2live.application.WorkspaceViewRenderer.texelsPerUnit(it.source) }.orEmpty()
 	}
@@ -753,6 +760,7 @@ fun CanvasViewportComposable(
 			ShortcutAction.LAYER_BACKWARD -> viewModel.reorderSelectedLayers("backward")
 			ShortcutAction.LAYER_TO_BACK -> viewModel.reorderSelectedLayers("back")
 			ShortcutAction.LAYER_TOGGLE_REFERENCE -> viewModel.toggleSelectedLayersReference()
+			ShortcutAction.REFERENCE_TOGGLE_SHOWN -> { viewModel.setCanvasViewOptions(canvasId, viewOptions.copy(showReference = !viewOptions.showReference), mode); true }
 			ShortcutAction.PICK_OPTION_1, ShortcutAction.PICK_OPTION_2, ShortcutAction.PICK_OPTION_3,
 			ShortcutAction.PICK_OPTION_4, ShortcutAction.PICK_OPTION_5 -> editor.pickVariant(action.pickIndex!!)
 			ShortcutAction.CANCEL -> {
@@ -1476,7 +1484,8 @@ fun CanvasViewportComposable(
 						}
 					}
 
-					// 3a''. Reference layers under the model: drawn before the artwork, whose frame clears to transparent.
+					// 3a''. Reference images and layers under the model: drawn before the artwork, whose frame clears to transparent.
+					for ((reference, raster) in shownReferences) if (reference.under) drawReference(reference, referenceImage(raster), viewport)
 					val referenceLayersShown = mode == CanvasMode.EDIT && showTexture && model.referenceLayerIds.isNotEmpty()
 					if (referenceLayersShown && !viewOptions.referenceLayersOver) drawIntoCanvas { target ->
 						ReferenceLayerPainter.paint(target.nativeCanvas, model, geometry, viewport, targetVisibleLayerIds)
@@ -1559,14 +1568,7 @@ fun CanvasViewportComposable(
 						drawPath(path, io.github.psd2live.ui.views.texture.heatColor(io.github.psd2live.ui.state.TextureDensity.heat(value)).copy(alpha = 0.5f))
 					}
 				}
-				val shownReference = layoutReference?.first?.takeIf { it.visible && viewOptions.showReference && mode == CanvasMode.EDIT }
-				if (shownReference != null && referenceImage != null) {
-					val r = shownReference.rect
-					drawImage(referenceImage, IntOffset.Zero, IntSize(referenceImage.width, referenceImage.height),
-						IntOffset(viewport.x(r.left).roundToInt(), (viewport.offsetY + r.top * viewport.scale).roundToInt()),
-						IntSize((r.width * viewport.scale).roundToInt().coerceAtLeast(1), (r.height * viewport.scale).roundToInt().coerceAtLeast(1)),
-						alpha = shownReference.opacity, filterQuality = androidx.compose.ui.graphics.FilterQuality.Medium)
-				}
+				for ((reference, raster) in shownReferences) if (!reference.under) drawReference(reference, referenceImage(raster), viewport)
 
 				// The Java2D guide pass is the software path's: with the GPU every guide is in its frame.
 				val guideImage = if (gpuReady) null else guideCache.imageFor(guideKey, w, h, panShift(guideKey)) { g ->
@@ -1992,6 +1994,13 @@ fun CanvasViewportComposable(
 					),
 				)
 			}
+			// The selected reference image's handles: move, scale about its centre, turn.
+			val handled = layoutReferences.firstOrNull { it.first.id == selectedReferenceId }?.first
+				?.takeIf { mode == CanvasMode.EDIT && it.visible && !it.locked && viewOptions.showReference }
+			if (handled != null && viewSize.width > 0) {
+				ReferenceHandles(handled, currentViewportFor(viewSize), onDraft = { referenceDraft = it },
+					onCommit = { rect, rotation -> viewModel.placeReference(handled.id, rect, rotation) })
+			}
 			// While images are carried over the window: targets for what a drop on the canvas itself does not do.
 			if (mode == CanvasMode.EDIT) {
 				val selected = canvasState.selectedLayerId?.let { id -> canvasState.analysis?.source?.layers?.firstOrNull { it.id.raw == id } }
@@ -2004,7 +2013,11 @@ fun CanvasViewportComposable(
 				showPathGuides = mode == CanvasMode.EDIT,
 				showSelectionFocus = mode == CanvasMode.EDIT,
 				showSourcePixels = mode == CanvasMode.EDIT,
-				hasReference = mode == CanvasMode.EDIT && layoutReference != null,
+				hasReference = mode == CanvasMode.EDIT && layoutReferences.isNotEmpty(),
+				onAddReference = if (mode == CanvasMode.EDIT && canvasState.analysis != null) ({
+					val files = io.github.psd2live.ui.utils.NativeFilePicker.chooseMaterialFiles(awtWindow)
+					if (files.isNotEmpty()) viewModel.importMaterials(files.take(1).map { it.toPath() }, null, asReference = true)
+				}) else null,
 				hasReferenceLayers = mode == CanvasMode.EDIT && canvasState.previewModel?.referenceLayerIds?.isNotEmpty() == true,
 				showDensity = mode == CanvasMode.EDIT,
 				// The skin weights belong to the skeleton's meshes, so the toggle comes with an armature.

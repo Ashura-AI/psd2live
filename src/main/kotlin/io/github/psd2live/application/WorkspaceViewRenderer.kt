@@ -33,9 +33,9 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-/** The reference image as a view draws it: its pixels over [rect] on the canvas. */
+/** The reference image as a view draws it: its pixels over [rect] on the canvas, turned [rotation] degrees about its centre. */
 class ViewReferenceImage(val image: BufferedImage, val rect: io.github.psd2live.project.LayerCanvasRect,
-                                  val mode: io.github.psd2live.project.WorkspaceViewReferenceMode, val opacity: Float)
+                                  val mode: io.github.psd2live.project.WorkspaceViewReferenceMode, val opacity: Float, val rotation: Float = 0f)
 
 /** A material item a view outlines: its pixels over [rect] on the canvas. */
 class ViewOutline(val id: String, val image: BufferedImage, val rect: io.github.psd2live.project.LayerCanvasRect)
@@ -315,6 +315,8 @@ object WorkspaceViewRenderer {
 			val left = viewport.x(reference.rect.left); val top = viewport.offsetY + reference.rect.top * viewport.scale
 			val transform = AffineTransform(reference.rect.width * viewport.scale / reference.image.width, 0.0, 0.0,
 				reference.rect.height * viewport.scale / reference.image.height, left, top)
+			if (reference.rotation != 0f) transform.preConcatenate(AffineTransform.getRotateInstance(Math.toRadians(reference.rotation.toDouble()),
+				left + reference.rect.width * viewport.scale / 2.0, top + reference.rect.height * viewport.scale / 2.0))
 			g.drawImage(reference.image, transform, null)
 		} finally { g.dispose() }
 	}
