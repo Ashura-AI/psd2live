@@ -908,22 +908,26 @@ A reversed mask makes an ArtMesh show only outside the mask area, the opposite o
 The change is recorded as one history step and can be undone.
 
 @@ sketch | Placement of Guide Image
-Putting the original art, a draft or character sheets of other angles on the canvas for comparison while you work lets you adjust shapes more accurately. There are two kinds: a **reference image** lies over the canvas or under the model and can be selected, moved and turned at any time; a **reference layer** is a material placed in the layer stack and can show by pose. Neither takes part in generation or is exported.
-## Reference images
-1. Click **+** in the "Reference images" group at the top of the hierarchy panel, or the reference button in the display bar at the lower right of the canvas, and choose a picture; or drag a picture onto the **Use as reference image** slot above an edit canvas, or right-click a material and choose **Add as reference image**.
-2. Click one in the group and its handles appear on the edit canvas: drag inside to move it, a corner to scale it, the knob above to turn it.
-3. Each row of the group shows or hides it, steps its opacity, lays it over or under the model, locks it in place, reorders or removes it; a locked one has no handles.
-{key:REFERENCE_TOGGLE_SHOWN} shows or hides the reference images on the current canvas.
-## Placing a reference layer
-1. In the Materials panel **Import** the reference image.
-2. Right-click the material and choose **Place as reference layer**. With **Place as reference by default** turned on, every layer dragged from that material onto the canvas is a reference layer.
-3. Adjust position and size with the transform box.
-A layer already on the canvas can be switched with **Use as Reference** on the "Layers" panel toolbar or {key:LAYER_TOGGLE_REFERENCE}; see [[edit-parts-sketch]].
+Putting the original art, a draft or character sheets of other angles on the canvas for comparison while you work lets you adjust shapes more accurately. A reference is a kind of member of the hierarchy, with the reference icon; it takes no part in generation and is not exported. It shows in one of three places:
+| Shows as | Description |
+|---|---|
+| Background | Under the whole model; once selected it moves, scales and turns on the canvas, and can be locked |
+| In the layer stack | A layer between the ArtMeshes, stacked by drawing order and adjusted with the transform box like a layer |
+| Foreground | Over the whole model; moves, scales, turns and locks like the background |
+## Adding a reference
+1. Click the reference button on the hierarchy toolbar or in the display bar at the lower right of the canvas and choose a picture; the reference appears in the foreground. Dragging a picture onto the **Use as reference image** slot above an edit canvas works too.
+2. For a picture already in the material library, right-click the material and choose **Background**, **In the layer stack** or **Foreground** under **Add as reference**.
+A layer already on the canvas that has not been generated yet becomes a reference in the layer stack with **Use as Reference** on the "Layers" panel toolbar or {key:LAYER_TOGGLE_REFERENCE}; see [[edit-parts-sketch]].
+## Adjusting a reference
+- Click a reference in the hierarchy: a background or foreground one shows handles on the edit canvas - drag inside to move it, a corner to scale it, the knob above to turn it; one in the layer stack takes the transform box.
+- Right-click a reference: **Shows as** moves it between background, layer stack and foreground, keeping its material, place, visibility and pin; the menu also shows or hides it, sets opacity and lock (background and foreground), gives it back to the model (layer stack) and removes it.
+- {key:REFERENCE_TOGGLE_SHOWN} shows or hides the background and foreground references on the current canvas.
 ## Showing by pose
 References of different angles, such as front, side and looking up, can be stacked in the same place and each shown only in its matching pose:
-1. Right-click the reference layer → **Pin to Keyform**.
-2. The menu lists the parameters worth pinning and their current values; click the pin to pin or unpin at that value; **Pin at Current Pose** pins all the listed parameters at once, and **Unpin** goes back to showing in any pose.
-*> Reference layers sit underneath the model by default, and **Reference layers on top** in the display bar at the lower right of the canvas stacks them above.
+1. Pose the model in the parameter panel first.
+2. Right-click the reference; **Pin to Keyform** at the bottom of the menu lists the parameters worth pinning in the parameter panel's shapes - a track with keyform dots for a single parameter, a 2D pad for a pair - marking the pinned value or the current pose. It only pins; nothing in it moves a parameter.
+3. Click a row's pin to pin at the current value or unpin; **Pin at Current Pose** pins all listed parameters at once, and **Unpin** goes back to showing in any pose.
+*> The **Pin to Keyform** submenu of the canvas context menu is the same panel.
 
 @@ hittest | Preparation for Setting Up Collision Detection
 @@ blend-mode | Blend mode

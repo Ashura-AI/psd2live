@@ -113,7 +113,8 @@ object ReferencePins {
 /**
  * A reference image: material [materialId] shown over [rect] on the canvas, turned [rotation] degrees clockwise about
  * its centre, at [opacity], over the model or [under] it, to place and compare layers against. A [locked] one cannot
- * be moved on the canvas. It is view data in the document - saved and undone with it - but no layer.
+ * be moved on the canvas. It is view data in the document - saved and undone with it - but no layer: the other kind
+ * of reference, a reference layer ([WorkspaceLayout.referenceLayerIds]), sits in the layer stack instead.
  */
 data class LayoutReference(
 	val materialId: String,
@@ -124,6 +125,8 @@ data class LayoutReference(
 	val rotation: Float = 0f,
 	val locked: Boolean = false,
 	val under: Boolean = false,
+	/** The keyform it shows at, as a reference layer's [WorkspaceLayout.referencePins]: empty shows it at every pose. */
+	val pins: Map<String, Float> = emptyMap(),
 ) {
 	init {
 		require(opacity in 0f..1f) { "Reference opacity is 0..1" }
@@ -237,6 +240,7 @@ internal object WorkspaceLayoutCodec {
 		if (reference.rotation != 0f) put("rotation", reference.rotation)
 		if (reference.locked) put("locked", true)
 		if (reference.under) put("under", true)
+		if (reference.pins.isNotEmpty()) putJsonObject("pins") { reference.pins.toSortedMap().forEach { (parameter, value) -> put(parameter, value) } }
 	}
 
 	private fun decodeReference(value: JsonObject): LayoutReference {
@@ -244,7 +248,8 @@ internal object WorkspaceLayoutCodec {
 		return LayoutReference(value.getValue("materialId").jsonPrimitive.content, LayerCanvasRect(rect[0], rect[1], rect[2], rect[3]),
 			value["opacity"]?.jsonPrimitive?.float ?: 0.5f, value["visible"]?.jsonPrimitive?.boolean ?: true,
 			value["id"]?.jsonPrimitive?.content ?: LayoutReference.FIRST_ID, value["rotation"]?.jsonPrimitive?.float ?: 0f,
-			value["locked"]?.jsonPrimitive?.boolean ?: false, value["under"]?.jsonPrimitive?.boolean ?: false)
+			value["locked"]?.jsonPrimitive?.boolean ?: false, value["under"]?.jsonPrimitive?.boolean ?: false,
+			value["pins"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float }.orEmpty())
 	}
 
 	const val LAYOUT = "layout"

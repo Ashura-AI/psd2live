@@ -1488,7 +1488,7 @@ private val ParamThumbRadius = 5.2.dp
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun ParameterTrack(
+internal fun ParameterTrack(
 	/** Read where the track draws: a live value moves the thumb without composing the row again. */
 	value: () -> Float,
 	onValueChange: (Float) -> Unit,
@@ -2335,7 +2335,7 @@ internal fun ParameterPad2D(
 }
 
 
-private fun ParameterKeyMarks?.toSliderMarks(): List<SliderKeyMark> {
+internal fun ParameterKeyMarks?.toSliderMarks(): List<SliderKeyMark> {
 	if (this == null) return emptyList()
 	return buildList {
 		gridKeys.forEach { add(SliderKeyMark(it, SliderKeyShape.Circle)) }

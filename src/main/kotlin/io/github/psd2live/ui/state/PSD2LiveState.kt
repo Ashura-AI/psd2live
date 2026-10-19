@@ -877,6 +877,14 @@ data class PSD2LiveState(
 				parameterValues[org.umamo.runtime.model.ParameterId(id)] }
 		}
 
+	/** Reference images pinned to another keyform than the edit pose: the canvas does not draw them. */
+	val pinnedAwayReferenceImageIds: Set<String>
+		get() {
+			val parameters = previewModel?.rig?.puppet?.parameters ?: return emptySet()
+			return io.github.psd2live.project.ReferencePins.hidden(layout.references.filter { it.pins.isNotEmpty() }.associate { it.id to it.pins }, parameters) { id ->
+				parameterValues[org.umamo.runtime.model.ParameterId(id)] }
+		}
+
 	val isBusy: Boolean
 		get() = isAnalyzing || isGenerating || isUpscaling
 

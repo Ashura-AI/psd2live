@@ -77,6 +77,7 @@ import io.github.psd2live.ui.tooloptions.ChoiceOption
 import io.github.psd2live.ui.tooloptions.NoteOption
 import io.github.psd2live.ui.tooloptions.OptionIcon
 import io.github.psd2live.ui.tooloptions.PinOption
+import io.github.psd2live.ui.tooloptions.ReferencePinsOption
 import io.github.psd2live.ui.tooloptions.SectionOption
 import io.github.psd2live.ui.tooloptions.SliderOption
 import io.github.psd2live.ui.tooloptions.ToggleOption
@@ -190,6 +191,8 @@ private fun BarOption(editor: CanvasEditor, option: ToolOption, focus: () -> Uni
         is PinOption -> BarChip(option.label(editor) + " " + option.value(editor), selected = option.pinned(editor), onClick = {
             option.toggle(editor); focus()
         }, enabled = option.enabled(editor))
+        // A panel of its own, for menus only.
+        is ReferencePinsOption -> Unit
         is NoteOption -> option.text(editor)?.let { text ->
             Text(text, fontSize = 10.5.sp, color = if (option.warning(editor)) colors.warning else colors.textMuted, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 280.dp).padding(horizontal = 4.dp))
@@ -352,7 +355,7 @@ internal fun ToolOptionMenu(editor: CanvasEditor, onDismiss: () -> Unit, onActio
  */
 private fun rowHighlights(option: ToolOption?): Boolean = when (option) {
     null -> true
-    is NoteOption, is SectionOption, is SliderOption -> false
+    is NoteOption, is SectionOption, is SliderOption, is ReferencePinsOption -> false
     is ChoiceOption<*> -> !(option.inline || option.variant)
     else -> true
 }
@@ -401,6 +404,11 @@ private fun MenuOption(editor: CanvasEditor, option: ToolOption, onDismiss: () -
         is ToggleOption -> FloatingMenuSwitch(tr(option.labelKey), option.get(editor), { option.set(editor, it) })
         is PinOption -> FloatingMenuPin(option.label(editor), option.value(editor), option.pinned(editor),
             { option.toggle(editor); onAction() }, enabled = option.enabled(editor))
+        is ReferencePinsOption -> editor.state.previewModel?.rig?.puppet?.let { puppet ->
+            io.github.psd2live.ui.views.ReferencePinPanel(puppet, editor.state.parameterValues, option.target.pin(editor.state.layout), editor.editable) { ids ->
+                editor.viewModel.toggleReferencePin(option.target, ids); onAction()
+            }
+        }
         is ActionOption -> FloatingMenuRow(
             label = tr(option.labelKey, *option.labelArgs(editor).toTypedArray()),
             onClick = {

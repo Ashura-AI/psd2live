@@ -58,7 +58,7 @@ internal object WorkspaceMaterialEdits {
     const val ORDER_REFERENCE = "layout_order_reference"
     const val FORK = "material_fork"
     const val ADOPT = "material_adopt_layers"
-    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, FORK, ADOPT, REFERENCE, ADD_REFERENCE, ORDER_REFERENCE, CROP, MARK_REFERENCE) + WorkspaceMaterialPixels.supported +
+    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, FORK, ADOPT, REFERENCE, ADD_REFERENCE, ORDER_REFERENCE, WorkspaceReferenceModes.OP, CROP, MARK_REFERENCE) + WorkspaceMaterialPixels.supported +
         WorkspaceDrawingEdits.supported + WorkspaceMaterialPeel.supported
     const val MAX_NAME = 128
 
@@ -93,6 +93,7 @@ internal object WorkspaceMaterialEdits {
                 optional("layer_id"), request["reference"]?.jsonPrimitive?.boolean)
             REFERENCE -> reference(document, request)
             ADD_REFERENCE -> addReference(document, request)
+            WorkspaceReferenceModes.OP -> WorkspaceReferenceModes.apply(document, model, request)
             ORDER_REFERENCE -> orderReference(document, text("id"), request.getValue("index").jsonPrimitive.int)
             MARK_REFERENCE -> markReference(document, strings("ids").orEmpty(), request.getValue("reference").jsonPrimitive.boolean)
             CROP -> crop(document, text("id"), request["rect"]?.jsonObject?.let(::rect), request["canvas_rect"]?.jsonObject?.let(::rect),
@@ -441,9 +442,11 @@ internal object WorkspaceMaterialEdits {
         require(opacity in 0f..1f) { "opacity is 0..1" }
         val rotation = request["rotation"]?.jsonPrimitive?.float ?: current?.rotation ?: 0f
         require(rotation.isFinite()) { "rotation must be finite" }
+        val pins = request["pin"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float } ?: current?.pins.orEmpty()
+        require(pins.size <= WorkspaceLayoutEdits.MAX_PINNED && pins.values.all(Float::isFinite)) { "pin holds at most ${WorkspaceLayoutEdits.MAX_PINNED} finite values" }
         return LayoutReference(materialId, rect, opacity, request["visible"]?.jsonPrimitive?.boolean ?: current?.visible ?: true, id,
             ((rotation % 360f) + 360f) % 360f, request["locked"]?.jsonPrimitive?.boolean ?: current?.locked ?: false,
-            request["under"]?.jsonPrimitive?.boolean ?: current?.under ?: false)
+            request["under"]?.jsonPrimitive?.boolean ?: current?.under ?: false, pins)
     }
 
     /**

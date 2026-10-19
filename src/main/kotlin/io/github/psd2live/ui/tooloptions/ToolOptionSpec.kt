@@ -168,6 +168,16 @@ internal class PinOption(
     override val place: OptionPlace = OptionPlace.MENU,
 ) : ToolOption
 
+/**
+ * A reference's keyform pin as the compact parameter panel ([io.github.psd2live.ui.views.ReferencePinPanel]): a
+ * track or 2D pad per parameter, each with its push pin. Shown in menus only.
+ */
+internal class ReferencePinsOption(
+    override val id: String,
+    val target: io.github.psd2live.ui.state.ReferenceTarget,
+    override val place: OptionPlace = OptionPlace.MENU,
+) : ToolOption
+
 /** A line of state - what the tool acts on, or what it is waiting for. Null [text] shows nothing. */
 internal class NoteOption(
     override val id: String,

@@ -666,6 +666,11 @@ private fun HierarchyTreeList(
 			if (state.activeWorkspace.canvases.size > 1) {
 				PanelToolbarText(viewModel.canvasTitle(state.activeCanvas), modifier = Modifier.widthIn(max = 108.dp))
 			}
+			// A reference joins the hierarchy as one of its members, in front of the model at first.
+			io.github.psd2live.ui.components.CompactIconButton(onClick = {
+				val files = NativeFilePicker.chooseMaterialFiles()
+				if (files.isNotEmpty()) viewModel.importMaterials(files.take(1).map { it.toPath() }, null, asReference = true)
+			}, enabled = state.analysis != null, tooltip = tr("references.add"), size = 22.dp) { IconReferenceImage(tint = colors.textMuted, size = 13.dp) }
 			HierarchySortMenu(sort) { next ->
 				sort = next
 				AppSettings.hierarchySort = next.takeUnless { it.isDefault }?.encode()
@@ -676,11 +681,6 @@ private fun HierarchyTreeList(
 			)
 		}
 
-		// The reference images sit above the rig they are laid against: shown, hidden, locked, selected for handles.
-		ReferenceImagesSection(state, viewModel, onAdd = {
-			val files = NativeFilePicker.chooseMaterialFiles()
-			if (files.isNotEmpty()) viewModel.importMaterials(files.take(1).map { it.toPath() }, null, asReference = true)
-		})
 		// Tree Body with Container Hit-Testing & Overlay and Draw Order Ruler
 		Row(
 			modifier = Modifier
@@ -860,6 +860,9 @@ private fun HierarchyTreeList(
 					}
 				}
 
+				// References are members of the hierarchy: images in front of the model above it, those behind below it,
+				// and reference layers where they sit in the stack.
+				if (!searchFilter.active) for (row in referenceRows(state, under = false)) ReferenceTreeRow(row, TREE_BASE_PADDING_DP.dp, state, viewModel)
 				for ((index, chain) in rootChains.withIndex()) {
 					val isLast = index == rootChains.lastIndex && rootDrawables.isEmpty()
 					DeformerTreeItem(
@@ -886,6 +889,11 @@ private fun HierarchyTreeList(
 				}
 				for ((index, drawable) in rootDrawables.withIndex()) {
 					val isLast = index == rootDrawables.lastIndex
+					val referenceLayer = model.rig.layerIdByDrawableId[drawable.id.raw]?.takeIf { it in model.referenceLayerIds }
+					if (referenceLayer != null) {
+						if (searchFilter.isVisible(drawable.id.raw)) ReferenceTreeRow(referenceLayerRow(state, referenceLayer, drawable.name), TREE_BASE_PADDING_DP.dp, state, viewModel)
+						continue
+					}
 					DrawableTreeItem(
 						drawable = drawable,
 						depth = 0,
@@ -903,6 +911,8 @@ private fun HierarchyTreeList(
 						onRequestCreate = onRequestCreate,
 					)
 				}
+
+				if (!searchFilter.active) for (row in referenceRows(state, under = true)) ReferenceTreeRow(row, TREE_BASE_PADDING_DP.dp, state, viewModel)
 
 				// Empty area at the bottom also accepts dropping onto ROOT
 				Spacer(

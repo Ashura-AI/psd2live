@@ -443,10 +443,12 @@ fun CanvasViewportComposable(
 		io.github.psd2live.core.PreviewRenderer.rasterImage(raster.width, raster.height, raster.rgba).toComposeImageBitmap()
 	}
 	val selectedReferenceId by viewModel.selectedReferenceId.collectAsState()
+	// Reference images pinned to another keyform than the edit pose, as reference layers pinned away.
+	val pinnedAwayImages = canvasState.pinnedAwayReferenceImageIds
 	// A reference being moved, scaled or turned on this canvas, shown as it goes until the edit lands.
 	var referenceDraft by remember(layoutReferences) { mutableStateOf<io.github.psd2live.project.LayoutReference?>(null) }
 	val shownReferences = layoutReferences.map { (r, raster) -> (referenceDraft?.takeIf { it.id == r.id } ?: r) to raster }
-		.filter { (r, _) -> r.visible && viewOptions.showReference && mode == CanvasMode.EDIT }
+		.filter { (r, _) -> r.visible && viewOptions.showReference && mode == CanvasMode.EDIT && r.id !in pinnedAwayImages }
 	val layerDensity = remember(previewModel) {
 		previewModel?.analysis?.layers?.associate { it.source.id.raw to io.github.psd2live.application.WorkspaceViewRenderer.texelsPerUnit(it.source) }.orEmpty()
 	}

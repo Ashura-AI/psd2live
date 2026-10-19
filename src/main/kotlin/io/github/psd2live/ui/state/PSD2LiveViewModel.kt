@@ -6113,8 +6113,8 @@ class PSD2LiveViewModel : AutoCloseable {
 		placeMaterial(drag.id, at.x, at.y)
 	}
 
-	/** Adds material [materialId] as a further reference image (`layout_add_reference`), or removes every one showing it with null. */
-	fun setLayoutReference(materialId: String?, opacity: Float? = null, removing: String? = null) {
+	/** Adds material [materialId] as a further reference image, in front of the model or [under] it (`layout_add_reference`), or removes every one showing it with null. */
+	fun setLayoutReference(materialId: String?, opacity: Float? = null, removing: String? = null, under: Boolean = false) {
 		if (materialId == null) {
 			val ids = _state.value.layout.references.filter { removing == null || it.materialId == removing }.map { it.id }
 			if (ids.isNotEmpty()) workspaceBackend?.let { backend ->
@@ -6127,7 +6127,7 @@ class PSD2LiveViewModel : AutoCloseable {
 			return
 		}
 		layoutEdit(tr("materials.referenceSet"), io.github.psd2live.application.WorkspaceMaterialEdits.ADD_REFERENCE,
-			kotlinx.serialization.json.buildJsonObject { put("material_id", materialId); opacity?.let { put("opacity", it) } })
+			kotlinx.serialization.json.buildJsonObject { put("material_id", materialId); opacity?.let { put("opacity", it) }; if (under) put("under", true) })
 	}
 
 	private val _selectedReferenceId = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
@@ -6149,6 +6149,60 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	fun orderReference(id: String, index: Int) = layoutEdit(tr("references.order"), io.github.psd2live.application.WorkspaceMaterialEdits.ORDER_REFERENCE,
 		kotlinx.serialization.json.buildJsonObject { put("id", id); put("index", index) })
+
+	/** Pins [target] to keyform [pin] - parameter ID to value - or unpins it with an empty one. */
+	fun setReferencePin(target: ReferenceTarget, pin: Map<String, Float>) = when (target) {
+		is ReferenceTarget.Layer -> pinReferenceLayers(listOf(target.layerId), pin)
+		is ReferenceTarget.Image -> editReference(target.id) {
+			put("pin", kotlinx.serialization.json.JsonObject(pin.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) }))
+		}
+	}
+
+	/**
+	 * Frees [target] from [parameterIds] when it is pinned to all of them, else pins it to each at the value the canvas
+	 * shows now, keeping its other pins: one pin row of the menu, a track or a 2D pad.
+	 */
+	fun toggleReferencePin(target: ReferenceTarget, parameterIds: List<String>) {
+		val state = _state.value
+		val pin = target.pin(state.layout)
+		if (parameterIds.all { it in pin }) return setReferencePin(target, pin - parameterIds.toSet())
+		val parameters = state.previewModel?.rig?.puppet?.parameters?.filter { it.id.raw in parameterIds } ?: return
+		setReferencePin(target, pin + parameters.associate { it.id.raw to (state.parameterValues[it.id] ?: it.default) })
+	}
+
+	/** Pins [target] to every parameter of [parameterIds] at the pose the canvas shows now. */
+	fun pinReferencePose(target: ReferenceTarget, parameterIds: List<String>) {
+		val state = _state.value
+		val parameters = state.previewModel?.rig?.puppet?.parameters?.filter { it.id.raw in parameterIds } ?: return
+		setReferencePin(target, parameters.associate { it.id.raw to (state.parameterValues[it.id] ?: it.default) })
+	}
+
+	/** Shows [target] behind the model, in the layer stack or in front of it (`reference_set_mode`). */
+	fun setReferenceMode(target: ReferenceTarget, mode: ReferenceMode) {
+		if (target is ReferenceTarget.Image && _selectedReferenceId.value == target.id && mode == ReferenceMode.LAYER) _selectedReferenceId.value = null
+		layoutEdit(tr("references.moved", tr(mode.labelKey)), io.github.psd2live.application.WorkspaceReferenceModes.OP,
+			kotlinx.serialization.json.buildJsonObject {
+				when (target) {
+					is ReferenceTarget.Image -> put("reference_id", target.id)
+					is ReferenceTarget.Layer -> put("layer_id", target.layerId)
+				}
+				put("mode", mode.key)
+			})
+	}
+
+	/** Shows or hides [target]: a reference image in the document, a reference layer as any layer. */
+	fun setReferenceVisible(target: ReferenceTarget, visible: Boolean) {
+		when (target) {
+			is ReferenceTarget.Image -> editReference(target.id) { put("visible", visible) }
+			is ReferenceTarget.Layer -> if (_state.value.isLayerVisible(target.layerId) != visible) toggleLayerVisibility(target.layerId)
+		}
+	}
+
+	/** Removes [target]: a reference image goes, a reference layer is deleted. */
+	fun removeReference(target: ReferenceTarget) = when (target) {
+		is ReferenceTarget.Image -> removeReference(target.id)
+		is ReferenceTarget.Layer -> deleteLayer(target.layerId)
+	}
 
 	/** Reference image [id] moved, scaled or turned on the canvas to [rect] and [rotation]. */
 	fun placeReference(id: String, rect: io.github.psd2live.project.LayerCanvasRect, rotation: Float) = editReference(id) {
@@ -6335,17 +6389,6 @@ class PSD2LiveViewModel : AutoCloseable {
 			})
 	}
 
-	/**
-	 * Pins reference layer [layerId] to [parameterId] at the value the canvas shows now, keeping its other pins, or
-	 * frees it from that parameter when it is pinned to it.
-	 */
-	fun toggleReferencePin(layerId: String, parameterId: String) {
-		val state = _state.value
-		val pin = state.layout.referencePins[layerId].orEmpty()
-		if (parameterId in pin) return pinReferenceLayers(listOf(layerId), pin - parameterId)
-		val parameter = state.previewModel?.rig?.puppet?.parameters?.firstOrNull { it.id.raw == parameterId } ?: return
-		pinReferenceLayers(listOf(layerId), pin + (parameterId to (state.parameterValues[parameter.id] ?: parameter.default)))
-	}
 
 	/**
 	 * Toggles the selected layers between reference and model: all of them back to the model when every one is a

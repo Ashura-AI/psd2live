@@ -133,6 +133,12 @@ CMO3 的完整模型仍用 `project_import_cmo3` 导入，不进入 Layout 流�
 - 条目与各级文件夹的标签成为图层标签（见上）。
 - `layer_replace_image` 新增来源 `material_id`：图层显示该素材，素材关联随之更新。
 
+### 一种参考，三处显示
+
+参考在界面上是同一类对象，按显示方式落在两种数据里：**背景** 与 **前景** 是参考图（`LayoutReference`，`under` 区分），**图层中** 是参考图层（`referenceLayerIds`，见上文）。`reference_set_mode`（`WorkspaceReferenceModes`）在三者之间移动一个参考：参考图改背景/前景只改 `under`；参考图进图层栈时按其素材与矩形放置为参考图层（ID 为 `ref_` 加参考图 ID 与素材的哈希），钉住移到 `referencePins`，隐藏的保持隐藏，旋转与锁定不带入；参考图层出栈时用它的素材（没有时先登记）与画布矩形新增一张参考图，带上显示与钉住，再删除该图层。两种参考都可以固定到关键形：参考图的 `pins` 与 `referencePins` 规则相同（`ReferencePins`），画布不画不在姿态的参考图。
+
+层级树把参考作为成员显示（参考图标与显示方式标签）：前景参考图在根节点之上，背景参考图在最下，参考图层在它在栈里的位置；点选参考图出现画布手柄，点选参考图层即选中该图层。右键菜单两种参考相同：显示方式、显示/隐藏、钉住面板、移除；参考图另有不透明度与锁定，参考图层另有恢复为模型图层。钉住面板（`ReferencePinPanel`）按 `ReferencePinRows` 列出参数：成对参数用参数面板的 2D pad，其余用带关键形点的轨道，二者都只读，只标出钉值或当前姿态，每行一个图钉；画布右键菜单的「固定到关键形」子菜单是同一面板（`ReferencePinsOption`）。素材右键只保留「添加为参考」下的背景、图层中、前景三项；`MaterialItem.reference` 仍决定拖到画布时是否放置为参考图层（清单的 `reference` 写入它）。
+
 ### 参考图与特写
 
 `WorkspaceLayout.references`（`LayoutReference` 列表，按绘制顺序）把素材条目叠在画布上或垫在模型下，供摆放和对照：ID、素材 ID、画布矩形、绕中心的顺时针旋转、不透明度、显示、锁定与是否在模型下方。它们是文档数据（随工程保存、可撤销），但不是图层，生成视图、Rig 与导出都不含它们；被参考图使用的素材不能删除。`layout_set_reference` 设置、修改或移除 `id` 所指的一张（省略时为第一张，没有时新建），`layout_add_reference` 再加一张，`layout_order_reference` 调整顺序；新设时默认等比缩放到画布内并居中。参考查询（取色、轮廓、吸附）、`material_crop` 的 `canvas_rect` 与 `view_render_model` 的 `reference` 用第一张。只有一张时归档仍写成原来的单个 `reference` 对象，新字段取默认值时不写，旧工程读写不变；多于一张写 `references` 数组。
@@ -214,6 +220,7 @@ CMO3 的完整模型仍用 `project_import_cmo3` 导入，不进入 Layout 流�
 | `layout_set_reference` | 文档 | 设置、修改或移除一张参考图（旋转、锁定、上下方） |
 | `layout_add_reference` | 文档 | 新增一张参考图 |
 | `layout_order_reference` | 文档 | 调整参考图的绘制顺序 |
+| `reference_set_mode` | 文档 | 把参考移到背景、图层中或前景 |
 | `material_crop` | 文档 | 无损裁出新条目，记住画布位置 |
 | `material_set_placement` | 文档 | 设置条目的默认位置（矩形或取另一条目的位置） |
 | `material_peel` | 文档 | 用去掉部件的生成图剥离部件，新建部件与其下的图两个条目 |

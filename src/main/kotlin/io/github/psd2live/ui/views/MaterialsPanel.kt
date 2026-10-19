@@ -452,27 +452,16 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				if (item != null) add(MenuLine.Action(tr("materials.menu.edit"), { close(); vm.openMaterialEditor(item.id) }))
 				if (folder != null) add(MenuLine.Action(tr("materials.menu.open"), { close(); folderId = folder.id; query = "" },
 					trailing = fileKind(folder)))
-				// Placing follows each item's reference mark; the other row places the opposite way once.
 				val items = item?.let(::listOf) ?: library.subtree(folder!!.id).let { folders -> library.items.filter { it.folderId in folders } }
-				val marked = items.isNotEmpty() && items.all { it.reference }
-				add(MenuLine.Action(tr("materials.menu.place"), { close(); vm.placeMaterial(target) }))
-				add(MenuLine.Action(tr(if (marked) "materials.menu.placeAsModel" else "materials.menu.placeAsReference"),
-					{ close(); vm.placeMaterial(target, reference = !marked) }, enabled = items.isNotEmpty()))
-				add(MenuLine.Action(tr(if (marked) "materials.menu.unmarkReference" else "materials.menu.markReference"),
-					{ close(); vm.markMaterialsReference(listOf(target), !marked) }, enabled = items.isNotEmpty()))
+				add(MenuLine.Action(tr("materials.menu.place"), { close(); vm.placeMaterial(target, reference = false) }, enabled = items.isNotEmpty()))
 				val layer = state.selectedLayerId
 				if (item != null && layer != null) add(MenuLine.Action(tr("materials.menu.replace"), { close(); vm.replaceLayerWithMaterial(layer, item.id) }))
-				if (item != null) {
-					val reference = state.layout.references.firstOrNull { it.materialId == item.id }
-					if (reference != null) {
-						// One row steps the opacity through quarters, so the reference fades without a slider.
-						val next = ((kotlin.math.round(reference.opacity * 4f) % 4f) + 1f) / 4f
-						add(MenuLine.Action(tr("materials.menu.referenceOpacity"), { vm.editReference(reference.id) { put("opacity", next) } },
-							trailing = "${kotlin.math.round(reference.opacity * 100f).toInt()}%"))
-						add(MenuLine.Action(tr("materials.menu.clearReference"), { close(); vm.setLayoutReference(null, removing = item.id) }))
-					}
-					add(MenuLine.Action(tr("materials.menu.setReference"), { close(); vm.setLayoutReference(item.id) }))
-				}
+				// One reference, three places to show it - the hierarchy's reference menu moves it between them later.
+				add(MenuLine.Section(tr("materials.menu.addReference")))
+				if (item != null) add(MenuLine.Action(tr("references.mode.background"), { close(); vm.setLayoutReference(item.id, under = true) }))
+				add(MenuLine.Action(tr("references.mode.layer"), { close(); vm.placeMaterial(target, reference = true) }, enabled = items.isNotEmpty()))
+				if (item != null) add(MenuLine.Action(tr("references.mode.foreground"), { close(); vm.setLayoutReference(item.id) }))
+				add(MenuLine.Rule)
 				if (item?.kind == MaterialKind.VECTOR) add(MenuLine.Action(tr("materials.menu.resolution"), { close(); resolution = item.id },
 					trailing = "${item.raster.width}×${item.raster.height}"))
 				val users = references[target].orEmpty()

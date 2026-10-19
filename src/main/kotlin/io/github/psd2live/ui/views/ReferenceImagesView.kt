@@ -48,6 +48,20 @@ import io.github.psd2live.i18n.tr
 import io.github.psd2live.project.LayerCanvasRect
 import io.github.psd2live.project.LayoutReference
 import io.github.psd2live.ui.components.CompactIconButton
+import io.github.psd2live.ui.components.CompactMenuDivider
+import io.github.psd2live.ui.components.CompactMenuHeader
+import io.github.psd2live.ui.components.CompactMenuItem
+import io.github.psd2live.ui.components.CompactMenuSection
+import io.github.psd2live.ui.components.IconPin
+import io.github.psd2live.ui.components.TreeContextMenu
+import io.github.psd2live.ui.parameterKeyMarks
+import io.github.psd2live.ui.state.ReferenceMode
+import io.github.psd2live.ui.state.ReferencePinRows
+import io.github.psd2live.ui.state.ReferenceTarget
+import androidx.compose.ui.input.pointer.onPointerEvent
+import org.umamo.runtime.model.Parameter
+import org.umamo.runtime.model.ParameterId
+import org.umamo.runtime.model.PuppetModel
 import io.github.psd2live.ui.components.IconAdd
 import io.github.psd2live.ui.components.IconEye
 import io.github.psd2live.ui.components.IconLock
@@ -76,59 +90,167 @@ internal fun DrawScope.drawReference(reference: LayoutReference, image: ImageBit
 }
 
 /**
- * The reference images, at the top of the hierarchy: each can be shown or hidden, locked, put under or over the model,
- * faded, reordered and removed; selecting one puts its handles on the edit canvas. [onAdd] picks image files to add.
+ * A reference's keyform pin as a compact copy of the parameter panel: a track for each parameter and a 2D pad for
+ * each linked pair ([ReferencePinRows]), showing the keys and the value it is pinned at (else the edit pose). Nothing
+ * here moves a parameter; each row's push pin pins the reference there or frees it ([onToggle], the row's IDs).
  */
 @Composable
-internal fun ReferenceImagesSection(state: PSD2LiveState, viewModel: PSD2LiveViewModel, onAdd: () -> Unit) {
+internal fun ReferencePinPanel(puppet: PuppetModel, values: Map<ParameterId, Float>, pin: Map<String, Float>, enabled: Boolean,
+                               onToggle: (List<String>) -> Unit) {
 	val colors = LocalToolColors.current
-	val references = state.layout.references
-	val selected by viewModel.selectedReferenceId.collectAsState()
-	var open by remember { mutableStateOf(true) }
-	Column(Modifier.fillMaxWidth().background(colors.windowBackground)) {
-		Row(Modifier.fillMaxWidth().height(24.dp).padding(start = 8.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-			Box(Modifier.weight(1f).handCursor().clickable(remember { MutableInteractionSource() }, indication = null) { open = !open }) {
-				Text((if (open) "▾ " else "▸ ") + tr("references.title", references.size), color = colors.textMuted, fontSize = 10.5.sp, maxLines = 1)
-			}
-			CompactIconButton(onClick = onAdd, tooltip = tr("references.add"), size = 20.dp) { IconAdd(Modifier.size(10.dp), colors.textPrimary) }
-		}
-		if (open) for ((index, reference) in references.withIndex()) {
-			val name = state.layout.materials.item(reference.materialId)?.name ?: reference.materialId
-			val isSelected = selected == reference.id
-			Row(Modifier.fillMaxWidth().height(24.dp)
-				.background(if (isSelected) colors.accent.copy(alpha = 0.18f) else colors.windowBackground)
-				.selectOrOpen(true, onSelect = { viewModel.selectReference(if (isSelected) null else reference.id) }, onOpen = { viewModel.selectReference(reference.id) })
-				.padding(start = 14.dp, end = 4.dp),
-				verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-				CompactIconButton(onClick = { viewModel.editReference(reference.id) { put("visible", !reference.visible) } },
-					tooltip = tr(if (reference.visible) "references.hide" else "references.show"), size = 20.dp) {
-					IconEye(reference.visible, Modifier.size(13.dp), if (reference.visible) colors.textPrimary else colors.textMuted)
+	val rows = remember(puppet, pin, values) { ReferencePinRows.of(puppet, pin, values) }
+	val marks = remember(puppet) { puppet.parameterKeyMarks() }
+	if (rows.isEmpty()) {
+		Text(tr("layers.pin.none"), color = colors.textMuted, fontSize = 10.5.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+		return
+	}
+	fun shown(parameter: Parameter) = pin[parameter.id.raw] ?: values[parameter.id] ?: parameter.default
+	Column(Modifier.fillMaxWidth().padding(start = 10.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+		for (row in rows) {
+			val ids = row.parameters.map { it.id.raw }
+			val pinned = ids.all { it in pin }
+			Row(verticalAlignment = Alignment.CenterVertically) {
+				Column(Modifier.weight(1f)) {
+					Row(verticalAlignment = Alignment.CenterVertically) {
+						Text(row.parameters.joinToString(" × ") { it.name.ifBlank { it.id.raw } }, color = if (pinned) colors.textPrimary else colors.textMuted,
+							fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+						Text(row.parameters.joinToString(", ") { formatAxisValue(shown(it)) }, color = if (pinned) colors.accent else colors.textMuted, fontSize = 9.5.sp)
+					}
+					when (row) {
+						is ReferencePinRows.Axis -> ParameterTrack({ shown(row.parameter) }, {}, row.parameter.min..row.parameter.max,
+							marks[row.parameter.id].toSliderMarks(), if (pinned) listOf(shown(row.parameter)) else emptyList(),
+							Modifier.fillMaxWidth().height(18.dp), enabled = false)
+						is ReferencePinRows.Pad -> ParameterPad2D(row.horizontal, row.vertical, { shown(row.horizontal) }, { shown(row.vertical) },
+							xLocked = true, yLocked = true, horizontalKeys = marks[row.horizontal.id],
+							highlightedX = if (pinned) listOf(shown(row.horizontal)) else emptyList(),
+							highlightedY = if (pinned) listOf(shown(row.vertical)) else emptyList(),
+							verticalKeys = marks[row.vertical.id], modifier = Modifier.fillMaxWidth().height(72.dp), onChange = { _, _ -> })
+					}
 				}
-				Text(name, color = if (reference.visible) colors.textPrimary else colors.textMuted, fontSize = 11.sp, maxLines = 1,
-					overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-				// The fade steps a quarter at a time, as the material menu's does.
-				CompactIconButton(onClick = { viewModel.editReference(reference.id) { put("opacity", if (reference.opacity >= 0.99f) 0.25f else minOf(1f, reference.opacity + 0.25f)) } },
-					tooltip = tr("references.opacity"), size = 20.dp) {
-					Text("${(reference.opacity * 100).roundToInt()}", color = colors.textMuted, fontSize = 9.5.sp)
-				}
-				CompactIconButton(onClick = { viewModel.editReference(reference.id) { put("under", !reference.under) } },
-					tooltip = tr(if (reference.under) "references.under" else "references.over"), size = 20.dp) {
-					Text(if (reference.under) "▼" else "▲", color = colors.textMuted, fontSize = 9.sp)
-				}
-				CompactIconButton(onClick = { viewModel.editReference(reference.id) { put("locked", !reference.locked) } },
-					tooltip = tr(if (reference.locked) "references.unlock" else "references.lock"), size = 20.dp) {
-					IconLock(reference.locked, Modifier.size(12.dp), if (reference.locked) colors.textPrimary else colors.textMuted)
-				}
-				if (references.size > 1) CompactIconButton(onClick = { viewModel.orderReference(reference.id, if (index == 0) references.lastIndex else index - 1) },
-					tooltip = tr("references.order"), size = 20.dp) {
-					Text("⇅", color = colors.textMuted, fontSize = 10.sp)
-				}
-				CompactIconButton(onClick = { viewModel.removeReference(reference.id) }, tooltip = tr("references.remove"), size = 20.dp) {
-					IconTrash(Modifier.size(11.dp), colors.textMuted)
+				CompactIconButton(onClick = { onToggle(ids) }, enabled = enabled, tooltip = tr(if (pinned) "layers.pin.unpinRow" else "layers.pin.pinRow"), size = 22.dp) {
+					IconPin(pinned, Modifier.size(12.dp), if (pinned) colors.accent else colors.textMuted)
 				}
 			}
 		}
 	}
+}
+
+/** What a reference row shows: the reference, its name and where it shows. */
+internal data class ReferenceRow(val target: ReferenceTarget, val name: String, val mode: ReferenceMode, val visible: Boolean,
+                                 val pinned: Boolean, val locked: Boolean, val opacity: Float?)
+
+/** The hierarchy's reference image rows: those in front of the model ([under] false, front first) or those behind it. */
+internal fun referenceRows(state: PSD2LiveState, under: Boolean): List<ReferenceRow> = state.layout.references.filter { it.under == under }
+	.let { if (under) it else it.reversed() }.map { r ->
+		ReferenceRow(ReferenceTarget.Image(r.id), state.layout.materials.item(r.materialId)?.name ?: r.materialId,
+			if (r.under) ReferenceMode.BACKGROUND else ReferenceMode.FOREGROUND, r.visible, r.pins.isNotEmpty(), r.locked, r.opacity)
+	}
+
+/** A reference layer row: in the stack with the ArtMeshes. */
+internal fun referenceLayerRow(state: PSD2LiveState, layerId: String, name: String) = ReferenceRow(ReferenceTarget.Layer(layerId), name,
+	ReferenceMode.LAYER, state.isLayerVisible(layerId), layerId in state.layout.referencePins, false, null)
+
+/**
+ * A reference in the hierarchy: a member like a mesh, with the reference icon, where it shows (behind, in the stack,
+ * in front) and its pin; a click selects it - an image for its canvas handles, a layer as any layer - and its menu
+ * holds what a reference does.
+ */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+internal fun ReferenceTreeRow(row: ReferenceRow, startPadding: androidx.compose.ui.unit.Dp, state: PSD2LiveState, viewModel: PSD2LiveViewModel) {
+	val colors = LocalToolColors.current
+	val selectedImage by viewModel.selectedReferenceId.collectAsState()
+	val selected = when (val t = row.target) {
+		is ReferenceTarget.Image -> selectedImage == t.id
+		is ReferenceTarget.Layer -> state.selectedLayerId == t.layerId || t.layerId in state.selectedLayerIds
+	}
+	var hovered by remember { mutableStateOf(false) }
+	var menu by remember { mutableStateOf(false) }
+	var menuAt by remember { mutableStateOf(Offset.Zero) }
+	fun select() = when (val t = row.target) {
+		is ReferenceTarget.Image -> viewModel.selectReference(if (selected) null else t.id)
+		is ReferenceTarget.Layer -> viewModel.selectLayer(if (selected) null else t.layerId)
+	}
+	val text = when {
+		!row.visible -> colors.textDisabled
+		selected -> colors.selectionText
+		else -> colors.textPrimary
+	}
+	Box(Modifier.fillMaxWidth()) {
+		Row(Modifier.fillMaxWidth().height(20.dp)
+			.background(when { selected -> colors.selection; hovered -> colors.controlHover.copy(alpha = 0.3f); else -> androidx.compose.ui.graphics.Color.Transparent })
+			.onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Enter) { hovered = true }
+			.onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Exit) { hovered = false }
+			.onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press) { event ->
+				val change = event.changes.firstOrNull() ?: return@onPointerEvent
+				if (event.button == androidx.compose.ui.input.pointer.PointerButton.Secondary) {
+					menuAt = change.position
+					if (!selected) select()
+					menu = true
+					change.consume()
+				} else if (event.button == androidx.compose.ui.input.pointer.PointerButton.Primary) {
+					select(); change.consume()
+				}
+			}
+			.padding(start = startPadding, end = 6.dp),
+			verticalAlignment = Alignment.CenterVertically) {
+			Spacer(Modifier.width(1.dp))
+			IconReferenceImage(tint = if (selected) colors.selectionText else colors.accent, size = 12.dp)
+			Spacer(Modifier.width(14.dp))
+			Text(row.name, color = text, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+			Text(tr(row.mode.labelKey), color = if (selected) colors.selectionText else colors.textMuted, fontSize = 9.5.sp, maxLines = 1)
+			if (row.pinned) { Spacer(Modifier.width(4.dp)); IconPin(true, Modifier.size(11.dp), if (selected) colors.selectionText else colors.accent) }
+			if (row.locked) { Spacer(Modifier.width(4.dp)); IconLock(true, Modifier.size(11.dp), if (selected) colors.selectionText else colors.textMuted) }
+			Spacer(Modifier.width(4.dp))
+			Box(Modifier.size(16.dp).handCursor().clickable { viewModel.setReferenceVisible(row.target, !row.visible) }, contentAlignment = Alignment.Center) {
+				IconEye(row.visible, Modifier.size(12.dp), if (row.visible) (if (selected) colors.selectionText else colors.textMuted) else colors.textDisabled.copy(alpha = 0.5f))
+			}
+		}
+		TreeContextMenu(expanded = menu, onDismissRequest = { menu = false }, clickOffset = menuAt, minWidth = 236.dp) {
+			ReferenceMenu(row, state, viewModel) { menu = false }
+		}
+	}
+}
+
+/**
+ * What a reference does, the same for an image and a layer: where it shows, shown or hidden, its pin as a compact
+ * parameter panel, and removing it; an image also fades and locks, a layer can go back to the model.
+ */
+@Composable
+private fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: PSD2LiveViewModel, close: () -> Unit) {
+	val colors = LocalToolColors.current
+	CompactMenuHeader(row.name, badge = tr("references.badge"), icon = { IconReferenceImage(tint = colors.accent, size = 12.dp) })
+	CompactMenuSection(tr("references.mode"))
+	for (mode in ReferenceMode.entries) CompactMenuItem(tr(mode.labelKey), onClick = { close(); if (mode != row.mode) viewModel.setReferenceMode(row.target, mode) },
+		active = mode == row.mode)
+	CompactMenuDivider()
+	CompactMenuItem(tr(if (row.visible) "references.hide" else "references.show"), onClick = { close(); viewModel.setReferenceVisible(row.target, !row.visible) },
+		icon = { IconEye(row.visible, Modifier.size(12.dp), colors.textMuted) })
+	val image = row.target as? ReferenceTarget.Image
+	if (image != null && row.opacity != null) {
+		val opacity = row.opacity
+		// The fade steps a quarter at a time and keeps the menu open.
+		CompactMenuItem(tr("references.opacity"), onClick = {
+			viewModel.editReference(image.id) { put("opacity", if (opacity >= 0.99f) 0.25f else minOf(1f, opacity + 0.25f)) }
+		}, trailingText = "${(opacity * 100).roundToInt()}%")
+		CompactMenuItem(tr(if (row.locked) "references.unlock" else "references.lock"), onClick = { close(); viewModel.editReference(image.id) { put("locked", !row.locked) } },
+			icon = { IconLock(row.locked, Modifier.size(12.dp), colors.textMuted) })
+	}
+	val layer = row.target as? ReferenceTarget.Layer
+	if (layer != null) CompactMenuItem(tr("references.toModel"), onClick = { close(); viewModel.markLayersReference(listOf(layer.layerId), false) })
+	val puppet = state.previewModel?.rig?.puppet
+	if (puppet != null && puppet.parameters.isNotEmpty()) {
+		CompactMenuSection(tr("layers.pin.menu"))
+		val pin = row.target.pin(state.layout)
+		ReferencePinPanel(puppet, state.parameterValues, pin, enabled = state.analysis != null) { ids -> viewModel.toggleReferencePin(row.target, ids) }
+		val listed = remember(puppet, pin, state.parameterValues) { ReferencePinRows.of(puppet, pin, state.parameterValues).flatMap { r -> r.parameters.map { it.id.raw } } }
+		if (listed.isNotEmpty()) CompactMenuItem(tr("layers.pin.pose"), onClick = { viewModel.pinReferencePose(row.target, listed) },
+			icon = { IconPin(true, Modifier.size(12.dp), colors.textMuted) })
+		if (pin.isNotEmpty()) CompactMenuItem(tr("layers.pin.clear"), onClick = { viewModel.setReferencePin(row.target, emptyMap()) })
+	}
+	CompactMenuDivider()
+	CompactMenuItem(tr("references.remove"), onClick = { close(); viewModel.removeReference(row.target) }, danger = true,
+		icon = { IconTrash(Modifier.size(12.dp), colors.textMuted) })
 }
 
 /** What a gesture on a [ReferenceHandles] does. */

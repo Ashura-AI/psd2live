@@ -51,4 +51,32 @@ class WorkspaceReferenceEditsTest {
 		assertEquals(several.references, read.references)
 		assertEquals(single.references, WorkspaceLayoutCodec.decode(written, null) { _, _, _ -> ByteArray(0) }.references)
 	}
+
+	@Test
+	fun aReferenceMovesBetweenBackgroundLayerAndForegroundKeepingItsPin() = kotlinx.coroutines.runBlocking {
+		val builder = WorkspacePreviewBuilder()
+		val model = builder.build(document)
+		val parameter = model.rig.puppet.parameters.first()
+		val image = WorkspaceMaterialEdits.addReference(document, buildJsonObject {
+			put("material_id", face); put("opacity", 0.5f)
+			put("pin", buildJsonObject { put(parameter.id.raw, parameter.max) })
+		})
+		val reference = image.layout.references.single()
+		suspend fun mode(document: io.github.psd2live.project.WorkspaceDocument, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) =
+			WorkspaceReferenceModes.apply(document, builder.build(document), buildJsonObject(build))
+		val behind = mode(image) { put("reference_id", reference.id); put("mode", "background") }
+		assertTrue(behind.layout.references.single().under)
+		// Into the stack: a reference layer showing the same material over the same rectangle, pinned the same.
+		val layered = mode(behind) { put("reference_id", reference.id); put("mode", "layer") }
+		assertTrue(layered.layout.references.isEmpty())
+		val layer = layered.layout.referenceLayerIds.single()
+		assertEquals(face, layered.layout.layerMaterials[layer])
+		assertEquals(mapOf(parameter.id.raw to parameter.max), layered.layout.referencePins[layer])
+		// And out again in front: an image once more, the layer gone.
+		val front = mode(layered) { put("layer_id", layer); put("mode", "foreground") }
+		val back = front.layout.references.single()
+		assertTrue(!back.under && back.materialId == face && back.pins == reference.pins)
+		assertTrue(front.layout.referenceLayerIds.isEmpty() && front.source.layers.none { it.id.raw == layer })
+		assertEquals(reference.rect, back.rect)
+	}
 }
