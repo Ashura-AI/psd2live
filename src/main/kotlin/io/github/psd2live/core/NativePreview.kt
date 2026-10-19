@@ -8,6 +8,7 @@ import org.umamo.runtime.model.DrawableId
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
 import org.umamo.runtime.model.visibleDrawableIds
+import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.WeakHashMap
 import java.util.concurrent.Executors
@@ -29,8 +30,13 @@ internal object NativePreview {
 
 	private class Session(val geometry: GeometrySession, val visible: Set<DrawableId>)
 
-	/** Sessions by puppet identity; a failed compile is remembered as null so it is not retried. */
+	/** Sessions by puppet; a failed compile is remembered as null so it is not retried. */
 	private val sessions: MutableMap<PuppetModel, Session?> = Collections.synchronizedMap(WeakHashMap())
+	/**
+	 * The puppet evaluated last and its session, matched by identity: the map hashes and compares the whole puppet,
+	 * which every frame of a drag would otherwise pay.
+	 */
+	@Volatile private var last: Pair<WeakReference<PuppetModel>, Session>? = null
 	private val compiling = AtomicBoolean(false)
 	private val compiler = Executors.newSingleThreadExecutor { Thread(it, "native-preview-compile").apply { isDaemon = true } }
 
@@ -38,9 +44,9 @@ internal object NativePreview {
 	fun evaluate(model: RigPreviewModel, parameters: Map<ParameterId, Float>): DeformedGeometry? {
 		val runtime = runtime ?: return null
 		val puppet = model.rig.puppet
-		val session = synchronized(sessions) {
+		val session = last?.takeIf { it.first.get() === puppet }?.second ?: synchronized(sessions) {
 			if (puppet in sessions) sessions[puppet] else null.also { schedule(runtime, model) }
-		} ?: return null
+		}?.also { last = WeakReference(puppet) to it } ?: return null
 		val pose = synchronized(session) {
 			runCatching { session.geometry.evaluate(parameters.mapKeys { it.key.raw }) }.getOrNull()
 		} ?: return null

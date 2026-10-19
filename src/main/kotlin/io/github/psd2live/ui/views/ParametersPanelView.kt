@@ -62,6 +62,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -447,6 +450,8 @@ internal fun ParametersListView(
     var relatedOnly by remember { mutableStateOf(false) }
     val activeRelatedFilter = relatedOnly && owner != null
 	val query = state.parameterSearchQuery.trim().lowercase()
+	val latestState = rememberUpdatedState(state)
+	val rowState = remember { ParameterRowState(latestState) }
 	val openOverrides = remember { mutableStateMapOf<String, Boolean>() }
 	val padHeights = remember { mutableStateMapOf<Pair<ParameterId, ParameterId>, Dp>() }
 	var renamingGroupId by remember { mutableStateOf<String?>(null) }
@@ -815,7 +820,7 @@ internal fun ParametersListView(
 										ParameterRowItem(
 											param = row.parameter,
 											depth = row.depth,
-											state = state,
+											rowState = rowState,
 											viewModel = viewModel,
 											keyMarks = keyMarksByParameter[row.parameter.id],
                                             related = row.parameter.id in relatedIds,
@@ -863,7 +868,7 @@ internal fun ParametersListView(
 												AppSettings.setParameterPadHeight(row.horizontal.id.raw, row.vertical.id.raw, it.value)
 											},
 											depth = row.depth,
-											state = state,
+											rowState = rowState,
 											viewModel = viewModel,
 											horizontalKeys = keyMarksByParameter[row.horizontal.id],
                                             highlightedX = selectedKeyMarks[row.horizontal.id]?.allKeys.orEmpty(),
@@ -1766,7 +1771,7 @@ private fun ParameterNameDivider(pad: Boolean = false) {
 private fun ParameterRowItem(
 	param: Parameter,
 	depth: Int,
-	state: PSD2LiveState,
+	rowState: ParameterRowState,
 	viewModel: PSD2LiveViewModel,
 	keyMarks: ParameterKeyMarks?,
     related: Boolean,
@@ -1777,11 +1782,10 @@ private fun ParameterRowItem(
 	onDragPress: (localPos: Offset, rowCoords: LayoutCoordinates) -> Unit,
 ) {
 	val colors = LocalToolColors.current
-	val isLocked = param.id in state.lockedParameters
+	val isLocked = param.id in rowState.locked
 	val controlled = param.id.raw in LocalParameterPhysicsStatus.current.controlled
-	val currentValue = { liveValue(param, state, viewModel) }
-	val currentState by rememberUpdatedState(state)
-	val changed by remember(param) { derivedStateOf { abs(liveValue(param, currentState, viewModel) - param.default) > 0.001f } }
+	val currentValue = { liveValue(param, rowState, viewModel) }
+	val changed by remember(param) { derivedStateOf { abs(liveValue(param, rowState, viewModel) - param.default) > 0.001f } }
 	val sliderMarks = remember(keyMarks) { keyMarks.toSliderMarks() }
 	var rowCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
 	val canLink = nextSiblingParam != null
@@ -1804,7 +1808,7 @@ private fun ParameterRowItem(
 			modifier = Modifier.width(ParamRowLinkWidth),
 		)
 		Spacer(Modifier.width(ParamRowLinkSpacer))
-		EditableParameterName(param, depth, isLocked, currentValue, state, viewModel, related)
+		EditableParameterName(param, depth, isLocked, currentValue, rowState, viewModel, related)
 		ParameterNameDivider()
 		ParameterTrack(
 			value = currentValue,
@@ -1841,7 +1845,7 @@ private fun LinkedParameterPad(
 	padHeight: Dp,
 	onPadHeightChange: (Dp) -> Unit,
 	depth: Int,
-	state: PSD2LiveState,
+	rowState: ParameterRowState,
 	viewModel: PSD2LiveViewModel,
 	horizontalKeys: ParameterKeyMarks?,
     highlightedX: List<Float>,
@@ -1853,15 +1857,14 @@ private fun LinkedParameterPad(
 	onDragPress: (localPos: Offset, rowCoords: LayoutCoordinates) -> Unit,
 ) {
 	val colors = LocalToolColors.current
-	val xLocked = horizontal.id in state.lockedParameters
-	val yLocked = vertical.id in state.lockedParameters
+	val xLocked = horizontal.id in rowState.locked
+	val yLocked = vertical.id in rowState.locked
 	val xControlled = horizontal.id.raw in LocalParameterPhysicsStatus.current.controlled
 	val yControlled = vertical.id.raw in LocalParameterPhysicsStatus.current.controlled
-	val xValue = { liveValue(horizontal, state, viewModel) }
-	val yValue = { liveValue(vertical, state, viewModel) }
-	val currentState by rememberUpdatedState(state)
-	val xChanged by remember(horizontal) { derivedStateOf { abs(liveValue(horizontal, currentState, viewModel) - horizontal.default) > 0.001f } }
-	val yChanged by remember(vertical) { derivedStateOf { abs(liveValue(vertical, currentState, viewModel) - vertical.default) > 0.001f } }
+	val xValue = { liveValue(horizontal, rowState, viewModel) }
+	val yValue = { liveValue(vertical, rowState, viewModel) }
+	val xChanged by remember(horizontal) { derivedStateOf { abs(liveValue(horizontal, rowState, viewModel) - horizontal.default) > 0.001f } }
+	val yChanged by remember(vertical) { derivedStateOf { abs(liveValue(vertical, rowState, viewModel) - vertical.default) > 0.001f } }
 	var rowCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
 	val density = LocalDensity.current
 	val currentPadHeight by rememberUpdatedState(padHeight)
@@ -1890,8 +1893,8 @@ private fun LinkedParameterPad(
 		)
 		Spacer(Modifier.width(ParamRowLinkSpacer))
 		Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-			EditableParameterName(horizontal, depth, xLocked, xValue, state, viewModel, horizontal.id in relatedIds)
-			EditableParameterName(vertical, depth, yLocked, yValue, state, viewModel, vertical.id in relatedIds)
+			EditableParameterName(horizontal, depth, xLocked, xValue, rowState, viewModel, horizontal.id in relatedIds)
+			EditableParameterName(vertical, depth, yLocked, yValue, rowState, viewModel, vertical.id in relatedIds)
 		}
 		ParameterNameDivider(pad = true)
 		Column(Modifier.weight(1f).fillMaxHeight()) {
@@ -2246,10 +2249,24 @@ private fun ParameterKeyMarks?.toSliderMarks(): List<SliderKeyMark> {
  * the sliders move with the model. Reads [PSD2LiveViewModel.livePoseOf]; a row reads it where it shows it (the
  * track's and pad's draw, the value box's text, whether reset applies), so a live value redraws those parts only.
  */
-private fun liveValue(param: Parameter, state: PSD2LiveState, viewModel: PSD2LiveViewModel): Float {
+private fun liveValue(param: Parameter, rowState: ParameterRowState, viewModel: PSD2LiveViewModel): Float {
 	viewModel.parameterScrubValueOf(param.id)?.let { return it }
-	val document = state.parameterValues[param.id] ?: param.default
+	val document = rowState.authored[param.id] ?: param.default
 	return viewModel.livePoseOf(param.id) ?: document
+}
+
+/**
+ * What a parameter row reads of the state, each part a snapshot state of its own, so that a row composes only when
+ * the locks or whether it can be edited change, and the authored pose (what a slider drag changes) reaches only the
+ * places that read it in [liveValue].
+ */
+@Stable
+private class ParameterRowState(private val source: State<PSD2LiveState>) {
+	val authored: Map<ParameterId, Float> by derivedStateOf(referentialEqualityPolicy()) { source.value.parameterValues }
+	val locked: Set<ParameterId> by derivedStateOf { source.value.lockedParameters }
+	val editable: Boolean by derivedStateOf { source.value.historySnapshot != null && !source.value.canvasEditBusy }
+	/** The whole state, for the dialog a row opens. */
+	val current: PSD2LiveState get() = source.value
 }
 
 private fun formatParamValue(value: Float): String =
@@ -2262,12 +2279,12 @@ private fun EditableParameterName(
     depth: Int,
     locked: Boolean,
     value: () -> Float,
-    state: PSD2LiveState,
+    rowState: ParameterRowState,
     viewModel: PSD2LiveViewModel,
     related: Boolean,
 ) {
     var editing by remember(param.id) { mutableStateOf(false) }
-    val editable = state.historySnapshot != null && !state.canvasEditBusy
+    val editable = rowState.editable
     val physics = LocalParameterPhysicsStatus.current
     val physicsOutput = param.id.raw in physics.outputs
     val controlled = param.id.raw in physics.controlled
@@ -2302,7 +2319,7 @@ private fun EditableParameterName(
     )
     }
     }
-    if (editing) ParameterDefinitionDialog(param, state, viewModel, lockValue = value()) { editing = false }
+    if (editing) ParameterDefinitionDialog(param, rowState.current, viewModel, lockValue = value()) { editing = false }
 }
 
 private fun ParameterNode.Group.containsParameter(ids: Set<ParameterId>): Boolean = children.any {

@@ -1156,32 +1156,37 @@ private fun floatingTitle(id: String, state: PSD2LiveState, viewModel: PSD2LiveV
     return "${state.activeWorkspace.displayName()} · $name"
 }
 
-/** Modules that read nothing of [PSD2LiveState.previewParameterValues]; see [withoutPlayingPose]. */
+/** Modules that read neither the authored nor the published pose; see [withoutPose]. */
 private val POSELESS_MODULES = setOf("hierarchy", "skeleton", "history", "log", "settings", "layers")
 
 /**
- * [state], or the instance given last time when the two differ only in the pose the preview publishes, so a panel
- * that does not show that pose skips its composition.
+ * [state], or the instance given last time when the two differ only in pose values (the preview publishing its
+ * pose, a slider being dragged), so a panel that does not show the pose skips its composition.
  */
 @Composable
-private fun withoutPlayingPose(state: PSD2LiveState): PSD2LiveState {
+private fun withoutPose(state: PSD2LiveState): PSD2LiveState {
 	val held = remember { arrayOfNulls<PSD2LiveState>(1) }
 	val previous = held[0]
-	val shown = if (previous != null && previous !== state && previous.withoutPreviewPose() == state.withoutPreviewPose()) previous else state
+	val shown = if (previous != null && previous !== state && previous.withoutPoseValues() == state.withoutPoseValues()) previous else state
 	held[0] = shown
 	return shown
 }
 
-/** This state with the published preview pose left out wherever it is kept: the state, each workspace's pose and canvas. */
-private fun PSD2LiveState.withoutPreviewPose(): PSD2LiveState = copy(
+/**
+ * This state with the pose values left out wherever they are kept: the state, each workspace's pose and canvas, and
+ * the edit count each authored value bumps.
+ */
+private fun PSD2LiveState.withoutPoseValues(): PSD2LiveState = copy(
+	parameterValues = emptyMap(),
 	previewParameterValues = emptyMap(),
+	projectEditVersion = 0,
 	workspaces = workspaces.map { workspace ->
 		workspace.copy(
-			pose = workspace.pose?.copy(previewParameterValues = emptyMap()),
+			pose = workspace.pose?.copy(parameterValues = emptyMap(), previewParameterValues = emptyMap()),
 			canvases = workspace.canvases.map { canvas ->
 				canvas.copy(
-					editSession = canvas.editSession.copy(presentation = canvas.editSession.presentation.copy(previewParameterValues = emptyMap())),
-					previewSession = canvas.previewSession.copy(presentation = canvas.previewSession.presentation.copy(previewParameterValues = emptyMap())),
+					editSession = canvas.editSession.copy(presentation = canvas.editSession.presentation.copy(parameterValues = emptyMap(), previewParameterValues = emptyMap())),
+					previewSession = canvas.previewSession.copy(presentation = canvas.previewSession.presentation.copy(parameterValues = emptyMap(), previewParameterValues = emptyMap())),
 				)
 			},
 		)
@@ -1209,9 +1214,9 @@ private fun DockModuleContent(
 		)
 		return
 	}
-	// Panels that show nothing of the pose the preview plays keep the state they had while only that pose
-	// changes: it is published ten times a second during playback, and each would compose every row again.
-	val poseless = if (id in POSELESS_MODULES) withoutPlayingPose(state) else state
+	// Panels that show nothing of the pose keep the state they had while only the pose changes: playback publishes
+	// it ten times a second and a slider drag on every pointer move, and each would compose every row again.
+	val poseless = if (id in POSELESS_MODULES) withoutPose(state) else state
 	when (id) {
 		"hierarchy" -> DockHierarchyView(
 			poseless,

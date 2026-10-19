@@ -394,4 +394,30 @@ class EditorAndAgentScenario {
 		consistent("a slider moved during a settings commit")
 		assertEquals(20f, vm.state.value.parameterValues[ParameterId("ParamAngleX")], "the slider jumped back")
 	}
+
+	@Test fun aSliderDragReachesRecoveryOnRelease() = editor {
+		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
+		consistent("imported")
+		val angle = ParameterId("ParamAngleX")
+		val store = io.github.psd2live.project.WorkspaceStore(temp.resolve("store"))
+		val file = store.projectRoot(vm.state.value.projectId!!).resolve("recovery.json")
+		suspend fun written(): java.nio.file.attribute.FileTime? {
+			workspace.flushProjectPersistence()
+			return if (java.nio.file.Files.isRegularFile(file)) java.nio.file.Files.getLastModifiedTime(file) else null
+		}
+		val before = written()
+		withContext(Dispatchers.Main) {
+			vm.beginParameterScrub()
+			for (value in listOf(5f, 10f, 15f)) vm.setParameterValueFromPanel(angle, value)
+		}
+		settle()
+		assertEquals(15f, vm.state.value.parameterValues[angle], "the canvases do not show the drag")
+		// Each sample used to encode the whole document and rewrite the checkpoint.
+		assertEquals(before, written(), "a sample of the drag rewrote the recovery checkpoint")
+		withContext(Dispatchers.Main) { vm.endParameterScrub() }
+		consistent("released")
+		written()
+		val recovered = assertNotNull(store.loadRecoveryCheckpoint(vm.state.value.projectId!!), "nothing to recover after the drag")
+		assertEquals(15f, recovered.presentation["parameterValues"]?.jsonObject?.get(angle.raw)?.jsonPrimitive?.float, "recovery misses the released pose")
+	}
 }

@@ -1094,8 +1094,11 @@ class PSD2LiveViewModel : AutoCloseable {
                 trackProjectChanges(current, next)
             }
             val after = _state.value
-            if (before.projectOpenGeneration == after.projectOpenGeneration && before.saveIdentity != after.saveIdentity)
-                durableChange = after
+            if (before.projectOpenGeneration == after.projectOpenGeneration && before.saveIdentity != after.saveIdentity) {
+                // A slider drag moves the authored pose on every pointer sample, and recovery encodes the whole
+                // document for each notice; it hears of the drag once, on release.
+                if (parameterScrub != null) scrubDurableChange = true else durableChange = after
+            }
             pruneParameterSnapshotPreview(after)
             if (before.activeWorkspace.id != after.activeWorkspace.id ||
                 before.projectOpenGeneration != after.projectOpenGeneration) {
@@ -2648,6 +2651,8 @@ class PSD2LiveViewModel : AutoCloseable {
 	}
 
 	@Volatile private var parameterScrub: ParameterScrub? = null
+	/** A durable change [updateState] held back while the scrub ran; see [flushScrubDurableChange]. Under [stateLock]. */
+	private var scrubDurableChange = false
 	private val parameterScrubValues = mutableStateMapOf<ParameterId, Float>()
 	var parameterScrubActive by mutableStateOf(false)
 		private set
@@ -2691,7 +2696,18 @@ class PSD2LiveViewModel : AutoCloseable {
 	fun cancelParameterScrub() {
 		parameterScrub?.let { discardPendingPose(it.pending) }
 		parameterScrub = null; parameterScrubValues.clear(); parameterScrubActive = false
+		flushScrubDurableChange()
 		editorSessions.end(SLIDER_SESSION)
+	}
+
+	/** Tells the workspace of the durable change a finished scrub held back, with the state as it is now. */
+	private fun flushScrubDurableChange() {
+		val state = synchronized(stateLock) {
+			if (!scrubDurableChange) return
+			scrubDurableChange = false
+			_state.value
+		}
+		(workspaceBackend as? DesktopWorkspace)?.projectPresentationChanged(state)
 	}
 	private fun ikTargetRequest(id: String, target: io.github.psd2live.core.SkeletonIkTarget?) = kotlinx.serialization.json.buildJsonObject {
 		put("bone_id", id)
@@ -2724,6 +2740,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		}
 		parameterScrubValues.clear()
 		parameterScrubActive = false
+		flushScrubDurableChange()
 	}
 
     /** Brackets one text/number field's editing session; [token] has to match the paired `end`. */

@@ -47,6 +47,9 @@ import kotlin.test.Test
  * - PSD2LIVE_INVALIDATIONS=1: where the draw and layout requests that make the window compositor replay come from
  * - PSD2LIVE_CAPTURE=1: after playback, pauses and writes the window as it draws (`{backend}-paused.png`), read from
  *   the GPU; PSD2LIVE_COMPOSITOR=0 (`psd2live.compositor=false`) draws without the window compositor, to compare
+ * - PSD2LIVE_SCRUB=EDIT|PREVIEW: instead of playback, drags a parameter slider the way the panel does (begin, samples,
+ *   release) on a canvas in that mode; on EDIT the window's frames are the ones counted. PSD2LIVE_SCRUB_PARAMETER picks
+ *   the parameter (default the first), PSD2LIVE_SCRUB_HZ the pointer samples per second (default 240)
  *
  * Measured in the window's own frames and draws, never the screen.
  *
@@ -117,19 +120,21 @@ class PreviewFpsTool {
 			val timing = RenderTiming()
 			SwingUtilities.invokeAndWait { timing.install(window.get()!!) }
 			val events = EventTiming().also { java.awt.Toolkit.getDefaultToolkit().systemEventQueue.push(it) }
+			val scrub = System.getenv("PSD2LIVE_SCRUB")?.takeIf { it.isNotBlank() }?.let { CanvasMode.valueOf(it.trim().uppercase()) }
 			SwingUtilities.invokeAndWait {
-				vm.setCanvasMode(vm.state.value.activeCanvas.id, CanvasMode.PREVIEW)
-				vm.setAnimationEnabled(true)
+				vm.setCanvasMode(vm.state.value.activeCanvas.id, scrub ?: CanvasMode.PREVIEW)
+				vm.setAnimationEnabled(scrub == null)
 			}
 			val backends = setting("PSD2LIVE_BACKENDS", PreviewBackend.entries.joinToString(",") { it.name })
 				.split(',').map { PreviewBackend.valueOf(it.trim()) }
-			for (backend in backends) {
+			for (backend in if (scrub == CanvasMode.EDIT) backends.take(1) else backends) {
 				SwingUtilities.invokeAndWait { vm.selectPreviewBackend(backend) }
 				val key = vm.canvasRenderKey(vm.state.value.activeCanvas.id, CanvasMode.PREVIEW)
 				val flow = vm.sdkFrameFor(key)
-				runCatching { waitFor(60, "$backend frames") { flow.value?.backend == backend } }
+				if (scrub != CanvasMode.EDIT) runCatching { waitFor(60, "$backend frames") { flow.value?.backend == backend } }
 					.onFailure { report.appendLine("$backend: ${it.message}; status ${vm.state.value.sdkStatus}"); continue }
 				Thread.sleep(1500)
+				val label = when (scrub) { CanvasMode.EDIT -> "edit scrub"; null -> "$backend"; else -> "$backend scrub" }
 				val recording = if (setting("PSD2LIVE_JFR", "0") == "1") jdk.jfr.Recording(jdk.jfr.Configuration.getConfiguration("profile")).apply {
 					enable("jdk.ExecutionSample").withPeriod(java.time.Duration.ofMillis(1))
 					enable("jdk.NativeMethodSample").withPeriod(java.time.Duration.ofMillis(1))
@@ -159,22 +164,25 @@ class PreviewFpsTool {
 				var lastFrame: Any? = null
 				var lastState: Any? = null
 				var states = 0
+				val driver = scrub?.let { scrubDriver(vm) }
 				val start = System.nanoTime()
 				while (System.nanoTime() - start < seconds * 1_000_000_000L) {
-					val frame = flow.value
-					if (frame != null && frame !== lastFrame) { lastFrame = frame; stamps += System.nanoTime() }
+					val frame = if (scrub == CanvasMode.EDIT) timing.frames else flow.value
+					if (frame != null && frame != lastFrame) { lastFrame = frame; stamps += System.nanoTime() }
 					val state = vm.state.value
 					if (state !== lastState) { lastState = state; states++ }
 					Thread.onSpinWait()
 				}
+				val scrubbed = driver?.finish()
 				Composer.setTracer(null)
-				val jfrFile = File(out, "${backend.name.lowercase()}.jfr")
+				val jfrFile = File(out, "${label.replace(' ', '-').lowercase()}.jfr")
 				recording?.apply { stop(); dump(jfrFile.toPath()); close() }
 				val intervals = stamps.zipWithNext { a, b -> (b - a) / 1e6 }.sorted()
 				fun pct(p: Double) = intervals.getOrNull(((intervals.size - 1) * p).toInt()) ?: 0.0
 				val fps = if (stamps.size > 1) (stamps.size - 1) / ((stamps.last() - stamps.first()) / 1e9) else 0.0
-				report.appendLine("$backend: %.1f fps over %d frames; interval ms p50 %.2f p90 %.2f p99 %.2f max %.2f"
+				report.appendLine("$label: %.1f fps over %d frames; interval ms p50 %.2f p90 %.2f p99 %.2f max %.2f"
 					.format(fps, stamps.size, pct(0.5), pct(0.9), pct(0.99), intervals.lastOrNull() ?: 0.0))
+				scrubbed?.let { report.appendLine("  $it") }
 				report.appendLine("  " + timing.summary())
 				if (setting("PSD2LIVE_REPLAY", "0") == "1") report.append(timing.replay())
 				report.appendLine("  document state changes %.1f/s".format(states / seconds.toDouble()))
@@ -212,6 +220,52 @@ class PreviewFpsTool {
 		}
 	}
 
+	/** Starts dragging one parameter's slider; see [ScrubDriver]. */
+	private fun scrubDriver(vm: PSD2LiveViewModel): ScrubDriver {
+		val parameters = vm.state.value.previewModel!!.rig.puppet.parameters
+		val parameter = System.getenv("PSD2LIVE_SCRUB_PARAMETER")?.takeIf { it.isNotBlank() }
+			?.let { id -> parameters.first { it.id.raw == id } } ?: parameters.first()
+		SwingUtilities.invokeAndWait { vm.beginParameterScrub() }
+		return ScrubDriver(vm, parameter.id, parameter.min, parameter.max, setting("PSD2LIVE_SCRUB_HZ", "240").toDouble())
+	}
+
+	/**
+	 * Drags one parameter back and forth across its range on the event thread, a pointer sample at a time, as the
+	 * panel's slider does; [finish] releases it and reports what the samples cost the event thread.
+	 */
+	private class ScrubDriver(private val vm: PSD2LiveViewModel, private val id: org.umamo.runtime.model.ParameterId,
+		min: Float, max: Float, hz: Double) {
+		private val samples = java.util.concurrent.atomic.AtomicLong()
+		private val busy = java.util.concurrent.atomic.AtomicLong()
+		@Volatile private var running = true
+		private val thread = Thread {
+			val period = (1e9 / hz).toLong()
+			val start = System.nanoTime()
+			var n = 0L
+			while (running) {
+				val due = start + n++ * period
+				while (System.nanoTime() < due) Thread.onSpinWait()
+				// A triangle over the range, one sweep each way per second.
+				val phase = ((System.nanoTime() - start) / 1e9) % 2.0
+				val value = (min + (max - min) * (if (phase < 1.0) phase else 2.0 - phase)).toFloat()
+				SwingUtilities.invokeLater {
+					val begin = System.nanoTime()
+					vm.setParameterValueFromPanel(id, value)
+					busy.addAndGet(System.nanoTime() - begin)
+					samples.incrementAndGet()
+				}
+			}
+		}.apply { isDaemon = true; start() }
+
+		fun finish(): String {
+			running = false
+			thread.join()
+			SwingUtilities.invokeAndWait { vm.endParameterScrub() }
+			return "scrubbed %s: %d samples, %.3f ms each on the event thread"
+				.format(id.raw, samples.get(), busy.get() / 1e6 / samples.get().coerceAtLeast(1))
+		}
+	}
+
 	private fun layerOf(window: java.awt.Window): SkiaLayer? {
 		fun find(c: java.awt.Component): SkiaLayer? =
 			c as? SkiaLayer ?: (c as? java.awt.Container)?.components?.firstNotNullOfOrNull(::find)
@@ -229,6 +283,8 @@ class PreviewFpsTool {
 		private var query = 0
 		private var free = 0
 		@Volatile private var lastStart = 0L
+		@Volatile var frames = 0L
+			private set
 
 		fun install(window: java.awt.Window) {
 			val layer = layerOf(window) ?: return
@@ -237,6 +293,7 @@ class PreviewFpsTool {
 			layer.renderDelegate = object : SkikoRenderDelegate {
 				override fun onRender(canvas: org.jetbrains.skia.Canvas, width: Int, height: Int, nanoTime: Long) {
 					val start = System.nanoTime()
+					frames++
 					if (lastStart != 0L) periods += start - lastStart
 					lastStart = start
 					val timed = gpuTiming && runCatching { org.lwjgl.opengl.GL.getCapabilities() }.isSuccess
