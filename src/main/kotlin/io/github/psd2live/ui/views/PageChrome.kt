@@ -37,6 +37,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.i18n.tr
@@ -98,7 +99,10 @@ internal fun PageNavGroup(text: String) {
 	)
 }
 
-/** A contents row: the tree's selection colours with the menus' accent edge on the selected one. */
+/**
+ * A contents row: the tree's selection colours with the menus' accent edge on the selected one. [indent] nests it under
+ * a folder row; [trailingContent] sits at its end after [trailing].
+ */
 @Composable
 internal fun PageNavItem(
 	label: String,
@@ -107,6 +111,9 @@ internal fun PageNavItem(
 	enabled: Boolean = true,
 	badge: Boolean = false,
 	onClick: () -> Unit,
+	indent: Dp = 0.dp,
+	bold: Boolean = false,
+	trailingContent: (@Composable () -> Unit)? = null,
 	icon: (@Composable (Color) -> Unit)? = null,
 ) {
 	val colors = LocalToolColors.current
@@ -132,14 +139,15 @@ internal fun PageNavItem(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		Box(Modifier.width(2.dp).height(14.dp).clip(RoundedCornerShape(1.dp)).background(if (selected) colors.accent else Color.Transparent))
-		Spacer(Modifier.width(8.dp))
+		Spacer(Modifier.width(8.dp + indent))
 		if (icon != null) {
 			Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
 				icon(if (selected) colors.selectionText else if (enabled) colors.textMuted else colors.textDisabled)
 			}
 			Spacer(Modifier.width(8.dp))
 		}
-		Text(label, style = typography.body.copy(fontSize = 11.5.sp, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal),
+		Text(label, style = typography.body.copy(fontSize = 11.5.sp,
+			fontWeight = if (bold) FontWeight.SemiBold else if (selected) FontWeight.Medium else FontWeight.Normal),
 			color = tint, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
 		if (badge) {
 			Spacer(Modifier.width(6.dp))
@@ -148,6 +156,11 @@ internal fun PageNavItem(
 		Spacer(Modifier.weight(1f))
 		trailing?.takeIf { it.isNotBlank() }?.let {
 			Text(it, style = typography.monoSmall.copy(fontSize = 10.sp), color = colors.textMuted, modifier = Modifier.padding(end = 6.dp))
+		}
+		if (trailingContent != null) {
+			Spacer(Modifier.width(6.dp))
+			trailingContent()
+			Spacer(Modifier.width(6.dp))
 		}
 	}
 }

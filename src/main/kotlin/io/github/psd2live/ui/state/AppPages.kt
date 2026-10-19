@@ -22,11 +22,13 @@ internal const val HELP_CONTENT = "help.content"
 internal const val SETTINGS_NAV = "settings.nav"
 internal const val SETTINGS_CONTENT = "settings.content"
 
-/** The help page's topics, in its contents' order. */
+/**
+ * The help page's topics, in its contents' order. The manual and the tutorials are trees of pages ([Manual]); the
+ * page shown is the view model's helpPage.
+ */
 enum class HelpTab(internal val labelKey: String) {
-	QUICK_START("help.tab.quickstart"),
-	PSD_SPEC("help.tab.psd_spec"),
-	SHORTCUTS("help.tab.shortcuts"),
+	MANUAL("help.tab.manual"),
+	TUTORIALS("help.tab.tutorials"),
 	EXAMPLES("help.tab.examples"),
 	COMMUNITY_LINKS("help.tab.links"),
 	LICENSES("help.tab.licenses"),

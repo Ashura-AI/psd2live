@@ -151,7 +151,7 @@ class UiResponsivenessTool {
 			redrawRate("help page")
 			step("settings") { vm.showPage(AppPage.SETTINGS) }
 			step("back to start") { vm.showPage(AppPage.START) }
-			step("help: QUICK_START again") { vm.showHelp(HelpTab.QUICK_START) }
+			step("help: QUICK_START again") { vm.showHelp(HelpTab.TUTORIALS) }
 			step("back to start again") { vm.showPage(AppPage.START) }
 			if (setting("PSD2LIVE_UI_MODEL", "1") == "1") {
 				val sample = Sample.fromEnvironment()
@@ -165,7 +165,7 @@ class UiResponsivenessTool {
 				step("mode: preview") { vm.setCanvasMode(vm.state.value.activeCanvas.id, CanvasMode.PREVIEW) }
 				step("preview idle") {}
 				step("mode: edit") { vm.setCanvasMode(vm.state.value.activeCanvas.id, CanvasMode.EDIT) }
-				step("help: QUICK_START with model") { vm.showHelp(HelpTab.QUICK_START) }
+				step("help: QUICK_START with model") { vm.showHelp(HelpTab.TUTORIALS) }
 				step("back to workspace") { vm.showWorkspace() }
 				step("mode: preview again") { vm.setCanvasMode(vm.state.value.activeCanvas.id, CanvasMode.PREVIEW) }
 			}

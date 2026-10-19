@@ -74,7 +74,7 @@ import io.github.psd2live.ui.components.IconClose
 import io.github.psd2live.ui.components.ImageLightboxDialog
 import io.github.psd2live.ui.components.ExportDialog
 import io.github.psd2live.ui.components.ExportPsdDialog
-import io.github.psd2live.ui.state.HelpTab
+import io.github.psd2live.ui.state.Manual
 import io.github.psd2live.ui.state.HELP_CONTENT
 import io.github.psd2live.ui.components.TextureUpscaleDialog
 import io.github.psd2live.ui.state.PSD2LiveState
@@ -179,7 +179,7 @@ fun FrameWindowScope.PSD2LiveApp(
 
 	fun openTutorialCatalog() {
 		stopInteractiveTutorial()
-		viewModel.showHelp(HelpTab.QUICK_START)
+		viewModel.showHelpPage(Manual.FIRST_TUTORIAL)
 	}
 
 	viewModel.confirmUnsavedChanges = {

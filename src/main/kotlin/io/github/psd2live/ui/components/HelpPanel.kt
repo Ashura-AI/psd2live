@@ -26,6 +26,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -33,9 +34,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.github.psd2live.i18n.I18n
 import io.github.psd2live.i18n.tr
+import io.github.psd2live.ui.state.Manual
+import io.github.psd2live.ui.theme.handCursor
+import io.github.psd2live.ui.views.PageNavGroup
 import io.github.psd2live.ui.state.Keymap
 import io.github.psd2live.ui.views.PanelSearch
 import io.github.psd2live.ui.views.PanelToolbar
@@ -53,17 +59,20 @@ import io.github.psd2live.ui.utils.DesktopUtils
 import kotlinx.coroutines.delay
 
 /**
- * The help page's topic panel: [tab] picks what it shows. A topic reads as a document in a [PageBody]; the shortcuts
- * and links open with a toolbar for their filter and their copy notice.
+ * The help page's topic panel: [tab] picks what it shows, and in the manual and the tutorials [page] picks the page.
+ * A topic reads as a document in a [PageBody]; the shortcuts and links open with a toolbar for their filter and their
+ * copy notice.
  */
 @Composable
 internal fun HelpPanel(
 	tab: HelpTab,
+	page: String,
 	keymap: Keymap,
+	onOpenPage: (String) -> Unit,
 	onOpenUrl: (String) -> Unit = { DesktopUtils.openBrowser(it) },
 	onStartInteractiveTutorial: ((TutorialId, TutorialPath) -> Unit)? = null,
 ) {
-	var query by remember(tab) { mutableStateOf("") }
+	var query by remember(page) { mutableStateOf("") }
 	var copied by remember(tab) { mutableStateOf(false) }
 	LaunchedEffect(copied) {
 		if (copied) {
@@ -71,22 +80,34 @@ internal fun HelpPanel(
 			copied = false
 		}
 	}
+	val manualPage = Manual.page(page)?.takeIf { tab == HelpTab.MANUAL || tab == HelpTab.TUTORIALS }
 	Column(Modifier.fillMaxSize()) {
-		when (tab) {
-			HelpTab.SHORTCUTS -> PanelToolbar(search = PanelSearch(query, { query = it }, tr("help.shortcuts.filter"))) {
+		when {
+			manualPage?.embed == "shortcuts" -> PanelToolbar(search = PanelSearch(query, { query = it }, tr("help.shortcuts.filter"))) {
 				Spacer(Modifier.weight(1f))
 			}
-			HelpTab.COMMUNITY_LINKS -> if (copied) PanelToolbar {
+			tab == HelpTab.COMMUNITY_LINKS && copied -> PanelToolbar {
 				Text(tr("help.links.copied"), style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp),
 					color = LocalToolColors.current.accent)
 			}
-			else -> {}
 		}
 		PageBody {
 			when (tab) {
-				HelpTab.QUICK_START -> InteractiveTutorialCatalog(onStartInteractiveTutorial)
-				HelpTab.PSD_SPEC -> DccPsdSpecContent(onOpenUrl)
-				HelpTab.SHORTCUTS -> DccShortcutsContent(keymap, query)
+				HelpTab.MANUAL, HelpTab.TUTORIALS -> if (manualPage != null) {
+					ManualPageContent(
+						page = manualPage,
+						keymap = keymap,
+						onOpenPage = onOpenPage,
+						onOpenUrl = onOpenUrl,
+						onStartTutorial = onStartInteractiveTutorial,
+					) { embed ->
+						when (embed) {
+							"shortcuts" -> DccShortcutsContent(keymap, query)
+							"psd_spec" -> DccPsdSpecContent(onOpenUrl)
+						}
+					}
+					manualPage.path?.let { InteractiveTutorialPath(it, onStartInteractiveTutorial) }
+				}
 				HelpTab.COMMUNITY_LINKS -> DccCommunityLinksContent(
 					onOpenUrl = onOpenUrl,
 					onCopyLink = { url ->
@@ -102,63 +123,141 @@ internal fun HelpPanel(
 	}
 }
 
-/** The help page's contents: one row per topic. */
+/**
+ * The help page's contents, laid out like the Cubism manual's: the manual and the tutorials as folder trees whose pages
+ * carry their comparison tag (a page Cubism has and PSD2Live does not is greyed and does not open), then the other
+ * topics. The filter lists the pages whose titles match; the footer explains the tags.
+ */
 @Composable
-internal fun HelpNav(selected: HelpTab, onSelect: (HelpTab) -> Unit) {
-	val tabs = HelpTab.entries
-	PageNavList(onStep = { step -> onSelect(tabs[(tabs.indexOf(selected) + step).mod(tabs.size)]) }) {
-		tabs.forEach { tab -> PageNavItem(tr(tab.labelKey), tab == selected, onClick = { onSelect(tab) }) }
+internal fun HelpNav(selected: HelpTab, page: String, onSelect: (HelpTab) -> Unit, onOpenPage: (String) -> Unit) {
+	val language = I18n.currentLanguage
+	val texts = remember(language) { Manual.texts(language) }
+	var query by remember { mutableStateOf("") }
+	val expanded = remember { mutableStateListOf<String>() }
+	LaunchedEffect(page) { Manual.ancestors(page).forEach { if (it.id !in expanded) expanded += it.id } }
+	val inTree = selected == HelpTab.MANUAL || selected == HelpTab.TUTORIALS
+	val others = HelpTab.entries.filter { it != HelpTab.MANUAL && it != HelpTab.TUTORIALS }
+	fun title(id: String) = texts[id]?.title ?: id
+	val needle = query.trim()
+	val matches = if (needle.isEmpty()) emptyList() else Manual.pages.filter { title(it.id).contains(needle, ignoreCase = true) }
+
+	// What the arrow keys step through: the rows shown that open.
+	fun visible(nodes: List<Manual.Node>): List<String> = nodes.flatMap { node ->
+		when (node) {
+			is Manual.Folder -> if (node.id in expanded) visible(node.children) else emptyList()
+			is Manual.Page -> if (node.opens) listOf(node.id) else emptyList()
+		}
+	}
+	val stops: List<Any> = if (needle.isNotEmpty()) matches.filter { it.opens }.map { it.id }
+		else Manual.Root.entries.flatMap { visible(Manual.trees[it].orEmpty()) } + others
+	val current: Any = if (inTree) page else selected
+
+	@Composable
+	fun PageRow(node: Manual.Page, depth: Int) = PageNavItem(
+		label = title(node.id),
+		selected = inTree && node.id == page,
+		enabled = node.opens,
+		onClick = { onOpenPage(node.id) },
+		indent = 12.dp * depth,
+		trailingContent = { ManualStatusTag(node.status, compact = true) },
+	)
+
+	@Composable
+	fun Tree(nodes: List<Manual.Node>, depth: Int) {
+		nodes.forEach { node ->
+			when (node) {
+				is Manual.Folder -> {
+					val open = node.id in expanded
+					PageNavItem(
+						label = title(node.id),
+						selected = false,
+						bold = depth == 0,
+						onClick = { if (open) expanded -= node.id else expanded += node.id },
+						indent = 12.dp * depth,
+						icon = { tint -> IconChevron(open, Modifier.size(11.dp), tint) },
+					)
+					if (open) Tree(node.children, depth + 1)
+				}
+				is Manual.Page -> PageRow(node, depth)
+			}
+		}
+	}
+
+	Column(Modifier.fillMaxSize()) {
+		PanelToolbar(search = PanelSearch(query, { query = it }, tr("help.manual.filter"))) { Spacer(Modifier.weight(1f)) }
+		PageNavList(
+			onStep = { step ->
+				if (stops.isNotEmpty()) {
+					val next = stops[(stops.indexOf(current).coerceAtLeast(0) + step).mod(stops.size)]
+					if (next is HelpTab) onSelect(next) else onOpenPage(next as String)
+				}
+			},
+			footer = { ManualLegend() },
+		) {
+			if (needle.isNotEmpty()) {
+				if (matches.isEmpty()) PageNavGroup(tr("help.manual.noMatch"))
+				matches.forEach { PageRow(it, 0) }
+			} else {
+				Manual.Root.entries.forEach { root ->
+					PageNavGroup(tr(if (root == Manual.Root.MANUAL) "help.tab.manual" else "help.tab.tutorials"))
+					Tree(Manual.trees[root].orEmpty(), 0)
+				}
+				PageNavGroup(tr("help.nav.more"))
+				others.forEach { tab -> PageNavItem(tr(tab.labelKey), tab == selected, onClick = { onSelect(tab) }) }
+			}
+		}
 	}
 }
 
+/** What the four tags mean, under the contents: each tag with its sentence. */
 @Composable
-private fun InteractiveTutorialCatalog(
-	onStartInteractiveTutorial: ((TutorialId, TutorialPath) -> Unit)? = null,
+private fun ManualLegend() {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	Manual.Status.entries.forEach { status ->
+		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			ManualStatusTag(status, compact = true)
+			Text(tr(status.labelKey + ".desc"), style = typography.caption.copy(fontSize = 9.5.sp), color = colors.textMuted,
+				maxLines = 2, overflow = TextOverflow.Ellipsis)
+		}
+	}
+}
+
+/** A step-by-step tutorial path: its chapters, each started on its own or all in turn. */
+@Composable
+private fun InteractiveTutorialPath(
+	path: TutorialPath,
+	onStartInteractiveTutorial: ((TutorialId, TutorialPath) -> Unit)?,
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-
+	if (onStartInteractiveTutorial == null) return
 	Column(
-		modifier = Modifier.fillMaxWidth(),
-		verticalArrangement = Arrangement.spacedBy(8.dp),
+		Modifier.fillMaxWidth()
+			.background(colors.panelElevated, RoundedCornerShape(6.dp))
+			.border(BorderStroke(1.dp, colors.divider), RoundedCornerShape(6.dp))
+			.padding(10.dp),
+		verticalArrangement = Arrangement.spacedBy(7.dp),
 	) {
-		Text(
-			text = tr("tutorial.catalog.desc"),
-			style = typography.caption.copy(fontSize = 11.sp),
-			color = colors.textMuted,
+		Text(tr(path.titleKey), style = typography.body.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold), color = colors.textPrimary)
+		Text(tr(path.descKey), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
+		CompactButton(
+			text = tr("tutorial.path.start"),
+			onClick = { onStartInteractiveTutorial(path.chapters.first(), path) },
+			isPrimary = true,
+			height = 25.dp,
 		)
-
-		if (onStartInteractiveTutorial != null) {
-			TutorialPath.entries.forEach { path ->
-				Column(
-					Modifier.fillMaxWidth()
-						.background(colors.panelElevated, RoundedCornerShape(6.dp))
-						.border(BorderStroke(1.dp, colors.divider), RoundedCornerShape(6.dp))
-						.padding(10.dp),
-					verticalArrangement = Arrangement.spacedBy(7.dp),
-				) {
-					Text(tr(path.titleKey), style = typography.body.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold), color = colors.textPrimary)
-					Text(tr(path.descKey), style = typography.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp), color = colors.textMuted)
-					CompactButton(
-						text = tr("tutorial.path.start"),
-						onClick = { onStartInteractiveTutorial(path.chapters.first(), path) },
-						isPrimary = true,
-						height = 25.dp,
-					)
-					path.chapters.forEachIndexed { index, id ->
-						Row(
-							modifier = Modifier.fillMaxWidth().clickable { onStartInteractiveTutorial(id, path) }
-								.padding(horizontal = 4.dp, vertical = 5.dp),
-							verticalAlignment = Alignment.CenterVertically,
-							horizontalArrangement = Arrangement.spacedBy(8.dp),
-						) {
-							Text("%02d".format(index + 1), style = typography.caption.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold), color = colors.accent)
-							Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-								Text(tr(id.titleKey), style = typography.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold), color = colors.textPrimary)
-								Text(tr(id.descKey), style = typography.caption.copy(fontSize = 9.5.sp), color = colors.textMuted)
-							}
-						}
-					}
+		path.chapters.forEachIndexed { index, id ->
+			Row(
+				modifier = Modifier.fillMaxWidth().clickable { onStartInteractiveTutorial(id, path) }.handCursor()
+					.padding(horizontal = 4.dp, vertical = 5.dp),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(8.dp),
+			) {
+				Text("%02d".format(index + 1), style = typography.caption.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold), color = colors.accent)
+				Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+					Text(tr(id.titleKey), style = typography.caption.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold), color = colors.textPrimary)
+					Text(tr(id.descKey), style = typography.caption.copy(fontSize = 9.5.sp), color = colors.textMuted)
 				}
 			}
 		}

@@ -1,0 +1,273 @@
+# The help page's manual and tutorials, in the Cubism Editor manual's and tutorial site's folders and order.
+# `+ id` is a folder, `- id status key=value…` a page; two spaces nest one level. Status: same, different, exclusive
+# (PSD2Live's own, placed where it fits among the Cubism pages) or missing (in Cubism, not yet here).
+# cubism= names the Cubism page, path= makes a page a step-by-step tutorial path, embed= adds a generated table.
+# Titles and text: manual/<language>/manual.md and tutorials.md.
+
+[manual]
++ new-features
+  - new-feature-introduction-title different cubism=new-feature-introduction-title
++ before
+  - workflow different cubism=workflow
+  - cubism-editor-activation different cubism=cubism-editor-activation
+  - file-type-and-extension different cubism=file-type-and-extension
+  - fault-map different cubism=fault-map
+  - convert-data-cubism-2-to-3 missing cubism=convert-data-cubism-2-to-3
+  - performance different cubism=performance
++ editor
+  - glossary different cubism=glossary
+  - shortcut different cubism=shortcut embed=shortcuts
+  - home different cubism=home
+  - target-version-selection different cubism=target-version-selection
+  - environment-settings different cubism=environment-settings
+  + menus
+    - file-menu different cubism=file-menu
+    - edit-menu different cubism=edit-menu
+    - display-menu different cubism=display-menu
+    - modeling-menu different cubism=modeling-menu
+    - animation-menu different cubism=animation-menu
+    - formanimation-menu missing cubism=formanimation-menu
+    - window-menu different cubism=window-menu
+    - help-menu different cubism=help-menu
+    - mesh-edit-menu different cubism=mesh-edit-menu
+  - workspace different cubism=workspace
+  + view-area
+    - about-viewarea different cubism=about-viewarea
+    - canvas-modes exclusive
+    - preview-canvas exclusive
+    - guide-function missing cubism=guide-function
+    - solo different cubism=solo
+    - grid missing cubism=grid
+    - snapshot missing cubism=snapshot
+    - onion-skin missing cubism=onion-skin
+    - multiview different cubism=multiview
+    - random-pose missing cubism=random-pose
+  + toolbar-folder
+    - toolbar different cubism=toolbar
+    - edit-level different cubism=edit-level
+  + palettes
+    - palatte-basic-operation different cubism=palatte-basic-operation
+    - detailed-toolpalatte different cubism=detailed-toolpalatte
+    - inspector-palette same cubism=inspector-palette
+    - partspalatte different cubism=partspalatte
+    - deformerpalatte different cubism=deformerpalatte
+    - palametorpalatte same cubism=palametorpalatte
+    - layers-palette exclusive
+    - timelinepalatte different cubism=timelinepalatte
+    - scene-palette missing cubism=scene-palette
+    - project-palette missing cubism=project-palette
+    - history-palette exclusive
+    - logpalatte same cubism=logpalatte
+  - convert-id missing cubism=convert-id
+  - autosave different cubism=autosave
++ material
+  - divide-the-material different cubism=divide-the-material
+  - reimport-psd different cubism=reimport-psd
+  - precautions-for-psd-data different cubism=precautions-for-psd-data embed=psd_spec
+  - split-by-mesh exclusive
+  - depth-split exclusive
+  - layout-project exclusive
++ modeling
+  + psd-import-folder
+    - psd-import different cubism=psd-import
+    - psd-re-import different cubism=psd-re-import
+    - model-presets exclusive
+    - update-generated-rig exclusive
+    - cmo3-import different
+  + texture
+    - original-picture missing cubism=original-picture
+    - psd-link missing cubism=psd-link
+    - texture-atlas-edit different cubism=texture-atlas-edit
+    - png-file-export-replacement different cubism=png-file-export-replacement
+    - texture-upscale exclusive
+    - paint-mode exclusive
+  + parts-folder
+    - parts different cubism=parts
+    - edit-parts different cubism=edit-parts
+    - edit-parts-sketch different cubism=edit-parts-sketch
+    - variants exclusive
+    - copy-and-paste missing cubism=copy-and-paste
+    - search-and-replace missing cubism=search-and-replace
+    - offscreen-drawing missing cubism=offscreen-drawing
+  + draw-order
+    - draworder same cubism=draworder
+    - drawing-order-group missing cubism=drawing-order-group
+  + artmesh
+    - concept-of-artmesh same cubism=concept-of-artmesh
+    - mesh-edit different cubism=mesh-edit
+    - mesh-edit-manual different cubism=mesh-edit-manual
+    - mesh-duplication missing cubism=mesh-duplication
+    - clipping-mask same cubism=clipping-mask
+    - reversed-mask same cubism=reversed-mask
+    - sketch different cubism=sketch
+    - hittest missing cubism=hittest
+    - blend-mode different cubism=blend-mode
+    - interior-shape exclusive
+  + artpath-folder
+    - artpath missing cubism=artpath
+    - artpath-auto-edit missing cubism=artpath-auto-edit
+    - artpath-edit-manual missing cubism=artpath-edit-manual
+    - artpath-brush-custom missing cubism=artpath-brush-custom
+    - artpath-adjustment missing cubism=artpath-adjustment
+    - stroke-artpath missing cubism=stroke-artpath
+  + deformer-folder
+    - deformer same cubism=deformer
+    - making-and-placement-of-warp-deformer different cubism=making-and-placement-of-warp-deformer
+    - making-and-rotation-of-rotationdeformer different cubism=making-and-rotation-of-rotationdeformer
+    - system-of-parent-child-relation same cubism=system-of-parent-child-relation
+    - setting-of-parent-child-relation different cubism=setting-of-parent-child-relation
+    - combintion-of-parent-child-relation same cubism=combintion-of-parent-child-relation
+    - auto-generation-of-deformer different cubism=auto-generation-of-deformer
+    - convenient-function-deformer different cubism=convenient-function-deformer
+  + parameter-folder
+    - parameter same cubism=parameter
+    - edit-parameters different cubism=edit-parameters
+    - parameter-modifyication same cubism=parameter-modifyication
+    - standard-parameter-list same cubism=standard-parameter-list
+    + extended-interpolation-folder
+      - extended-interpolation missing cubism=extended-interpolation
+      - extended-type missing cubism=extended-type
+    - repeat missing cubism=repeat
+    - recording-parameters missing cubism=recording-parameters
+    - copy-and-paste-parameter-values different cubism=copy-and-paste-parameter-values
+    - motion-sync missing cubism=motion-sync
+  + keyform
+    - how-to-choose different cubism=how-to-choose
+    - how-to-edit different cubism=how-to-edit
+    - keyform-parent-chilid-relation same cubism=keyform-parent-chilid-relation
+    - keyform-xydirection same cubism=keyform-xydirection
+    - copy-and-blend-shape missing cubism=copy-and-blend-shape
+    - paste-form-special missing cubism=paste-form-special
+    - confirm-target-for-pasting-multiple-forms missing cubism=confirm-target-for-pasting-multiple-forms
+    - synthesize-corners missing cubism=synthesize-corners
+    - face-auto-edit different cubism=face-auto-edit
+    - auto-generation-of-sway-motion different cubism=auto-generation-of-sway-motion
+    - edit-vertices different cubism=edit-vertices
+    - restore-deformer-shape missing cubism=restore-deformer-shape
+    - glue different cubism=glue
+    - deformpath different cubism=deformpath
+    - skinning different cubism=skinning
+    - skeleton exclusive
+    - generated-overrides exclusive
+    - multi-key missing cubism=multi-key
+    - motion-mirroring different cubism=motion-mirroring
+    - temporary-deform-tool missing cubism=temporary-deform-tool
+    - deform-brush same cubism=deform-brush
+    - blend-shape different cubism=blend-shape
+    - limit-settings-for-blend-shape-weights missing cubism=limit-settings-for-blend-shape-weights
+    - multiply-color-screen-color different cubism=multiply-color-screen-color
+    - apply-3d-rotation-expression missing cubism=apply-3d-rotation-expression
+    - apply-3d-rotation-expression-settings missing cubism=apply-3d-rotation-expression-settings
+  + convenience
+    - csv-export-import missing cubism=csv-export-import
+    - template missing cubism=template
+    - applying-the-model-template missing cubism=applying-the-model-template
+    - creating-exporting-the-model-template missing cubism=creating-exporting-the-model-template
++ animation
+  - animation-preparation different cubism=animation-preparation
+  - builtin-motions exclusive
+  - loading-model-and-placement missing cubism=loading-model-and-placement
+  - eye-blink-settings different cubism=eye-blink-settings
+  - generating-scene-from-audio-file missing cubism=generating-scene-from-audio-file
+  - placement-background-and-grouptrack missing cubism=placement-background-and-grouptrack
+  - management-of-scenes missing cubism=management-of-scenes
+  - change-pose missing cubism=change-pose
+  + timeline
+    - timeline-basic-operation-timelinepalette different cubism=timeline-basic-operation-timelinepalette
+    - timeline-basic-operation-dopesheet same cubism=timeline-basic-operation-dopesheet
+    - parameter-bookmark missing cubism=parameter-bookmark
+    - timeline-basic-operation-shy missing cubism=timeline-basic-operation-shy
+    - freeze missing cubism=freeze
+    - timeline-basic-operation-repeat missing cubism=timeline-basic-operation-repeat
+    - grapheditor different cubism=grapheditor
+    - marker missing cubism=marker
+    - locus-of-tracks missing cubism=locus-of-tracks
+    - template-making-and-management missing cubism=template-making-and-management
+    - about-fade same cubism=about-fade
+    - fade-setting different cubism=fade-setting
+    - lightweight-playback missing cubism=lightweight-playback
+    - notes-for-sdk different cubism=notes-for-sdk
+  + parameter-controller
+    - about-the-parameter-controller missing cubism=about-the-parameter-controller
+    - parameter-controller-target-setting missing cubism=parameter-controller-target-setting
+  + form-animation
+    - about-form-animation missing cubism=about-form-animation
+    - create-form-animation missing cubism=create-form-animation
+    - form-animation-time-remapping missing cubism=form-animation-time-remapping
+    - adjustment-mode missing cubism=adjustment-mode
+    - form-animation-animation-preview missing cubism=form-animation-animation-preview
+  - serial-number-image-track missing cubism=serial-number-image-track
+  - limited-animation missing cubism=limited-animation
+  - physics-operation-bake missing cubism=physics-operation-bake
+  - motion-sync-bake missing cubism=motion-sync-bake
+  - gather-up-files missing cubism=gather-up-files
+  - runtime-model-track missing cubism=runtime-model-track
+  - loop-editing-support missing cubism=loop-editing-support
++ export
+  - exporting-images different cubism=exporting-images
+  - export-moc3-motion3-files different cubism=export-moc3-motion3-files
+  - other-formats exclusive
+  - userdata different cubism=userdata
++ physics-playlist
+  - switch-viewer-setting different cubism=switch-viewer-setting
+  - physics-operation same cubism=physics-operation
+  - physical-operation-setting different cubism=physical-operation-setting
+  - physics-group-information different cubism=physics-group-information
+  - simulation exclusive
+  - about-playlists missing cubism=about-playlists
+  - playlist-settings missing cubism=playlist-settings
++ external
+  - external-application-integration different cubism=external-application-integration
+  - external-application-integration-api different cubism=external-application-integration-api
+  - external-application-integration-api-list different cubism=external-application-integration-api-list
++ viewer
+  - selection-of-viewer different cubism=selection-of-viewer
+  + viewer-ow
+    - cubism3-viewer-for-ow different cubism=cubism3-viewer-for-ow
+    - load-model-and-motion different cubism=load-model-and-motion
+    - motion-setting different cubism=motion-setting
+    - pose-setting missing cubism=pose-setting
+    - facial-expression-system missing cubism=facial-expression-system
+    - create-facial-expressions missing cubism=create-facial-expressions
+    - setting-and-exporting-facial-expressions missing cubism=setting-and-exporting-facial-expressions
+    - userdata-event-information missing cubism=userdata-event-information
+    - export-model3-json different cubism=export-model3-json
+    - check-the-physics different cubism=check-the-physics
+    - motion-sync-setting-ow missing cubism=motion-sync-setting-ow
+    - texture-setting missing cubism=texture-setting
+
+[tutorials]
++ t-beginner
+  - t-eye-blink different cubism=eye-blink
+  - t-mouth-aiueo different cubism=mouth-aiueo
+  - t-figure different cubism=figure
++ t-basic
+  - t-psd different cubism=psd
+  - t-import different cubism=import
+  - t-expression different cubism=expression
+  - t-deformer different cubism=deformer
+  - t-xy different cubism=xy
+  - t-animator different cubism=animator
+  - t-template missing cubism=template
+  + t-controller
+    - t-controller-settings missing cubism=controller-settings
+    - t-target-tracking-settings missing cubism=target-tracking-settings
+    - t-animation-using-controller missing cubism=animation-using-controller
+    - t-parameter-controller-tips missing cubism=parameter-controller-tips
+  - t-blendmode-offscreendrawing missing cubism=blendmode-offscreendrawing
++ t-embed
+  - t-preparing-the-model different cubism=preparing-the-model
+  - t-physical-calculation-settings different cubism=physical-calculation-settings
+  - t-prepare-motions-and-expressions different cubism=prepare-motions-and-expressions
+  - t-exporting-data-for-embedding different cubism=exporting-data-for-embedding
+  - t-operation-of-viewer different cubism=operation-of-viewer-original-workflow-version
+  - t-operation-of-the-viewer-unity missing cubism=operation-of-the-viewer-unity-version
++ t-tips
+  - t-motion-hint same cubism=motion-hint
+  - t-function different cubism=function
+  - t-natori-making missing cubism=natori_making
+  - t-model-introduction different cubism=model-introduction
+  - t-tracking missing cubism=cubism-ae-plugin-tracking
++ t-interactive
+  - interactive-beginner exclusive path=BEGINNER
+  - interactive-experienced exclusive path=EXPERIENCED

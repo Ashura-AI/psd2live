@@ -48,8 +48,9 @@ internal fun PageModuleContent(id: String, state: PSD2LiveState, viewModel: PSD2
 		START_NAV -> StartNavPanel(state, viewModel, actions)
 		START_MAIN -> StartMainPanel(state, viewModel, actions)
 		START_DETAILS -> StartDetailsPanel(state, viewModel, actions)
-		HELP_NAV -> HelpNav(viewModel.helpTab, viewModel::setHelpTab)
-		HELP_CONTENT -> HelpPanel(viewModel.helpTab, state.keymap, onStartInteractiveTutorial = actions.onStartTutorialPath)
+		HELP_NAV -> HelpNav(viewModel.helpTab, viewModel.helpPage, viewModel::setHelpTab, viewModel::showHelpPage)
+		HELP_CONTENT -> HelpPanel(viewModel.helpTab, viewModel.helpPage, state.keymap, onOpenPage = viewModel::showHelpPage,
+			onStartInteractiveTutorial = actions.onStartTutorialPath)
 		SETTINGS_NAV -> SettingsNav(viewModel.settingsTopic, viewModel::setSettingsTopic, onResetAll = { resetAllSettings(viewModel) })
 		SETTINGS_CONTENT -> SettingsPanel(viewModel.settingsTopic, state, viewModel)
 	}
@@ -61,11 +62,17 @@ internal fun pageModuleTitle(id: String, viewModel: PSD2LiveViewModel): String =
 	START_MAIN -> startSectionTitle(viewModel.startSection)
 	START_DETAILS -> startDetailsTitle(viewModel.startSection)
 	HELP_NAV -> pageTitle(AppPage.HELP)
-	HELP_CONTENT -> tr(viewModel.helpTab.labelKey)
+	HELP_CONTENT -> helpContentTitle(viewModel)
 	SETTINGS_NAV -> pageTitle(AppPage.SETTINGS)
 	SETTINGS_CONTENT -> tr(viewModel.settingsTopic.labelKey)
 	else -> moduleTitle(id)
 }
+
+/** The help content panel's title: the page shown in the manual and the tutorials, the topic otherwise. */
+private fun helpContentTitle(viewModel: PSD2LiveViewModel): String =
+	if (viewModel.helpTab == HelpTab.MANUAL || viewModel.helpTab == HelpTab.TUTORIALS)
+		Manual.texts(io.github.psd2live.i18n.I18n.currentLanguage)[viewModel.helpPage]?.title ?: tr(viewModel.helpTab.labelKey)
+	else tr(viewModel.helpTab.labelKey)
 
 /** A page's name, for its tab. */
 internal fun pageTitle(page: AppPage): String = tr(when (page) {

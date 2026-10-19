@@ -198,7 +198,10 @@ class PSD2LiveViewModel : AutoCloseable {
     /** Each page's arrangement, read from the preferences when first shown and written back as it changes. */
     internal val pageArrangements = androidx.compose.runtime.mutableStateMapOf<AppPage, PageArrangement>()
     /** The help topic shown, and the settings topic: each page's contents pick one. */
-    internal var helpTab by mutableStateOf(HelpTab.QUICK_START)
+    internal var helpTab by mutableStateOf(HelpTab.TUTORIALS)
+        private set
+    /** The manual or tutorial page shown while [helpTab] is one of those trees. */
+    internal var helpPage by mutableStateOf(Manual.FIRST_TUTORIAL)
         private set
     internal var settingsTopic by mutableStateOf(SettingsTopic.SCALE)
         private set
@@ -1439,6 +1442,14 @@ class PSD2LiveViewModel : AutoCloseable {
 
     internal fun setHelpTab(tab: HelpTab) {
         helpTab = tab
+    }
+
+    /** Shows the manual or tutorial page [id] on the help page; a page that does not open is ignored. */
+    internal fun showHelpPage(id: String) {
+        val page = Manual.page(id)?.takeIf { it.opens } ?: return
+        helpPage = page.id
+        helpTab = if (page.root == Manual.Root.MANUAL) HelpTab.MANUAL else HelpTab.TUTORIALS
+        showPage(AppPage.HELP, HELP_CONTENT)
     }
 
     internal fun setSettingsTopic(topic: SettingsTopic) {
