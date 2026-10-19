@@ -9,6 +9,9 @@ import org.umamo.format.moc3.json.DisplayParameterGroup
 import org.umamo.format.moc3.json.DisplayPart
 import org.umamo.format.moc3.json.FileReferences
 import org.umamo.format.moc3.json.Model3Json
+import org.umamo.format.moc3.json.UserData3Json
+import org.umamo.format.moc3.json.UserDataEntry
+import org.umamo.format.moc3.json.UserDataMeta
 import org.umamo.format.moc3.moc.MocVersion
 import org.umamo.interop.ExportReport
 import org.umamo.interop.moc3.export.CanvasToParentSpace
@@ -20,7 +23,8 @@ import org.umamo.runtime.model.PuppetModel
 
 /**
  * Builds the whole `.moc3` FILE FAMILY - the moc, its `model3.json` manifest, a `cdi3.json` of
- * display names, the atlas pages, and whatever sidecars the document was imported with.
+ * display names, a `userdata3.json` of art-mesh user data, the atlas pages, and whatever sidecars
+ * the document was imported with.
  *
  * A baked model is a family, not a file: the runtime loads the manifest, and the manifest is what
  * names the atlas pages a moc's texture indices point into.  Writing the moc alone produces something
@@ -56,6 +60,9 @@ object Moc3Sidecars {
 
 	/** The cdi3 schema version the editor writes. */
 	private const val CDI3_VERSION: Int = 3
+
+	/** The userdata3 schema version the editor writes. */
+	private const val USERDATA3_VERSION: Int = 3
 
 	/** The model3 schema version the editor writes. */
 	private const val MODEL3_VERSION: Int = 3
@@ -150,8 +157,22 @@ object Moc3Sidecars {
 			files.add(BundleFile(page.fileName, page.bytes))
 		}
 		for (sidecar in sidecars) {
+			if (sidecar.kind == SidecarKind.UserData && !options.includeUserData) continue
 			files.add(BundleFile(sidecar.fileName, sidecar.text.encodeToByteArray()))
 		}
+		// A retained userdata3 wins over the synthesized one; either way the option gates the file and its
+		// manifest reference together.
+		val userDataName =
+			if (!options.includeUserData) {
+				null
+			} else {
+				sidecars.firstOrNull { it.kind == SidecarKind.UserData }?.fileName
+					?: userData(puppet, lowered.writtenIds)?.let { userData ->
+						"$basename.userdata3.json".also { name ->
+							files.add(BundleFile(name, Moc3.writeUserData3(userData).encodeToByteArray()))
+						}
+					}
+			}
 		val manifest =
 			Model3Json(
 				version = MODEL3_VERSION,
@@ -161,7 +182,7 @@ object Moc3Sidecars {
 						textures = pages.map { page -> page.fileName },
 						pose = sidecars.firstOrNull { it.kind == SidecarKind.Pose }?.fileName,
 						physics = sidecars.firstOrNull { it.kind == SidecarKind.Physics }?.fileName,
-						userData = sidecars.firstOrNull { it.kind == SidecarKind.UserData }?.fileName,
+						userData = userDataName,
 						displayInfo = displayInfoName,
 						// Expression and motion entries carry their own fade times and group names, so the
 						// source's own entries are re-emitted rather than rebuilt from the file list - the
@@ -177,6 +198,33 @@ object Moc3Sidecars {
 			)
 		files.add(BundleFile("$basename.model3.json", Moc3.writeModel3(manifest).encodeToByteArray()))
 		return Bundle(files, mocFileName, report)
+	}
+
+	/**
+	 * The `userdata3.json` for [puppet]: one `ArtMesh` entry per written drawable with user data.
+	 *
+	 * Unlike the cdi3 this is written only when some drawable carries user data - an empty user-data
+	 * file says nothing a runtime could use.  Ids are the ones the MOC was written with, for the same
+	 * join reason as [displayInfo], and drawables the lowering dropped are left out.
+	 *
+	 * @param PuppetModel    puppet     The rig.
+	 * @param Moc3WrittenIds writtenIds What the lowering wrote each object's id as.
+	 * @return UserData3Json? The user data, or null when no written drawable has any.
+	 */
+	fun userData(
+		puppet: PuppetModel,
+		writtenIds: Moc3WrittenIds,
+	): UserData3Json? {
+		val entries =
+			puppet.drawables
+				.filter { drawable -> drawable.userData.isNotEmpty() && writtenIds.wroteDrawable(drawable.id) }
+				.map { drawable -> UserDataEntry(target = "ArtMesh", id = writtenIds.drawableId(drawable.id), value = drawable.userData) }
+		if (entries.isEmpty()) return null
+		return UserData3Json(
+			version = USERDATA3_VERSION,
+			meta = UserDataMeta(userDataCount = entries.size, totalUserDataSize = entries.sumOf { it.value.encodeToByteArray().size }),
+			userData = entries,
+		)
 	}
 
 	/**

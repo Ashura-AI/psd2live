@@ -1958,7 +1958,7 @@ Cubism Editor는 Live2D 자체 형식만 내보냅니다. VTube Studio, 웹, Uni
 3. 입력을 마치면 히스토리 한 단계로 기록되며 실행 취소할 수 있습니다.
 ## 내보내기
 - 사용자 데이터는 프로젝트와 함께 저장되고, 내보낸 `.cmo3`에 기록되어 Cubism Editor에서 볼 수 있습니다.
-- MOC3를 내보낼 때는 현재 `userdata3.json`을 생성하지 않습니다. 내보내기 창의 **userdata3.json 포함** 체크박스를 켜도 이 파일은 만들어지지 않습니다.
+- 내보내기 창의 **userdata3.json 포함**(기본값 켜짐)이 켜져 있고 사용자 데이터가 있는 아트메시가 있으면, MOC3 내보내기에서 `<이름>.userdata3.json`을 기록하고 `model3.json`에서 참조합니다. 사용자 데이터가 없으면 이 파일은 만들어지지 않습니다.
 ## Cubism과의 차이
 - Cubism: 아트메시에 사용자 데이터를 설정해 `userdata3.json`을 출력할 수 있으며, Animator에서는 모션 안에 Event(사용자 데이터)를 두어 `motion3.json`에 기록할 수 있습니다.
 - PSD2Live: 아트메시에만 사용자 데이터를 설정할 수 있습니다. 모션 안에 Event를 둘 수 없으며, 내보낸 `motion3.json`에는 사용자 데이터가 없습니다.

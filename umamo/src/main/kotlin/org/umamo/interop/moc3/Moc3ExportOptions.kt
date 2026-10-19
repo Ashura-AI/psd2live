@@ -21,7 +21,8 @@ package org.umamo.interop.moc3
  * @property Boolean exportGuideImageParts Write guide-image (sketch) subtrees instead of dropping
  *                                         them.
  * @property Boolean includePhysics        Carry a retained physics3.json through the bundle.
- * @property Boolean includeUserData       Carry a retained userdata3.json through the bundle.
+ * @property Boolean includeUserData       Write userdata3.json: the retained one, else one
+ *                                         synthesized from the drawables' user data.
  * @property Boolean includeDisplayInfo    Synthesize the cdi3.json display-info sidecar.
  * @property Float?  pixelsPerUnitOverride The bake scale to write, or null to resolve it from the
  *                                         model (the recorded scale, else the canvas width).

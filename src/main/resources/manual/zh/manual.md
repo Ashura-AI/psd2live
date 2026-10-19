@@ -1960,7 +1960,7 @@ Cubism Editor 只导出 Live2D 自己的格式。需要在 VTube Studio、网页
 3. 输入结束时记为一条历史，可撤销。
 ## 导出
 - 用户数据随工程保存，并写入导出的 `.cmo3`，在 Cubism Editor 中可见。
-- 导出 MOC3 时目前不生成 `userdata3.json`；导出窗口中的 **包含 userdata3.json** 勾选框不会产生该文件。
+- 导出 MOC3 时，若勾选导出窗口中的 **包含 userdata3.json**（默认勾选）且有图形网格填写了用户数据，会写出 `<名称>.userdata3.json` 并在 `model3.json` 中引用；没有用户数据时不生成该文件。
 ## 与 Cubism 的差异
 - Cubism：可在图形网格上设置用户数据并输出 `userdata3.json`；Animator 中可在动态里放置 Event（用户数据），写入 `motion3.json`。
 - PSD2Live：只能在图形网格上设置用户数据；动作中不能放置 Event，导出的 `motion3.json` 不含用户数据。

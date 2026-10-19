@@ -1958,7 +1958,7 @@ User data is an arbitrary string attached to an object for applications to read.
 3. Finishing the input records one history step, which can be undone.
 ## Export
 - User data is saved with the project and written into the exported `.cmo3`, where it is visible in Cubism Editor.
-- MOC3 export currently does not generate `userdata3.json`; the **Include userdata3.json** checkbox in the export window does not produce the file.
+- When **Include userdata3.json** is checked in the export window (the default) and some ArtMesh has user data, MOC3 export writes `<name>.userdata3.json` and references it from `model3.json`; without user data the file is not produced.
 ## Differences from Cubism
 - Cubism: user data can be set on ArtMeshes and output as `userdata3.json`; in the Animator, Events (user data) can be placed in motions and written to `motion3.json`.
 - PSD2Live: user data can only be set on ArtMeshes; Events cannot be placed in motions, and the exported `motion3.json` contains no user data.
