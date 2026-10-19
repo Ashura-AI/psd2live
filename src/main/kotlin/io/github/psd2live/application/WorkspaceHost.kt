@@ -1211,13 +1211,13 @@ internal class WorkspaceHost<V>(
         result.result
     }
 
-    override suspend fun importImages(state: String, paths: List<Path>, parentDeformerId: String?): WorkspaceMutationResult = editMutex.withLock {
+    override suspend fun importImages(state: String, paths: List<Path>, insertion: ImageLayerInsertion): WorkspaceMutationResult = editMutex.withLock {
         val before = captureForMutation()
         requireExpected(state, before)
         val current = presentation.current()
         if (current.facts().analyzing || current.facts().generating || recoveringProjectId != null) throw WorkspaceBusy()
         val summary = "Imported ${paths.size} image layers"
-        val result = imageLayerCommands.importImages(before.projectId, before.state, paths, parentDeformerId, summary,
+        val result = imageLayerCommands.importImages(before.projectId, before.state, paths, insertion, summary,
             mutationAuthor(MutationAuthor.USER)) { _, document, model ->
             applyPreviewOrThrow(model, documentFrom(current), document, summary, current)
         }

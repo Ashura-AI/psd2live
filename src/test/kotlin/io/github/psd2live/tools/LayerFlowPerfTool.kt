@@ -67,7 +67,7 @@ class LayerFlowPerfTool {
 				report.appendLine("  build again: %.0f ms".format(since(t)))
 			}
 			start = System.nanoTime()
-			val id = WorkspaceImageLayerCommands(runtime).importImages(capture.projectId, capture.state, listOf(file), null, "Import", MutationAuthor.USER)
+			val id = WorkspaceImageLayerCommands(runtime).importImages(capture.projectId, capture.state, listOf(file), io.github.psd2live.application.ImageLayerInsertion(), "Import", MutationAuthor.USER)
 				.mutation.affectedLayerIds.single()
 			report.appendLine("import 1024x512: %.0f ms".format(since(start)))
 			suspend fun edit(label: String, operation: WorkspaceDocumentOperation) {

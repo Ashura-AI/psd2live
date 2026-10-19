@@ -39,7 +39,20 @@ class ImportPlacementScenario {
 			"parent_id" to null, "space" to "canvas"))))
 		stays("at the root")
 		expect("at the root", motion(badge, "ParamAngleZ", 30f) < 0.01) { "the badge still follows the head" }
+
+		val faceOrder = puppet.drawables.single { it.id.raw == mesh("face") }.drawOrder
+		val next = puppet.drawables.map { it.drawOrder }.filter { it > faceOrder }.minOrNull() ?: 1001f
+		val pin = importImages("drop a pin just in front of the face", listOf(Characters.disc(temp, "pin.png", 12)),
+			insertion = io.github.psd2live.application.ImageLayerInsertion(anchorLayerId = "face", centre = 100f to 120f)).single()
+		val pinMesh = puppet.drawables.single { it.id.raw == mesh(pin) }
+		expect("in front of the face", pinMesh.drawOrder > faceOrder && pinMesh.drawOrder < next) {
+			"drawn at ${pinMesh.drawOrder}, the face at $faceOrder and the next mesh at $next"
+		}
+		expect("where it was dropped", centre(bounds(mesh(pin))).let { near(it.first, 100f) && near(it.second, 120f) }) {
+			"centred at ${centre(bounds(mesh(pin)))}"
+		}
 		reopen()
 		stays("reopened")
+		expect("still in front of the face", puppet.drawables.single { it.id.raw == mesh(pin) }.drawOrder == pinMesh.drawOrder) { "draw order changed on reopen" }
 	}
 }

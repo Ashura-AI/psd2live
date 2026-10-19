@@ -42,7 +42,6 @@ import io.github.psd2live.core.PreviewFrame
 import io.github.psd2live.core.PreviewSessions
 import io.github.psd2live.core.PreviewBackend
 import io.github.psd2live.core.PreviewRenderRequest
-import io.github.psd2live.core.HierarchyImportTarget
 import io.github.psd2live.core.LayerClassificationOverride
 import io.github.psd2live.core.layerSelectionRange
 import io.github.psd2live.core.LayerImport
@@ -5981,33 +5980,87 @@ class PSD2LiveViewModel : AutoCloseable {
 		}
 	}
 
-	/**
-	 * Hit-test for external file drops over the hierarchy tree. Registered by [HierarchyTreeList]
-	 * while it is composed; coordinates are window-relative (Compose [positionInWindow] space).
-	 */
-	@Volatile
-	var hierarchyImportHitTest: ((windowX: Int, windowY: Int) -> HierarchyImportTarget?)? = null
+	/** Where system files dragged over the window would land: the panels under the pointer register their zones. */
+	val fileDrops = FileDropRouter(fallback = { carried ->
+		carried.opens?.let { FileDropIntent.Open(it, tr("drop.intent.open", openedName(it))) }
+	}, hint = ::fileDropHint)
+
+	private fun openedName(action: io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction): String = when (action) {
+		is io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction.OpenProject -> action.file.name
+		is io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction.OpenPsd -> action.file.name
+		is io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction.OpenCmo3 -> action.file.name
+		is io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction.SetOutputDir -> tr("drop.intent.outputDir", action.dir.name)
+		is io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction.Unsupported -> ""
+	}
+
+	/** What the pointer says where no target takes the files. */
+	private fun fileDropHint(carried: CarriedFiles): String? = when {
+		carried.unknown -> null
+		carried.rasters.isNotEmpty() && _state.value.previewModel == null -> tr("error.importLayerBusy")
+		carried.rasters.isNotEmpty() || carried.materials -> tr("drop.hint.target")
+		else -> tr("drop.hint.unsupported")
+	}
+
+	/** Files dropped from the system at window pixel ([x], [y]): whatever the target there does with them. */
+	fun dropFiles(files: List<java.io.File>, x: Float?, y: Float?) {
+		val carried = CarriedFiles(files)
+		when (val intent = fileDrops.drop(files, x, y)) {
+			null -> fileDropHint(carried)?.let(::setStatusText)
+			is FileDropIntent.Open -> openDropped(intent.action)
+			is FileDropIntent.ImportMaterials -> importMaterials(files.map { it.toPath() }, intent.folderId)
+			is FileDropIntent.InsertLayers -> importLayersFromFiles(carried.rasters, intent.insertion)
+			is FileDropIntent.PlaceOnCanvas -> importLayersFromFiles(carried.rasters, io.github.psd2live.application.ImageLayerInsertion(centre = intent.centre))
+			is FileDropIntent.SetReference -> importMaterials(carried.rasters.take(1).map { it.toPath() }, null, asReference = true)
+			is FileDropIntent.ReplaceImage -> carried.rasters.firstOrNull()?.let { file ->
+				val options = _state.value.textureWorkspace
+				queueTextureEdits(listOf(io.github.psd2live.application.WorkspaceTextureEdit.ReplaceImage(intent.layerId,
+					io.github.psd2live.application.WorkspaceTextureImage.File(file.toPath().toAbsolutePath()), options.replaceFit, options.replaceRebuildMesh)))
+			}
+			is FileDropIntent.Refuse -> Unit
+		}
+	}
+
+	/** Opens what dropped files stand for: a project, a PSD or layout, a CMO3, or the output folder. */
+	private fun openDropped(action: io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction) {
+		when (action) {
+			is io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction.OpenProject -> openProject(action.file.toPath())
+			is io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction.OpenPsd -> {
+				action.outputDir?.let { setOutputPath(it.absolutePath) }
+				withSavedChanges {
+					setInputPath(action.file.absolutePath)
+					analyze(discardUnsaved = true)
+				}
+			}
+			is io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction.OpenCmo3 ->
+				importCmo3(action.file.toPath(), io.github.psd2live.core.Cmo3ImportMode.NEW)
+			is io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction.SetOutputDir -> {
+				setOutputPath(action.dir.absolutePath)
+				setStatusText(tr("status.outputDirSet", action.dir.name))
+			}
+			is io.github.psd2live.ui.utils.DesktopDropTarget.DroppedAction.Unsupported -> setErrorMessage(action.message)
+		}
+	}
 
 	/**
-	 * Imports transparent rasters as layers under [parentDeformerId] (null = root), each with its mesh, and selects
+	 * Imports transparent rasters as layers where [insertion] puts them, each with its mesh, and selects
 	 * the last one for the transform tool.
 	 */
-    internal suspend fun importImagesNow(files: List<java.io.File>, parentDeformerId: String?,
+    internal suspend fun importImagesNow(files: List<java.io.File>, insertion: io.github.psd2live.application.ImageLayerInsertion,
                                          expected: WorkspaceProjectSnapshot): WorkspaceMutationResult {
         val workspace = requireNotNull(workspaceBackend) { "Project workspace unavailable" }
         val port: io.github.psd2live.application.WorkspaceSourcePort = workspace
         return withContext(Dispatchers.Default + io.github.psd2live.application.WorkspaceExecution(
             expected.projectId, expected.state, MutationAuthor.USER)) {
-            port.importImages(requireNotNull(expected.state), files.map { it.toPath().toAbsolutePath().normalize() }, parentDeformerId)
+            port.importImages(requireNotNull(expected.state), files.map { it.toPath().toAbsolutePath().normalize() }, insertion)
         }
     }
 
-    fun importLayersFromFiles(files: List<java.io.File>, parentDeformerId: String?, anchorLabel: String) {
+    fun importLayersFromFiles(files: List<java.io.File>, insertion: io.github.psd2live.application.ImageLayerInsertion) {
         if (files.isEmpty()) return
         val current = _state.value
         val expected = workspaceBackend?.snapshot()
         if (current.previewModel == null || current.isBusy || expected?.loaded != true) {
-            setErrorMessage(tr("error.importLayerBusy"))
+            setStatusText(tr("error.importLayerBusy"))
             return
         }
         val workspaceId = current.activeWorkspace.id
@@ -6015,7 +6068,7 @@ class PSD2LiveViewModel : AutoCloseable {
         scope.launch {
             try {
                 updateState { it.copy(statusText = tr("status.importingLayers", files.size)) }
-                val result = importImagesNow(files, parentDeformerId, expected)
+                val result = importImagesNow(files, insertion, expected)
                 // The import is committed with its meshes: select the last image in object mode, where the transform
                 // handles move, scale and rotate it like any mesh (undo removes the import).
                 if (workspaceBackend?.snapshot()?.state != result.state || _state.value.activeWorkspace.id != workspaceId) return@launch
@@ -6048,12 +6101,6 @@ class PSD2LiveViewModel : AutoCloseable {
 	 */
 	val materialDropTargets = java.util.concurrent.ConcurrentHashMap<String, (androidx.compose.ui.geometry.Offset) -> androidx.compose.ui.geometry.Offset?>()
 
-	/** Where files dropped from the system land in the materials panel: the folder under the point, or null off the panel. */
-	var materialsImportHitTest: ((windowX: Int, windowY: Int) -> MaterialsDropTarget?)? = null
-
-	/** A drop target of the materials panel: [folderId] is null for the top level. */
-	data class MaterialsDropTarget(val folderId: String?)
-
 	fun startMaterialDrag(id: String, label: String, position: androidx.compose.ui.geometry.Offset) { _materialDrag.value = MaterialDrag(id, label, position) }
 	fun moveMaterialDrag(position: androidx.compose.ui.geometry.Offset) { _materialDrag.value = _materialDrag.value?.copy(position = position) }
 	fun cancelMaterialDrag() { _materialDrag.value = null }
@@ -6083,7 +6130,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	private fun strings(values: Collection<String>) = kotlinx.serialization.json.JsonArray(values.map { kotlinx.serialization.json.JsonPrimitive(it) })
 
 	/** Reads [files] (images, PSD, CMO3 images, SVG, folders) into the material library under [folderId]: one history edit. */
-	fun importMaterials(files: List<java.nio.file.Path>, folderId: String?) {
+	fun importMaterials(files: List<java.nio.file.Path>, folderId: String?, asReference: Boolean = false) {
 		if (files.isEmpty()) return
 		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return
 		val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace
@@ -6096,6 +6143,7 @@ class PSD2LiveViewModel : AutoCloseable {
 			port.applyDocumentEdits(state, tr("materials.imported", entries.size), listOf(io.github.psd2live.application.WorkspaceDocumentOperation(
 				io.github.psd2live.application.WorkspaceMaterialEdits.ADD, kotlinx.serialization.json.buildJsonObject {
 					put("staging", token); folderId?.let { put("folder_id", it) }
+					if (asReference) put("as_reference", true)
 				})), MutationAuthor.USER)
 		}
 	}

@@ -368,15 +368,26 @@ fun CanvasViewportComposable(
 		}
 	}
 	val currentViewportFor by rememberUpdatedState(viewportFor)
-	// A material dropped from the materials panel lands where the pointer is on this canvas.
+	// A material dropped from the materials panel, or an image from the system, lands where the pointer is on this canvas.
 	DisposableEffect(canvasId, mode) {
-		if (mode == CanvasMode.EDIT) viewModel.materialDropTargets[canvasId] = drop@{ root ->
+		fun canvasAt(root: Offset): Offset? {
 			val local = root - canvasOrigin
-			if (local.x < 0f || local.y < 0f || local.x > viewSize.width || local.y > viewSize.height) return@drop null
+			if (local.x < 0f || local.y < 0f || local.x > viewSize.width || local.y > viewSize.height) return null
 			val viewport = currentViewportFor(viewSize)
-			Offset(viewport.canvasX(local.x).toFloat(), viewport.canvasY(local.y).toFloat())
+			return Offset(viewport.canvasX(local.x).toFloat(), viewport.canvasY(local.y).toFloat())
 		}
-		onDispose { viewModel.materialDropTargets.remove(canvasId) }
+		if (mode == CanvasMode.EDIT) {
+			viewModel.materialDropTargets[canvasId] = ::canvasAt
+			viewModel.fileDrops.register("canvas:$canvasId") zone@{ carried, x, y ->
+				if (!carried.unknown && carried.rasters.isEmpty()) return@zone null
+				val at = canvasAt(Offset(x, y)) ?: return@zone null
+				io.github.psd2live.ui.state.FileDropIntent.PlaceOnCanvas(at.x to at.y, tr("drop.intent.place"))
+			}
+		}
+		onDispose {
+			viewModel.materialDropTargets.remove(canvasId)
+			viewModel.fileDrops.unregister("canvas:$canvasId")
+		}
 	}
 	val editingPainter = remember(previewModel?.atlas) { previewModel?.atlas?.let(::SkiaRigPainter) }
 	DisposableEffect(editingPainter) { onDispose { editingPainter?.close() } }
@@ -1980,6 +1991,11 @@ fun CanvasViewportComposable(
 						tr("canvas.staleRegeneration.preview") to { viewModel.previewGenerationUpdate(); focusRequester.requestFocus() },
 					),
 				)
+			}
+			// While images are carried over the window: targets for what a drop on the canvas itself does not do.
+			if (mode == CanvasMode.EDIT) {
+				val selected = canvasState.selectedLayerId?.let { id -> canvasState.analysis?.source?.layers?.firstOrNull { it.id.raw == id } }
+				CanvasFileDropSlots(viewModel, canvasId, selected?.let { it.id.raw to it.name }, Modifier.align(Alignment.TopCenter).padding(top = 52.dp))
 			}
 			// Bottom-right: display-toggle rail (mirrors the left tool palette).
 			CanvasViewOptionsBar(

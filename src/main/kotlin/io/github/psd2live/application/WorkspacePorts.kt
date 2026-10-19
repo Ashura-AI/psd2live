@@ -109,9 +109,20 @@ interface WorkspaceReadPort : WorkspaceQueries {
     fun captureQueries(): WorkspaceQueries
 }
 
+/**
+ * Where imported images go: under [parentDeformerId] (null = the model root), drawn just in front of layer
+ * [anchorLayerId] or just behind it ([inFront] false) when given, each centred on [centre] in canvas units when given.
+ */
+data class ImageLayerInsertion(
+    val parentDeformerId: String? = null,
+    val anchorLayerId: String? = null,
+    val inFront: Boolean = true,
+    val centre: Pair<Float, Float>? = null,
+)
+
 interface WorkspaceSourcePort {
-    /** Import a complete file batch as editable artwork in one history node. */
-    suspend fun importImages(state: String, paths: List<java.nio.file.Path>, parentDeformerId: String?): WorkspaceMutationResult
+    /** Import a complete file batch as editable artwork in one history node, where [insertion] puts it. */
+    suspend fun importImages(state: String, paths: List<java.nio.file.Path>, insertion: ImageLayerInsertion): WorkspaceMutationResult
     suspend fun importPsd(path: String, discardUnsaved: Boolean = false): WorkspaceMutationResult
     /** A new Layout project, not generated yet, from a layout manifest or a zip holding one ([LayoutManifest]). */
     suspend fun importLayout(path: String, discardUnsaved: Boolean = false): WorkspaceMutationResult

@@ -86,12 +86,16 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         }
     }
 
-    register(WorkspaceImageLayerCommands.OP, "Import 1..128 PNG, lossless WebP, TIFF or BMP files as editable layers. Trims transparent borders, centres and scales down to fit the canvas without resampling the pixels. Each image gets its own mesh in the authored rig, which the generators never regenerate; parent_deformer_id attaches it to that existing deformer (default the model root). Move, scale or rotate it afterwards with layer_transform; undo removes it. Preserves existing object identities and commits the complete batch as one history edit. Each file is limited to 64 MiB and 16 megapixels; the complete batch is limited to 32 megapixels.",
-        objectSchema(buildJsonObject { put("state", string()); put("paths", arraySchema(string(), 1, 128)); put("parent_deformer_id", string()) },
+    register(WorkspaceImageLayerCommands.OP, "Import 1..128 PNG, lossless WebP, TIFF or BMP files as editable layers. Trims transparent borders, centres and scales down to fit the canvas without resampling the pixels. Each image gets its own mesh in the authored rig, which the generators never regenerate; parent_deformer_id attaches it to that existing deformer (default the model root); anchor_layer_id draws the batch just in front of that layer (in_front=false: just behind it), the first image in front of the rest; at [x, y] centres each image there in canvas units instead of the canvas centre. Move, scale or rotate it afterwards with layer_transform; undo removes it. Preserves existing object identities and commits the complete batch as one history edit. Each file is limited to 64 MiB and 16 megapixels; the complete batch is limited to 32 megapixels.",
+        objectSchema(buildJsonObject { put("state", string()); put("paths", arraySchema(string(), 1, 128)); put("parent_deformer_id", string())
+            put("anchor_layer_id", string()); put("in_front", boolean()); put("at", arraySchema(number(), 2, 2)) },
             listOf("state", "paths")), WorkspaceOperationKind.DOCUMENT) { request ->
+        val at = request["at"]?.jsonArray?.map { it.jsonPrimitive.float }
+        val insertion = ImageLayerInsertion(request["parent_deformer_id"]?.jsonPrimitive?.content, request["anchor_layer_id"]?.jsonPrimitive?.content,
+            request["in_front"]?.jsonPrimitive?.boolean ?: true, at?.let { it[0] to it[1] })
         WorkspaceOperationOutput(workspace.importImages(request.text("state"), request.getValue("paths").jsonArray.map {
             java.nio.file.Path.of(it.jsonPrimitive.content)
-        }, request["parent_deformer_id"]?.jsonPrimitive?.content).layerResult())
+        }, insertion).layerResult())
     }
 
     register(WorkspaceLayerTransform.OP, "Move, scale or rotate a layer as a whole - imported or from the PSD, at the root or under any deformer, bound or not. Give matrix [a, b, c, d, e, f] (x' = a·x + c·y + e, y' = b·x + d·y + f in canvas units, y down), or translate [x, y], scale [sx, sy] or one number, rotate (degrees, clockwise on screen) and pivot [x, y]; the transform composes with the layer's current one. Its pixels, texture and texture coordinates never change and nothing is regenerated: every mesh of the layer moves at rest, keyforms keep their offsets, and the layer remembers where its pixels now show for painting. One undoable history edit.",
@@ -132,8 +136,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         objectSchema(JsonObject(structureSchema + ("state" to string())), listOf("state", "target")), WorkspaceOperationKind.DOCUMENT) { request ->
         val target = request.text("target").removePrefix("mesh:")
         val rebake = workspace.captureQueries().listInteriorEffects().any { it.target == target }
-        val edits = listOf(WorkspaceDocumentOperation(WorkspaceStructureMeshEdits.OP, JsonObject(request - "state"))) +
-            if (rebake) listOf(WorkspaceDocumentOperation("interior_put", buildJsonObject { put("target", target) })) else emptyList()
+        val edits = listOf(WorkspaceDocumentOperation(WorkspaceStructureMeshEdits.OP, JsonObject(request - "state")))
         val result = workspace.applyDocumentEdits(request.text("state"), "Remeshed $target along its texture", edits, MutationAuthor.AGENT)
         WorkspaceOperationOutput(buildJsonObject {
             put("state", requireNotNull(result.state)); put("history_node_id", result.historyNodeId); put("project_id", requireNotNull(result.projectId))

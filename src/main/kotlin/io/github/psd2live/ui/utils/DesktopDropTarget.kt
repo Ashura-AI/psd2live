@@ -55,11 +55,13 @@ object DesktopDropTarget {
 	fun install(
 		window: Window,
 		onDragStateChanged: ((Boolean) -> Unit)? = null,
+		onDragMoved: ((files: List<File>, windowLocation: java.awt.Point) -> Boolean)? = null,
 		onFilesDropped: (files: List<File>, windowLocation: java.awt.Point?) -> Unit,
 	) {
 		val installTask = {
 			val activeDragCount = AtomicInteger(0)
-			val listener = createListener(activeDragCount, onDragStateChanged) { files, screen ->
+			val moved = onDragMoved?.let { report -> { files: List<File>, screen: java.awt.Point -> windowPixels(window, screen)?.let { report(files, it) } ?: true } }
+			val listener = createListener(activeDragCount, onDragStateChanged, moved) { files, screen ->
 				onFilesDropped(files, screen?.let { windowPixels(window, it) })
 			}
 
@@ -122,48 +124,46 @@ object DesktopDropTarget {
 	private fun createListener(
 		activeDragCount: AtomicInteger,
 		onDragStateChanged: ((Boolean) -> Unit)?,
+		onDragMoved: ((files: List<File>, screen: java.awt.Point) -> Boolean)?,
 		onFilesDropped: (files: List<File>, screenLocation: java.awt.Point?) -> Unit,
 	): DropTargetListener {
+		// The files of the drag in progress, read once when it enters; empty when the system withholds them until the drop.
+		var carried: List<File> = emptyList()
+		fun screenOf(dtde: DropTargetDragEvent) = java.awt.Point(dtde.location).also { point ->
+			runCatching { SwingUtilities.convertPointToScreen(point, dtde.dropTargetContext.component) }
+		}
+		/** Accepts the drag where a drop would do something, and reports where it is. */
+		fun track(dtde: DropTargetDragEvent) {
+			if (!isDragAcceptable(dtde)) { dtde.rejectDrag(); return }
+			val accepted = onDragMoved?.let { report -> runCatching { report(carried, screenOf(dtde)) }.getOrDefault(true) } ?: true
+			if (accepted) dtde.acceptDrag(chooseAction(dtde.sourceActions, dtde.dropAction)) else dtde.rejectDrag()
+		}
 		return object : DropTargetListener {
 			override fun dragEnter(dtde: DropTargetDragEvent) {
 				if (isDragAcceptable(dtde)) {
-					val action = chooseAction(dtde.sourceActions, dtde.dropAction)
-					dtde.acceptDrag(action)
 					if (activeDragCount.getAndIncrement() == 0) {
+						carried = runCatching { extractDroppedFiles(dtde.transferable) }.getOrDefault(emptyList())
 						onDragStateChanged?.invoke(true)
 					}
-				} else {
-					dtde.rejectDrag()
 				}
+				track(dtde)
 			}
 
-			override fun dragOver(dtde: DropTargetDragEvent) {
-				if (isDragAcceptable(dtde)) {
-					val action = chooseAction(dtde.sourceActions, dtde.dropAction)
-					dtde.acceptDrag(action)
-				} else {
-					dtde.rejectDrag()
-				}
-			}
+			override fun dragOver(dtde: DropTargetDragEvent) = track(dtde)
 
-			override fun dropActionChanged(dtde: DropTargetDragEvent) {
-				if (isDragAcceptable(dtde)) {
-					val action = chooseAction(dtde.sourceActions, dtde.dropAction)
-					dtde.acceptDrag(action)
-				} else {
-					dtde.rejectDrag()
-				}
-			}
+			override fun dropActionChanged(dtde: DropTargetDragEvent) = track(dtde)
 
 			override fun dragExit(dte: DropTargetEvent) {
 				if (activeDragCount.decrementAndGet() <= 0) {
 					activeDragCount.set(0)
+					carried = emptyList()
 					onDragStateChanged?.invoke(false)
 				}
 			}
 
 			override fun drop(dtde: DropTargetDropEvent) {
 				activeDragCount.set(0)
+				carried = emptyList()
 				onDragStateChanged?.invoke(false)
 				try {
 					if (isDragAcceptable(dtde)) {

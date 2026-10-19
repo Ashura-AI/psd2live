@@ -52,7 +52,7 @@ internal object WorkspaceLayoutOperations {
 
     /** Request schemas and descriptions of the material edits. */
     val materialSchemas: Map<String, JsonObject> = mapOf(
-        WorkspaceMaterialEdits.ADD to schema(state + mapOf("staging" to string(), "folder_id" to nullableString()), listOf("state", "staging")),
+        WorkspaceMaterialEdits.ADD to schema(state + mapOf("staging" to string(), "folder_id" to nullableString(), "as_reference" to boolean()), listOf("state", "staging")),
         WorkspaceMaterialEdits.FOLDER to schema(state + mapOf("name" to string(), "parent_id" to nullableString(), "id" to string()), listOf("state", "name")),
         WorkspaceMaterialEdits.MOVE to schema(state + mapOf("ids" to strings(1, 1024), "folder_id" to nullableString()), listOf("state", "ids")),
         WorkspaceMaterialEdits.RENAME to schema(state + mapOf("id" to string(), "name" to string()), listOf("state", "id", "name")),
@@ -110,7 +110,7 @@ internal object WorkspaceLayoutOperations {
     )
 
     val materialDescriptions: Map<String, String> = mapOf(
-        WorkspaceMaterialEdits.ADD to "Add materials material_import read and staged (staging token) to the library under folder_id; material_import runs it. One history edit.",
+        WorkspaceMaterialEdits.ADD to "Add materials material_import read and staged (staging token) to the library under folder_id; material_import runs it; as_reference=true also lays the first of them over the canvas as the reference image. One history edit.",
         WorkspaceMaterialEdits.FOLDER to "Create a folder in the material library under parent_id (top level when omitted); give id to name it for later batch members. One history edit.",
         WorkspaceMaterialEdits.MOVE to "Move material items and folders into folder_id (null: the top level). A folder cannot move into itself. One history edit.",
         WorkspaceMaterialEdits.RENAME to "Rename a material item or folder. One history edit.",
@@ -249,24 +249,27 @@ internal fun registerLayoutOperations(registry: WorkspaceOperationRegistry, port
         "Import 1..${WorkspaceMaterialFiles.MAX_PATHS} absolute paths into the material library under folder_id: PNG, BMP, TIFF, WebP and JPEG images as items; " +
             "a PSD as a folder of its layers (its groups as subfolders, each layer keeping its place, opacity and visibility); a CMO3's layered images the same way " +
             "(its texture pages when it has none - the whole model imports with project_import_cmo3); an SVG as a vector item rendered at its own size " +
-            "(material_set_resolution changes it); a folder as a folder of the files it holds, its subfolders nested as they are (hidden ones left out, names in number order). Each image is at most 16 megapixels. The library is part of the " +
+            "(material_set_resolution changes it); a folder as a folder of the files it holds, its subfolders nested as they are (hidden ones left out, names in number order). Each image is at most 16 megapixels. as_reference=true also lays the first new material over the canvas as the reference image. The library is part of the " +
             "document: one history edit, undoable. Returns a process-owned job handle; the result's changed list names the new materials (material:<id>).",
         WorkspaceLayoutOperations.schema(mapOf("state" to buildJsonObject { put("type", "string"); put("minLength", 1) },
             "paths" to buildJsonObject { put("type", "array"); put("minItems", 1); put("maxItems", WorkspaceMaterialFiles.MAX_PATHS)
                 put("items", buildJsonObject { put("type", "string"); put("minLength", 1) }) },
-            "folder_id" to buildJsonObject { put("type", JsonArray(listOf(JsonPrimitive("string"), JsonPrimitive("null")))) }), listOf("state", "paths")),
+            "folder_id" to buildJsonObject { put("type", JsonArray(listOf(JsonPrimitive("string"), JsonPrimitive("null")))) },
+            "as_reference" to buildJsonObject { put("type", "boolean") }), listOf("state", "paths")),
         WorkspaceOperationKind.DOCUMENT, jobBacked = true,
         resultSchema = requireNotNull(WorkspaceJobResultSchemas.operationOutput(WorkspaceLayoutOperations.IMPORT)),
         jobResultSchema = WorkspaceJobResultSchemas.result(WorkspaceLayoutOperations.IMPORT))) { request, context ->
         val paths = request.getValue("paths").jsonArray.map { Path.of(it.jsonPrimitive.content) }
         val state = request.getValue("state").jsonPrimitive.content
         val folder = request["folder_id"]?.takeUnless { it is JsonNull }
+        val asReference = request["as_reference"]?.jsonPrimitive?.boolean == true
         startWorkspaceOperationJob(reads, jobs, WorkspaceLayoutOperations.IMPORT) {
             val coroutine = currentCoroutineContext()
             coroutine[WorkspaceJobContext]?.progress(0.05f, "Reading files")
             val entries = runInterruptible(Dispatchers.IO) { WorkspaceMaterialFiles.read(paths) { coroutine.ensureActive() } }
             val edits = listOf(WorkspaceDocumentOperation(WorkspaceMaterialEdits.ADD, buildJsonObject {
                 put("staging", WorkspaceMaterialStaging.stage(entries)); folder?.let { put("folder_id", it) }
+                if (asReference) put("as_reference", true)
             }))
             val execution = WorkspaceBatchJobExecution(edits, requireNotNull(coroutine[WorkspaceJobCompletion]), coroutine[WorkspaceJobContext])
             withContext(execution) {

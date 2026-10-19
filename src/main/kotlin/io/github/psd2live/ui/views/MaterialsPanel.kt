@@ -54,6 +54,7 @@ import io.github.psd2live.ui.components.IconAdd
 import io.github.psd2live.ui.components.IconChevron
 import io.github.psd2live.ui.components.IconFolder
 import io.github.psd2live.ui.state.PSD2LiveState
+import io.github.psd2live.ui.state.FileDropIntent
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
@@ -228,17 +229,6 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 	val targets = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
 	fun targetAt(at: Offset): String? = targets.entries.firstOrNull { at in it.value }?.key?.substringAfter(':')
 	var panelCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
-	DisposableEffect(panelCoordinates) {
-		vm.materialsImportHitTest = hit@{ windowX, windowY ->
-			val panel = panelCoordinates?.takeIf { it.isAttached } ?: return@hit null
-			val origin = panel.positionInWindow()
-			val x = windowX - origin.x; val y = windowY - origin.y
-			if (x < 0 || y < 0 || x > panel.size.width || y > panel.size.height) return@hit null
-			val folder = targetAt(Offset(windowX.toFloat(), windowY.toFloat()))
-			PSD2LiveViewModel.MaterialsDropTarget(if (folder == null) folderId else folder.takeUnless { it == ROOT })
-		}
-		onDispose { if (vm.materialsImportHitTest != null) vm.materialsImportHitTest = null }
-	}
 	// A folder cannot move into itself or below itself.
 	fun accepts(carried: String, target: String): Boolean {
 		if (target == ROOT) return true
@@ -291,7 +281,13 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 	val held = remember(library) { library.folders.groupingBy { it.parentId }.eachCount() to library.items.groupingBy { it.folderId }.eachCount() }
 	fun counts(id: String) = (held.first[id] ?: 0) + (held.second[id] ?: 0)
 
-	Box(Modifier.fillMaxSize().onGloballyPositioned { panelCoordinates = it }) {
+	// Files dropped from the system go into the folder under the pointer, else the open one.
+	val dropZone = Modifier.fileDropZone(vm.fileDrops, "materials") { carried, _, window ->
+		if (!loaded || !carried.unknown && !carried.materials) return@fileDropZone null
+		val folder = when (val hit = targetAt(window)) { null -> folderId; ROOT -> null; else -> hit }
+		FileDropIntent.ImportMaterials(folder, tr("drop.intent.importMaterials", folder?.let { library.folder(it)?.name } ?: tr("drop.intent.materialsRoot")))
+	}
+	Box(Modifier.fillMaxSize().onGloballyPositioned { panelCoordinates = it }.then(dropZone).fileDropOutline(vm.fileDrops, "materials")) {
 		Column(Modifier.fillMaxSize()) {
 			val labels = listOf(tr("materials.import"), tr("materials.importFolder"), tr("materials.folder.new"))
 			PanelToolbar(labels = labels, iconCount = 4, search = PanelSearch(query, { query = it }, tr("materials.search")), reservedWidth = 60.dp) { labelsShown ->

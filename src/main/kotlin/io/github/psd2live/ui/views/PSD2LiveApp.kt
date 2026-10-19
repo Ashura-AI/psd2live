@@ -229,54 +229,13 @@ fun FrameWindowScope.PSD2LiveApp(
 		if (window != null) {
 			DesktopDropTarget.install(
 				window = window,
-				onDragStateChanged = { isDraggingOver = it },
-				onFilesDropped = { files, windowLocation ->
-					// Files dropped on the materials panel go into the material library, whatever they are.
-					val materialsTarget = windowLocation?.let { point -> viewModel.materialsImportHitTest?.invoke(point.x, point.y) }
-					if (materialsTarget != null && viewModel.state.value.analysis != null) {
-						viewModel.importMaterials(files.map { it.toPath() }, materialsTarget.folderId)
-						return@install
-					}
-					val rasters = io.github.psd2live.core.LayerImport.transparentRasterFiles(files)
-					val hasPreview = viewModel.state.value.previewModel != null
-					// Transparent rasters never go through the PSD/project drop path once a preview
-					// exists — otherwise Unsupported messaging looks like a PSD hijack.
-					if (rasters.isNotEmpty() && hasPreview) {
-						val target = windowLocation?.let { point -> viewModel.hierarchyImportHitTest?.invoke(point.x, point.y) }
-							?: io.github.psd2live.core.HierarchyImportTarget(parentDeformerId = null, label = tr("canvas.hierarchy.root"))
-						viewModel.importLayersFromFiles(rasters, target.parentDeformerId, target.label)
-						return@install
-					}
-					// Nothing to import into yet: a hint, not an error.
-					if (rasters.isNotEmpty() && !hasPreview) {
-						viewModel.setStatusText(tr("error.importLayerBusy"))
-						return@install
-					}
-					when (val action = DesktopDropTarget.resolveDropAction(files)) {
-						is DesktopDropTarget.DroppedAction.OpenProject -> {
-							viewModel.openProject(action.file.toPath())
-						}
-						is DesktopDropTarget.DroppedAction.OpenPsd -> {
-							if (action.outputDir != null) {
-								viewModel.setOutputPath(action.outputDir.absolutePath)
-							}
-							viewModel.withSavedChanges {
-								viewModel.setInputPath(action.file.absolutePath)
-								viewModel.analyze(discardUnsaved = true)
-							}
-						}
-						is DesktopDropTarget.DroppedAction.OpenCmo3 -> {
-							viewModel.importCmo3(action.file.toPath(), io.github.psd2live.core.Cmo3ImportMode.NEW)
-						}
-						is DesktopDropTarget.DroppedAction.SetOutputDir -> {
-							viewModel.setOutputPath(action.dir.absolutePath)
-							viewModel.setStatusText(tr("status.outputDirSet", action.dir.name))
-						}
-						is DesktopDropTarget.DroppedAction.Unsupported -> {
-							viewModel.setErrorMessage(action.message)
-						}
-					}
+				onDragStateChanged = { dragging ->
+					isDraggingOver = dragging
+					if (!dragging) viewModel.fileDrops.end()
 				},
+				// The target under the pointer decides what a drop does; panels register theirs with the router.
+				onDragMoved = { files, at -> viewModel.fileDrops.move(files, at.x.toFloat(), at.y.toFloat()) },
+				onFilesDropped = { files, at -> viewModel.dropFiles(files, at?.x?.toFloat(), at?.y?.toFloat()) },
 			)
 		}
 	}
@@ -773,33 +732,8 @@ fun FrameWindowScope.PSD2LiveApp(
 			)
 		}
 
-		// The start page shows where a dropped file lands itself.
-		if (isDraggingOver && !viewModel.startPageShown) {
-			Box(
-				modifier = Modifier
-					.fillMaxSize()
-					.background(Color.Black.copy(alpha = 0.65f))
-					.padding(24.dp)
-					.border(2.dp, colors.accent, RoundedCornerShape(12.dp)),
-				contentAlignment = Alignment.Center,
-			) {
-				Column(
-					horizontalAlignment = Alignment.CenterHorizontally,
-					verticalArrangement = Arrangement.spacedBy(10.dp),
-				) {
-					Text(
-						text = tr("drop.overlay.title"),
-						style = typography.title.copy(fontSize = 20.sp, fontWeight = FontWeight.Bold),
-						color = Color.White,
-					)
-					Text(
-						text = tr("drop.overlay.desc"),
-						style = typography.body.copy(fontSize = 13.sp),
-						color = Color.White.copy(alpha = 0.85f),
-					)
-				}
-			}
-		}
+		// Carried files: the pointer says what a drop there does; the start page shows where they land itself.
+		if (isDraggingOver && !viewModel.startPageShown) FileDragLabel(viewModel)
 		// Keep the shared task indicator visible above dialog scrims.
 		if (task != null) {
 			StatusBar(state, viewModel, Modifier.align(Alignment.BottomCenter).background(colors.windowBackground), task)

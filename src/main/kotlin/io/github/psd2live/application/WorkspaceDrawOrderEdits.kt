@@ -29,8 +29,33 @@ internal object WorkspaceDrawOrderEdits {
             before - drawable.id.raw + (layer to order)
         }
         if (before == after) return document
-        return document.copy(settings = JsonObject(document.settings +
-            ("drawOrderOverrides" to JsonObject(after.toSortedMap().mapValues { JsonPrimitive(it.value) }))))
+        return document.withOverrides(after)
+    }
+
+    private fun WorkspaceDocument.withOverrides(overrides: Map<String, Float>) = copy(settings = JsonObject(settings +
+        ("drawOrderOverrides" to JsonObject(overrides.toSortedMap().mapValues { JsonPrimitive(it.value) }))))
+
+    /**
+     * [document] with [layerIds] drawn just in front of layer or mesh [anchor] ([inFront]) or just behind it, as [model] draws:
+     * whole orders spread through the gap to the next mesh, or the anchor's own order when there is none.
+     */
+    fun beside(document: WorkspaceDocument, model: RigPreviewModel, anchor: String, layerIds: List<String>, inFront: Boolean): WorkspaceDocument {
+        if (layerIds.isEmpty()) return document
+        val drawables = model.rig.puppet.drawables
+        val target = drawables.firstOrNull { model.rig.layerIdByDrawableId[it.id.raw] == anchor } ?: drawables.firstOrNull { it.id.raw == anchor }
+            ?: return document
+        val at = target.drawOrder
+        val others = drawables.filter { it !== target && model.rig.layerIdByDrawableId[it.id.raw] !in layerIds }.map { it.drawOrder }
+        val bound = if (inFront) others.filter { it > at }.minOrNull() ?: 1001f else others.filter { it < at }.maxOrNull() ?: -1f
+        val step = (bound - at) / (layerIds.size + 1)
+        // The first image of the batch draws in front of the rest.
+        val placed = layerIds.withIndex().associate { (index, id) ->
+            val slot = if (inFront) layerIds.size - index else index + 1
+            id to kotlin.math.round(at + step * slot).coerceIn(0f, 1000f)
+        }
+        val before = document.settings["drawOrderOverrides"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float }
+            ?: model.config.drawOrderOverrides
+        return document.withOverrides(before + placed)
     }
 }
 

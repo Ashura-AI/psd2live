@@ -106,11 +106,13 @@ internal object LayerImport {
 		layerId: String = StableIds.stem("import:", name, image.width, image.height),
 		order: Int = 0,
 		checkCancelled: () -> Unit = {},
+		centre: Pair<Float, Float>? = null,
 	): WorkspaceSourceLayer {
 		val trimmed = trimTransparent(image, checkCancelled)
 			?: error("Image is fully transparent: $name")
 		val raster = LayerRaster(trimmed.width, trimmed.height, trimmed.rgba)
-		val rect = fittedRect(trimmed.width, trimmed.height, canvasWidth, canvasHeight)
+		val fitted = fittedRect(trimmed.width, trimmed.height, canvasWidth, canvasHeight)
+		val rect = centre?.let { centred(fitted, it, canvasWidth, canvasHeight) } ?: fitted
 		LayerSizeBudget.require(raster.width, raster.height, rect)
 		val (bounds, stored) = LayerSizeBudget.enclosing(rect)
 		return WorkspaceSourceLayer(
@@ -182,6 +184,13 @@ internal object LayerImport {
 		val w = (width * scale).coerceIn(1.0, maxW.toDouble())
 		val h = (height * scale).coerceIn(1.0, maxH.toDouble())
 		return LayerSizeBudget.snapped(LayerCanvasRect(((maxW - w) / 2).toFloat(), ((maxH - h) / 2).toFloat(), w.toFloat(), h.toFloat()))
+	}
+
+	/** [rect] moved, whole pixels at a time, to centre on [centre] as nearly as the canvas allows. */
+	internal fun centred(rect: LayerCanvasRect, centre: Pair<Float, Float>, canvasWidth: Int, canvasHeight: Int): LayerCanvasRect {
+		fun axis(at: Float, size: Float, canvas: Int, current: Float): Float =
+			if (!at.isFinite() || size > canvas) current else kotlin.math.round(at - size / 2f).coerceIn(0f, kotlin.math.floor(canvas - size))
+		return rect.copy(left = axis(centre.first, rect.width, canvasWidth, rect.left), top = axis(centre.second, rect.height, canvasHeight, rect.top))
 	}
 
 	/** Nearest-neighbour scale of [image]; only the check for legacy placements, whose rasters were scaled to their bounds, uses it. */
@@ -266,10 +275,3 @@ internal object LayerSizeBudget {
 		return bounds to snapped.takeUnless { it.matches(bounds) }
 	}
 }
-
-/** Hierarchy drop destination resolved under the cursor. */
-data class HierarchyImportTarget(
-	/** Parent deformer id, or null for model root. */
-	val parentDeformerId: String?,
-	val label: String,
-)

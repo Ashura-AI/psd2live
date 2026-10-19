@@ -131,10 +131,11 @@ internal class Studio(private val temp: Path, private val checks: Set<Check> = C
 		return result.result.getValue("updated").jsonPrimitive.boolean
 	}
 
-	/** Image files imported as new layers, optionally under [parent]; the new layer IDs. */
-	fun importImages(name: String, files: List<Path>, parent: String? = null): List<String> {
+	/** Image files imported as new layers, optionally under [parent] or where [insertion] says; the new layer IDs. */
+	fun importImages(name: String, files: List<Path>, parent: String? = null,
+	                 insertion: ImageLayerInsertion = ImageLayerInsertion(parent)): List<String> {
 		val before = now
-		val result = step(name) { WorkspaceImageLayerCommands(runtime).importImages(before.projectId, before.state, files, parent, name, MutationAuthor.USER) }
+		val result = step(name) { WorkspaceImageLayerCommands(runtime).importImages(before.projectId, before.state, files, insertion, name, MutationAuthor.USER) }
 		verify(name, before, result.commit.applied)
 		return result.mutation.affectedLayerIds
 	}

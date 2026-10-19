@@ -10,7 +10,7 @@ import java.nio.file.Path
 internal class WorkspaceImageLayerCommands(private val runtime: WorkspaceRuntime<RigPreviewModel>) {
     private val commands = WorkspaceDocumentCommands(runtime)
 
-    suspend fun importImages(projectId: String, state: String, paths: List<Path>, parent: String?, summary: String,
+    suspend fun importImages(projectId: String, state: String, paths: List<Path>, insertion: ImageLayerInsertion, summary: String,
                              author: MutationAuthor,
                              beforeCommit: (WorkspaceCapture<RigPreviewModel>, WorkspaceDocument, RigPreviewModel) -> Unit = { _, _, _ -> }): WorkspaceLayerCommit {
         val before = runtime.capture()
@@ -22,7 +22,10 @@ internal class WorkspaceImageLayerCommands(private val runtime: WorkspaceRuntime
         context.ensureActive()
         require(paths.size in 1..128) { "Import requires 1..128 image paths" }
         require(paths.all { it.isAbsolute }) { "Image paths must be absolute" }
+        val parent = insertion.parentDeformerId
         require(parent == null || before.model.rig.puppet.deformers.any { it.id.raw == parent }) { "Parent deformer not found" }
+        require(insertion.anchorLayerId == null || before.document.source.layers.any { it.id.raw == insertion.anchorLayerId } ||
+            before.model.rig.puppet.drawables.any { it.id.raw == insertion.anchorLayerId }) { "Anchor layer not found: ${insertion.anchorLayerId}" }
         val layers = runInterruptible(Dispatchers.Default) {
             var pixels = 0L
             // A fresh ID per imported layer: undoing an import and importing the same file again never revives state kept
@@ -38,7 +41,7 @@ internal class WorkspaceImageLayerCommands(private val runtime: WorkspaceRuntime
                 val id = StableIds.fresh("import:" + java.util.UUID.randomUUID().toString().replace("-", "").take(12)) { it in taken }
                 taken += id
                 LayerImport.placedLayer(image, before.document.source.widthPx, before.document.source.heightPx,
-                    LayerImport.displayNameOf(file), id, checkCancelled = { context.ensureActive() })
+                    LayerImport.displayNameOf(file), id, checkCancelled = { context.ensureActive() }, centre = insertion.centre)
             }
         }
         context.ensureActive()
@@ -52,7 +55,8 @@ internal class WorkspaceImageLayerCommands(private val runtime: WorkspaceRuntime
             // generators never read it ([RigGenerationSource.createdCoverage]). Moving it later is a mesh edit like any other.
             val candidate = document.copy(source = source, layerVisibility = document.layerVisibility + ids.associateWith { true },
                 layerOverrides = document.layerOverrides + ids.associateWith { LayerClassificationOverride(LayerType.PRESET, SemanticTag.UNKNOWN, Side.NONE) })
-            WorkspaceLayerInsertionEdits.materialize(candidate, model, ids.toSet(), parent) { context.ensureActive() }
+            val placed = WorkspaceLayerInsertionEdits.materialize(candidate, model, ids.toSet(), parent) { context.ensureActive() }
+            insertion.anchorLayerId?.let { anchor -> WorkspaceDrawOrderEdits.beside(placed, model, anchor, ids, insertion.inFront) } ?: placed
         }, beforeCommit = { captured, document, model ->
             context.ensureActive()
             context[WorkspaceJobContext]?.progress(0.95f, "Committing imported images")

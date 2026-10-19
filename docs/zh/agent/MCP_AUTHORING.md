@@ -102,7 +102,7 @@
 
 全部 190 项公开操作（其中 70 项后台、87 项可批量）都必须声明完整 `outputSchema`，完整工具集发布它，能力详情中的 `output_schema` 与其一致；成功 data 和失败 error 严格互斥。注册表在执行及去重边界校验业务结果，MCP 校验完整返回包装，遗漏结果契约不能注册。后台操作必须另有终态 `job_result_schema`，非后台操作不允许该字段。能力详情通过本地 `$defs/$ref` 描述嵌套 schema，查询自己的 schema 也可校验；实际 HTTP 保留所有根约束。`output_contract` 表示服务实现的结果与声明不符，不能作为修改已回滚的证据。
 
-图片追加使用 `layer_import_images`：必需 `state` 和 1–128 个绝对路径组成的 `paths`，可选 `parent_deformer_id` 指向已有父变形器；省略时绑定模型根。透明边缘裁剪后居中；栅格保持原分辨率，超过画布时只把画布矩形等比缩小到画布内（图层密度大于 1 像素/画布单位），网格按画布分辨率生成。单文件最多 64 MiB、16 百万像素，整批最多 32 百万像素。一次成功只追加一个历史节点，任意文件失败则整批不发布；它读取文件，不能作为原子文档批量成员。新增源图及网格句柄从任务终态 `affectedLayerIds/affectedObjectIds` 获取。原图像素写入工程，后续重开不依赖输入文件。每张图片在作者态 Rig 中得到自己的网格（`canvas_mesh_create`，挂在所给父级下），生成器从不重新生成它；撤销即取消导入。
+图片追加使用 `layer_import_images`：必需 `state` 和 1–128 个绝对路径组成的 `paths`，可选 `parent_deformer_id` 指向已有父变形器；省略时绑定模型根。可选 `anchor_layer_id` 让整批画在该图层（或网格）正前方，`in_front=false` 为正后方，批内第一张在最前，绘制顺序写为显式覆盖；可选 `at` `[x, y]` 把每张图居中到该画布坐标（贴住画布边界）。透明边缘裁剪后居中；栅格保持原分辨率，超过画布时只把画布矩形等比缩小到画布内（图层密度大于 1 像素/画布单位），网格按画布分辨率生成。单文件最多 64 MiB、16 百万像素，整批最多 32 百万像素。一次成功只追加一个历史节点，任意文件失败则整批不发布；它读取文件，不能作为原子文档批量成员。新增源图及网格句柄从任务终态 `affectedLayerIds/affectedObjectIds` 获取。原图像素写入工程，后续重开不依赖输入文件。每张图片在作者态 Rig 中得到自己的网格（`canvas_mesh_create`，挂在所给父级下），生成器从不重新生成它；撤销即取消导入。
 
 图层整体变换使用 `layer_transform`（任何图层：导入的或 PSD 的，根部或任意变形器下，有无绑定均可）：必需 `state/layer_id`，再给 `matrix [a,b,c,d,e,f]`（`x' = a·x + c·y + e`，`y' = b·x + d·y + f`，画布单位、y 向下），或 `translate [x,y]`、`scale`（数或 `[sx,sy]`）、`rotate`（度，屏幕上顺时针）与 `pivot [x,y]`；与图层已有变换复合。像素、纹理图块与纹理坐标都不变，不触发再生成：图层的每个网格在静止姿态下按该变换移动（关键形保持偏移），图层记下自己的像素显示在哪里，绘画随之对齐（旋转过的图层也一样）。一次可撤销的历史提交，可加入原子文档批量。
 
@@ -520,8 +520,8 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | --- | --- | --- |
 | `project_create` | `width`、`height`，可选 `discard_unsaved` | 新建未生成的空工程 |
 | `project_import_layout` | `path`（清单 `.json` 或含清单的 `.zip` 的绝对路径），可选 `discard_unsaved` | 按 [Layout 清单](../spec/LAYOUT_MANIFEST.md) 新建未生成的工程：图片保留原像素铺在 `rect` 上，图层保持清单的上下顺序、组、标签、差分、可见性与不透明度，同时登记为素材并关联；结果同 `project_create` |
-| `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的分层图片（没有时取纹理页）、SVG（按自身尺寸栅格化）、Layout 清单或含清单的 zip（组成为子文件夹，每层以 `rect` 为默认位置并带上标签）或文件夹（保留嵌套结构，子文件夹成为素材文件夹，跳过隐藏项与其中的清单、zip），作为一个历史节点加入素材库；每张图不超过 16MP |
-| `material_add` | `state`、`staging`，可选 `folder_id` | `material_import` 读取后实际提交的成员；`staging` 为进程内暂存的内容摘要，一般不直接调用 |
+| `material_import` | `state`、`paths`（1–64 个绝对路径），可选 `folder_id`、`as_reference` | 读取图片（PNG/BMP/TIFF/WebP/JPEG）、PSD（图层组成为子文件夹，每层记下位置）、CMO3 的分层图片（没有时取纹理页）、SVG（按自身尺寸栅格化）、Layout 清单或含清单的 zip（组成为子文件夹，每层以 `rect` 为默认位置并带上标签）或文件夹（保留嵌套结构，子文件夹成为素材文件夹，跳过隐藏项与其中的清单、zip），作为一个历史节点加入素材库；`as_reference=true` 时第一项同时设为参考图；每张图不超过 16MP |
+| `material_add` | `state`、`staging`，可选 `folder_id`、`as_reference` | `material_import` 读取后实际提交的成员；`staging` 为进程内暂存的内容摘要，一般不直接调用 |
 | `material_list` | 可选 `folder_id`、`recursive`、`query`、`kind`、`unused`、`offset`、`limit`（≤256） | 列出文件夹与条目；`query` 匹配名称和标签（含文件夹标签），`references` 为使用它的图层数；读自 PSD / CMO3 的文件夹带 `origin` 文件名 |
 | `material_get` | `id`，可选 `include_svg` | 条目或文件夹详情；条目返回使用它的 `layers`，SVG 另有 `vector_size`，`include_svg` 时附存储的 SVG 原文 |
 | `material_preview` | `id`，可选 `size`（16–4096，默认 512） | 返回条目或文件夹合成的 PNG 图像 |

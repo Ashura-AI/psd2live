@@ -68,7 +68,14 @@ internal object WorkspaceMaterialEdits {
         fun optional(key: String) = request[key]?.takeUnless { it is JsonNull }?.jsonPrimitive?.content
         fun strings(key: String) = request[key]?.jsonArray?.map { it.jsonPrimitive.content }
         return when (operation.operation) {
-            ADD -> add(document, WorkspaceMaterialStaging.get(text("staging")), optional("folder_id"))
+            ADD -> add(document, WorkspaceMaterialStaging.get(text("staging")), optional("folder_id")).let { added ->
+                // as_reference: the first new material becomes the reference image, fitted to the canvas.
+                if (request["as_reference"]?.jsonPrimitive?.boolean != true) added else {
+                    val first = added.layout.materials.items.drop(document.layout.materials.items.size).firstOrNull()
+                        ?: throw IllegalArgumentException("Nothing was imported to use as the reference image")
+                    reference(added, buildJsonObject { put("material_id", first.id) })
+                }
+            }
             FOLDER -> createFolder(document, text("name"), optional("parent_id"), optional("id"))
             MOVE -> move(document, strings("ids").orEmpty(), optional("folder_id"))
             RENAME -> rename(document, text("id"), text("name"))

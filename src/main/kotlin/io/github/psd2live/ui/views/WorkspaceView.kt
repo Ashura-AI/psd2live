@@ -36,7 +36,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import io.github.psd2live.core.HierarchyImportTarget
+import io.github.psd2live.application.ImageLayerInsertion
+import io.github.psd2live.ui.state.FileDropIntent
+import io.github.psd2live.ui.state.TreeDropMark
 import io.github.psd2live.ui.utils.NativeFilePicker
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -44,6 +46,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -60,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -631,44 +635,26 @@ private fun HierarchyTreeList(
 
 	val scrollState = rememberScrollState()
 
-	DisposableEffect(containerCoordinates, itemBoundsMap.size, deformers, drawables, parentOverrides) {
-		viewModel.hierarchyImportHitTest = hit@{ windowX, windowY ->
-			val container = containerCoordinates ?: return@hit null
-			if (!container.isAttached) return@hit null
-			val origin = container.positionInWindow()
-			// Tolerate a drop just past the tree's edges.
-			val pad = 8f
-			val localX = windowX - origin.x
-			val localY = windowY - origin.y
-			if (localX < -pad || localX > container.size.width + pad ||
-				localY < -pad || localY > container.size.height + pad
-			) {
-				return@hit null
-			}
-			val hit = itemBoundsMap.values.firstOrNull { localY >= it.top - 2f && localY <= it.bottom + 2f }
-			when {
-				hit == null || hit.id == "ROOT" -> HierarchyImportTarget(
-					parentDeformerId = null,
-					label = tr("canvas.hierarchy.root"),
-				)
-				hit.isDeformer -> HierarchyImportTarget(
-					parentDeformerId = hit.targetId,
-					label = hit.name,
-				)
-				else -> HierarchyImportTarget(
-					parentDeformerId = hit.currentParentId,
-					label = hit.currentParentId
-						?.let { id -> deformers.firstOrNull { it.id.raw == id }?.name }
-						?: tr("canvas.hierarchy.root"),
-				)
-			}
-		}
-		onDispose {
-			if (viewModel.hierarchyImportHitTest != null) {
-				viewModel.hierarchyImportHitTest = null
+	// Images dropped from the system go where the pointer marks: into a deformer row, just in front of or behind a
+	// mesh row (its upper or lower half), or at the root below the rows.
+	val treeDropZone = Modifier.fileDropZone(viewModel.fileDrops, "hierarchy") { carried, local, _ ->
+		if (!carried.unknown && carried.rasters.isEmpty()) return@fileDropZone null
+		val root = tr("canvas.hierarchy.root")
+		val hit = itemBoundsMap.values.firstOrNull { local.y >= it.top && local.y <= it.bottom && it.id != "ROOT" }
+		when {
+			hit == null -> FileDropIntent.InsertLayers(ImageLayerInsertion(), tr("drop.intent.insertInto", root), TreeDropMark.ROOT)
+			hit.isDeformer -> FileDropIntent.InsertLayers(ImageLayerInsertion(hit.targetId), tr("drop.intent.insertInto", hit.name),
+				TreeDropMark.INTO, hit.top, hit.bottom)
+			else -> {
+				val inFront = local.y < (hit.top + hit.bottom) / 2f
+				FileDropIntent.InsertLayers(ImageLayerInsertion(hit.currentParentId, hit.id, inFront),
+					tr(if (inFront) "drop.intent.insertFront" else "drop.intent.insertBehind", hit.name),
+					if (inFront) TreeDropMark.ABOVE else TreeDropMark.BELOW, hit.top, hit.bottom)
 			}
 		}
 	}
+	val fileDrag by viewModel.fileDrops.drag.collectAsState()
+	val treeDrop = fileDrag?.takeIf { it.zone == "hierarchy" }?.intent as? FileDropIntent.InsertLayers
 
 	Column(modifier = Modifier.fillMaxSize()) {
 		// Search, the canvas the tree belongs to, expand and collapse.
@@ -703,6 +689,18 @@ private fun HierarchyTreeList(
 					.weight(1f)
 					.fillMaxHeight()
 				.onGloballyPositioned { containerCoordinates = it }
+				.then(treeDropZone)
+				.drawWithContent {
+					drawContent()
+					val drop = treeDrop ?: return@drawWithContent
+					val line = 2.dp.toPx()
+					when (drop.mark) {
+						TreeDropMark.INTO -> drawRect(colors.accent.copy(alpha = 0.26f), Offset(0f, drop.rowTop), Size(size.width, drop.rowBottom - drop.rowTop))
+						TreeDropMark.ABOVE -> drawRect(colors.accent, Offset(0f, drop.rowTop - line / 2f), Size(size.width, line))
+						TreeDropMark.BELOW -> drawRect(colors.accent, Offset(0f, drop.rowBottom - line / 2f), Size(size.width, line))
+						TreeDropMark.ROOT -> drawRect(colors.accent, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+					}
+				}
 				.onPointerEvent(PointerEventType.Move) { event ->
 					val pos = event.changes.firstOrNull()?.position ?: return@onPointerEvent
 					treeDragState.onMove(pos, itemBoundsMap.values, deformers, state.hierarchyParentOverrides)
@@ -1514,7 +1512,7 @@ private fun DeformerTreeItem(
 					showMenu = false
 					val picked = NativeFilePicker.chooseTransparentImages()
 					if (picked.isNotEmpty()) {
-						viewModel.importLayersFromFiles(picked, menuFocus.id.raw, menuFocus.name)
+						viewModel.importLayersFromFiles(picked, ImageLayerInsertion(menuFocus.id.raw))
 					}
 				},
 				icon = { IconSelectionBounds(tint = colors.textMuted, modifier = Modifier.size(13.dp)) },
@@ -1940,12 +1938,10 @@ private fun DrawableTreeItem(
 					onClick = {
 						showMenu = false
 						val parentId = effectiveParent(drawable.id.raw, drawable.parentDeformerId?.raw, state.hierarchyParentOverrides)
-						val parentLabel = parentId
-							?.let { id -> model.rig.puppet.deformers.firstOrNull { it.id.raw == id }?.name }
-							?: tr("canvas.hierarchy.root")
 						val picked = NativeFilePicker.chooseTransparentImages()
+						// Beside the mesh the menu opened on: under its parent, just in front of it.
 						if (picked.isNotEmpty()) {
-							viewModel.importLayersFromFiles(picked, parentId, parentLabel)
+							viewModel.importLayersFromFiles(picked, ImageLayerInsertion(parentId, drawable.id.raw))
 						}
 					},
 					icon = { IconSelectionBounds(tint = colors.textMuted, modifier = Modifier.size(13.dp)) },
