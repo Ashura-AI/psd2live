@@ -127,7 +127,7 @@ internal fun PageNavItem(
 	val hovered by interaction.collectIsHoveredAsState()
 	val tint = when {
 		!enabled -> colors.textDisabled
-		selected -> colors.selectionText
+		selected && gutter == null -> colors.selectionText
 		else -> colors.textPrimary
 	}
 	Row(
@@ -141,9 +141,9 @@ internal fun PageNavItem(
 			.padding(horizontal = 4.dp)
 			.clip(RoundedCornerShape(3.dp))
 			.background(when {
-				selected -> colors.selection
-				// A row with a gutter hovers in a pale wash of the gutter's own colour.
-				hovered && enabled -> gutter?.copy(alpha = 0.18f) ?: colors.controlHover.copy(alpha = 0.45f)
+				// A row with a gutter is selected and hovered in washes of the gutter's own colour, hover the paler.
+				selected -> gutter?.copy(alpha = 0.18f) ?: colors.selection
+				hovered && enabled -> gutter?.copy(alpha = 0.08f) ?: colors.controlHover.copy(alpha = 0.45f)
 				else -> Color.Transparent
 			})
 			.hoverable(interaction)
