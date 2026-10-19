@@ -6174,6 +6174,29 @@ class PSD2LiveViewModel : AutoCloseable {
 			kotlinx.serialization.json.buildJsonObject { put("layer_ids", strings(layerIds)); put("reference", reference) })
 	}
 
+	/** Pins reference layers [layerIds] to keyform [pin] - parameter ID to value - or unpins them with an empty one (`layer_pin_reference`). */
+	fun pinReferenceLayers(layerIds: Collection<String>, pin: Map<String, Float>) {
+		if (layerIds.isEmpty()) return
+		layoutEdit(tr(if (pin.isEmpty()) "layers.pin.unpinned" else "layers.pin.pinned", layerIds.size),
+			io.github.psd2live.application.WorkspaceLayoutEdits.PIN_REFERENCE,
+			kotlinx.serialization.json.buildJsonObject {
+				put("layer_ids", strings(layerIds))
+				put("pin", kotlinx.serialization.json.JsonObject(pin.mapValues { kotlinx.serialization.json.JsonPrimitive(it.value) }))
+			})
+	}
+
+	/**
+	 * Pins reference layer [layerId] to [parameterId] at the value the canvas shows now, keeping its other pins, or
+	 * frees it from that parameter when it is pinned to it.
+	 */
+	fun toggleReferencePin(layerId: String, parameterId: String) {
+		val state = _state.value
+		val pin = state.layout.referencePins[layerId].orEmpty()
+		if (parameterId in pin) return pinReferenceLayers(listOf(layerId), pin - parameterId)
+		val parameter = state.previewModel?.rig?.puppet?.parameters?.firstOrNull { it.id.raw == parameterId } ?: return
+		pinReferenceLayers(listOf(layerId), pin + (parameterId to (state.parameterValues[parameter.id] ?: parameter.default)))
+	}
+
 	/**
 	 * Toggles the selected layers between reference and model: all of them back to the model when every one is a
 	 * reference, else all of them to reference. False when none can change.

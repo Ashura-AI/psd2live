@@ -444,6 +444,20 @@ fun IconBone(
 	}
 }
 
+/** A push pin, tilted as if stuck in: filled while [pinned], outlined while free to pin. */
+@Composable
+fun IconPin(
+	pinned: Boolean,
+	modifier: Modifier = Modifier.size(12.dp),
+	tint: Color = LocalToolColors.current.textMuted,
+) = GridIcon(modifier, tint) {
+	turned(40f) {
+		val head = path { m(6.2f, 2.2f); l(11.8f, 2.2f); l(10.8f, 3.8f); l(10.8f, 7.6f); l(13.4f, 10.4f); l(4.6f, 10.4f); l(7.2f, 7.6f); l(7.2f, 3.8f); z() }
+		if (pinned) fill(head) else outline(head)
+		line(9f, 10.4f, 9f, 16.2f)
+	}
+}
+
 /** A bin: delete. */
 @Composable
 fun IconTrash(

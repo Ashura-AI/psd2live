@@ -55,6 +55,7 @@ internal object WorkspaceObservationResultSchemas {
     fun forOperation(id: String): JsonObject? = when (id) {
         "view_render_layer", "view_render_context", "view_render_model" -> view
         "view_render_poses" -> sheet(versions = false, physics = false)
+        "view_render_pad" -> WorkspacePadSheet.resultSchema
         "view_compare_history" -> sheet(versions = true, physics = false)
         "view_sample_motion" -> sheet(versions = false, physics = true)
         "view_check_coverage" -> s.obj(mapOf("view" to view, "coverage" to coverage))

@@ -326,6 +326,8 @@ interface WorkspaceImageRenderer {
     ): WorkspaceRenderedView
     /** Render the evaluated rig at an explicit parameter pose with caller-selected layer composition. */
     suspend fun renderModel(request: WorkspaceModelViewRequest): WorkspaceRenderedView
+    /** Render the model over a grid of keyforms of one or two parameters into one labelled sheet ([WorkspacePadViewRequest]). */
+    suspend fun renderPad(request: WorkspacePadViewRequest): WorkspaceWorkflowResult
 }
 
 interface WorkspaceObservation : WorkspaceImageRenderer {

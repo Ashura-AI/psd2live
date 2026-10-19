@@ -316,6 +316,36 @@ data class WorkspaceModelViewRequest(
 	val outlineMaterialIds: List<String> = emptyList(),
 )
 
+/**
+ * What each cell of a 2D pad sheet shows ([WorkspacePadViewRequest]): the model alone, the reference layers pinned
+ * to the cell's keyform (and the unpinned ones) alone, the references under or over the model, their difference, or
+ * the model and the references side by side.
+ */
+enum class WorkspacePadShow { MODEL, REFERENCE, UNDER, OVER, DIFFERENCE, SIDE_BY_SIDE }
+
+/**
+ * A sheet of the model over a grid of keyforms: [xParameter] at [xValues] along the columns, [yParameter] at
+ * [yValues] down the rows (null values: the parameters' keyform values, y highest first as on a 2D pad), cut to the
+ * index ranges [columns] and [rows]. Every cell renders [frame] at [parameters] with the cell's values on top.
+ */
+data class WorkspacePadViewRequest(
+	val xParameter: String,
+	val yParameter: String? = null,
+	val xValues: List<Float>? = null,
+	val yValues: List<Float>? = null,
+	val columns: IntRange? = null,
+	val rows: IntRange? = null,
+	val parameters: Map<String, Float> = emptyMap(),
+	/** Null uses current workspace visibility, as [WorkspaceModelViewRequest.includeLayerIds]. */
+	val includeLayerIds: Set<String>? = null,
+	val frame: WorkspaceViewFrame.CanvasRect,
+	val show: WorkspacePadShow = WorkspacePadShow.MODEL,
+	/** How strongly [WorkspacePadShow.OVER] lays the references over the model. */
+	val referenceOpacity: Float = 0.5f,
+	val background: WorkspaceViewBackground = WorkspaceViewBackground.TRANSPARENT,
+	val output: WorkspaceViewOutputSpec = WorkspaceViewOutputSpec(),
+)
+
 data class WorkspaceRenderedView(
 	val viewId: String,
 	val revisionId: String,

@@ -25,6 +25,7 @@ import io.github.psd2live.project.WorkspaceImportedPngAsset
 import io.github.psd2live.project.WorkspaceKeyformTargetRef
 import io.github.psd2live.project.WorkspaceLayerSnapshot
 import io.github.psd2live.project.WorkspaceModelViewRequest
+import io.github.psd2live.project.WorkspacePadViewRequest
 import io.github.psd2live.project.WorkspaceObjectAxisSnapshot
 import io.github.psd2live.project.WorkspaceObjectCellSnapshot
 import io.github.psd2live.project.WorkspaceObjectChannelTrackSnapshot
@@ -935,6 +936,9 @@ internal class WorkspaceHost<V>(
 
     override suspend fun renderModel(request: WorkspaceModelViewRequest): WorkspaceRenderedView =
         captureObservation().renderModel(request)
+
+    override suspend fun renderPad(request: WorkspacePadViewRequest): WorkspaceWorkflowResult =
+        captureObservation().renderPad(request)
     override suspend fun assetWorkflow(operation: String, arguments: JsonObject): WorkspaceWorkflowResult = editMutex.withLock {
         if (operation == "asset_preview_composite") {
             val api = assetSessions.captureWorkflow(workspaceStore)

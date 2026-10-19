@@ -62,23 +62,34 @@ internal class WorkspaceRenderSession(
             ViewOutline(id, PreviewRenderer.rasterImage(item.raster.width, item.raster.height, item.raster.rgba), place)
         }
         return renderModel(captured.model, captured.revision, request.copy(includeLayerIds =
-            request.includeLayerIds ?: visibleLayerIds ?: captured.document.renderVisibleLayers(captured.model)), reference = reference, outlines = outlines)
+            request.includeLayerIds ?: visibleLayerIds ?: captured.document.renderVisibleLayers(captured.model)), reference = reference, outlines = outlines,
+            referencePins = captured.document.layout.referencePins)
+    }
+
+    override suspend fun renderPad(request: WorkspacePadViewRequest): WorkspaceWorkflowResult {
+        val captured = capture()
+        return withContext(Dispatchers.Default) {
+            WorkspacePadSheet.render(captured.model, captured.document, captured.revision, request, visibleLayerIds) { ensureActive() }
+        }
     }
 
     /** Historical and sampled views reuse the same validation and captured resource destination. */
     internal suspend fun renderModel(model: RigPreviewModel, revision: String, request: WorkspaceModelViewRequest,
                                      worldPositions: Map<org.umamo.runtime.model.DrawableId, FloatArray> = emptyMap(),
-                                     reference: ViewReferenceImage? = null, outlines: List<ViewOutline> = emptyList()): WorkspaceRenderedView {
+                                     reference: ViewReferenceImage? = null, outlines: List<ViewOutline> = emptyList(),
+                                     referencePins: Map<String, Map<String, Float>> = emptyMap()): WorkspaceRenderedView {
         val parameters = model.rig.puppet.parameters.associateBy { it.id.raw }
         val unknown = request.parameters.keys - parameters.keys
         require(unknown.isEmpty()) { "Unknown parameter IDs: ${unknown.sorted().joinToString()}" }
         require(request.parameters.values.all(Float::isFinite)) { "Parameter values must be finite" }
         val applied = parameters.values.associate { it.id.raw to it.default } + request.parameters
+        // Reference layers pinned to another keyform stay out of this pose.
+        val hiddenReferences = ReferencePins.hidden(referencePins, model.rig.puppet.parameters, applied::get)
         return rendered { WorkspaceViewRenderer.modelComposite(model, revision, applied, requireNotNull(request.includeLayerIds),
             request.annotateLayerIds, request.frame, request.background, request.output,
             request.annotateDeformerIds, request.annotatePathIds, request.annotatePathWidth,
             request.annotatePathHardness, request.annotatePathRadius, request.pointIndices, worldPositions, reference, request.density,
-            request.grid, outlines) }
+            request.grid, outlines, hiddenReferences) }
     }
 
     private fun composite(captured: WorkspaceCapture<RigPreviewModel>): BufferedImage {

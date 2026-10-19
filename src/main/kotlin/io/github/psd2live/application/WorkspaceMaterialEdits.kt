@@ -56,7 +56,7 @@ internal object WorkspaceMaterialEdits {
     const val MARK_REFERENCE = "material_mark_reference"
     val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, REFERENCE, CROP, MARK_REFERENCE) + WorkspaceMaterialPixels.supported +
         WorkspaceDrawingEdits.supported + WorkspaceMaterialPeel.supported
-    private const val MAX_NAME = 128
+    const val MAX_NAME = 128
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
               work: WorkspaceRasterWork = WorkspaceRasterWork.Direct): WorkspaceDocument {

@@ -6,6 +6,7 @@ import io.github.psd2live.core.SemanticTag
 import io.github.psd2live.core.Side
 import kotlinx.serialization.json.*
 import org.umamo.format.art.LayerRaster
+import org.umamo.runtime.model.Parameter
 
 /**
  * The document's Layout state: what the material library holds, which source layers come from which material, the
@@ -28,6 +29,11 @@ data class WorkspaceLayout(
 	 * read them, so the rig and every export leave them out. Only layers the generator has not read become reference.
 	 */
 	val referenceLayerIds: Set<String> = emptySet(),
+	/**
+	 * Reference layers pinned to a keyform, by layer ID: parameter ID to value. A pinned layer shows only where every
+	 * pinned parameter sits at its value ([ReferencePins]); an unpinned one shows at every pose.
+	 */
+	val referencePins: Map<String, Map<String, Float>> = emptyMap(),
 ) {
 	val isEmpty: Boolean get() = this == Empty
 
@@ -37,6 +43,7 @@ data class WorkspaceLayout(
 		layerMaterials = layerMaterials.filterKeys { it in layerIds },
 		generation = generation.retaining(layerIds),
 		referenceLayerIds = referenceLayerIds.filterTo(LinkedHashSet()) { it in layerIds },
+		referencePins = referencePins.filterKeys { it in layerIds },
 	)
 
 	companion object {
@@ -69,6 +76,32 @@ data class WorkspaceGeneration(
 	companion object {
 		val Generated = WorkspaceGeneration()
 		val NotGenerated = WorkspaceGeneration(generated = false)
+	}
+}
+
+/**
+ * Where pinned reference layers show ([WorkspaceLayout.referencePins]): at a pose whose every pinned parameter lies
+ * within [TOLERANCE] of the parameter's range of its pinned value. A parameter the rig no longer has does not hide.
+ */
+object ReferencePins {
+	/** The share of a parameter's range a pose may be off a pinned value and still show the layer. */
+	const val TOLERANCE = 0.005f
+
+	/** Whether a layer pinned to [pin] shows at [values] (parameter ID to value, a missing one at its default) of [parameters]. */
+	fun shows(pin: Map<String, Float>?, parameters: Map<String, Parameter>, values: (String) -> Float?): Boolean {
+		if (pin.isNullOrEmpty()) return true
+		return pin.all { (id, value) ->
+			val parameter = parameters[id] ?: return@all true
+			val at = values(id) ?: parameter.default
+			kotlin.math.abs(at - value) <= maxOf(1e-4f, (parameter.max - parameter.min) * TOLERANCE)
+		}
+	}
+
+	/** The layers of [pins] ([WorkspaceLayout.referencePins]) that do not show at [values] of [parameters]. */
+	fun hidden(pins: Map<String, Map<String, Float>>, parameters: List<Parameter>, values: (String) -> Float?): Set<String> {
+		if (pins.isEmpty()) return emptySet()
+		val byId = parameters.associateBy { it.id.raw }
+		return pins.filterTo(LinkedHashMap()) { (_, pin) -> !shows(pin, byId, values) }.keys
 	}
 }
 
@@ -176,7 +209,7 @@ internal object WorkspaceLayoutCodec {
 
 	fun encodeLayout(layout: WorkspaceLayout): JsonObject? {
 		if (layout.layerTags.isEmpty() && layout.layerMaterials.isEmpty() && layout.generation == WorkspaceGeneration.Generated && layout.reference == null && layout.drawingKit == null &&
-			layout.referenceLayerIds.isEmpty()) return null
+			layout.referenceLayerIds.isEmpty() && layout.referencePins.isEmpty()) return null
 		return buildJsonObject {
 			if (layout.layerTags.isNotEmpty()) putJsonObject("layerTags") {
 				layout.layerTags.toSortedMap().forEach { (id, tags) -> putJsonArray(id) { tags.sorted().forEach { add(JsonPrimitive(it)) } } }
@@ -205,6 +238,9 @@ internal object WorkspaceLayoutCodec {
 				if (kit.defs.isNotEmpty()) put("defs", kit.defs)
 			} }
 			if (layout.referenceLayerIds.isNotEmpty()) putJsonArray("referenceLayerIds") { layout.referenceLayerIds.sorted().forEach { add(JsonPrimitive(it)) } }
+			if (layout.referencePins.isNotEmpty()) putJsonObject("referencePins") {
+				layout.referencePins.toSortedMap().forEach { (id, pin) -> putJsonObject(id) { pin.toSortedMap().forEach { (parameter, value) -> put(parameter, value) } } }
+			}
 		}
 	}
 
@@ -295,6 +331,7 @@ internal object WorkspaceLayoutCodec {
 					value["styles"]?.jsonPrimitive?.content.orEmpty(), value["defs"]?.jsonPrimitive?.content.orEmpty())
 			},
 			referenceLayerIds = strings(layout?.get("referenceLayerIds")),
+			referencePins = layout?.get("referencePins")?.jsonObject?.mapValues { pin -> pin.value.jsonObject.mapValues { it.value.jsonPrimitive.float } }.orEmpty(),
 		)
 	}
 

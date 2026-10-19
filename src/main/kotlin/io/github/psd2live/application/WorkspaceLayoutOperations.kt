@@ -168,6 +168,9 @@ internal object WorkspaceLayoutOperations {
         WorkspaceLayoutEdits.MARK_REFERENCE -> if (request.getValue("reference").jsonPrimitive.boolean)
             "Kept ${request.getValue("layer_ids").jsonArray.size} layer(s) as reference" else "Gave ${request.getValue("layer_ids").jsonArray.size} layer(s) back to the model"
         WorkspaceMaterialEdits.MARK_REFERENCE -> if (request.getValue("reference").jsonPrimitive.boolean) "Marked materials as reference" else "Unmarked reference materials"
+        WorkspaceLayoutEdits.PIN_REFERENCE -> if ((request["pin"] as? JsonObject).isNullOrEmpty())
+            "Unpinned ${request.getValue("layer_ids").jsonArray.size} reference layer(s)" else "Pinned ${request.getValue("layer_ids").jsonArray.size} reference layer(s) to a keyform"
+        WorkspaceReferenceGrid.PLACE -> "Placed the reference sheet ${request.getValue("material_id").jsonPrimitive.content} on its keyforms"
         WorkspaceLayoutEdits.REORDER -> "Moved ${request.getValue("layer_ids").jsonArray.size} layer(s) ${request.getValue("to").jsonPrimitive.content}"
         WorkspaceGenerationEdits.GENERATE -> "Generated the rig"
         WorkspaceMaterialEdits.ADD -> "Imported materials"

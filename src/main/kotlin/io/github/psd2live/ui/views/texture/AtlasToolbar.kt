@@ -520,6 +520,19 @@ internal fun FloatingMenuDivider() {
 }
 
 /**
+ * A pin row of a [FloatingMenu]: [label], the [value] it pins at, and a push pin - filled and accented while
+ * [pinned]. A click pins or unpins.
+ */
+@Composable
+internal fun FloatingMenuPin(label: String, value: String, pinned: Boolean, onToggle: () -> Unit, enabled: Boolean = true) {
+	val colors = LocalToolColors.current
+	val tint by animateColorAsState(if (pinned) colors.accent else colors.textMuted.copy(alpha = 0.8f), tween(Motion.Fade))
+	FloatingMenuRow(label, onToggle, selected = pinned, enabled = enabled, trailing = value, bar = false, control = {
+		io.github.psd2live.ui.components.IconPin(pinned, Modifier.size(12.dp), tint)
+	})
+}
+
+/**
  * A row of a [FloatingMenu], like the mode menu's: a bar at its edge while [selected] (unless [bar] is off, for
  * rows whose [control] shows the state), an icon, a label and an optional hint under it, a trailing note or control.
  */

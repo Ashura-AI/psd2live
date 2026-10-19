@@ -80,6 +80,8 @@ internal object RigCanvasSupport {
 			val layerId = model.rig.layerIdByDrawableId[drawable.id.raw]
 			if (visibleLayerIds != null && layerId != null && layerId !in visibleLayerIds) continue
 			if (visibleLayerIds != null && layerId == null && drawable.id.raw !in visibleLayerIds && !drawable.isVisible) continue
+			// A reference layer's quad has no atlas page: its pixels are drawn on their own.
+			if (layerId != null && layerId in model.referenceLayerIds) continue
 			val isHighlighted = highlightedLayerIds == null || (layerId != null && layerId in highlightedLayerIds) || drawable.id.raw in highlightedLayerIds
 			val effectiveAlpha = if (dimUnselected && !isHighlighted) alpha * dimmedAlphaMultiplier else alpha
 			val mesh = drawable.mesh ?: continue

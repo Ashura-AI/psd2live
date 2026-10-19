@@ -56,6 +56,7 @@ import io.github.psd2live.ui.SkeletonPoseSubTool
 import io.github.psd2live.ui.components.GridIcon
 import io.github.psd2live.ui.components.ICON_FINE
 import io.github.psd2live.ui.components.IconCheck
+import io.github.psd2live.ui.components.IconPin
 import io.github.psd2live.ui.components.IconClose
 import io.github.psd2live.ui.components.IconDeformPath
 import io.github.psd2live.ui.components.IconDrawOrder
@@ -75,6 +76,7 @@ import io.github.psd2live.ui.tooloptions.ActionOption
 import io.github.psd2live.ui.tooloptions.ChoiceOption
 import io.github.psd2live.ui.tooloptions.NoteOption
 import io.github.psd2live.ui.tooloptions.OptionIcon
+import io.github.psd2live.ui.tooloptions.PinOption
 import io.github.psd2live.ui.tooloptions.SectionOption
 import io.github.psd2live.ui.tooloptions.SliderOption
 import io.github.psd2live.ui.tooloptions.ToggleOption
@@ -97,6 +99,7 @@ import io.github.psd2live.ui.views.texture.BarDivider
 import io.github.psd2live.ui.views.texture.BarValueChip
 import io.github.psd2live.ui.views.texture.FloatingBar
 import io.github.psd2live.ui.views.texture.FloatingMenu
+import io.github.psd2live.ui.views.texture.FloatingMenuPin
 import io.github.psd2live.ui.views.texture.FloatingMenuRadio
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
 import io.github.psd2live.ui.views.texture.FloatingMenuSection
@@ -184,6 +187,9 @@ private fun BarOption(editor: CanvasEditor, option: ToolOption, focus: () -> Uni
             if (option.primary) AccentButton(label, onClick = run, enabled = option.enabled(editor), icon = icon)
             else BarChip(label, selected = false, onClick = run, enabled = option.enabled(editor), icon = icon)
         }
+        is PinOption -> BarChip(option.label(editor) + " " + option.value(editor), selected = option.pinned(editor), onClick = {
+            option.toggle(editor); focus()
+        }, enabled = option.enabled(editor))
         is NoteOption -> option.text(editor)?.let { text ->
             Text(text, fontSize = 10.5.sp, color = if (option.warning(editor)) colors.warning else colors.textMuted, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 280.dp).padding(horizontal = 4.dp))
@@ -393,6 +399,8 @@ private fun MenuOption(editor: CanvasEditor, option: ToolOption, onDismiss: () -
             MenuChoiceRadios(editor, option)
         }
         is ToggleOption -> FloatingMenuSwitch(tr(option.labelKey), option.get(editor), { option.set(editor, it) })
+        is PinOption -> FloatingMenuPin(option.label(editor), option.value(editor), option.pinned(editor),
+            { option.toggle(editor); onAction() }, enabled = option.enabled(editor))
         is ActionOption -> FloatingMenuRow(
             label = tr(option.labelKey, *option.labelArgs(editor).toTypedArray()),
             onClick = {
@@ -525,6 +533,7 @@ internal fun OptionIconView(icon: OptionIcon, tint: Color) {
         OptionIcon.REBUILD -> GridIcon(modifier, tint) { arcArrow(9f, 9f, 5.8f, -60f, 300f) }
         OptionIcon.MATERIAL -> GridIcon(modifier, tint) { box(2f, 6.5f, 8f, 5f, 2.5f); box(8f, 6.5f, 8f, 5f, 2.5f) }
         OptionIcon.UNLINK -> GridIcon(modifier, tint) { box(1f, 6.5f, 6.5f, 5f, 2.5f); box(10.5f, 6.5f, 6.5f, 5f, 2.5f) }
+        OptionIcon.PIN -> IconPin(pinned = false, modifier = modifier, tint = tint)
     }
 }
 

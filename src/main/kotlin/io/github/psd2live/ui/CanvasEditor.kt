@@ -3276,7 +3276,8 @@ internal class CanvasEditor(
             cachedBounds,
             viewport.canvasX(pos.x.toInt()),
             viewport.canvasY(pos.y.toInt()),
-            state.effectiveVisibleLayerIds,
+            // Reference layers pinned to another keyform are not on the canvas to pick.
+            state.effectiveVisibleLayerIds - state.pinnedAwayReferenceIds,
             geometry,
             state.drawOrderOverrides
         ).filter { target(source.rig.puppet, it, null) != null }

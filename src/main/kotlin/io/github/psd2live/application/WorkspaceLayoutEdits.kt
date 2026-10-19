@@ -16,9 +16,10 @@ internal object WorkspaceLayoutEdits {
     const val VARIANT = "layer_set_variant"
     const val REORDER = "layer_reorder"
     const val MARK_REFERENCE = "layer_mark_reference"
+    const val PIN_REFERENCE = "layer_pin_reference"
     /** Where `layer_reorder` moves layers in the stack. */
     val reorderTargets = listOf("front", "back", "forward", "backward", "above", "below")
-    val supported = setOf(TAG, VARIANT, REORDER, MARK_REFERENCE, WorkspaceGenerationEdits.GENERATE)
+    val supported = setOf(TAG, VARIANT, REORDER, MARK_REFERENCE, PIN_REFERENCE, WorkspaceReferenceGrid.PLACE, WorkspaceGenerationEdits.GENERATE)
 
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel): WorkspaceDocument {
         val request = operation.request
@@ -36,6 +37,9 @@ internal object WorkspaceLayoutEdits {
                 request.getValue("to").jsonPrimitive.content, request["target"]?.jsonPrimitive?.content)
             MARK_REFERENCE -> markReference(document, request.strings("layer_ids").also { require(it.size in 1..128) { "Give 1..128 layer_ids" } },
                 request.getValue("reference").jsonPrimitive.boolean)
+            PIN_REFERENCE -> pinReference(document, model, request.strings("layer_ids").also { require(it.size in 1..128) { "Give 1..128 layer_ids" } },
+                request["pin"]?.takeUnless { it is JsonNull }?.jsonObject?.mapValues { it.value.jsonPrimitive.float }.orEmpty())
+            WorkspaceReferenceGrid.PLACE -> WorkspaceReferenceGrid.apply(document, model, request)
             WorkspaceGenerationEdits.GENERATE -> WorkspaceGenerationEdits.generate(document, model,
                 request["refresh_geometry"]?.jsonArray?.mapTo(LinkedHashSet()) { it.jsonPrimitive.content })
             else -> throw IllegalArgumentException("Not a layout edit: ${operation.operation}")
@@ -127,8 +131,35 @@ internal object WorkspaceLayoutEdits {
             reference -> generation.pendingLayerIds - ids.toSet()
             else -> generation.pendingLayerIds + ids.filter { it in layout.referenceLayerIds }
         }
-        return document.copy(layout = layout.copy(referenceLayerIds = marked, generation = generation.copy(pendingLayerIds = pending)))
+        // A layer given back to the model shows at every pose: only reference layers are pinned.
+        return document.copy(layout = layout.copy(referenceLayerIds = marked, generation = generation.copy(pendingLayerIds = pending),
+            referencePins = if (reference) layout.referencePins else layout.referencePins - ids.toSet()))
     }
+
+    /**
+     * Reference layers [ids] pinned to the keyform [pin] - parameter ID to value - or unpinned when [pin] is empty. A
+     * pinned layer shows only at poses where every pinned parameter sits at its value ([ReferencePins]), so references
+     * of the character turned each way can share one place and each show at its own angle.
+     */
+    fun pinReference(document: WorkspaceDocument, model: RigPreviewModel, ids: List<String>, pin: Map<String, Float>): WorkspaceDocument {
+        require(ids.distinct().size == ids.size) { "layer_ids repeats a layer" }
+        val layout = document.layout
+        for (id in ids) {
+            require(document.source.layers.any { it.id.raw == id } && id !in document.deletedLayerIds) { "Layer not found: $id" }
+            require(id in layout.referenceLayerIds) { "$id is not a reference layer; layer_mark_reference makes it one" }
+        }
+        require(pin.size <= MAX_PINNED) { "Pin at most $MAX_PINNED parameters" }
+        val parameters = model.rig.puppet.parameters.associateBy { it.id.raw }
+        for ((id, value) in pin) {
+            val parameter = parameters[id] ?: throw IllegalArgumentException("Unknown parameter: $id")
+            require(value.isFinite() && value in parameter.min..parameter.max) { "$id is ${parameter.min}..${parameter.max}, not $value" }
+        }
+        val next = if (pin.isEmpty()) layout.referencePins - ids.toSet() else layout.referencePins + ids.associateWith { pin }
+        return if (next == layout.referencePins) document else document.copy(layout = layout.copy(referencePins = next))
+    }
+
+    /** The most parameters one reference layer is pinned to. */
+    const val MAX_PINNED = 16
 
     /**
      * The source layers top-most first: the stack the generator draws in, by `order` and then by place in the list
@@ -208,6 +239,12 @@ internal object WorkspaceLayoutEdits {
                 "target" to buildJsonObject { put("type", "string"); put("minLength", 1) }), listOf("state", "layer_ids", "to")),
             MARK_REFERENCE to schema(mapOf("state" to state, "layer_ids" to array(buildJsonObject { put("type", "string"); put("minLength", 1) }, 1, 128),
                 "reference" to buildJsonObject { put("type", "boolean") }), listOf("state", "layer_ids", "reference")),
+            PIN_REFERENCE to schema(mapOf("state" to state, "layer_ids" to array(buildJsonObject { put("type", "string"); put("minLength", 1) }, 1, 128),
+                "pin" to buildJsonObject {
+                    put("type", JsonArray(listOf(JsonPrimitive("object"), JsonPrimitive("null"))));
+                    put("additionalProperties", buildJsonObject { put("type", "number") })
+                }), listOf("state", "layer_ids", "pin")),
+            WorkspaceReferenceGrid.PLACE to WorkspaceReferenceGrid.schema,
             WorkspaceGenerationEdits.GENERATE to WorkspaceGenerationEdits.schema,
         )
     }
@@ -231,6 +268,12 @@ internal object WorkspaceLayoutEdits {
             "reorders, takes tags and is deleted like a layer placed since the last generation. Given back in a generated project, it waits for rig_generate. " +
             "Only layers the generator has not read change: a generated layer is refused. workspace_inspect lists them (layout.reference_layers). " +
             "One history edit; no change adds none.",
+        PIN_REFERENCE to "Pin 1..128 reference layers to a keyform: pin maps parameter IDs to values (each within its range, at most $MAX_PINNED), and a pinned layer " +
+            "shows only at poses where every pinned parameter sits at its value (within 0.5% of its range) - " +
+            "on the edit canvas and in view_render_model / view_render_pad; an unpinned one shows at every pose. Pin references of the character turned each way to " +
+            "the head angles they show, e.g. {ParamAngleX: 30, ParamAngleY: 0}. pin {} or null unpins. Replaces the layers' pins; giving a layer back to the model " +
+            "(layer_mark_reference false) drops its pin. reference_place_grid places and pins a whole sheet at once. One history edit; no change adds none.",
+        WorkspaceReferenceGrid.PLACE to WorkspaceReferenceGrid.DESCRIPTION,
         WorkspaceGenerationEdits.GENERATE to WorkspaceGenerationEdits.DESCRIPTION,
     )
 }

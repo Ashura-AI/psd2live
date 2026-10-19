@@ -22,7 +22,7 @@ internal enum class OptionIcon {
     WARP, ROTATION, PATH, SKELETON, SWING, DEPTH_SPLIT,
     CONFIRM, CANCEL, UNDO, CLEAR,
     FILL, ERASE, SWAP, REMERGE, RESET, SELECTION, TOPOLOGY, CREATE, GROUP,
-    MESH, REBUILD, MATERIAL, UNLINK,
+    MESH, REBUILD, MATERIAL, UNLINK, PIN,
 }
 
 /**
@@ -151,6 +151,21 @@ internal class ActionOption(
     val keepsMenu: Boolean = false,
     val labelArgs: (CanvasEditor) -> List<Any> = { emptyList() },
     override val place: OptionPlace = OptionPlace.BOTH,
+) : ToolOption
+
+/**
+ * A value something is pinned at, or free to pin: a parameter a reference layer shows at, say. [label] and [value]
+ * are shown as they are (a parameter's own name, a number); a click calls [toggle] and keeps the menu open, so
+ * several can be pinned in a row.
+ */
+internal class PinOption(
+    override val id: String,
+    val label: (CanvasEditor) -> String,
+    val value: (CanvasEditor) -> String,
+    val pinned: (CanvasEditor) -> Boolean,
+    val toggle: (CanvasEditor) -> Unit,
+    val enabled: (CanvasEditor) -> Boolean = { true },
+    override val place: OptionPlace = OptionPlace.MENU,
 ) : ToolOption
 
 /** A line of state - what the tool acts on, or what it is waiting for. Null [text] shows nothing. */

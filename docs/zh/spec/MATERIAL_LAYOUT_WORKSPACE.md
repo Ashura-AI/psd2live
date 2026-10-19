@@ -85,6 +85,8 @@
 
 `layer_mark_reference`（`WorkspaceLayoutEdits.markReference`）把 1–128 个图层设为参考或恢复：只接受生成器没读过的图层（未生成工程的全部图层、待生成图层、参考图层），已生成的图层返回错误。在已生成工程里，设为参考的待生成图层离开等待列表，恢复的参考图层进入等待列表、在下一次 `rig_generate` 时生成。只剩参考图层的未生成工程不能生成。素材条目的 `reference` 标记（`material_mark_reference`）决定放置时默认是否为参考图层，`layer_place` 的 `reference` 可以覆盖；Layout 清单的 `reference` 图层打开后即为参考图层，导入为素材时条目带上标记。
 
+参考图层可以固定到关键形：`WorkspaceLayout.referencePins` 按图层 ID 记录参数 ID → 值，`ReferencePins.shows` 判断某姿态下是否显示（每个固定参数都在固定值的参数范围 0.5% 以内；Rig 已没有的参数不参与判断）。固定只是 Layout 状态，不进 Rig journal：编辑画布按编辑姿态把不显示的参考从绘制与点选中去掉（`PSD2LiveState.pinnedAwayReferenceIds`），MCP 视图按请求姿态过滤（`WorkspaceViewRenderer.modelComposite` 的 `hiddenReferenceLayerIds`）。`layer_pin_reference`（`WorkspaceLayoutEdits.pinReference`）只接受参考图层与现有参数及范围内的值；恢复为模型图层时去掉其固定，删除图层时随 `retaining` 去掉。`reference_place_grid`（`WorkspaceReferenceGrid`）在一次文档编辑里依次 `crop`、`place`（参考）并写入固定，ID 为 `<前缀>_<行>_<列>`，前缀省略时由素材、参数与取值派生；`view_render_pad`（`WorkspacePadSheet`）按同一行列顺序出图集，两者可以往返。
+
 ### 生成与重新生成
 
 `rig_generate` 是一次文档编辑、一个历史节点：
@@ -193,6 +195,8 @@ CMO3 的完整模型仍用 `project_import_cmo3` 导入，不进入 Layout 流�
 | `layer_classify` | 文档（现有） | 已生成图层的结果带 `pending: true` |
 | `layer_reorder` | 文档 | 调整未生成、待生成与参考图层的上下顺序 |
 | `layer_mark_reference` | 文档 | 把生成器没读过的图层设为参考图层，或恢复为模型图层 |
+| `layer_pin_reference` | 文档 | 把参考图层固定到关键形，或取消固定 |
+| `reference_place_grid` | 文档 | 把关键形网格参考图切格，放置为各自固定的参考图层 |
 | `rig_generate` | 文档 | 生成或重新生成；`refresh_geometry` |
 | `material_import` | 文档，任务 | 读取文件并提交 `material_add` |
 | `material_add` | 文档 | 加入 `material_import` 暂存的内容 |

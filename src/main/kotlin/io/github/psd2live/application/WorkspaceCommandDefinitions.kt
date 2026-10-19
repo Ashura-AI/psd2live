@@ -10,6 +10,8 @@ import io.github.psd2live.project.WorkspaceKeyformTargetRef
 import io.github.psd2live.project.WorkspaceLayerInsertion
 import io.github.psd2live.project.WorkspaceLayerSnapshot
 import io.github.psd2live.project.WorkspaceModelViewRequest
+import io.github.psd2live.project.WorkspacePadShow
+import io.github.psd2live.project.WorkspacePadViewRequest
 import io.github.psd2live.project.WorkspaceViewReference
 import io.github.psd2live.project.WorkspaceViewReferenceMode
 import io.github.psd2live.project.WorkspaceObjectSnapshot
@@ -36,6 +38,7 @@ internal fun registerWorkspaceCommands(catalog: WorkspaceCommands, workspace: Wo
     registerCatalogHistoryCommands(catalog, workspace)
     registerCatalogRenderCommands(catalog, workspace)
     registerCatalogPoseCommands(catalog, workspace)
+    registerCatalogPadCommand(catalog, workspace)
     registerCatalogPhysicsCommands(catalog, workspace)
     registerCatalogSwingCommands(catalog, workspace)
     registerInteriorCommands(catalog, workspace)
@@ -305,6 +308,55 @@ private fun registerCatalogPoseCommands(catalog: WorkspaceCommands, render: Work
             WorkspaceOperationOutput(sheet.metadata, sheet.images)
         } catch(e: IllegalArgumentException) { throw e }
           catch(e: IllegalStateException) { throw e }
+    }
+}
+
+private fun registerCatalogPadCommand(catalog: WorkspaceCommands, render: WorkspaceRenderPort) {
+    val shows = WorkspacePadShow.entries.map { it.name.lowercase() }
+    catalog.register(
+        name = "view_render_pad",
+        description = "Render the model over a grid of keyforms in one labelled sheet - a whole 2D pad at once: columns are x_parameter at x_values left to right, " +
+            "rows y_parameter at y_values top to bottom; values default to each parameter's keyform values (y highest first, as on the pad), and a parameter " +
+            "of a 2D pad brings its partner as y_parameter unless one is named. columns/rows [from, to] (indices into those values, inclusive) cut out any " +
+            "sub-rectangle, e.g. columns [1, 3] rows [0, 1] of a 5x3 pad. show picks each cell: model (alone), reference (the reference layers shown at that " +
+            "keyform - pinned there with layer_pin_reference, or unpinned), under/over (references under the model, or over it at reference_opacity), " +
+            "difference (black where they match; each cell's difference 0..1), side_by_side (model | reference). Each cell's imageRect [x,y,width,height] maps " +
+            "to canvasRect [left,top,right,bottom]; a cell names the reference layers it shows. At most ${WorkspacePadSheet.MAX_CELLS} cells; " +
+            "target_long_edge/max_bytes bound the whole sheet. reference_place_grid reads a sheet drawn in the same order back as pinned references.",
+        inputSchema = modelViewSchema().let { base ->
+            val kept = requireNotNull(base.properties).filterKeys { it in setOf("parameters", "include_layer_ids", "viewport", "background", "target_long_edge", "max_bytes") }
+            WorkspaceCommandSchema(properties = JsonObject(kept + buildJsonObject {
+                putJsonObject("x_parameter") { put("type", "string"); put("minLength", 1) }
+                putJsonObject("y_parameter") { put("type", "string"); put("minLength", 1) }
+                for (axis in listOf("x_values", "y_values")) putJsonObject(axis) { put("type", "array"); put("minItems", 1); put("maxItems", WorkspaceReferenceGrid.MAX_SIDE)
+                    putJsonObject("items") { put("type", "number") } }
+                for (axis in listOf("columns", "rows")) putJsonObject(axis) { put("type", "array"); put("minItems", 2); put("maxItems", 2)
+                    putJsonObject("items") { put("type", "integer"); put("minimum", 0) }; put("description", "[from, to] indices, inclusive") }
+                putJsonObject("show") { put("type", "string"); putJsonArray("enum") { shows.forEach { add(JsonPrimitive(it)) } }; put("default", "model") }
+                putJsonObject("reference_opacity") { put("type", "number"); put("minimum", 0); put("maximum", 1); put("default", 0.5) }
+            }), required = listOf("viewport", "x_parameter"))
+        },
+        hints = READ_ONLY,
+    ) { request ->
+        val frame = request.viewFrame()
+        require(frame is WorkspaceViewFrame.CanvasRect) { "Use canvas_rect for a fixed comparison camera" }
+        fun floats(key: String) = request.arguments[key]?.jsonArray?.map { it.jsonPrimitive.float }
+        fun range(key: String) = request.arguments[key]?.jsonArray?.map { it.jsonPrimitive.int }?.let { (from, to) ->
+            require(from <= to) { "$key is [from, to] with from <= to" }; from..to }
+        val result = render.captureObservation().renderPad(WorkspacePadViewRequest(
+            xParameter = request.requiredString("x_parameter"),
+            yParameter = request.optionalString("y_parameter"),
+            xValues = floats("x_values"), yValues = floats("y_values"),
+            columns = range("columns"), rows = range("rows"),
+            parameters = request.floatMap("parameters"),
+            includeLayerIds = request.optionalStringSet("include_layer_ids"),
+            frame = frame,
+            show = request.optionalString("show")?.let { WorkspacePadShow.valueOf(it.uppercase()) } ?: WorkspacePadShow.MODEL,
+            referenceOpacity = request.arguments["reference_opacity"]?.jsonPrimitive?.float ?: 0.5f,
+            background = request.background(),
+            output = request.outputSpec(),
+        ))
+        WorkspaceOperationOutput(result.metadata, result.images)
     }
 }
 

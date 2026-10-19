@@ -82,6 +82,8 @@ object WorkspaceViewRenderer {
 		density: Boolean = false,
 		grid: Float? = null,
 		outlines: List<ViewOutline> = emptyList(),
+		/** Reference layers pinned to another keyform than this pose's ([io.github.psd2live.project.ReferencePins]): left out. */
+		hiddenReferenceLayerIds: Set<String> = emptySet(),
 	): WorkspaceRenderedView {
 		require(grid == null || (grid.isFinite() && grid > 0f)) { "grid is a positive step in canvas units" }
 		require(outlines.size <= 24) { "Outline at most 24 materials per View" }
@@ -126,7 +128,7 @@ object WorkspaceViewRenderer {
 		var difference: Float? = null
 		if (reference?.mode == WorkspaceViewReferenceMode.UNDER) paintReference(image, reference, target.viewport)
 		// Reference layers lie under the model, as edit canvases draw them by default; a difference compares the model alone.
-		if (reference?.mode != WorkspaceViewReferenceMode.DIFFERENCE) paintReferenceLayers(image, model, geometry, target.viewport, includeLayerIds)
+		if (reference?.mode != WorkspaceViewReferenceMode.DIFFERENCE) paintReferenceLayers(image, model, geometry, target.viewport, includeLayerIds - hiddenReferenceLayerIds)
 		val graphics = image.createGraphics()
 		try {
 			graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
@@ -321,7 +323,7 @@ object WorkspaceViewRenderer {
 	 * The per-channel difference of [rendered] and [reference], each over mid grey, into [out] (black where they match);
 	 * returns the mean difference over pixels either covers.
 	 */
-	private fun paintDifference(out: BufferedImage, rendered: BufferedImage, reference: BufferedImage): Float {
+	internal fun paintDifference(out: BufferedImage, rendered: BufferedImage, reference: BufferedImage): Float {
 		var sum = 0.0; var count = 0
 		fun over(c: Int, alpha: Float, shift: Int) = ((c shr shift) and 0xFF) * alpha + 128f * (1f - alpha)
 		for (y in 0 until out.height) for (x in 0 until out.width) {
@@ -482,7 +484,7 @@ object WorkspaceViewRenderer {
 		)
 	}
 
-	private fun checkerboard(width: Int, height: Int): BufferedImage {
+	internal fun checkerboard(width: Int, height: Int): BufferedImage {
 		val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
 		val graphics = image.createGraphics()
 		try {
@@ -611,7 +613,7 @@ object WorkspaceViewRenderer {
 		)
 	}
 
-	private fun encodeWithinBudget(source: BufferedImage, maxBytes: Int): Pair<BufferedImage, ByteArray> {
+	internal fun encodeWithinBudget(source: BufferedImage, maxBytes: Int): Pair<BufferedImage, ByteArray> {
 		var image = source
 		var png = encodePng(image)
 		while (png.size > maxBytes && maxOf(image.width, image.height) > 64) {

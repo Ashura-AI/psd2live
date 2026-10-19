@@ -311,6 +311,7 @@ private fun MutableList<ToolOption>.addLayerActions(editor: CanvasEditor, layerI
     if (layerId in layout.referenceLayerIds || !layout.generation.generated || layerId in layout.generation.pendingLayerIds)
         add(ToggleOption("layer.reference", "layers.reference.toggle", { layerId in it.state.layout.referenceLayerIds },
             { e, on -> e.viewModel.markLayersReference(listOf(layerId), on) }, place = OptionPlace.MENU))
+    if (layerId in layout.referenceLayerIds) addReferencePins(editor, layerId)
     val rig = editor.state.previewModel?.rig
     val meshed = rig != null && rig.puppet.drawables.any { rig.layerIdByDrawableId[it.id.raw] == layerId && it.mesh != null }
     if (meshed) {
@@ -330,6 +331,44 @@ private fun MutableList<ToolOption>.addLayerActions(editor: CanvasEditor, layerI
     add(ActionOption("layer.materialUnlink", "materials.link.unlink", { it.editable }, { it.viewModel.unlinkMaterials(listOf(layerId)) },
         OptionIcon.UNLINK, place = OptionPlace.MENU))
 }
+
+/**
+ * A reference layer's keyform pin, as a compact parameter menu: a row per parameter worth pinning - those it is
+ * pinned to, those the edit pose has moved off their default and their 2D pad partners (the 2D pads' parameters when
+ * nothing has moved) - each with the value it pins at and a push pin; then pin the whole pose shown, and unpin.
+ * A pinned reference shows only at its keyform, so references of each angle can share one place.
+ */
+private fun MutableList<ToolOption>.addReferencePins(editor: CanvasEditor, layerId: String) {
+    val puppet = editor.state.previewModel?.rig?.puppet ?: return
+    if (puppet.parameters.isEmpty()) return
+    val pin = editor.state.layout.referencePins[layerId].orEmpty()
+    fun current(e: CanvasEditor, parameter: org.umamo.runtime.model.Parameter) = e.state.parameterValues[parameter.id] ?: parameter.default
+    val moved = puppet.parameters.filter { it.id.raw in pin || kotlin.math.abs(current(editor, it) - it.default) > 1e-4f }.mapTo(LinkedHashSet()) { it.id }
+    val partners = puppet.parameterLinks.filter { it.horizontal in moved || it.vertical in moved }.flatMap { listOf(it.horizontal, it.vertical) }
+    val listed = (moved + partners).ifEmpty { puppet.parameterLinks.flatMap { listOf(it.horizontal, it.vertical) }.toSet() }
+    val parameters = puppet.parameters.filter { it.id in listed }.take(MAX_PIN_ROWS)
+    add(SectionOption("layer.pin", "layers.pin.menu", OptionPlace.MENU, submenu = true, icon = OptionIcon.PIN, alwaysFolds = true))
+    if (parameters.isEmpty()) add(NoteOption("layer.pinNone", { tr("layers.pin.none") }, place = OptionPlace.MENU))
+    for (parameter in parameters) {
+        val id = parameter.id.raw
+        add(PinOption("layer.pin.$id", { parameter.name.ifBlank { id } },
+            { e -> pinValue(e.state.layout.referencePins[layerId]?.get(id) ?: current(e, parameter)) },
+            { e -> id in e.state.layout.referencePins[layerId].orEmpty() },
+            { e -> e.viewModel.toggleReferencePin(layerId, id) }, enabled = { it.editable }))
+    }
+    if (parameters.isNotEmpty()) add(ActionOption("layer.pinPose", "layers.pin.pose", { it.editable }, { e ->
+        e.viewModel.pinReferenceLayers(listOf(layerId), parameters.associate { it.id.raw to current(e, it) })
+    }, OptionIcon.PIN, place = OptionPlace.MENU))
+    if (pin.isNotEmpty()) add(ActionOption("layer.unpin", "layers.pin.clear", { it.editable }, { e ->
+        e.viewModel.pinReferenceLayers(listOf(layerId), emptyMap())
+    }, OptionIcon.CLEAR, place = OptionPlace.MENU))
+}
+
+/** The most parameter rows the pin menu lists. */
+private const val MAX_PIN_ROWS = 12
+
+private fun pinValue(value: Float): String =
+    if (value == kotlin.math.round(value)) value.toInt().toString() else "%.2f".format(java.util.Locale.ROOT, value).trimEnd('0').trimEnd('.')
 
 /** The tree's place-then-confirm create on the mesh in hand, the same entry as the hierarchy tree's Add menu. */
 private fun createAction(id: String, labelKey: String, icon: OptionIcon, kind: CreatePlacementKind, relation: CreateRelation) =

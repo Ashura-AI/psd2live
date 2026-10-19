@@ -1236,21 +1236,24 @@ fun CanvasViewportComposable(
 			val selectedLayerId = if (allowSelectionChrome) canvasState.selectedLayerId else null
 			val selectedDeformerId = if (allowSelectionChrome) canvasState.selectedDeformerId else null
 
+			// Reference layers pinned to another keyform stay off the canvas at this pose.
+			val pinnedAway = if (mode == CanvasMode.EDIT) canvasState.pinnedAwayReferenceIds else emptySet()
+			val shownLayerIds = canvasState.effectiveVisibleLayerIds.let { if (pinnedAway.isEmpty()) it else it - pinnedAway }
 			val targetVisibleLayerIds: Set<String> = when {
-				!informationSelectedOnly -> canvasState.effectiveVisibleLayerIds
+				!informationSelectedOnly -> shownLayerIds
 				selectedLayerId != null -> {
 					val keep = if (mode == CanvasMode.EDIT && editor.hierarchyMode == EditHierarchyMode.EDIT && editor.objects.size > 1) {
 						editor.objects
 					} else {
 						setOf(selectedLayerId)
 					}
-					canvasState.effectiveVisibleLayerIds.filter { it in keep }.toSet()
+					shownLayerIds.filter { it in keep }.toSet()
 				}
 				selectedDeformerId != null -> {
 					val desc = descendantLayerIds(model, selectedDeformerId, canvasState.hierarchyParentOverrides)
-					canvasState.effectiveVisibleLayerIds.filter { it in desc }.toSet()
+					shownLayerIds.filter { it in desc }.toSet()
 				}
-				else -> canvasState.effectiveVisibleLayerIds
+				else -> shownLayerIds
 			}
 
 			val hasActiveSelection = selectedLayerId != null || selectedDeformerId != null

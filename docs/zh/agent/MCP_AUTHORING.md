@@ -82,7 +82,7 @@
 | `object_edit_appearance` | `request` 内 `state`、`edits` | 名称、显隐、结构等有序编辑；网格 `bind` 的 `space=local` 保留局部坐标与关键形（继承的运动与位置随新父级改变），`space=canvas` 把静止网格、关键形与混合形经新父级换算，使网格在默认姿态下留在画布原位（层级树拖放与检查器改父级即用此项）；变形器 `move` 只接受 `space=local` |
 | `rig_edit_structure` | `request` 内 `state`、`edits` | 静态对象属性、变形器删除与 Part 归属、参数文件夹和 XY 关联 |
 | `canvas_warp / canvas_rotation / canvas_glue / canvas_topology` | `request` | `warp/rotation/glue/topology`。`glue` 必须同时给出两个不同的画元 `mesh_a` 与 `mesh_b`。`rotation` 的 `origin` 为画布像素（y 向下），提交时换算到其父变形器的局部空间；`preservePose` 缺省为 true，网格在静止姿态下保持原位 |
-| `view_render_model / view_render_layer / view_render_context / view_render_poses / view_check_coverage / view_compare_history / view_sample_motion` | `request` | `model/layer/context/poses/coverage/compare/motion`；动作采样返回只读任务句柄，终态包含采样拼图与参数范围 |
+| `view_render_model / view_render_layer / view_render_context / view_render_poses / view_render_pad / view_check_coverage / view_compare_history / view_sample_motion` | `request` | `model/layer/context/poses/pad/coverage/compare/motion`；动作采样返回只读任务句柄，终态包含采样拼图与参数范围 |
 | `parameter_create / parameter_update / parameter_delete` | `request` | `create/update/delete`；删除时按最后一次默认值选择最近的已写关键点切片并折叠轴。收窄范围时，动作中该参数的关键点与手柄被夹入新范围；删除参数时同时移除动作中该参数的曲线 |
 | `layer_import_images` | `request` | 从 PNG、无损 WebP、TIFF 或 BMP 文件一次导入多层源图，后台完成后返回图层与网格句柄 |
 | `layer_get_texture / atlas_get / atlas_render_page` | `layer_id`；`atlas_get` 可选 `page`；渲染要求 `page`，可选 `max_size` | 从同一捕获读取图层画布矩形、栅格像素、原生密度、纹理覆盖与图块，或纹理集预算、fit、提示、页面占用与全部图块；渲染页面为只读后台任务，终态返回 PNG |
@@ -533,6 +533,8 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `layer_tag` | `state`、`layer_ids`（1–128），`set` 或 `add`/`remove` | 语义标签：部位词与 `left/right` 决定分类（如 `{hair, front}`、`{eye, iris, left}`），其余为用户标签；已生成图层的分类变化等待 `rig_generate` |
 | `layer_set_variant` | `state`、`layer_id`、`variant`（`none/toggle/switch`），可选 `parameter`、`switch_id` | 差分属性，保留标签 |
 | `layer_mark_reference` | `state`、`layer_ids`（1–128）、`reference` | 设为参考图层（`true`）或恢复为模型图层（`false`）：参考图层留在画布与上下顺序里，但不被生成读取，Rig 与导出都不含它；只接受未生成、待生成与参考图层，已生成图层返回错误；恢复的图层在已生成工程里等待 `rig_generate`。`workspace_inspect scope=generation` 的 `reference_layers` 列出它们 |
+| `layer_pin_reference` | `state`、`layer_ids`（1–128）、`pin`（参数 ID → 值，最多 16 个；`{}` 或 null 取消） | 把参考图层固定到关键形：只在每个固定参数都处在固定值（容差为参数范围的 0.5%）时显示，编辑画布、`view_render_model`、`view_render_pad` 一致；未固定的参考在任何姿态都显示。替换图层原有的固定；恢复为模型图层时固定一并去掉 |
+| `reference_place_grid` | `state`、`material_id`、`x_parameter`，可选 `y_parameter`、`x_values`、`y_values`、`columns`、`rows`、`pixel_rect`、`rect`、`id_prefix` | 把一张按关键形网格画成的参考图（如 3×3 的头部角度）均分成格，每格裁成素材并放置为参考图层，固定到对应关键形：列按 `x_values` 从左到右，行按 `y_values` 从上到下，与 `view_render_pad` 的排列相同。值省略时取参数的关键形值（y 从大到小，同 2D pad），此时数量须与 `columns`/`rows` 一致；无 `y_parameter` 时为单行。`pixel_rect` 为网格在图中的像素范围（默认整张），`rect` 为每格在画布上的位置（默认每格等比放入画布并居中）。图层与素材 ID 为 `<id_prefix>_<行>_<列>`。一个历史节点 |
 | `material_mark_reference` | `state`、`ids`（条目或文件夹，1–1024）、`reference` | 条目（文件夹则为其中全部条目）在 `layer_place` 未指定时是否放置为参考图层 |
 | `layer_reorder` | `state`、`layer_ids`（1–128）、`to`（`front/back/forward/backward/above/below`），`above/below` 需 `target` | 调整上下顺序（即基础绘制顺序）：移到最前或最后、越过一个未移动图层、或移到 `target` 正上方或正下方，被移动的图层之间保持原先后。只接受生成器未读过的图层（未生成工程的图层、待生成图层）；已生成图层返回错误，其描画顺序用 `layer_draw_order` 调整 |
 | `rig_generate` | `state`，可选 `refresh_geometry` | 生成或重新生成：未生成工程按当前全部图层构建；已生成工程并入上次生成后放置的图层与等待的分类，按三方合并保留用户编辑，未能干净迁移的内容见 `quality.regeneration`。`refresh_geometry` 列出按当前像素重建网格的已生成图层，省略为全部替换过图片的图层，`[]` 全部保留 |
@@ -542,6 +544,8 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 一个典型流程：`project_create` → `material_import` → `material_list` → 若干 `layer_place`（或放置整个 PSD 文件夹）→ `layer_tag` → `layer_reorder` → `rig_generate` → 作者编辑 → 再 `layer_place` → `rig_generate`。外部工具已经拆好部件时，写出 Layout 清单，用 `project_import_layout` 一步得到摆好的未生成工程，检查后 `rig_generate`。
 
 `view_render_model` 把参考图层（`layer_mark_reference`）垫在模型之下画出（`reference.mode` 为 `difference` 时只比较模型）。`view_render_model` 另有 `grid`（每隔若干画布单位画带坐标标注的网格线，过密时按 ×2、×5、×10… 放宽，结果的 `gridStep` 为实际间距）与 `outline_material_ids`（把有画布位置的条目——绘制与裁出的特写——的不透明边缘按各自颜色描在视图上，附 id），用来读取坐标、对照绘制与参考图。只看参考图时给 `include_layer_ids: []` 与 `reference: {mode: under, opacity: 1}`。
+
+`view_render_pad` 把模型在一组关键形上的样子拼成一张带标注的图集，一次看完整个 2D pad：列为 `x_parameter` 在 `x_values` 上从左到右，行为 `y_parameter` 在 `y_values` 上从上到下；值省略时取参数的关键形值（y 从大到小），属于 2D pad 的参数未给 `y_parameter` 时自动带上搭档。`columns` / `rows`（`[起, 止]`，含两端，为上述值的下标）截取任意子矩形，例如 5×3 的 pad 取 `columns: [1, 3]`、`rows: [0, 1]`。`show` 决定每格内容：`model`（只有模型）、`reference`（该关键形显示的参考图层——固定在此或未固定的）、`under` / `over`（参考垫在模型下，或按 `reference_opacity` 叠在上面）、`difference`（一致处为黑，每格给出 0–1 的 `difference`）、`side_by_side`（模型 | 参考）。结果的每格 `imageRect` `[x,y,width,height]` 映射到 `canvasRect`，并列出所示参考图层；最多 64 格，`target_long_edge` / `max_bytes` 约束整张图。外部按同样顺序画好的网格参考图可用 `reference_place_grid` 读回为固定的参考。
 
 按参考图绘制部件的流程：`layout_set_reference` → `reference_sample` 取色，`layout_set_drawing_kit` 定颜色与线条类 → 带 `grid` 的 `view_render_model` 放大看部件，`reference_trace` 取轮廓、`reference_snap` 校正线条上的点 → `material_draw`（被遮挡部分按形体画完整，原画的缺陷不照描）→ `outline_material_ids` 或放置后用 `reference` 对照 → 反复修改 → `layer_place`、`layer_tag` → `rig_generate` → `view_render_poses` 检查转动时露出的部分。
 
