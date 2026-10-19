@@ -142,7 +142,8 @@ internal fun PageNavItem(
 			.clip(RoundedCornerShape(3.dp))
 			.background(when {
 				selected -> colors.selection
-				hovered && enabled -> colors.controlHover.copy(alpha = 0.45f)
+				// A row with a gutter hovers in a pale wash of the gutter's own colour.
+				hovered && enabled -> gutter?.copy(alpha = 0.18f) ?: colors.controlHover.copy(alpha = 0.45f)
 				else -> Color.Transparent
 			})
 			.hoverable(interaction)
