@@ -191,8 +191,10 @@ internal object StructureMesher {
 	}
 
 	private fun component(component: PreservedRim.Component, rim: PreservedRim, lines: List<StructureLine>,
-	                      settings: StructureMeshSettings, budget: Int, checkpoint: () -> Unit): Built? {
+	                      settings: StructureMeshSettings, additionalBudget: Int, checkpoint: () -> Unit): Built? {
 		val loopOld = component.loops.flatMap { it.toList() }.toIntArray()
+		// The loops are already in the global point list; only this region's new vertices spend the remaining budget.
+		val budget = additionalBudget + loopOld.size
 		val loopPoints = component.loops.map { loop -> loop.map { rim.positions[it] } }
 		val near = component.rimSpacing * settings.near
 		val far = max(near, component.spacing * settings.far)

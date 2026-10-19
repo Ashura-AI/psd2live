@@ -114,6 +114,34 @@ class StructureMesherTest {
 	}
 
 	@Test
+	fun boundaryVerticesSpendTheBudgetOnceAcrossAllComponents() {
+		for (components in 1..2) {
+			val points = FloatArray(components * 50) { i ->
+				val vertex = i / 2
+				if (i % 2 == 0) (vertex % 5) * 10f + (vertex / 25) * 100f else (vertex % 25 / 5) * 10f
+			}
+			val triangles = buildList {
+				for (part in 0 until components) for (r in 0..3) for (c in 0..3) {
+					val a = part * 25 + r * 5 + c
+					addAll(listOf(a, a + 1, a + 6, a, a + 6, a + 5))
+				}
+			}.toIntArray()
+			val rim = PreservedRim.of(points, triangles, 0)
+			val analysis = StructureAnalysis(141, 41, 1, emptyList())
+			val expected = StructureMesher.mesh(rim, analysis)
+			assertEquals(16 * components, expected.points.size)
+			for (fill in listOf(false, true)) {
+				val bounded = StructureMesher.mesh(rim, analysis, StructureMeshSettings(maxVertices = expected.points.size, fill = fill))
+				assertEquals(expected.points, bounded.points)
+				assertContentEquals(expected.triangles, bounded.triangles)
+			}
+			if (components == 2) assertFailsWith<StructureMesher.Failure> {
+				StructureMesher.mesh(rim, analysis, StructureMeshSettings(maxVertices = expected.points.size - 1))
+			}
+		}
+	}
+
+	@Test
 	fun theVertexLimitIsAFailureNotASmallerMesh() {
 		assertFailsWith<StructureMesher.Failure> { build(MeshEdgeMode.DOUBLE, 1, StructureMeshSettings(maxVertices = 16)) }
 	}
