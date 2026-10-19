@@ -627,6 +627,11 @@ internal fun BoxScope.CanvasEditorOverlay(
             }
         }
 
+        // What a structure remesh of the selected mesh would follow, while its options are being tuned.
+        viewModel.structureMesh.takeIf { it.showLines }?.preview?.let { preview ->
+            drawStructurePreview(preview) { x, y -> Offset(viewport.x(x).toFloat(), (viewport.offsetY + y * viewport.scale).toFloat()) }
+        }
+
         // 3c-3e. Paint mode: the shape being drawn, the tip, the colour pick and the tip being retuned.
         drawPaintOverlays(editor, viewport, colors, textMeasurer)
 

@@ -5,6 +5,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PointMode
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 
@@ -116,4 +117,39 @@ internal fun DrawScope.drawReachRing(center: Offset, reach: Float, tint: Color) 
 /** A filled triangle of the face selection, in the accent. */
 internal fun DrawScope.drawSelectedFace(a: Offset, b: Offset, c: Offset, accent: Color) {
 	drawPath(Path().apply { moveTo(a.x, a.y); lineTo(b.x, b.y); lineTo(c.x, c.y); close() }, accent.copy(alpha = 0.24f))
+}
+
+/** Tones of the lines a structure remesh follows, over any art: creases warm, shading cool, patterns neutral. */
+internal object StructureLook {
+	val Fold = Color(0xFFFF8A3D)
+	val Shade = Color(0xFF5CC8FF)
+	val Pattern = Color(0xFFD7B8FF)
+	const val LINE = 2f
+	/** A line the mesh does not follow (too short, or crowded out by a stronger one). */
+	const val UNFOLLOWED_ALPHA = 0.4f
+	const val WIRE_ALPHA = 0.32f
+}
+
+/**
+ * What a structure remesh would build, from [io.github.psd2live.ui.state.StructureMeshController.Preview]: the new
+ * mesh faintly, and over it each line found in its kind's tone, a banded crease drawn wider.
+ */
+internal fun DrawScope.drawStructurePreview(preview: io.github.psd2live.ui.state.StructureMeshController.Preview,
+                                           screen: (Float, Float) -> Offset) {
+	val wires = ArrayList<Offset>(preview.wires.size / 2)
+	for (i in 0 until preview.wires.size / 2) wires += screen(preview.wires[i * 2], preview.wires[i * 2 + 1])
+	drawMeshWires(wires, MeshLook.Structure, alpha = StructureLook.WIRE_ALPHA)
+	for (line in preview.lines) {
+		val tone = when (line.kind) {
+			io.github.psd2live.core.mesh.structure.StructureKind.FOLD -> StructureLook.Fold
+			io.github.psd2live.core.mesh.structure.StructureKind.SHADE -> StructureLook.Shade
+			io.github.psd2live.core.mesh.structure.StructureKind.PATTERN -> StructureLook.Pattern
+		}
+		val points = (0 until line.points.size / 2).map { screen(line.points[it * 2], line.points[it * 2 + 1]) }
+		if (points.size < 2) continue
+		val width = if (line.banded) StructureLook.LINE * 1.6f else StructureLook.LINE
+		val alpha = if (line.followed) 1f else StructureLook.UNFOLLOWED_ALPHA
+		drawPoints(points, PointMode.Polygon, MeshLook.Halo.copy(alpha = MeshLook.Halo.alpha * alpha), width + MeshLook.HALO_EXTRA, StrokeCap.Round)
+		drawPoints(points, PointMode.Polygon, tone.copy(alpha = alpha), width, StrokeCap.Round)
+	}
 }

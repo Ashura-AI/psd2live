@@ -5,6 +5,8 @@ import io.github.psd2live.core.mesh.Point
 import io.github.psd2live.core.mesh.Triangle
 import io.github.psd2live.core.mesh.cross
 import io.github.psd2live.core.mesh.triangleEdges
+import io.github.psd2live.core.mesh.structure.StructureKind
+import io.github.psd2live.core.mesh.structure.TextureStructure
 import kotlin.math.abs
 
 /** Source-raster coordinates. Neither atlas UVs, document placement nor canvas zoom belong here. */
@@ -31,6 +33,11 @@ internal data class InteriorGuide(
 	val amount: Float = 1f,
 	/** A longitudinal-only crease, as in the reference material binding. */
 	val pitchOnly: Boolean = false,
+	/**
+	 * What the texture analysis took the line for, when it came from one ([TextureStructure]); null for a guide the
+	 * author drew. A detected line stays [InteriorGuidePurpose.TOPOLOGY] until the author marks it a fold.
+	 */
+	val detected: StructureKind? = null,
 ) {
 	init {
 		require(id.isNotBlank() && id.none(Char::isISOControl)) { "Interior guide needs an ID" }

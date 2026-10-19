@@ -156,6 +156,25 @@ class PSD2LiveViewModel : AutoCloseable {
 			},
 		)
 	}
+	internal val structureMesh by lazy {
+		StructureMeshController(
+			backend = { workspaceBackend },
+			scope = scope,
+			progress = { busy ->
+				val working = tr("mesh.structure.busy")
+				updateState {
+					it.copy(
+						canvasEditBusy = busy,
+						statusText = if (busy) working else if (it.statusText == working) tr("status.ready") else it.statusText,
+					)
+				}
+			},
+			failed = { message ->
+				addLog(message, level = LogLevel.WARNING, tag = "Mesh")
+				updateState { it.copy(statusText = message) }
+			},
+		)
+	}
     /** Transient hover input; changing it invalidates the canvas without writing document state. */
     private var parameterSnapshotHover by mutableStateOf<ParameterSnapshotPreview?>(null)
 
@@ -7739,6 +7758,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	override fun close() {
 		if (!isClosed.compareAndSet(false, true)) return
         interior.close()
+        structureMesh.close()
         meshSplitCheck.cancel()
 		motionJob?.cancel()
 		previewRebuildJob?.cancel()

@@ -51,6 +51,9 @@ internal object WorkspaceAuthoringResultSchemas {
             "elapsed" to s.number(0), "active_motion" to s.handle(), "sequence" to s.integer(0)),
             setOf("project_id", "state", "workspace_id", "time", "playing", "tracking", "pointer_active", "values", "animation", "elapsed", "sequence"))
         "layer_classify" -> s.obj(s.identity + mapOf("layer_id" to s.handle(), "applied" to s.constant(false), "pending" to s.constant(true)), s.identity.keys + "layer_id")
+        WorkspaceStructureMeshEdits.OP -> s.obj(s.identity + mapOf("target" to s.handle(), "applied" to s.constant(false), "interior_rebaked" to s.boolean()),
+            s.identity.keys + setOf("target", "interior_rebaked"))
+        WorkspaceStructureMeshEdits.PREVIEW -> WorkspaceStructureMeshEdits.previewResult
         WorkspaceLayerTransform.OP, WorkspaceRasterEdits.REBUILD_MESH -> s.obj(s.identity + mapOf("layer_id" to s.handle(), "applied" to s.constant(false)), s.identity.keys + "layer_id")
         "rig_create_warp" -> compactWith(mapOf("target" to s.handle()))
         "canvas_warp", "canvas_rotation", "canvas_topology" -> s.obj(s.identity + mapOf("id" to s.handle(), "applied" to s.constant(false), "geometry_diagnostics" to WorkspaceGeometrySafetySchemas.report), s.identity.keys + "id")

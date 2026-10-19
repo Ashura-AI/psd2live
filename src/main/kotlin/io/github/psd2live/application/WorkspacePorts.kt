@@ -53,6 +53,8 @@ interface WorkspaceQueries : WorkspaceStatePort {
     fun layerMeshSettings(layerId: String): JsonObject
     fun sampleSourceColor(layerId: String, x: Int, y: Int): List<Int>
     fun sourceMeshComponents(layerId: String): JsonObject
+    /** [WorkspaceStructureMeshEdits.preview] on the captured version. */
+    fun structureMeshPreview(request: JsonObject, checkpoint: () -> Unit = {}): JsonObject
     fun projectSettings(): JsonObject
     fun listRigObjectSummaries(): List<JsonObject>
     fun inspectRigGeometry(arguments: JsonObject): JsonObject

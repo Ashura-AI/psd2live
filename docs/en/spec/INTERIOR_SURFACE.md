@@ -27,7 +27,7 @@ Local audition uses temporary aliases in the edit canvas, leaving body/head inpu
 | Direction endpoints | Each coordinate 0–1 | Layer-relative propagation direction; distance at least 0.05 |
 | X / Y mouse gain | Each 0.1–1 | Uniform gain, for mouse audition only |
 
-Guides store source-pixel points, positive radius, amount and an optional pitch-only flag. TOPOLOGY guides do not produce folds; FOLD guides do. The present UI exposes numeric point controls; on-canvas guide handles are not implemented.
+Guides store source-pixel points, positive radius, amount and an optional pitch-only flag; lines found by `layer_mesh_structure` also record `detected` (`FOLD`, `SHADE` or `PATTERN`). TOPOLOGY guides do not produce folds; FOLD guides do, and a detected line folds only once the author marks it FOLD. Drawn guides expose numeric point controls; on-canvas guide handles are not implemented.
 
 ## Surface and generated representation
 
@@ -35,11 +35,11 @@ Guides store source-pixel points, positive radius, amount and an optional pitch-
 
 `InteriorBasisKeyforms` samples X/Y curves and locally gated mixed correction rows at authoring time, then emits native blend fields. The new entry uses a 4-source-pixel sampled target; conservative scaling error is included in diagnostics. Budget/safety failures reject generation. Visual acceptance of one material does not establish invisible error for all materials.
 
-`NativeInteriorAuthoring` resolves source raster positions through `LayerTexture.rasterOfUv`, then maps displacements to Mesh-local coordinates using the differential of the original UV triangles. Existing mesh, UVs, skin weights, parent deformers and authored keyforms remain intact. The editor does not automatically remesh.
+`NativeInteriorAuthoring` resolves source raster positions through `LayerTexture.rasterOfUv`, then maps displacements to Mesh-local coordinates using the differential of the original UV triangles. Existing mesh, UVs, skin weights, parent deformers and authored keyforms remain intact. Baking never changes the mesh; remeshing is the separate `layer_mesh_structure` command.
 
 Existing NORMAL/BLEND inputs may be read, provided they do not repeat and their defaults lie inside their ranges. Omitted bindings prefer standard body X/Y, falling back to private sources; an explicit empty ID creates a source. Nonzero defaults are represented with F(0) constants and gated residuals while retaining Cubism blend neutral VALUE 0. Applied fields include current grid default offsets and scalar references to match native subtraction semantics and avoid neutral drift.
 
-Image-guided remeshing, manual mesh tools and on-canvas surface/guide handles are future-PR work. This entry retains original meshes; unintegrated structure-analysis/refinement code is excluded.
+The interior of a mesh can be rebuilt along its texture structure with `layer_mesh_structure` ([Chinese specification](../../zh/spec/TEXTURE_STRUCTURE_MESH.md)): the outline row and edge band stay, the inside follows detected creases, shading boundaries and pattern lines, and a mesh with an interior effect is baked again in the same history node. Manual mesh tools and on-canvas surface/guide handles are future-PR work.
 
 ## Optional timing
 

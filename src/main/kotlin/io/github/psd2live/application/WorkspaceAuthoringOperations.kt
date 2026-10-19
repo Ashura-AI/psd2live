@@ -36,7 +36,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         val asset = id in WorkspaceAssetSessions.supported
         val pose = id == "preview_pose"
         val swing = id in setOf("swing_preview", "swing_preview_commit")
-        val background = id in WorkspaceSimulationEdits.supported || physics || raster || layer || generation || partition || regeneration || warp || asset || sampling || motionObservation || pose || swing || id in setOf("interior_put", "interior_delete")
+        val background = id in WorkspaceSimulationEdits.supported || physics || raster || layer || generation || partition || regeneration || warp || asset || sampling || motionObservation || pose || swing || id in setOf("interior_put", "interior_delete", WorkspaceStructureMeshEdits.OP)
         registry.register(WorkspaceOperationDefinition(id,
             description + if (background) " Returns a process-owned job handle; use job_wait/job_get for the result, state and diagnostics. Disconnecting does not cancel execution." else "",
             schema, kind, jobBacked = background, workspaceBound = background || kind != WorkspaceOperationKind.QUERY,
@@ -121,6 +121,29 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
             put("layer_id", id)
             if (!result.applied) put("applied", false)
         })
+    }
+
+    val structureSchema = buildJsonObject {
+        put("target", string())
+        put("settings", buildJsonObject { put("type", "object"); put("additionalProperties", false)
+            put("properties", JsonObject(WorkspaceStructureMeshEdits.settingsFields)) })
+    }
+    register(WorkspaceStructureMeshEdits.OP, "Rebuild the inside of one mesh along the structure drawn into its texture: creases, shading boundaries and pattern lines become rows of vertices with edges along them, and by default no vertex lies anywhere else: triangles span from line to line and to the edge rows, as hand-made meshes do. settings.fill adds vertices between the lines; settings.bands straddles drawn creases with a row on each side and rungs across. The outline row and edge band stay exactly as they are; keyforms, blend shapes, paths, weights and glue migrate as for layer_mesh_rebuild. On a mesh with an interior effect the effect's detected TOPOLOGY guides are replaced (drawn guides and guides marked FOLD stay and lead the mesh) and the effect is baked again in the same history edit (interior_rebaked). Fails without changing anything when the region cannot be meshed or max_vertices would be exceeded. Check first with layer_mesh_structure_preview.",
+        objectSchema(JsonObject(structureSchema + ("state" to string())), listOf("state", "target")), WorkspaceOperationKind.DOCUMENT) { request ->
+        val target = request.text("target").removePrefix("mesh:")
+        val rebake = workspace.captureQueries().listInteriorEffects().any { it.target == target }
+        val edits = listOf(WorkspaceDocumentOperation(WorkspaceStructureMeshEdits.OP, JsonObject(request - "state"))) +
+            if (rebake) listOf(WorkspaceDocumentOperation("interior_put", buildJsonObject { put("target", target) })) else emptyList()
+        val result = workspace.applyDocumentEdits(request.text("state"), "Remeshed $target along its texture", edits, MutationAuthor.AGENT)
+        WorkspaceOperationOutput(buildJsonObject {
+            put("state", requireNotNull(result.state)); put("history_node_id", result.historyNodeId); put("project_id", requireNotNull(result.projectId))
+            put("target", target); put("interior_rebaked", rebake && result.applied)
+            if (!result.applied) put("applied", false)
+        })
+    }
+    register(WorkspaceStructureMeshEdits.PREVIEW, "What layer_mesh_structure would build on one mesh, from one captured version, without changing anything: the lines found (kind FOLD, SHADE or PATTERN; followed tells whether the mesh follows it, banded whether it straddles it), in source pixels and canvas units, and the new mesh's canvas points and triangles.",
+        objectSchema(structureSchema, listOf("target")), WorkspaceOperationKind.QUERY) { request ->
+        WorkspaceOperationOutput(workspace.captureQueries().structureMeshPreview(request))
     }
 
     register(WorkspaceGenerationUpdate.OP, "Regenerate the rig with this build's generators. A project whose journal has a regeneration checkpoint keeps what the generators made when it was written, even after an update; this merges what they make now onto the user's edits: what the user left follows the new output, the user's changes stay, and what does not carry over cleanly is reported in issues (also in workspace_inspect quality.regeneration). Earlier regeneration merges this build makes differently are merged again first and their correction carried onto the current rig (issue kind remerged, target journal:<index>). Commits one undoable history node, or none when the generators make the same rig and every merge comes out alike (updated: false). Imported CMO3 models have no generated rig and are refused.",

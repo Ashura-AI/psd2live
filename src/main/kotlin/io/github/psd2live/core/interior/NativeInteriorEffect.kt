@@ -1,6 +1,7 @@
 package io.github.psd2live.core.interior
 
 import io.github.psd2live.core.*
+import io.github.psd2live.core.mesh.structure.StructureKind
 import java.io.*
 import java.util.Base64
 import java.util.zip.GZIPInputStream
@@ -101,6 +102,14 @@ internal constructor(
 			tolerancePixels,
 			sourceHash,
 		)
+
+	/**
+	 * This recipe with other guides and nothing baked again: what a structure remesh records before the
+	 * `interior_put` that bakes the effect on the new mesh.
+	 */
+	internal fun withGuides(value: List<InteriorGuide>) =
+		NativeInteriorEffect(id, target, name, enabled, settings, motion, sources, created, generated, bindings, groups,
+			meshStamp, value, errorPixels, tolerancePixels, sourceHash)
 
 	@Volatile
 	private var checkedModel: Pair<java.lang.ref.WeakReference<PuppetModel>, String?>? = null
@@ -206,6 +215,7 @@ internal constructor(
 							put("radius", g.radius)
 							put("amount", g.amount)
 							put("pitchOnly", g.pitchOnly)
+							g.detected?.let { put("detected", it.name) }
 							put(
 								"points",
 								JsonArray(
@@ -313,6 +323,7 @@ internal constructor(
 						put("radius", g.radius)
 						put("amount", g.amount)
 						put("pitchOnly", g.pitchOnly)
+						g.detected?.let { put("detected", it.name) }
 						put(
 							"points",
 							JsonArray(
@@ -452,6 +463,7 @@ internal constructor(
 							g.number("radius"),
 							g.number("amount"),
 							g.getValue("pitchOnly").jsonPrimitive.boolean,
+							g["detected"]?.jsonPrimitive?.content?.let(StructureKind::valueOf),
 						)
 					}
 				}
@@ -621,6 +633,7 @@ internal object NativeInteriorAuthoring {
 					g["radius"]?.jsonPrimitive?.float ?: 16f,
 					g["amount"]?.jsonPrimitive?.float ?: 1f,
 					g["pitchOnly"]?.jsonPrimitive?.boolean ?: false,
+					g["detected"]?.jsonPrimitive?.content?.let(StructureKind::valueOf),
 				)
 			} ?: old?.guides.orEmpty()
 		val bake =

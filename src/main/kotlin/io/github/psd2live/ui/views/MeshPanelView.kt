@@ -97,6 +97,7 @@ internal fun MeshPanelView(
 				viewModel = viewModel,
 				reloadBaseline = { state.getEffectiveMeshSettings(layerId) },
 				previewModel = state.previewModel,
+				state = state,
 			)
 		}
 	}
@@ -256,6 +257,7 @@ private fun SelectedMeshSettingsEditor(
 	viewModel: PSD2LiveViewModel,
 	reloadBaseline: () -> MeshSettings,
 	previewModel: io.github.psd2live.core.RigPreviewModel?,
+	state: io.github.psd2live.ui.state.PSD2LiveState,
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
@@ -317,6 +319,14 @@ private fun SelectedMeshSettingsEditor(
 		val uncovered = remember(previewModel, layerId) { previewModel?.let { io.github.psd2live.core.MeshCoverage.uncovered(it, layerId) } }
 		if (uncovered != null && uncovered >= 0.005f) Text(tr("mesh.settings.uncovered", "%.0f".format(uncovered * 100)),
 			style = typography.caption.copy(fontSize = 9.sp), color = colors.warning, modifier = Modifier.padding(horizontal = 8.dp))
+		// Or rebuild the inside along what the texture draws: creases, shading and pattern lines.
+		meshes.firstOrNull { it.mesh != null }?.id?.raw?.let { mesh ->
+			Box(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+				InspectorSectionBox(tr("mesh.structure.title")) {
+					StructureMeshControls(viewModel, state, mesh, rebake = state.rigEdits.interiorEffects.any { it.target == mesh }, enabled = !isBusy)
+				}
+			}
+		}
 		Row(
 			modifier = Modifier
 				.fillMaxWidth()

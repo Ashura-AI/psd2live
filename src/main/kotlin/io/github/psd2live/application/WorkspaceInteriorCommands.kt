@@ -94,6 +94,12 @@ internal object WorkspaceInteriorSchemas {
 			"amount" to describe(s.number(0, 2), "Local fold gain."),
 			"pitchOnly" to
 				describe(s.boolean(), "Apply this fold only to the vertical material channel."),
+			"detected" to
+				describe(
+					s.choices("FOLD", "SHADE", "PATTERN"),
+					"Set on lines found by layer_mesh_structure: what the texture analysis took the line for. " +
+						"Omitted for drawn guides. A detected line stays TOPOLOGY until marked FOLD.",
+				),
 			"points" to
 				describe(
 					s.array(s.vector(2), 2, 256),
@@ -142,7 +148,7 @@ internal object WorkspaceInteriorSchemas {
 						"guides",
 						describe(
 							s.array(guide, 0, 256),
-							"Replace guide list; empty list clears local folds. Does not remesh.",
+							"Replace guide list; empty list clears local folds. Does not remesh (layer_mesh_structure does).",
 						),
 					)
 				},

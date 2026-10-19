@@ -26,8 +26,8 @@ import java.util.Locale
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.*
 
-private val INTERIOR_SECTIONS = setOf("audition", "shape", "motion", "more", "binding", "folds")
-private val INTERIOR_OPEN = INTERIOR_SECTIONS - "more"
+private val INTERIOR_SECTIONS = setOf("audition", "shape", "mesh", "motion", "more", "binding", "folds")
+private val INTERIOR_OPEN = INTERIOR_SECTIONS - "more" - "mesh"
 
 /** Transmission presets, as the direction row offers them: label key, from, to. */
 private val INTERIOR_DIRECTIONS =
@@ -176,6 +176,7 @@ private fun InteriorBody(
 						put("radius", g.radius)
 						put("amount", g.amount)
 						put("pitchOnly", g.pitchOnly)
+						g.detected?.let { put("detected", it.name) }
 						put(
 							"points",
 							JsonArray(
@@ -358,6 +359,46 @@ private fun InteriorBody(
 			InteriorSlider("interior.contour", draft.shape.contour, 0f..1f, { draft.shape = draft.shape.copy(contour = it) }, ::save)
 		}
 
+		// The mesh inside the edge band, rebuilt along the texture; the lines it found can be made folds.
+		val detected = draft.guides.withIndex().filter { it.value.detected != null }
+		PhysicsSection(
+			tr("interior.mesh"),
+			"mesh" in open,
+			{ toggle("mesh") },
+			count = detected.size,
+			icon = icon(InteriorIcon.SHAPE),
+		) {
+			StructureMeshControls(vm, state, target, rebake = true, enabled = editing)
+			if (detected.isEmpty()) Text(tr("interior.mesh.noLines"), style = caption, color = colors.textMuted)
+			for ((i, g) in detected) {
+				val fold = g.purpose == InteriorGuidePurpose.FOLD
+				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+					Text(
+						"${tr("mesh.structure.kind.${g.detected!!.name.lowercase()}")} · ${g.id}",
+						style = caption,
+						color = if (fold) colors.textPrimary else colors.textMuted,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
+						modifier = Modifier.weight(1f),
+					)
+					CompactToggleChip(
+						tr("interior.markFold"),
+						fold,
+						{
+							draft.guides = draft.guides.toMutableList().also {
+								it[i] = g.copy(purpose = if (fold) InteriorGuidePurpose.TOPOLOGY else InteriorGuidePurpose.FOLD)
+							}
+							save()
+						},
+						tooltip = tr("interior.markFoldTip"),
+					)
+				}
+				if (fold) InteriorSlider("interior.foldAmount", g.amount, 0f..2f, {
+					draft.guides = draft.guides.toMutableList().also { list -> list[i] = g.copy(amount = it) }
+				}, ::save)
+			}
+		}
+
 		val motionOn = draft.motion.enabled
 		val motionSwitch: @Composable RowScope.() -> Unit = {
 			PanelToolSwitch(
@@ -487,16 +528,18 @@ private fun InteriorBody(
 			tr("interior.guides"),
 			"folds" in open,
 			{ toggle("folds") },
-			count = draft.guides.size,
+			count = draft.guides.count { it.detected == null },
 			icon = icon(InteriorIcon.FOLDS),
 			trailing = addFold,
 		) {
-			if (draft.guides.isEmpty()) Text(tr("interior.noFolds"), style = caption, color = colors.textMuted)
-			draft.guides.forEachIndexed { i, g ->
+			// Lines a remesh found are listed under the mesh; here are the guides drawn by hand.
+			val drawn = draft.guides.withIndex().filter { it.value.detected == null }
+			if (drawn.isEmpty()) Text(tr("interior.noFolds"), style = caption, color = colors.textMuted)
+			drawn.forEachIndexed { n, (i, g) ->
 				fun replace(next: InteriorGuide) {
 					draft.guides = draft.guides.toMutableList().also { it[i] = next }
 				}
-				InspectorSectionBox("${tr("interior.fold")} ${i + 1}") {
+				InspectorSectionBox("${tr("interior.fold")} ${n + 1}") {
 					Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 						CompactToggleChip(
 							tr("interior.pitchOnly"),
@@ -551,7 +594,7 @@ private fun InteriorBody(
 
 /** A labelled slider that edits the draft while dragged and submits on release. */
 @Composable
-private fun InteriorSlider(
+internal fun InteriorSlider(
 	key: String,
 	value: Float,
 	range: ClosedFloatingPointRange<Float>,

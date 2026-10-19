@@ -66,6 +66,15 @@ internal class WorkspaceReadSession(
         }
     }
 
+    override fun structureMeshPreview(request: JsonObject, checkpoint: () -> Unit): JsonObject {
+        val captured = capture()
+        if (!captured.document.layout.generation.generated) throw WorkspaceNotGenerated()
+        return buildJsonObject {
+            put("project_id", captured.projectId); put("state", captured.state); put("revision", captured.revision)
+            WorkspaceStructureMeshEdits.preview(captured.model, captured.document.rigEdits, request, checkpoint).forEach { (k, v) -> put(k, v) }
+        }
+    }
+
     private fun buildSnapshot(): WorkspaceProjectSnapshot {
         val captured = read.runtime.capture
         val document = captured?.document
