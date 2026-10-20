@@ -1360,7 +1360,10 @@ private fun DeformerTreeItem(
 							}
 							.onPointerEvent(PointerEventType.Press) { event ->
 								if (event.button == PointerButton.Secondary) {
-									menuClickOffset = event.changes.firstOrNull()?.position ?: Offset.Zero
+									// The menu anchors to the chain row, so the segment-local press has to be
+									// moved into row coordinates before it can position the popup.
+									val localPress = event.changes.firstOrNull()?.position ?: Offset.Zero
+									menuClickOffset = (segmentBoundsInRow[segmentId]?.topLeft ?: Offset.Zero) + localPress
 									if (state.selectedDeformerId != segmentId) {
 										viewModel.selectDeformer(segmentId)
 									}
@@ -1656,14 +1659,18 @@ internal fun DrawableTreeItem(
 				.onPointerEvent(PointerEventType.Press) { event ->
 					meshPreviewHover?.value = null
 					if (event.button == PointerButton.Secondary) {
-						val clickPos = event.changes.firstOrNull()?.position ?: Offset.Zero
-						menuClickOffset = clickPos
-						if (layerId != null && !isLayerSelected) {
-							viewModel.selectLayer(layerId)
+						// A row without a reference or a layer has no actions here, so it must not open a
+						// menu that would only repeat its name.
+						if (reference != null || layerId != null) {
+							val clickPos = event.changes.firstOrNull()?.position ?: Offset.Zero
+							menuClickOffset = clickPos
+							if (layerId != null && !isLayerSelected) {
+								viewModel.selectLayer(layerId)
+							}
+							treeDragState.clear()
+							event.changes.firstOrNull()?.consume()
+							showMenu = true
 						}
-						treeDragState.clear()
-						event.changes.firstOrNull()?.consume()
-						showMenu = true
 					} else if (event.button == PointerButton.Primary) {
 						val parent = containerCoordinates
 						val coords = rowCoords
@@ -1739,10 +1746,13 @@ internal fun DrawableTreeItem(
 			}
 		}
 
+        val menuSelectionCount = if (layerId != null && layerId in state.selectedLayerIds)
+            state.selectedLayerIds.size else 1
         PressMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, press = menuClickOffset) {
             if (reference != null) ReferenceMenu(reference, state, viewModel, close = { showMenu = false })
             else ArtMeshMenu(drawable, layerId, effectiveParent(drawable.id.raw, drawable.parentDeformerId?.raw, state.hierarchyParentOverrides),
-                state, viewModel, close = { showMenu = false }, onRequestSetOrder = onRequestSetOrder, onRequestCreate = onRequestCreate)
+                state, viewModel, close = { showMenu = false }, onRequestSetOrder = onRequestSetOrder, onRequestCreate = onRequestCreate,
+                selectionCount = menuSelectionCount)
         }
 	}
 }

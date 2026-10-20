@@ -37,6 +37,9 @@ import org.umamo.runtime.model.Parameter
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.ParameterKind
 
+/** The state a definition dialog opens in: editing the parameter, duplicating it, or confirming its deletion. */
+internal enum class ParameterDefinitionInitialAction { PROPERTIES, COPY, DELETE }
+
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 internal fun ParameterDefinitionDialog(
@@ -45,6 +48,7 @@ internal fun ParameterDefinitionDialog(
     viewModel: PSD2LiveViewModel,
     parentGroupId: String? = null,
     lockValue: Float? = null,
+    initialAction: ParameterDefinitionInitialAction = ParameterDefinitionInitialAction.PROPERTIES,
     onDismiss: () -> Unit,
 ) {
     val colors = LocalToolColors.current
@@ -52,15 +56,22 @@ internal fun ParameterDefinitionDialog(
     val focusManager = LocalFocusManager.current
     val baseModel = remember { state.previewModel?.rig?.puppet }
     val expectedState = remember { viewModel.currentWorkspaceState() }
-    var copying by remember { mutableStateOf(false) }
+    val copiesOnOpen = parameter != null && initialAction == ParameterDefinitionInitialAction.COPY
+    var copying by remember { mutableStateOf(copiesOnOpen) }
     val creating = parameter == null || copying
-    var id by remember { mutableStateOf(parameter?.id?.raw ?: baseModel?.freshParameterId()?.raw.orEmpty()) }
-    var name by remember { mutableStateOf(parameter?.name ?: tr("parameters.newName")) }
+    var id by remember { mutableStateOf(when {
+        copiesOnOpen -> baseModel?.freshParameterId()?.raw.orEmpty()
+        else -> parameter?.id?.raw ?: baseModel?.freshParameterId()?.raw.orEmpty()
+    }) }
+    var name by remember { mutableStateOf(when {
+        copiesOnOpen -> tr("parameters.copyName", parameter.name)
+        else -> parameter?.name ?: tr("parameters.newName")
+    }) }
     var min by remember { mutableStateOf((parameter?.min ?: -1f).toString()) }
     var default by remember { mutableStateOf((parameter?.default ?: 0f).toString()) }
     var max by remember { mutableStateOf((parameter?.max ?: 1f).toString()) }
     var kind by remember { mutableStateOf(parameter?.kind ?: ParameterKind.NORMAL) }
-    var deleting by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(parameter != null && initialAction == ParameterDefinitionInitialAction.DELETE) }
     var failure by remember { mutableStateOf<String?>(null) }
     var keyEdits by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
     var undone by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
@@ -97,6 +108,18 @@ internal fun ParameterDefinitionDialog(
         else -> axisModel?.parameters?.find { it.id == parameter?.id }
     }
     val busy = state.canvasEditBusy
+    // The footer's Copy button and a menu row that duplicates the parameter enter the same state: a fresh ID and
+    // the source name, leaving bindings and forms behind (the dialog's copy flow).
+    fun startCopy() {
+        val source = parameter ?: return
+        copying = true
+        deleting = false
+        keyEdits = emptyList()
+        undone = emptyList()
+        failure = null
+        id = baseModel?.freshParameterId()?.raw.orEmpty()
+        name = tr("parameters.copyName", source.name)
+    }
     fun submit(action: String) {
         // Flush any open inline editors before reading dialog state.
         focusManager.clearFocus(force = true)
@@ -141,15 +164,7 @@ internal fun ParameterDefinitionDialog(
                 footerStart = {
                     if (!creating && !deleting) {
                         CompactButton(tr("parameters.delete"), { deleting = true }, enabled = !busy, danger = true)
-                        CompactButton(tr("parameters.copy"), {
-                            copying = true
-                            deleting = false
-                            keyEdits = emptyList()
-                            undone = emptyList()
-                            failure = null
-                            id = baseModel?.freshParameterId()?.raw.orEmpty()
-                            name = tr("parameters.copyName", parameter.name)
-                        }, enabled = !busy)
+                        CompactButton(tr("parameters.copy"), { startCopy() }, enabled = !busy)
                     }
                 },
                 footer = {

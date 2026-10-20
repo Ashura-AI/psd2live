@@ -31,12 +31,15 @@ internal fun ArtMeshMenu(
     close: () -> Unit,
     onRequestSetOrder: ((String, String, Float, Float, Boolean) -> Unit)? = null,
     onRequestCreate: ((CreatePlacementKind, CreateRelation, Boolean, String) -> Unit)? = null,
+    /** How many layers the hierarchy has selected; the rows below still act on this row's layer only. */
+    selectionCount: Int = 1,
 ) {
     val editable = !state.isBusy && !state.workspaceEditBusy && !state.editorDraftBusy
     val rows = mutableListOf<Triple<Boolean, Boolean, @Composable () -> Unit>>()
     fun add(highlight: Boolean = true, danger: Boolean = false, content: @Composable () -> Unit) { rows += Triple(highlight, danger, content) }
     fun section(key: String) = add(false) { FloatingMenuSection(tr(key)) }
     add(false) { FloatingMenuSection(drawable.name) }
+    if (selectionCount > 1) add(false) { FloatingMenuSection(tr("canvas.hierarchy.menuScopeSingle", selectionCount)) }
     if (layerId != null) {
         add(highlight = state.referenceConversion(layerId).enabled) { ReferenceConversionMenuRow(layerId, state, viewModel, close) }
         section("canvas.hierarchy.menuView")

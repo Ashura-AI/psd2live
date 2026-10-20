@@ -1039,17 +1039,6 @@ fun CanvasViewportComposable(
                     showContextMenu = false
                     change.consume(); return@onPointerEvent
                 }
-                // A right press that starts no gesture opens the mode/tool context menu (parameters + topology/paint actions).
-                if (mode == CanvasMode.EDIT && previewModel != null && event.button == PointerButton.Secondary &&
-                    gesture == null && !isDragging && !editor.inGesture && !editor.adjustingBrush &&
-                    viewModel.swingSession == null && (selectedReference() != null || referenceAt(change.position) != null || canvasContextMenuHasContent(editor))
-                ) {
-                    referenceAt(change.position)?.let { viewModel.selectReference(it.id, canvasId, canvasState.activeWorkspace.id) }
-                    contextMenuOffset = change.position
-                    showContextMenu = true
-                    change.consume()
-                    return@onPointerEvent
-                }
                 // The pan gesture (the middle button by default) or Space + left drag pans; the zoom gesture
                 // zooms about the press point as the pointer moves up and down.
                 if (gesture == ShortcutAction.ZOOM_DRAG || CanvasNavigation.pans(gesture, event.button, mode == CanvasMode.EDIT && editor.space)) {
@@ -1060,8 +1049,9 @@ fun CanvasViewportComposable(
                     change.consume()
                     return@onPointerEvent
                 }
-                // A middle or side button bound to a canvas command fires it; a held temporary selection lasts
-                // until that button's release.
+                // A button bound to a canvas command fires it before the right press can open a menu: the binding
+                // wins and the menu below is only the fallback, as on the atlas page. A held temporary selection
+                // lasts until that button's release.
                 val command = if (canvasState.keyCapture == null) canvasState.keymap.mouseCommand(pressed, ShortcutScope.CANVAS) else null
                 if (command == ShortcutAction.TEMPORARY_SELECT) {
                     if (mode == CanvasMode.EDIT && !canvasState.workspaceEditBusy && editor.beginTemporarySelection())
@@ -1070,6 +1060,18 @@ fun CanvasViewportComposable(
                 }
                 if (command != null && runCanvasCommand(command, event.keyboardModifiers.isShiftPressed, wheel = false)) {
                     change.consume(); return@onPointerEvent
+                }
+                // A right press that starts no gesture and fires no bound command opens the mode/tool context menu
+                // (parameters + topology/paint actions).
+                if (mode == CanvasMode.EDIT && previewModel != null && event.button == PointerButton.Secondary &&
+                    gesture == null && !isDragging && !editor.inGesture && !editor.adjustingBrush &&
+                    viewModel.swingSession == null && (selectedReference() != null || referenceAt(change.position) != null || canvasContextMenuHasContent(editor))
+                ) {
+                    referenceAt(change.position)?.let { viewModel.selectReference(it.id, canvasId, canvasState.activeWorkspace.id) }
+                    contextMenuOffset = change.position
+                    showContextMenu = true
+                    change.consume()
+                    return@onPointerEvent
                 }
                 if (mode == CanvasMode.EDIT && previewModel != null && event.button == PointerButton.Primary) {
                     if (showContextMenu) {

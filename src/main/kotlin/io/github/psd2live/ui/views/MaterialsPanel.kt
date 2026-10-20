@@ -197,6 +197,28 @@ internal sealed interface MenuLine {
 	data class Submenu(val label: String, val actions: List<Action>) : MenuLine
 }
 
+/**
+ * The row that locates the layers a material is used by: one action for a single layer, otherwise a submenu naming
+ * every layer, so the label's count and the rows it opens agree. A layer the source no longer has, or one deleted,
+ * cannot be located, so it is left out.
+ */
+internal fun materialLocateLine(
+	users: List<String>,
+	layerNames: Map<String, String>,
+	deletedLayerIds: Set<String>,
+	locate: (String) -> Unit,
+): MenuLine? {
+	val located = users.filter { it in layerNames && it !in deletedLayerIds }
+	return when (located.size) {
+		0 -> null
+		1 -> MenuLine.Action(tr("materials.menu.locate", 1), { locate(located.single()) }, edits = false)
+		else -> MenuLine.Submenu(tr("materials.menu.locate", located.size), located.map { id ->
+			// The layer's name is its row in the hierarchy; a nameless one at least names its id.
+			MenuLine.Action(layerNames[id]?.takeIf { it.isNotBlank() } ?: id, { locate(id) }, edits = false)
+		})
+	}
+}
+
 /** Items affected by an entry action, including all descendants of a folder. */
 internal fun materialMenuItems(library: MaterialLibrary, id: String): List<MaterialItem> =
 	library.item(id)?.let(::listOf) ?: library.folder(id)?.let { folder ->
@@ -518,7 +540,9 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				val ids = items.mapTo(HashSet()) { it.id }
 				val users = items.flatMap { references[it.id].orEmpty() }.distinct()
 				val referenceCount = state.layout.references.count { it.materialId in ids }
-				if (users.isNotEmpty()) add(MenuLine.Action(tr("materials.menu.locate", users.size), { close(); vm.selectLayer(users.first()) }, edits = false))
+				// A layer the source no longer has, or one deleted, has nothing to locate: the count and the rows are what opens.
+				val layerNames = state.analysis?.source?.layers?.associate { it.id.raw to it.name }.orEmpty()
+				materialLocateLine(users, layerNames, state.deletedLayerIds) { close(); vm.selectLayer(it) }?.let(::add)
 				add(MenuLine.Rule)
 				add(MenuLine.Action(tr("materials.menu.rename"), { close(); renaming = target }))
 				add(MenuLine.Action(tr("materials.menu.tags"), { close(); tagging = target }))
