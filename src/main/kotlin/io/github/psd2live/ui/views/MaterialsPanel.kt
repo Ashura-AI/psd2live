@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
@@ -50,7 +51,9 @@ import io.github.psd2live.project.MaterialItem
 import io.github.psd2live.project.MaterialKind
 import io.github.psd2live.project.MaterialLibrary
 import io.github.psd2live.ui.components.CompactSlider
+import io.github.psd2live.ui.components.CompactButton
 import io.github.psd2live.ui.components.CompactTextField
+import io.github.psd2live.ui.components.ModalDialogFrame
 import io.github.psd2live.ui.components.IconAdd
 import io.github.psd2live.ui.components.IconChevron
 import io.github.psd2live.ui.components.IconFolder
@@ -185,8 +188,35 @@ private fun fileKind(folder: MaterialFolder): String? = folder.origin.substringA
 private sealed interface MenuLine {
 	data class Section(val text: String) : MenuLine
 	data object Rule : MenuLine
-	data class Action(val label: String, val run: () -> Unit, val enabled: Boolean = true, val trailing: String? = null) : MenuLine
+	data class Action(val label: String, val run: () -> Unit, val enabled: Boolean = true, val trailing: String? = null,
+	                  val selected: Boolean = false, val danger: Boolean = false, val edits: Boolean = true) : MenuLine
 }
+
+/** Items affected by an entry action, including all descendants of a folder. */
+internal fun materialMenuItems(library: MaterialLibrary, id: String): List<MaterialItem> =
+	library.item(id)?.let(::listOf) ?: library.folder(id)?.let { folder ->
+		val descendants = library.subtree(folder.id)
+		library.items.filter { it.folderId in descendants }
+	}.orEmpty()
+
+/** Descendant entry handlers consume their press before the background sees the final event pass. */
+@OptIn(ExperimentalComposeUiApi::class)
+internal fun Modifier.materialBackgroundMenu(onMenu: (Offset) -> Unit): Modifier =
+	onPointerEvent(PointerEventType.Press, PointerEventPass.Final) { event ->
+		if (event.button == PointerButton.Secondary && event.changes.none { it.isConsumed }) {
+			onMenu(event.changes.first().position)
+			event.changes.forEach { it.consume() }
+		}
+	}
+
+@OptIn(ExperimentalComposeUiApi::class)
+internal fun Modifier.materialEntryMenu(onMenu: (Offset) -> Unit): Modifier =
+	onPointerEvent(PointerEventType.Press) { event ->
+		if (event.button == PointerButton.Secondary) {
+			onMenu(event.changes.first().position)
+			event.changes.forEach { it.consume() }
+		}
+	}
 
 /**
  * The material browser: a slim folder tree beside the open folder's contents - its folders, then its items, as a grid
@@ -204,7 +234,7 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 	val window = LocalAwtWindow.current
 	val density = androidx.compose.ui.platform.LocalDensity.current
 	val library = state.layout.materials
-	val references = remember(state.layout.layerMaterials, state.analysis?.source) {
+	val references = remember(state.layout.layerMaterials, state.analysis?.source, state.deletedLayerIds) {
 		val present = state.analysis?.source?.layers?.mapTo(HashSet()) { it.id.raw }.orEmpty() - state.deletedLayerIds
 		state.layout.layerMaterials.filterKeys { it in present }.entries.groupBy({ it.value }, { it.key })
 	}
@@ -221,10 +251,13 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 	LaunchedEffect(folderId) { library.ancestry(folderId).drop(1).forEach { expanded.remove(it.id) } }
 	var menuShown by remember { mutableStateOf(false) }
 	var menuTarget by remember { mutableStateOf<String?>(null) }
+	var menuBackground by remember { mutableStateOf(false) }
 	var menuAt by remember { mutableStateOf(Offset.Zero) }
 	var renaming by remember { mutableStateOf<String?>(null) }
 	var resolution by remember { mutableStateOf<String?>(null) }
+	var tagging by remember { mutableStateOf<String?>(null) }
 	val loaded = state.analysis != null
+	val editable = loaded && !state.isBusy && !state.workspaceEditBusy && !state.editorDraftBusy
 
 	// Where each folder target sits in the window, by slot ("tile:", "tree:", "crumb:" and the folder id, ROOT for the top).
 	val targets = remember { mutableStateMapOf<String, androidx.compose.ui.geometry.Rect>() }
@@ -252,8 +285,8 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 		if (c.isAttached) targets[slot] = androidx.compose.ui.geometry.Rect(c.positionInWindow(),
 			androidx.compose.ui.geometry.Size(c.size.width.toFloat(), c.size.height.toFloat()))
 	}
-	fun openMenu(id: String, root: Offset) {
-		selected = id; menuTarget = id
+	fun openMenu(id: String, root: Offset, background: Boolean = false) {
+		selected = id.takeUnless { background || it == ROOT }; menuTarget = id; menuBackground = background
 		menuAt = root - (panelCoordinates?.takeIf { it.isAttached }?.positionInRoot() ?: Offset.Zero)
 		menuShown = true
 	}
@@ -352,7 +385,10 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 			Row(Modifier.weight(1f).fillMaxWidth()) {
 				if (showTree) {
 					// The folder tree: every folder at a glance, a drop target for files and materials alike.
-					LazyColumn(Modifier.width(treeWidth.dp).fillMaxHeight().background(colors.panelElevated.copy(alpha = 0.35f))) {
+					var treeOrigin by remember { mutableStateOf(Offset.Zero) }
+					LazyColumn(Modifier.width(treeWidth.dp).fillMaxHeight().background(colors.panelElevated.copy(alpha = 0.35f))
+						.onGloballyPositioned { treeOrigin = it.positionInRoot() }
+						.materialBackgroundMenu { openMenu(ROOT, treeOrigin + it, background = true) }) {
 						item(key = ROOT) {
 							var origin by remember { mutableStateOf(Offset.Zero) }
 							FolderRow(tr("materials.root"), null, 0, folderId == null, dropFolder == ROOT, false, null,
@@ -391,7 +427,9 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 							}
 						})
 				}
-				Box(Modifier.weight(1f).fillMaxHeight()) {
+				var contentOrigin by remember { mutableStateOf(Offset.Zero) }
+				Box(Modifier.weight(1f).fillMaxHeight().onGloballyPositioned { contentOrigin = it.positionInRoot() }
+					.materialBackgroundMenu { openMenu(folderId ?: ROOT, contentOrigin + it, background = true) }) {
 					if (shown.isEmpty()) Text(if (query.isBlank()) tr("materials.empty") else tr("materials.noMatch"), style = typography.caption.copy(fontSize = 11.sp),
 						color = colors.textMuted, modifier = Modifier.align(Alignment.Center).padding(12.dp))
 					val select: (MaterialEntry) -> Unit = { entry -> selected = entry.id; if (entry is MaterialEntry.Item) vm.showInMaterialEditor(entry.id) }
@@ -427,7 +465,8 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 
 		// The context menu of the entry right-clicked, opening at the press as the canvas's does.
 		val target = menuTarget
-		val lines = remember(target, library, references, state.selectedLayerId, folderId) {
+		val lines = run {
+			if (!menuShown) return@run emptyList<MenuLine>()
 			buildList {
 				val close = { menuShown = false }
 				fun importInto(into: String?) {
@@ -439,22 +478,27 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 					close()
 					NativeFilePicker.chooseDirectory(window, title = tr("materials.importFolder.title"))?.let { vm.importMaterials(listOf(java.nio.file.Path.of(it)), into) }
 				}
-				if (target == ROOT) {
-					add(MenuLine.Section(tr("materials.root")))
-					add(MenuLine.Action(tr("materials.folder.new"), { close(); vm.createMaterialFolder(uniqueName(library, null, tr("materials.folder.default")), null) }))
-					add(MenuLine.Action(tr("materials.import"), { importInto(null) }))
-					add(MenuLine.Action(tr("materials.importFolder"), { importFolderInto(null) }))
+				if (target == ROOT || menuBackground) {
+					val into = target?.takeUnless { it == ROOT }
+					add(MenuLine.Section(into?.let(library::folder)?.name ?: tr("materials.root")))
+					add(MenuLine.Action(tr("materials.folder.new"), { close(); vm.createMaterialFolder(uniqueName(library, into, tr("materials.folder.default")), into) }))
+					add(MenuLine.Action(tr("materials.import"), { importInto(into) }))
+					add(MenuLine.Action(tr("materials.importFolder"), { importFolderInto(into) }))
+					add(MenuLine.Rule)
+					add(MenuLine.Action(tr("materials.view.grid"), { close(); view = MaterialView.GRID }, selected = view == MaterialView.GRID, edits = false))
+					add(MenuLine.Action(tr("materials.view.list"), { close(); view = MaterialView.LIST }, selected = view == MaterialView.LIST, edits = false))
+					add(MenuLine.Action(tr("materials.view.tree"), { close(); showTree = !showTree }, selected = showTree, edits = false))
 					return@buildList
 				}
 				val item = target?.let(library::item); val folder = target?.let(library::folder)
 				if (item == null && folder == null) return@buildList
 				add(MenuLine.Section(item?.name ?: folder!!.name))
-				if (item != null) add(MenuLine.Action(tr("materials.menu.edit"), { close(); vm.openMaterialEditor(item.id) }))
+				if (item != null) add(MenuLine.Action(tr("materials.menu.edit"), { close(); vm.openMaterialEditor(item.id) }, edits = false))
 				if (folder != null) add(MenuLine.Action(tr("materials.menu.open"), { close(); folderId = folder.id; query = "" },
-					trailing = fileKind(folder)))
-				val items = item?.let(::listOf) ?: library.subtree(folder!!.id).let { folders -> library.items.filter { it.folderId in folders } }
+					trailing = fileKind(folder), edits = false))
+				val items = materialMenuItems(library, requireNotNull(target))
 				add(MenuLine.Action(tr("materials.menu.place"), { close(); vm.placeMaterial(target, reference = false) }, enabled = items.isNotEmpty()))
-				val layer = state.selectedLayerId
+				val layer = state.selectedLayerId?.takeIf { id -> id !in state.deletedLayerIds && state.analysis?.source?.layers?.any { it.id.raw == id } == true }
 				if (item != null && layer != null) add(MenuLine.Action(tr("materials.menu.replace"), { close(); vm.replaceLayerWithMaterial(layer, item.id) }))
 				// One reference, three places to show it - the hierarchy's reference menu moves it between them later.
 				add(MenuLine.Section(tr("materials.menu.addReference")))
@@ -463,13 +507,18 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				add(MenuLine.Action(tr("references.mode.layer"), { close(); vm.placeMaterial(target, reference = true) }, enabled = items.isNotEmpty(),
 					trailing = tr("references.inModel")))
 				if (item != null) add(MenuLine.Action(tr("references.mode.foreground"), { close(); vm.setLayoutReference(item.id) }, trailing = out))
-				add(MenuLine.Rule)
 				if (item?.kind == MaterialKind.VECTOR) add(MenuLine.Action(tr("materials.menu.resolution"), { close(); resolution = item.id },
 					trailing = "${item.raster.width}×${item.raster.height}"))
-				val users = references[target].orEmpty()
-				if (users.isNotEmpty()) add(MenuLine.Action(tr("materials.menu.locate", users.size), { close(); vm.selectLayer(users.first()) }))
+				val ids = items.mapTo(HashSet()) { it.id }
+				val users = items.flatMap { references[it.id].orEmpty() }.distinct()
+				val referenceCount = state.layout.references.count { it.materialId in ids }
+				if (users.isNotEmpty()) add(MenuLine.Action(tr("materials.menu.locate", users.size), { close(); vm.selectLayer(users.first()) }, edits = false))
 				add(MenuLine.Rule)
 				add(MenuLine.Action(tr("materials.menu.rename"), { close(); renaming = target }))
+				add(MenuLine.Action(tr("materials.menu.tags"), { close(); tagging = target }))
+				val allReference = items.isNotEmpty() && items.all { it.reference }
+				add(MenuLine.Action(tr("materials.menu.defaultReference"), { close(); vm.markMaterialsReference(listOf(target), !allReference) },
+					enabled = items.isNotEmpty(), selected = allReference))
 				if (folder != null) {
 					add(MenuLine.Action(tr("materials.folder.new"), { close(); vm.createMaterialFolder(uniqueName(library, folder.id, tr("materials.folder.default")), folder.id) }))
 					add(MenuLine.Action(tr("materials.menu.importHere"), { importInto(folder.id) }))
@@ -477,38 +526,49 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 					add(MenuLine.Action(tr("materials.menu.exportPsd"), {
 						close()
 						NativeFilePicker.chooseSavePsdFile(window, folder.name)?.let { vm.exportMaterialFolder(folder.id, java.nio.file.Path.of(it)) }
-					}))
+					}, enabled = items.isNotEmpty()))
 				}
 				val parent = item?.folderId ?: folder?.parentId
 				if (parent != null) add(MenuLine.Action(tr("materials.menu.moveUp"), { close(); vm.moveMaterials(listOf(target), library.folder(parent)?.parentId) }))
 				// A material a layer shows cannot go; the row says how many layers keep it.
 				add(MenuLine.Action(tr("materials.menu.delete"), { close(); vm.deleteMaterials(listOf(target)) },
-					enabled = users.isEmpty() && state.layout.references.none { it.materialId == target }, trailing = if (users.isEmpty()) null else tr("materials.references", users.size)))
+					enabled = users.isEmpty() && referenceCount == 0, danger = true,
+					trailing = when { users.isNotEmpty() -> tr("materials.references", users.size)
+						referenceCount > 0 -> tr("materials.menu.referenceUses", referenceCount); else -> null }))
 			}
-		}
+		}.map { line -> if (line is MenuLine.Action && line.edits) line.copy(enabled = line.enabled && editable) else line }
 		PressMenu(menuShown && lines.isNotEmpty(), menuAt, onDismissRequest = { menuShown = false }) {
 			io.github.psd2live.ui.views.tooloptions.GlidingColumn(Modifier.width(236.dp), lines.size,
-				highlights = { i -> (lines[i] as? MenuLine.Action)?.enabled == true }) { i ->
+				highlights = { i -> (lines[i] as? MenuLine.Action)?.enabled == true },
+				dangers = { i -> (lines[i] as? MenuLine.Action)?.danger == true }) { i ->
 				when (val line = lines[i]) {
 					is MenuLine.Section -> FloatingMenuSection(line.text)
 					MenuLine.Rule -> FloatingMenuDivider()
-					is MenuLine.Action -> FloatingMenuRow(line.label, line.run, enabled = line.enabled, trailing = line.trailing)
+					is MenuLine.Action -> FloatingMenuRow(line.label, line.run, enabled = line.enabled, trailing = line.trailing, selected = line.selected, danger = line.danger)
 				}
 			}
 		}
-	}
 
-	renaming?.let { id ->
-		val current = library.item(id)?.name ?: library.folder(id)?.name ?: run { renaming = null; return@let }
-		NameDialog(tr("materials.menu.rename"), current, onDismiss = { renaming = null }) { name -> renaming = null; vm.renameMaterial(id, name) }
-	}
-	resolution?.let { id ->
-		val item = library.item(id) ?: run { resolution = null; return@let }
-		NameDialog(tr("materials.menu.resolution"), "${item.raster.width}x${item.raster.height}", onDismiss = { resolution = null }) { text ->
-			resolution = null
-			val parts = text.lowercase().split('x', '×', ' ', ',').mapNotNull { it.trim().toIntOrNull() }
-			if (parts.size == 2) vm.setMaterialResolution(id, parts[0], parts[1])
-			else vm.setErrorMessage(tr("materials.resolution.invalid"))
+		tagging?.let { id ->
+			val tags = library.item(id)?.tags ?: library.folder(id)?.tags ?: run { tagging = null; return@let }
+			NameDialog(tr("materials.menu.tags"), tags.joinToString(", "), onDismiss = { tagging = null }, allowEmpty = true,
+				hint = tr("materials.tags.hint")) { text ->
+				tagging = null
+				vm.tagMaterials(listOf(id), text.split(',', '，', '\n').map { it.trim() }.filter { it.isNotEmpty() }.toSet())
+			}
+		}
+		renaming?.let { id ->
+			val current = library.item(id)?.name ?: library.folder(id)?.name ?: run { renaming = null; return@let }
+			NameDialog(tr("materials.menu.rename"), current, onDismiss = { renaming = null }) { name -> renaming = null; vm.renameMaterial(id, name) }
+		}
+		resolution?.let { id ->
+			val item = library.item(id) ?: run { resolution = null; return@let }
+			NameDialog(tr("materials.menu.resolution"), "${item.raster.width}x${item.raster.height}", onDismiss = { resolution = null }) { text ->
+				resolution = null
+				val parts = text.lowercase().split('x', '×', ' ', ',').mapNotNull { it.trim().toIntOrNull() }
+				if (parts.size == 2) vm.setMaterialResolution(id, parts[0], parts[1])
+				else vm.setErrorMessage(tr("materials.resolution.invalid"))
+			}
 		}
 	}
 }
@@ -579,7 +639,7 @@ private fun FolderRow(name: String, kind: String?, depth: Int, selected: Boolean
 	val colors = LocalToolColors.current
 	Row(modifier.fillMaxWidth().height(22.dp)
 		.background(when { dropping -> colors.accent.copy(alpha = 0.25f); selected -> colors.selection; else -> Color.Transparent })
-		.onPointerEvent(PointerEventType.Press) { event -> if (event.button == PointerButton.Secondary) onMenu(event.changes.first().position) }
+		.materialEntryMenu(onMenu)
 		.clickable(onClick = onSelect).padding(start = (2 + depth * 9).dp, end = 4.dp),
 		verticalAlignment = Alignment.CenterVertically) {
 		Box(Modifier.size(12.dp).clickable(enabled = hasChildren, onClick = onToggle), contentAlignment = Alignment.Center) {
@@ -600,7 +660,7 @@ private fun FolderRow(name: String, kind: String?, depth: Int, selected: Boolean
 @OptIn(ExperimentalComposeUiApi::class)
 private fun Modifier.materialGestures(entry: MaterialEntry, vm: PSD2LiveViewModel, onSelect: () -> Unit, onOpen: () -> Unit,
                                       onMenu: (Offset) -> Unit, onDrop: () -> Boolean, origin: () -> Offset): Modifier = this
-	.onPointerEvent(PointerEventType.Press) { event -> if (event.button == PointerButton.Secondary) onMenu(origin() + event.changes.first().position) }
+	.materialEntryMenu { onMenu(origin() + it) }
 	.pointerInput(entry.id) { detectTapGestures(onPress = { onSelect() }, onDoubleTap = { onOpen() }) }
 	.pointerInput(entry.id) {
 		detectDragGestures(
@@ -725,23 +785,19 @@ private fun MaterialRow(entry: MaterialEntry, selected: Boolean, dropping: Boole
 }
 
 @Composable
-private fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+private fun NameDialog(title: String, initial: String, onDismiss: () -> Unit, allowEmpty: Boolean = false,
+                       hint: String? = null, onConfirm: (String) -> Unit) {
 	val colors = LocalToolColors.current
-	var text by remember { mutableStateOf(initial) }
-	androidx.compose.ui.window.Popup(alignment = Alignment.Center, onDismissRequest = onDismiss,
-		properties = androidx.compose.ui.window.PopupProperties(focusable = true)) {
-		Column(Modifier.width(240.dp).clip(RoundedCornerShape(6.dp)).background(colors.panelElevated)
-			.border(0.5.dp, colors.border, RoundedCornerShape(6.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-			Text(title, color = colors.textPrimary, fontSize = 12.sp)
-			CompactTextField(text, { text = it }, selectAllOnFocus = true, onCommit = { if (text.isNotBlank()) onConfirm(text.trim()) },
-				modifier = Modifier.fillMaxWidth())
-			Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-				Text(tr("action.cancel"), color = colors.textMuted, fontSize = 11.sp,
-					modifier = Modifier.clip(RoundedCornerShape(3.dp)).clickable(onClick = onDismiss).padding(horizontal = 8.dp, vertical = 3.dp))
-				Text(tr("dialog.ok"), color = colors.accent, fontSize = 11.sp,
-					modifier = Modifier.clip(RoundedCornerShape(3.dp)).clickable { if (text.isNotBlank()) onConfirm(text.trim()) }.padding(horizontal = 8.dp, vertical = 3.dp))
-			}
-		}
+	var text by remember(title, initial) { mutableStateOf(initial) }
+	val valid = allowEmpty || text.isNotBlank()
+	val confirm = { if (valid) onConfirm(text.trim()) }
+	ModalDialogFrame(title = title, onDismiss = onDismiss, width = 360.dp, onConfirm = confirm,
+		footer = {
+			CompactButton(tr("action.cancel"), onClick = onDismiss)
+			CompactButton(tr("dialog.ok"), onClick = confirm, enabled = valid, isPrimary = true)
+		}) {
+		if (hint != null) Text(hint, color = colors.textMuted, style = LocalToolTypography.current.caption)
+		CompactTextField(text, { text = it }, selectAllOnFocus = true, onCommit = confirm, modifier = Modifier.fillMaxWidth())
 	}
 }
 
