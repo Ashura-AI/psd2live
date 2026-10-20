@@ -10,6 +10,9 @@
 - 成组菜单只有一条滑动高亮。危险动作通过共享行的 `danger` 标记呈现；列容器同时收到危险行及可用性信息，统一文字、图标和悬停背景。禁用行不响应，也不保留高亮。
 - 普通动作先收起菜单、执行操作，再把焦点交回画布。打开对话框或编辑窗口的动作标为 `opensDialog`，执行后保留该窗口的焦点。`keepsMenu` 动作保留菜单与键盘焦点。
 - 位置不足时一级菜单及二级菜单向可用方向展开；不得为显示二级菜单移动一级菜单。
+- 对象菜单在名称下说明作用范围：多选时写明“仅作用于本项 · 已选 N 项”；改变内容的动作按实际范围命名（当前对象、整条链、此图层），不能只写含义模糊的“删除”。
+- 参数名称左键打开属性，右键提供参数管理菜单（属性、重置当前值、锁定/解锁、复制参数、复制参数 ID、删除参数…）；删除与复制复用属性对话框的确认流程，不在菜单里直接执行。
+- 右键优先级统一为：控件已消费 → 当前手势/鼠标绑定 → 上下文菜单；主画布与图集一致，打开菜单不改变选择或姿态。
 
 ## 层级节点
 
@@ -31,4 +34,4 @@
 
 ## 回归入口
 
-`ReferenceHierarchyInteractionTest` 覆盖节点选取、悬停、拖放及历史/保存恢复，`ReferenceConversionMenuTest` 覆盖单项和批量转换，`MenuActionsTest` 覆盖焦点生命周期，`MenuDangerStyleTest` 覆盖危险及禁用状态。`UiConsistencyTool` 使用合成内容输出明暗主题及界面/字体缩放截图。
+`ReferenceHierarchyInteractionTest` 覆盖节点选取、悬停、拖放及历史/保存恢复，`ReferenceConversionMenuTest` 覆盖单项和批量转换，`MenuActionsTest` 覆盖焦点生命周期，`MenuDangerStyleTest` 覆盖危险及禁用状态，`ContextMenuScopeTest` 覆盖层级删除范围与素材定位行的选择。`UiConsistencyTool` 使用合成内容输出明暗主题及界面/字体缩放截图。
