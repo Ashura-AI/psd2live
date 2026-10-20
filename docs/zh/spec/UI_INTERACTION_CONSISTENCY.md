@@ -2,6 +2,8 @@
 
 本页描述菜单及对象转换的共享交互。颜色、尺寸和动效的跨界面要求仍以 [CLAUDE.md](../../../CLAUDE.md) 为准。
 
+现有右键菜单的入口、内容顺序、重复与缺口，以及后续整理建议见 [右键菜单盘点](CONTEXT_MENU_AUDIT.md)；该盘点区分源码现状与待实现方案，不替代本页交互约定。
+
 ## 菜单
 
 - 画布及层级树的右键菜单用 `PressMenu`，内容用 `GlidingColumn`、`FloatingMenuSection` 与 `FloatingMenuRow`。ArtMesh、参考图及变形器使用相同宽度、行高、高亮和滚动机制。
