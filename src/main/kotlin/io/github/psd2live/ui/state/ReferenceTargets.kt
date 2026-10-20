@@ -37,6 +37,18 @@ sealed interface ReferenceTarget {
 	}
 }
 
+/** The same one-click conversion presented by the hierarchy and canvas menus, in either direction. */
+internal data class ReferenceConversion(val layerId: String, val toReference: Boolean, val enabled: Boolean) {
+	val labelKey get() = if (toReference) "references.toReference" else "references.toModel"
+}
+
+internal fun PSD2LiveState.referenceConversion(layerId: String): ReferenceConversion {
+	val reference = layerId in layout.referenceLayerIds
+	val known = analysis?.source?.layers?.any { it.id.raw == layerId } == true && layerId !in deletedLayerIds
+	val allowed = reference || !layout.generation.generated || layerId in layout.generation.pendingLayerIds || layerId in createdLayerIds
+	return ReferenceConversion(layerId, !reference, known && allowed && !isBusy && !workspaceEditBusy && !editorDraftBusy)
+}
+
 /** Where a reference shows, as `reference_set_mode` names it. */
 enum class ReferenceMode(val key: String, val labelKey: String, val descriptionKey: String, val inModel: Boolean) {
 	/** Behind the whole model, in the editor only. */

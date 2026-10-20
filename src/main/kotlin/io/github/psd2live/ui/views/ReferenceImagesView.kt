@@ -51,6 +51,9 @@ import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.state.ReferenceMode
 import io.github.psd2live.ui.state.ReferencePinRows
 import io.github.psd2live.ui.state.ReferenceTarget
+import io.github.psd2live.ui.state.referenceConversion
+import io.github.psd2live.ui.tooloptions.OptionIcon
+import io.github.psd2live.ui.views.tooloptions.OptionIconView
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.handCursor
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
@@ -325,6 +328,7 @@ internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: P
 	val rows = mutableListOf<Pair<Boolean, @Composable () -> Unit>>()
 	fun add(highlight: Boolean = true, content: @Composable () -> Unit) { rows += highlight to content }
 	add(false) { FloatingMenuSection(row.name) }
+	if (layer != null) add { ReferenceConversionMenuRow(layer.layerId, state, viewModel, close) }
 	for (mode in ReferenceMode.entries) add {
 		FloatingMenuRow(tr(mode.labelKey), { close(); if (mode != row.mode) viewModel.setReferenceMode(row.target, mode) },
 			selected = mode == row.mode, enabled = editable, trailing = tr(if (mode.inModel) "references.inModel" else "references.notInModel"))
@@ -341,9 +345,6 @@ internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: P
 	if (image != null) {
 		add { FloatingMenuRow(tr(if (row.locked) "references.unlock" else "references.lock"), { close(); viewModel.editReference(image.id) { put("locked", !row.locked) } },
 			enabled = editable, icon = { IconLock(row.locked, Modifier.size(12.dp), it) }) }
-	}
-	if (layer != null) add {
-		FloatingMenuRow(tr("references.toModel"), { close(); viewModel.markLayersReference(listOf(layer.layerId), false) }, enabled = editable)
 	}
 	if (puppet != null && puppet.parameters.isNotEmpty()) add {
 		FloatingMenuSubmenuRow(tr("layers.pin.menu"), pinsOpen, { pinsOpen = true },
@@ -367,4 +368,16 @@ internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: P
 			}
 		}
 	}
+}
+
+/** The first action under a layer's name, with the destination's icon, in both directions. */
+@Composable
+internal fun ReferenceConversionMenuRow(layerId: String, state: PSD2LiveState, viewModel: PSD2LiveViewModel, close: () -> Unit) {
+	val conversion = state.referenceConversion(layerId)
+	FloatingMenuRow(tr(conversion.labelKey), {
+		close()
+		viewModel.markLayersReference(listOf(layerId), conversion.toReference)
+	}, enabled = conversion.enabled, icon = {
+		OptionIconView(if (conversion.toReference) OptionIcon.REFERENCE else OptionIcon.MESH, it)
+	})
 }

@@ -101,7 +101,7 @@ class ReferenceOpacityTest {
                             file.parentFile.mkdirs()
                             scene.render(time + 16_000_000).use { file.writeBytes(requireNotNull(it.encodeToData()).bytes) }
                         }
-                        val start = androidx.compose.ui.geometry.Offset(90f, 149f)
+                        val start = androidx.compose.ui.geometry.Offset(90f, 178f)
                         scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Move, start)
                         frames()
                         scene.sendPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press, start,
