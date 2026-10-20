@@ -83,10 +83,19 @@ private const val MAX_SCALE = 2.5f
 private const val ZOOM_STEP = 1.15f
 private const val VIEW_SAVE_DELAY_MS = 300L
 
-/** The camera and filters of the history view, as the project opened as [generation] saves them. */
-private data class HistoryViewState(val scale: Float, val pan: Offset, val search: String, val showHidden: Boolean, val generation: Long) {
+/** The camera, filters and view mode of the history view, as the project opened as [generation] saves them. */
+private data class HistoryViewState(
+	val scale: Float,
+	val pan: Offset,
+	val search: String,
+	val showHidden: Boolean,
+	val compressed: Boolean,
+	val generation: Long,
+) {
 	fun save(viewModel: PSD2LiveViewModel) {
-		if (viewModel.state.value.projectOpenGeneration == generation) viewModel.setHistoryView(scale, pan.x, pan.y, search, showHidden)
+		if (viewModel.state.value.projectOpenGeneration != generation) return
+		viewModel.setHistoryView(scale, pan.x, pan.y, search, showHidden)
+		viewModel.setHistoryCompressed(compressed)
 	}
 }
 
@@ -110,6 +119,8 @@ fun HistoryTreeView(
 	val densityFactor = density.density
 
 	var showHidden by remember(state.projectOpenGeneration) { mutableStateOf(state.historyShowHidden) }
+	// Compact view merges consecutive linear versions into one card; the full view keeps one card per version.
+	var compressed by remember(state.projectOpenGeneration) { mutableStateOf(state.historyCompressed) }
 	val fullHistory = state.historySnapshot
 	val hiddenIds = remember(fullHistory, state.historyAnnotations, showHidden) {
 		val hidden = if (showHidden) mutableSetOf() else state.historyAnnotations.filterValues { it.hidden }.keys.toMutableSet()
@@ -134,8 +145,10 @@ fun HistoryTreeView(
 	var isOperationListOpen by remember { mutableStateOf(true) }
 
 	// The view is saved once it settles: each step of a pan or zoom would update the whole app state.
-	val savedView by rememberUpdatedState(HistoryViewState(scale, panOffset, searchQuery, showHidden, state.projectOpenGeneration))
-	LaunchedEffect(scale, panOffset, searchQuery, showHidden) {
+	val savedView by rememberUpdatedState(
+		HistoryViewState(scale, panOffset, searchQuery, showHidden, compressed, state.projectOpenGeneration)
+	)
+	LaunchedEffect(scale, panOffset, searchQuery, showHidden, compressed) {
 		delay(VIEW_SAVE_DELAY_MS)
 		savedView.save(viewModel)
 	}
@@ -176,11 +189,18 @@ fun HistoryTreeView(
 		}
 		chain.toList()
 	}
-	val headLine = remember(operationChain) { operationChain.mapTo(HashSet()) { it.id } }
+	// Compact view: consecutive linear versions share one card, while forks keep separate cards.
+	val grouping = remember(historySnapshot, compressed) { groupHistory(historySnapshot.nodes, compressed) }
+	// Cards on the path to HEAD, so the branch line reads as one path like the operation list.
+	val headLine = remember(operationChain, grouping) {
+		operationChain.mapNotNullTo(HashSet()) { node -> grouping.byNodeId[node.id] }
+	}
+	val selectedGroupId = remember(grouping, selectedNodeId) { selectedNodeId?.let(grouping.byNodeId::get) }
 
 	// Calculate Tree Layout in world DP units
-	val (_, allLayoutNodes, boundsWidth, boundsHeight) = remember(historySnapshot) {
-		calculateTreeLayout(historySnapshot.nodes)
+	val layoutNodes = remember(grouping) { grouping.layoutNodes() }
+	val (_, allLayoutNodes, boundsWidth, boundsHeight) = remember(layoutNodes) {
+		calculateTreeLayout(layoutNodes)
 	}
 
 	fun worldToScreenX(worldXDp: Float): Float {
@@ -210,9 +230,10 @@ fun HistoryTreeView(
 		panOffset = Offset(targetPanX, marginPx)
 	}
 
-	/** Pans so node [id] sits in the middle of the viewport, at the current zoom. */
+	/** Pans so the card holding node [id] sits in the middle of the viewport, at the current zoom. */
 	fun centerOn(id: String) {
-		val layout = allLayoutNodes.firstOrNull { it.node.id == id } ?: return
+		val groupId = grouping.byNodeId[id] ?: id
+		val layout = allLayoutNodes.firstOrNull { it.node.id == groupId } ?: return
 		val worldX = layout.x + NODE_WIDTH_DP / 2f + CANVAS_PADDING_DP
 		val worldY = layout.y + NODE_HEIGHT_DP / 2f + CANVAS_PADDING_DP
 		panOffset = Offset(viewportSize.width / 2f - worldX * scale * densityFactor, viewportSize.height / 2f - worldY * scale * densityFactor)
@@ -222,9 +243,10 @@ fun HistoryTreeView(
 	val newestNode = remember(fullHistory) { fullHistory?.nodes?.maxByOrNull { it.createdAt } }
 	// Centred once the checkout lands and the tree is laid out again with it.
 	var pendingCenter by remember { mutableStateOf<String?>(null) }
-	LaunchedEffect(allLayoutNodes, pendingCenter) {
+	LaunchedEffect(allLayoutNodes, grouping, pendingCenter) {
 		val id = pendingCenter ?: return@LaunchedEffect
-		if (allLayoutNodes.any { it.node.id == id && it.node.isHead }) { centerOn(id); pendingCenter = null }
+		val groupId = grouping.byNodeId[id] ?: id
+		if (allLayoutNodes.any { it.node.id == groupId && it.node.isHead }) { centerOn(id); pendingCenter = null }
 	}
 
 	/** Zooms by [factor] about [anchor], a point in the viewport that stays put. */
@@ -251,6 +273,8 @@ fun HistoryTreeView(
 			onToggleOperationList = { isOperationListOpen = !isOperationListOpen },
 			showHidden = showHidden,
 			onToggleHidden = { showHidden = !showHidden },
+			compressed = compressed,
+			onToggleCompressed = { compressed = !compressed },
 			searchQuery = searchQuery,
 			onSearchChange = { searchQuery = it },
 			onUndo = viewModel::undoHistory,
@@ -271,7 +295,9 @@ fun HistoryTreeView(
 				.fillMaxWidth()
 				.clipRectToBounds(),
 		) {
-			// Photoshop-style operation list: the chain that led to the current state.
+			// Photoshop-style operation list: the chain that led to the current state. Every step stays
+			// listed here even when the tree merges a linear run into one card, so this is where a step
+			// inside a run is picked for checkout -- and continuing to edit from it starts a new branch.
 			if (isOperationListOpen) {
 				OperationListSidebar(
 					chain = operationChain,
@@ -280,6 +306,9 @@ fun HistoryTreeView(
 					onCheckout = { viewModel.checkoutHistoryNode(it) },
 					paintSession = viewModel.canvasEditor.paintSession,
 					onJumpToPaintStroke = { viewModel.canvasEditor.jumpToPaintStroke(it) },
+					compressed = compressed,
+					groupOfNode = grouping.byNodeId,
+					selectedNodeId = selectedNodeId,
 				)
 			}
 
@@ -363,7 +392,7 @@ fun HistoryTreeView(
 
 					val cardShape = RoundedCornerShape((4 * scale.coerceIn(0.5f, 1.2f)).dp)
 					for (layoutNode in allLayoutNodes) {
-						val node = layoutNode.node
+						val group = grouping.byGroupId[layoutNode.node.id] ?: continue
 						val cardX = worldToScreenX(layoutNode.x).roundToInt()
 						val cardY = worldToScreenY(layoutNode.y).roundToInt()
 						// Culling outside viewport
@@ -374,24 +403,19 @@ fun HistoryTreeView(
 						) {
 							continue
 						}
-						val matchesSearch = searchQuery.isBlank() ||
-							node.summary.contains(searchQuery, ignoreCase = true) ||
-							node.id.contains(searchQuery, ignoreCase = true) ||
-							node.actor.contains(searchQuery, ignoreCase = true) ||
-							state.historyAnnotations[node.id]?.title?.contains(searchQuery, ignoreCase = true) == true
 						HistoryNodeCard(
-							node = node,
-							annotation = state.historyAnnotations[node.id],
-							selected = node.id == selectedNodeId,
-							dimmed = !matchesSearch,
+							group = group,
+							annotations = state.historyAnnotations,
+							selected = group.id == selectedGroupId,
+							dimmed = !group.matchesSearch(searchQuery, state.historyAnnotations),
 							scale = scale,
 							shape = cardShape,
 							onClick = {
-								viewModel.selectHistoryNode(node.id)
+								viewModel.selectHistoryNode(group.target.id)
 								isInspectionPanelOpen = true
 							},
 							onDoubleClick = {
-								if (!node.isHead && !state.workspaceEditBusy) viewModel.checkoutHistoryNode(node.id)
+								if (!group.target.isHead && !state.workspaceEditBusy) viewModel.checkoutHistoryNode(group.target.id)
 							},
 							modifier = Modifier
 								.offset { IntOffset(cardX, cardY) }
@@ -403,6 +427,7 @@ fun HistoryTreeView(
 				// Bottom-left: node count and zoom, where the edit canvas keeps its stats pill.
 				ZoomPill(
 					nodeCount = historySnapshot.nodes.size,
+					segmentCount = if (compressed) grouping.groups.size else null,
 					scale = scale,
 					onZoomOut = { zoomAbout(1f / ZOOM_STEP) },
 					onZoomIn = { zoomAbout(ZOOM_STEP) },
@@ -430,13 +455,15 @@ fun HistoryTreeView(
 	}
 }
 
-/** Search, the operation list, undo and redo, and whether hidden nodes show. */
+/** Search, the operation list, undo and redo, the compact view and whether hidden nodes show. */
 @Composable
 private fun HistoryToolbar(
 	operationListOpen: Boolean,
 	onToggleOperationList: () -> Unit,
 	showHidden: Boolean,
 	onToggleHidden: () -> Unit,
+	compressed: Boolean,
+	onToggleCompressed: () -> Unit,
 	searchQuery: String,
 	onSearchChange: (String) -> Unit,
 	onUndo: () -> Unit,
@@ -446,10 +473,10 @@ private fun HistoryToolbar(
 ) {
 	val colors = LocalToolColors.current
 	// Labels appear in this order as the panel widens, each only once everything before it fits.
-	val labels = listOf(tr("history.latest"), tr("history.operations"), tr("project.historyShow"))
+	val labels = listOf(tr("history.latest"), tr("history.operations"), tr("history.compact"), tr("project.historyShow"))
 	PanelToolbar(
 		labels = labels,
-		iconCount = 5,
+		iconCount = 6,
 		search = PanelSearch(searchQuery, onSearchChange, tr("history.search")),
 	) { labelsShown ->
 		PanelToolButton(
@@ -483,6 +510,16 @@ private fun HistoryToolbar(
 		PanelToolButton(
 			label = labels[2],
 			showLabel = labelsShown > 2,
+			onClick = onToggleCompressed,
+			enabled = true,
+			active = compressed,
+			tooltip = tr("history.compact.tooltip"),
+		) {
+			IconCompactHistory(tint = if (compressed) colors.accent else colors.textPrimary)
+		}
+		PanelToolButton(
+			label = labels[3],
+			showLabel = labelsShown > 3,
 			onClick = onToggleHidden,
 			enabled = true,
 			active = showHidden,
@@ -498,14 +535,15 @@ private fun HistoryToolbar(
 }
 
 /**
- * One history node on the tree. HEAD carries a highlight stripe down its left edge, the selected
- * card takes the selection color, and cards outside a search fade back.
+ * One card of the history tree: a single version in the full view, or a merged linear run in the
+ * compact view. HEAD carries a highlight stripe down its left edge, the selected card takes the
+ * selection color, and cards outside a search fade back.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HistoryNodeCard(
-	node: WorkspaceHistoryNodeSnapshot,
-	annotation: HistoryAnnotation?,
+	group: HistoryNodeGroup,
+	annotations: Map<String, HistoryAnnotation>,
 	selected: Boolean,
 	dimmed: Boolean,
 	scale: Float,
@@ -518,17 +556,23 @@ private fun HistoryNodeCard(
 	val typography = LocalToolTypography.current
 	val interaction = remember { MutableInteractionSource() }
 	val hovered by interaction.collectIsHoveredAsState()
-	val isHead = node.isHead
+	val node = group.target
+	val annotation = annotations[node.id]
+	val isHead = group.isHead
+	val isRun = group.size > 1
 	// A hidden branch still drawn because "show hidden" is on reads as set aside.
 	val fade = when {
 		dimmed -> 0.35f
-		annotation?.hidden == true -> 0.6f
+		group.nodes.any { annotations[it.id]?.hidden == true } -> 0.6f
 		else -> 1f
 	}
 	val textScale = scale.coerceIn(0.6f, 1.4f)
 	val stripe = (3 * scale.coerceIn(0.6f, 1.2f)).dp
 	TooltipArea(
-		tooltip = { NodeTooltip(node, annotation, hint = if (isHead) null else tr("history.hint.doubleClick")) },
+		tooltip = {
+			if (isRun) GroupTooltip(group, annotations, hint = if (node.isHead) null else tr("history.hint.groupDoubleClick"))
+			else NodeTooltip(node, annotation, hint = if (isHead) null else tr("history.hint.doubleClick"))
+		},
 		modifier = modifier,
 		delayMillis = Motion.TooltipDelay,
 	) {
@@ -591,6 +635,15 @@ private fun HistoryNodeCard(
 						overflow = TextOverflow.Ellipsis,
 						modifier = Modifier.weight(1f),
 					)
+					if (isRun) {
+						Spacer(Modifier.width((4 * scale).dp))
+						Text(
+							text = "×${group.size}",
+							style = typography.monoSmall.copy(fontSize = (9 * scale).sp, fontWeight = FontWeight.Bold),
+							color = metaColor,
+							maxLines = 1,
+						)
+					}
 					if (isHead) {
 						Spacer(Modifier.width((4 * scale).dp))
 						Text(
@@ -694,10 +747,111 @@ private fun NodeTooltip(node: WorkspaceHistoryNodeSnapshot, annotation: HistoryA
 	}
 }
 
+/** How many steps of a merged run its card tooltip lists before it cuts off. */
+private const val GROUP_TOOLTIP_ROWS = 8
+
+/**
+ * The tooltip of a merged card. The card shows the end of its run, so the tooltip adds how many
+ * steps the run holds, its time span and the first few steps themselves: the left operations list
+ * is where a step inside the run is picked for checkout.
+ */
+@Composable
+private fun GroupTooltip(group: HistoryNodeGroup, annotations: Map<String, HistoryAnnotation>, hint: String?) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val node = group.target
+	val annotation = annotations[node.id]
+	val customTitle = annotation?.title?.takeIf { it.isNotBlank() }
+	val note = annotation?.note?.takeIf { it.isNotBlank() }
+	Surface(
+		color = colors.panelElevated,
+		shape = RoundedCornerShape(3.dp),
+		border = BorderStroke(1.dp, colors.border),
+		elevation = 4.dp,
+	) {
+		Column(
+			modifier = Modifier.widthIn(max = 300.dp).padding(horizontal = 8.dp, vertical = 6.dp),
+			verticalArrangement = Arrangement.spacedBy(3.dp),
+		) {
+			Row(verticalAlignment = Alignment.CenterVertically) {
+				Text(
+					text = customTitle ?: node.summary,
+					style = typography.body.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
+					color = colors.textPrimary,
+					modifier = Modifier.weight(1f, fill = false),
+				)
+				if (group.isHead) {
+					Spacer(Modifier.width(6.dp))
+					Text(
+						text = tr("history.head"),
+						style = typography.monoSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+						color = colors.highlight,
+					)
+				}
+			}
+			if (customTitle != null) {
+				Text(text = node.summary, style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted)
+			}
+			Row(verticalAlignment = Alignment.CenterVertically) {
+				Text(
+					text = tr("history.group.steps", group.size),
+					style = typography.caption.copy(fontSize = 10.sp),
+					color = colors.textMuted,
+				)
+				Spacer(Modifier.width(6.dp))
+				Text(
+					text = "${shortTime(group.first.createdAt)} → ${shortTime(node.createdAt)}",
+					style = typography.caption.copy(fontSize = 10.sp),
+					color = colors.textMuted,
+					maxLines = 1,
+				)
+			}
+			group.nodes.take(GROUP_TOOLTIP_ROWS).forEach { member ->
+				Text(
+					text = "· " + (annotations[member.id]?.title?.takeIf { it.isNotBlank() } ?: member.summary),
+					style = typography.caption.copy(fontSize = 10.sp),
+					color = if (member.isHead) colors.highlight else colors.textMuted,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
+				)
+			}
+			if (group.size > GROUP_TOOLTIP_ROWS) {
+				Text(text = "…", style = typography.caption.copy(fontSize = 10.sp), color = colors.textDisabled)
+			}
+			if (note != null) {
+				Row(verticalAlignment = Alignment.Top) {
+					IconNote(tint = colors.textMuted, modifier = Modifier.padding(top = 2.dp).size(10.dp))
+					Spacer(Modifier.width(4.dp))
+					Text(text = note, style = typography.caption.copy(fontSize = 10.sp), color = colors.textPrimary)
+				}
+			}
+			Row(verticalAlignment = Alignment.CenterVertically) {
+				ActorBadge(actor = node.actor)
+				Spacer(Modifier.width(6.dp))
+				Text(
+					text = node.createdAt.take(19).replace('T', ' '),
+					style = typography.caption.copy(fontSize = 10.sp),
+					color = colors.textMuted,
+				)
+				Spacer(Modifier.width(6.dp))
+				Text(
+					text = "#${node.id.takeLast(10)}",
+					style = typography.monoSmall.copy(fontSize = 9.5.sp),
+					color = colors.textMuted,
+				)
+			}
+			if (hint != null) {
+				Text(text = hint, style = typography.caption.copy(fontSize = 9.5.sp), color = colors.textDisabled)
+			}
+		}
+	}
+}
+
 /** Node count and zoom controls on a frosted pill, as the edit canvas shows its stats. */
 @Composable
 private fun ZoomPill(
 	nodeCount: Int,
+	segmentCount: Int?,
 	scale: Float,
 	onZoomOut: () -> Unit,
 	onZoomIn: () -> Unit,
@@ -714,7 +868,8 @@ private fun ZoomPill(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		Text(
-			text = tr("history.nodeCount", nodeCount),
+			text = if (segmentCount == null) tr("history.nodeCount", nodeCount)
+			else tr("history.nodeCount.compressed", nodeCount, segmentCount),
 			style = typography.caption.copy(fontSize = 11.sp),
 			color = colors.textMuted,
 			modifier = Modifier.padding(horizontal = 5.dp),
@@ -956,15 +1111,20 @@ private fun OperationListSidebar(
 	onCheckout: (String) -> Unit,
 	paintSession: PaintSession? = null,
 	onJumpToPaintStroke: ((Int) -> Unit)? = null,
+	compressed: Boolean = false,
+	groupOfNode: Map<String, String> = emptyMap(),
+	selectedNodeId: String? = null,
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val listState = rememberLazyListState()
 	val headId = chain.lastOrNull()?.id
-
-	// The newest operation is the one you step back from, so it stays in sight as the chain grows.
-	LaunchedEffect(headId) {
-		if (chain.isNotEmpty()) listState.animateScrollToItem(chain.lastIndex)
+	val selectedIndex = remember(chain, selectedNodeId) { chain.indexOfFirst { it.id == selectedNodeId } }
+	// The newest operation is the one you step back from, so it stays in sight as the chain grows;
+	// in the compact view a selected card also scrolls the list to the run it belongs to.
+	val scrollTarget = if (compressed) selectedIndex.takeIf { it >= 0 } ?: chain.lastIndex else chain.lastIndex
+	LaunchedEffect(headId, scrollTarget) {
+		if (chain.isNotEmpty() && scrollTarget >= 0) listState.animateScrollToItem(scrollTarget)
 	}
 
 	Row(Modifier.fillMaxHeight()) {
@@ -1009,18 +1169,31 @@ private fun OperationListSidebar(
 					.fillMaxWidth(),
 			) {
 				itemsIndexed(chain, key = { _, node -> node.id }) { index, node ->
-					ListRow(
-						tooltip = {
-							NodeTooltip(node, annotations[node.id], hint = if (node.isHead) null else tr("history.hint.click"))
-						},
-						index = "${index + 1}",
-						// The annotations are what the tree cards show, so a renamed node reads the same here.
-						title = annotations[node.id]?.title?.takeIf { it.isNotBlank() } ?: node.summary,
-						current = node.isHead,
-						enabled = enabled,
-						onClick = { onCheckout(node.id) },
-						trailing = { ActorBadge(actor = node.actor, scale = 0.85f) },
-					)
+					Column {
+						// A ruled line marks where the tree's merged run ends and the next one begins.
+						if (compressed && index > 0 && groupOfNode[chain[index - 1].id] != groupOfNode[node.id]) {
+							Box(
+								Modifier
+									.fillMaxWidth()
+									.padding(horizontal = 6.dp)
+									.height(1.dp)
+									.background(colors.divider),
+							)
+						}
+						ListRow(
+							tooltip = {
+								NodeTooltip(node, annotations[node.id], hint = if (node.isHead) null else tr("history.hint.click"))
+							},
+							index = "${index + 1}",
+							// The annotations are what the tree cards show, so a renamed node reads the same here.
+							title = annotations[node.id]?.title?.takeIf { it.isNotBlank() } ?: node.summary,
+							current = node.isHead,
+							selected = node.id == selectedNodeId,
+							enabled = enabled,
+							onClick = { onCheckout(node.id) },
+							trailing = { ActorBadge(actor = node.actor, scale = 0.85f) },
+						)
+					}
 				}
 			}
 		}
@@ -1065,6 +1238,7 @@ private fun ListRow(
 	enabled: Boolean,
 	onClick: () -> Unit,
 	future: Boolean = false,
+	selected: Boolean = false,
 	trailing: (@Composable () -> Unit)? = null,
 ) {
 	val colors = LocalToolColors.current
@@ -1081,6 +1255,7 @@ private fun ListRow(
 				.background(
 					when {
 						current -> colors.selection
+						selected -> colors.selection.copy(alpha = 0.42f)
 						hovered && canRewind -> colors.controlHover.copy(alpha = 0.3f)
 						else -> Color.Transparent
 					}
@@ -1197,6 +1372,15 @@ private fun IconOperationList(tint: Color) = GridIcon(Modifier.size(12.dp), tint
 		dot(2.8f, y, 1.4f)
 		line(6.4f, y, 15.8f, y)
 	}
+}
+
+/** Two ends pressed together with arrows between: the compact view merges the versions in between. */
+@Composable
+private fun IconCompactHistory(tint: Color) = GridIcon(Modifier.size(12.dp), tint) {
+	line(3.4f, 4f, 14.6f, 4f)
+	line(3.4f, 14f, 14.6f, 14f)
+	chevron(9f, 8.4f, 0f, 1f, 2.6f)
+	chevron(9f, 9.6f, 0f, -1f, 2.6f)
 }
 
 @Composable

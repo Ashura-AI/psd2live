@@ -44,6 +44,7 @@ class SaveAndCloseTest {
         vm.setParameterSearchQuery("Angle")
         vm.setHierarchyView(width = 250f, collapsed = true, search = "layer")
         vm.setHistoryView(1.5f, 10f, 20f, "edit", true)
+        vm.setHistoryCompressed(false)
         vm.setDrawOrderRulerWidth(45f)
         vm.setInspectorCollapsed(true)
         vm.setDynamicsSubExpanded(true)
@@ -85,6 +86,7 @@ class SaveAndCloseTest {
         vm.saveProjectNow(temp.resolve("presentation.psd2live"))
         workspace.open(temp.resolve("presentation.psd2live"))
         assertEquals(TabCamera(2f, 30f, 40f), vm.state.value.activeCanvas.camera)
+        assertFalse(vm.state.value.historyCompressed, "The history view mode must survive save and reopen")
         assertFalse(vm.state.value.projectDirty)
         assertEquals(head, workspace.snapshot().historyHeadNodeId)
     }

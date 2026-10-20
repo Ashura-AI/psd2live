@@ -468,6 +468,8 @@ data class PSD2LiveState(
     val historyPanY: Float = 0f,
     val historySearch: String = "",
     val historyShowHidden: Boolean = false,
+    /** Compact history tree: consecutive linear versions share a card. The toolbar keeps the full view. */
+    val historyCompressed: Boolean = true,
     val hierarchyWidth: Float = 210f,
     val hierarchySearch: String = "",
     val drawOrderRulerWidth: Float = 24f,

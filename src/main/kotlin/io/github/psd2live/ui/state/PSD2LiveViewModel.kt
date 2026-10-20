@@ -2930,6 +2930,11 @@ class PSD2LiveViewModel : AutoCloseable {
         updateState { if (it.historyZoom == zoom && it.historyPanX == x && it.historyPanY == y && it.historySearch == search && it.historyShowHidden == showHidden) it
             else it.copy(historyZoom = zoom, historyPanX = x, historyPanY = y, historySearch = search, historyShowHidden = showHidden) }
     }
+
+    /** Switches the history tree between the compact run view and the full per-node view. */
+    fun setHistoryCompressed(compressed: Boolean) {
+        updateState { if (it.historyCompressed == compressed) it else it.copy(historyCompressed = compressed) }
+    }
     fun setHierarchyView(width: Float = _state.value.hierarchyWidth, collapsed: Boolean = _state.value.hierarchyCollapsed, search: String = _state.value.hierarchySearch) {
         val clampedWidth = width.coerceIn(100f, 600f)
         updateState { current ->

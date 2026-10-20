@@ -330,6 +330,7 @@ internal object WorkspaceStateCodec {
         put("historyPanY", state.historyPanY)
         put("historySearch", state.historySearch)
         put("historyShowHidden", state.historyShowHidden)
+        put("historyCompressed", state.historyCompressed)
         put("hierarchyWidth", state.hierarchyWidth)
         put("hierarchyCollapsed", state.hierarchyCollapsed)
         put("hierarchySearch", state.hierarchySearch)
@@ -483,6 +484,7 @@ internal object WorkspaceStateCodec {
         historyPanY = value["historyPanY"]?.jsonPrimitive?.float ?: base.historyPanY,
         historySearch = value["historySearch"]?.jsonPrimitive?.content ?: base.historySearch,
         historyShowHidden = value["historyShowHidden"]?.jsonPrimitive?.boolean ?: base.historyShowHidden,
+        historyCompressed = value["historyCompressed"]?.jsonPrimitive?.boolean ?: base.historyCompressed,
         hierarchyWidth = value["hierarchyWidth"]?.jsonPrimitive?.float ?: base.hierarchyWidth,
         hierarchySearch = value["hierarchySearch"]?.jsonPrimitive?.content ?: base.hierarchySearch,
         drawOrderRulerWidth = value["drawOrderRulerWidth"]?.jsonPrimitive?.float ?: base.drawOrderRulerWidth,
