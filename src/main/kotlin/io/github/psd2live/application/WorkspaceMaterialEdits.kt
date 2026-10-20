@@ -58,7 +58,7 @@ internal object WorkspaceMaterialEdits {
     const val ORDER_REFERENCE = "layout_order_reference"
     const val FORK = "material_fork"
     const val ADOPT = "material_adopt_layers"
-    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, FORK, ADOPT, REFERENCE, ADD_REFERENCE, ORDER_REFERENCE, WorkspaceReferenceModes.OP, CROP, MARK_REFERENCE) + WorkspaceMaterialPixels.supported +
+    val supported = setOf(ADD, FOLDER, MOVE, RENAME, DELETE, TAG, RESOLUTION, PLACE, UNLINK, FORK, ADOPT, REFERENCE, ADD_REFERENCE, ORDER_REFERENCE, WorkspaceReferenceModes.OP, WorkspaceReferenceOpacity.OP, CROP, MARK_REFERENCE) + WorkspaceMaterialPixels.supported +
         WorkspaceDrawingEdits.supported + WorkspaceMaterialPeel.supported
     const val MAX_NAME = 128
 
@@ -93,6 +93,7 @@ internal object WorkspaceMaterialEdits {
                 optional("layer_id"), request["reference"]?.jsonPrimitive?.boolean)
             REFERENCE -> reference(document, request)
             ADD_REFERENCE -> addReference(document, request)
+            WorkspaceReferenceOpacity.OP -> WorkspaceReferenceOpacity.apply(document, model, request)
             WorkspaceReferenceModes.OP -> WorkspaceReferenceModes.apply(document, model, request)
             ORDER_REFERENCE -> orderReference(document, text("id"), request.getValue("index").jsonPrimitive.int)
             MARK_REFERENCE -> markReference(document, strings("ids").orEmpty(), request.getValue("reference").jsonPrimitive.boolean)

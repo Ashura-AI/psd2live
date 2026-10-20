@@ -84,6 +84,8 @@ internal object WorkspaceLayoutOperations {
                 put("items", buildJsonObject { put("type", "object"); put("additionalProperties", number()) }) }), listOf("state", "material_id")),
         WorkspaceMaterialEdits.ORDER_REFERENCE to schema(state + mapOf("id" to string(), "index" to buildJsonObject { put("type", "integer"); put("minimum", 0) }),
             listOf("state", "id", "index")),
+        WorkspaceReferenceOpacity.OP to schema(state + mapOf("reference_id" to string(), "layer_id" to string(), "opacity" to range(0, 1)),
+            listOf("state", "opacity")),
         WorkspaceReferenceModes.OP to schema(state + mapOf("reference_id" to string(), "layer_id" to string(),
             "mode" to buildJsonObject { put("type", "string"); put("enum", JsonArray(listOf("background", "layer", "foreground").map(::JsonPrimitive))) }),
             listOf("state", "mode")),
@@ -152,6 +154,7 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialEdits.ADD_REFERENCE to "Add a further reference image on top of the others, with the fields of layout_set_reference; without a rect it is fitted into the canvas and centred. One history edit.",
         WorkspaceMaterialEdits.ORDER_REFERENCE to "Move reference image id to index in the drawing order (0 draws first). One history edit.",
         WorkspaceReferenceModes.OP to "Move one reference - reference image reference_id or reference layer layer_id - to where it shows: background (a reference image behind the model), foreground (a reference image in front of it) or layer (a reference layer in the layer stack between the ArtMeshes, which layer_reorder moves). It keeps its material, rectangle, visibility and keyform pin; a reference image's rotation and lock do not carry into a layer. One history edit.",
+        WorkspaceReferenceOpacity.OP to "Set a reference's opacity 0..1: give reference_id for an image or layer_id for a reference layer. Works before and after rig generation. One history edit.",
         WorkspaceMaterialEdits.CROP to "Crop a material item into a new item, losslessly: rect in the item's own pixels, or canvas_rect in canvas units when the item is the reference image " +
             "(or placed on this canvas by its own placement). The new item remembers where its pixels sit on the canvas, so layer_place without rect lands it on the reference; " +
             "material_export_png writes it to a file, for example to draw a sharper version of the part from it. It keeps the item's tags and folder unless folder_id is given; " +
@@ -206,6 +209,7 @@ internal object WorkspaceLayoutOperations {
         WorkspaceMaterialEdits.ADD_REFERENCE -> "Added a reference image"
         WorkspaceMaterialEdits.ORDER_REFERENCE -> "Reordered the reference images"
         WorkspaceReferenceModes.OP -> "Moved a reference to the ${request.getValue("mode").jsonPrimitive.content}"
+        WorkspaceReferenceOpacity.OP -> "Set reference opacity"
         WorkspaceMaterialEdits.CROP -> "Cropped material ${request.getValue("id").jsonPrimitive.content}"
         WorkspaceMaterialEdits.UNLINK, WorkspaceMaterialEdits.FORK -> "Gave ${request.getValue("layer_ids").jsonArray.size} layer(s) materials of their own"
         WorkspaceMaterialEdits.ADOPT -> "Gave every layer a material"

@@ -5,6 +5,22 @@ import io.github.psd2live.project.WorkspaceLayout
 import org.umamo.runtime.model.Parameter
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
+import io.github.psd2live.core.RigPreviewModel
+import io.github.psd2live.core.RigStructureEdits
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+
+/** A continuous opacity preview; the document changes only when the slider is released. */
+data class ReferenceOpacityDraft(val target: ReferenceTarget, val opacity: Float) {
+	fun preview(model: RigPreviewModel): RigPreviewModel {
+		val layer = target as? ReferenceTarget.Layer ?: return model
+		val edits = model.rig.puppet.drawables.filter { model.rig.layerIdByDrawableId[it.id.raw] == layer.layerId }.map {
+			buildJsonObject { put("action", "static"); put("kind", "mesh"); put("id", it.id.raw); put("opacity", opacity) }
+		}
+		if (edits.isEmpty()) return model
+		return model.copy(rig = model.rig.copy(puppet = RigStructureEdits.apply(model.rig.puppet, edits)))
+	}
+}
 
 /**
  * One reference as the hierarchy and the menus act on it, wherever it shows: a reference image behind or in front of

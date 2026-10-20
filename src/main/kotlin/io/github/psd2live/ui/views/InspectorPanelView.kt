@@ -27,6 +27,7 @@ import androidx.compose.material.Divider
 import androidx.compose.material.DropdownMenu
 import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Text
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -585,30 +586,9 @@ private fun ArtMeshInspector(
             }
         }
 
-        // 8. 不透明度 (Opacity)
-        InspectorFormRow(label = tr("inspector.opacity")) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                CompactNumberSpinner(
-                    value = (drawable.opacity * 100).toDouble(),
-                    onValueChange = { pct ->
-                        val op = (pct / 100f).toFloat().coerceIn(0f, 1f)
-                        viewModel.applyRigStaticLive("mesh.opacity.${drawable.id.raw}", "mesh", drawable.id.raw, "opacity" to JsonPrimitive(op))
-                    },
-                    onEditEnd = { viewModel.endEditorField("mesh.opacity.${drawable.id.raw}") },
-                    modifier = Modifier.weight(1f),
-                    min = 0.0,
-                    max = 100.0,
-                    step = 5.0,
-                    decimals = 0,
-                    unit = "%",
-                    height = 23.dp,
-                )
-            }
-        }
+        val referenceTarget = state.previewModel?.rig?.layerIdByDrawableId?.get(drawable.id.raw)
+            ?.takeIf { it in state.layout.referenceLayerIds }?.let { io.github.psd2live.ui.state.ReferenceTarget.Layer(it) }
+        InspectorOpacityRow(drawable.opacity, "mesh", drawable.id.raw, viewModel, referenceTarget)
 
         // 9. 正片叠底色 (Multiply Color)
         InspectorColorRow(
@@ -795,24 +775,7 @@ private fun WarpDeformerInspector(
             )
         }
 
-        // 5. 不透明度 (Opacity)
-        InspectorFormRow(label = tr("inspector.opacity")) {
-            CompactNumberSpinner(
-                value = (warp.opacity * 100).toDouble(),
-                onValueChange = { pct ->
-                    val op = (pct / 100f).toFloat().coerceIn(0f, 1f)
-                    viewModel.applyRigStaticLive("warp.opacity.${warp.id.raw}", "warp", warp.id.raw, "opacity" to JsonPrimitive(op))
-                },
-                onEditEnd = { viewModel.endEditorField("warp.opacity.${warp.id.raw}") },
-                modifier = Modifier.fillMaxWidth(),
-                min = 0.0,
-                max = 100.0,
-                step = 5.0,
-                decimals = 0,
-                unit = "%",
-                height = 23.dp,
-            )
-        }
+        InspectorOpacityRow(warp.opacity, "warp", warp.id.raw, viewModel)
 
         // 6. 正片叠底色 (Multiply Color)
         InspectorColorRow(
@@ -1027,23 +990,7 @@ private fun RotationDeformerInspector(
             )
         }
 
-        InspectorFormRow(label = tr("inspector.opacity")) {
-            CompactNumberSpinner(
-                value = (rotation.opacity * 100).toDouble(),
-                onValueChange = { pct ->
-                    val op = (pct / 100f).toFloat().coerceIn(0f, 1f)
-                    viewModel.applyRigStaticLive("rotation.opacity.${rotation.id.raw}", "rotation", rotation.id.raw, "opacity" to JsonPrimitive(op))
-                },
-                onEditEnd = { viewModel.endEditorField("rotation.opacity.${rotation.id.raw}") },
-                modifier = Modifier.fillMaxWidth(),
-                min = 0.0,
-                max = 100.0,
-                step = 5.0,
-                decimals = 0,
-                unit = "%",
-                height = 23.dp,
-            )
-        }
+        InspectorOpacityRow(rotation.opacity, "rotation", rotation.id.raw, viewModel)
 
         InspectorColorRow(
             label = tr("inspector.multiplyColor"),
@@ -1304,3 +1251,26 @@ private fun parseHexToColorRgb(hex: String): ColorRgb? {
 /** A colour as the `static` action takes it: three 0..1 channels. */
 private fun ColorRgb.toJsonArray() =
     JsonArray(listOf(JsonPrimitive(red), JsonPrimitive(green), JsonPrimitive(blue)))
+
+/** The same continuous opacity control for meshes, deformers and reference layers. */
+@Composable
+private fun InspectorOpacityRow(value: Float, kind: String, id: String, viewModel: PSD2LiveViewModel,
+                                reference: io.github.psd2live.ui.state.ReferenceTarget.Layer? = null) {
+    val draft by viewModel.referenceOpacityDraft.collectAsState()
+    val opacity = draft?.takeIf { it.target == reference }?.opacity ?: value
+    val token = "$kind.opacity.$id"
+    InspectorFormRow(label = tr("inspector.opacity")) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            io.github.psd2live.ui.components.CompactSlider(opacity, { next ->
+                if (reference != null) viewModel.previewReferenceOpacity(reference, next)
+                else viewModel.applyRigStaticLive(token, kind, id, "opacity" to JsonPrimitive(next))
+            }, onValueChangeFinished = {
+                if (reference != null) viewModel.commitReferenceOpacity(reference,
+                    viewModel.referenceOpacityDraft.value?.takeIf { it.target == reference }?.opacity ?: opacity)
+                else viewModel.endEditorField(token)
+            }, modifier = Modifier.weight(1f), height = 23.dp)
+            Text("${kotlin.math.round(opacity * 100).toInt()}%", color = LocalToolColors.current.textPrimary,
+                style = LocalToolTypography.current.monoSmall, textAlign = TextAlign.End, modifier = Modifier.width(36.dp))
+        }
+    }
+}

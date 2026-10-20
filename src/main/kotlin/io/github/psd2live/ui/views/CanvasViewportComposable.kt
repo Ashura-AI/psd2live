@@ -329,9 +329,11 @@ fun CanvasViewportComposable(
     }
     val sourcePreviewModel = canvasState.previewModel
     val editPuppet = if (mode == CanvasMode.EDIT) editor.preview else null
-    val previewModel = remember(sourcePreviewModel, editPuppet) {
+    val referenceOpacityDraft by viewModel.referenceOpacityDraft.collectAsState()
+    val previewModel = remember(sourcePreviewModel, editPuppet, referenceOpacityDraft) {
         sourcePreviewModel?.let { source ->
-            if (editPuppet != null) source.copy(rig = source.rig.copy(puppet = editPuppet)) else source
+            val model = if (editPuppet != null) source.copy(rig = source.rig.copy(puppet = editPuppet)) else source
+            referenceOpacityDraft?.preview(model) ?: model
         }
     }
 	val paintSession = if (mode == CanvasMode.EDIT && editor.hierarchyMode == EditHierarchyMode.PAINT)
@@ -451,7 +453,6 @@ fun CanvasViewportComposable(
 	val selectedReferenceId = canvasState.selectedReferenceId
 	val referenceInteraction = remember { ReferenceCanvasInteraction() }
 	val referenceHandles = io.github.psd2live.ui.TransformHandles(unit = density)
-	val referenceOpacityDraft = viewModel.referenceOpacityDraft.collectAsState()
 	// Reference images pinned to another keyform than the edit pose, as reference layers pinned away.
 	val pinnedAwayImages = canvasState.pinnedAwayReferenceImageIds
 	// A reference being moved, scaled or turned on this canvas, shown as it goes until the edit lands. Only the draw
@@ -463,7 +464,7 @@ fun CanvasViewportComposable(
 	val referencesShown = viewOptions.showReference && mode == CanvasMode.EDIT
 	fun shownReferences() = if (!referencesShown) emptyList() else layoutReferences
 		.map { (r, raster) -> (referenceInteraction.draft?.takeIf { it.id == r.id } ?: r) to raster }
-		.map { (r, raster) -> (referenceOpacityDraft.value?.takeIf { it.first == r.id }?.let { r.copy(opacity = it.second) } ?: r) to raster }
+		.map { (r, raster) -> (referenceOpacityDraft?.takeIf { it.target == io.github.psd2live.ui.state.ReferenceTarget.Image(r.id) }?.let { r.copy(opacity = it.opacity) } ?: r) to raster }
 		.filter { (r, _) -> r.visible && r.id !in pinnedAwayImages }
 	val layerDensity = remember(previewModel) {
 		previewModel?.analysis?.layers?.associate { it.source.id.raw to io.github.psd2live.application.WorkspaceViewRenderer.texelsPerUnit(it.source) }.orEmpty()

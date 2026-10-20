@@ -80,6 +80,7 @@ class WorkspaceReferenceEditsTest {
 		assertTrue(!back.under && back.materialId == face && back.pins == reference.pins)
 		assertTrue(front.layout.referenceLayerIds.isEmpty() && front.source.layers.none { it.id.raw == layer })
 		assertEquals(reference.rect, back.rect)
+		assertEquals(reference.opacity, back.opacity)
 	}
 
 	@Test
@@ -108,6 +109,8 @@ class WorkspaceReferenceEditsTest {
 		assertTrue("guide" !in WorkspaceLayoutPreview.pendingIds(placed))
 		val built = builder.build(placed, model)
 		val mesh = built.rig.puppet.drawables.single { built.rig.layerIdByDrawableId[it.id.raw] == "guide" }
+		assertEquals(8, mesh.mesh!!.positions.size, "A new reference uses four rectangle corners")
+		assertEquals(6, mesh.mesh!!.indices.size)
 		val part = built.rig.puppet.parts.single { it.id.raw == WorkspaceReferenceMeshes.PART_ID }
 		assertTrue(part.isSketch && org.umamo.runtime.model.OrgChild.Drawable(mesh.id) in part.children)
 		assertTrue("guide" !in built.referenceLayerIds)
@@ -118,4 +121,34 @@ class WorkspaceReferenceEditsTest {
 		assertTrue("guide" !in given.layout.generation.pendingLayerIds && "guide" in WorkspaceReferenceMeshes.createdLayerIds(given))
 		assertTrue(builder.build(given, built).rig.puppet.parts.none { it.id.raw == WorkspaceReferenceMeshes.PART_ID })
 	}
+    @Test fun opacityEditsWorkBeforeAndAfterGenerationWithoutJournalingPendingMeshIds() = kotlinx.coroutines.runBlocking {
+        for (generated in listOf(false, true)) {
+            val base = document.copy(layout = document.layout.copy(generation = document.layout.generation.copy(generated = generated)))
+            val builder = WorkspacePreviewBuilder()
+            val model = builder.build(base)
+            val placed = WorkspaceDocumentEdits.apply(WorkspaceDocumentOperation(WorkspaceMaterialEdits.PLACE, buildJsonObject {
+                put("material_id", face); put("layer_id", "guide"); put("reference", true)
+            }), base, model)
+            val shown = builder.build(placed)
+            var current = placed
+            for (opacity in listOf(0f, 0.37f, 1f)) {
+                val request = buildJsonObject { put("layer_id", "guide"); put("opacity", opacity) }
+                current = WorkspaceDocumentEdits.apply(WorkspaceDocumentOperation(WorkspaceReferenceOpacity.OP, request), current, builder.build(current))
+                val replayed = builder.build(current)
+                assertEquals(opacity, replayed.rig.puppet.drawables.single { replayed.rig.layerIdByDrawableId[it.id.raw] == "guide" }.opacity)
+                assertEquals(opacity, current.source.layers.single { it.id.raw == "guide" }.opacity)
+                val exported = io.github.psd2live.targets.cubism.PuppetIr.toPuppet(io.github.psd2live.targets.cubism.PuppetIr.toIr(replayed.rig.puppet))
+                assertEquals(opacity, exported.drawables.single { it.id == replayed.rig.puppet.drawables.single { d -> replayed.rig.layerIdByDrawableId[d.id.raw] == "guide" }.id }.opacity)
+                assertTrue(current.rigEdits.authoringJournal.none { WorkspaceLayoutPreview.MESH_PREFIX in it.toString() })
+                assertEquals(current, WorkspaceReferenceOpacity.apply(current, replayed, request), "The same value is a no-op")
+            }
+            kotlin.test.assertFailsWith<IllegalArgumentException> {
+                WorkspaceReferenceOpacity.apply(placed, shown, buildJsonObject { put("layer_id", "guide"); put("opacity", -0.1f) })
+            }
+            kotlin.test.assertFailsWith<IllegalArgumentException> {
+                WorkspaceReferenceOpacity.apply(placed, shown, buildJsonObject { put("layer_id", "guide"); put("reference_id", "ref"); put("opacity", 0.5f) })
+            }
+        }
+    }
+
 }

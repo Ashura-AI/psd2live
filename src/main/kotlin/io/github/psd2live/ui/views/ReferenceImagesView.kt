@@ -234,8 +234,13 @@ internal fun referenceRows(state: PSD2LiveState, under: Boolean): List<Reference
 	}
 
 /** A reference layer row: in the stack with the ArtMeshes. */
-internal fun referenceLayerRow(state: PSD2LiveState, layerId: String, name: String) = ReferenceRow(ReferenceTarget.Layer(layerId), name,
-	ReferenceMode.LAYER, state.isLayerVisible(layerId), layerId in state.layout.referencePins, false, null)
+internal fun referenceLayerRow(state: PSD2LiveState, layerId: String, name: String): ReferenceRow {
+	val model = state.previewModel
+	val opacity = model?.rig?.puppet?.drawables?.firstOrNull { model.rig.layerIdByDrawableId[it.id.raw] == layerId }?.opacity
+		?: state.analysis?.source?.layers?.firstOrNull { it.id.raw == layerId }?.opacity
+	return ReferenceRow(ReferenceTarget.Layer(layerId), name, ReferenceMode.LAYER, state.isLayerVisible(layerId),
+		layerId in state.layout.referencePins, false, opacity)
+}
 
 /** Canvas and hierarchy resolve the same selected member and use the same actions. */
 internal fun selectedReferenceRow(state: PSD2LiveState): ReferenceRow? {
@@ -326,12 +331,14 @@ internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: P
 	}
 	add { FloatingMenuRow(tr(if (row.visible) "references.hide" else "references.show"), { close(); viewModel.setReferenceVisible(row.target, !row.visible) },
 		enabled = editable, icon = { IconEye(row.visible, Modifier.size(12.dp), it) }) }
-	if (image != null && row.opacity != null) {
+	if (row.opacity != null) {
 		add(false) {
-			FloatingMenuSlider(tr("references.opacity"), opacity, { opacity = it; viewModel.previewReferenceOpacity(image.id, it) },
+			FloatingMenuSlider(tr("references.opacity"), opacity, { opacity = it; viewModel.previewReferenceOpacity(row.target, it) },
 				0f..1f, "${(opacity * 100).roundToInt()}%", enabled = editable,
-				onValueChangeFinished = { viewModel.commitReferenceOpacity(image.id, opacity) })
+				onValueChangeFinished = { viewModel.commitReferenceOpacity(row.target, opacity) })
 		}
+	}
+	if (image != null) {
 		add { FloatingMenuRow(tr(if (row.locked) "references.unlock" else "references.lock"), { close(); viewModel.editReference(image.id) { put("locked", !row.locked) } },
 			enabled = editable, icon = { IconLock(row.locked, Modifier.size(12.dp), it) }) }
 	}

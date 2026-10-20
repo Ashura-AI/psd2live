@@ -43,6 +43,7 @@ internal object WorkspaceReferenceModes {
             val taken = document.source.layers.mapTo(HashSet()) { it.id.raw }
             val id = StableIds.fresh(StableIds.stem("ref_", reference.id, reference.materialId)) { it in taken }
             var next = WorkspaceMaterialEdits.place(document, model, reference.materialId, reference.rect, null, id, reference = true)
+            next = WorkspaceReferenceOpacity.apply(next, model, buildJsonObject { put("layer_id", id); put("opacity", reference.opacity) })
             next = next.copy(layout = next.layout.copy(references = next.layout.references.filter { it.id != referenceId },
                 referencePins = if (reference.pins.isEmpty()) next.layout.referencePins else next.layout.referencePins + (id to reference.pins)))
             return if (reference.visible) next else next.copy(layerVisibility = next.layerVisibility + (id to false))
@@ -61,6 +62,7 @@ internal object WorkspaceReferenceModes {
             putJsonObject("rect") { put("left", space.left); put("top", space.top); put("width", space.width); put("height", space.height) }
             put("under", mode == Mode.BACKGROUND)
             put("visible", document.layerVisibility[id] ?: layer.visible)
+            put("opacity", model.rig.puppet.drawables.firstOrNull { model.rig.layerIdByDrawableId[it.id.raw] == id }?.opacity ?: layer.opacity)
             if (pin.isNotEmpty()) put("points", JsonArray(pin.map { point -> JsonObject(point.mapValues { JsonPrimitive(it.value) }) }))
         })
         // A reference in the model goes with its mesh; one not in it yet leaves no trace.

@@ -6162,20 +6162,30 @@ class PSD2LiveViewModel : AutoCloseable {
 		selectionAnchorId = null
 	}
 
-	private val _referenceOpacityDraft = kotlinx.coroutines.flow.MutableStateFlow<Pair<String, Float>?>(null)
+	private val _referenceOpacityDraft = kotlinx.coroutines.flow.MutableStateFlow<ReferenceOpacityDraft?>(null)
 	/** Transient feedback shared by all canvases; only the release is a document edit. */
-	val referenceOpacityDraft: kotlinx.coroutines.flow.StateFlow<Pair<String, Float>?> = _referenceOpacityDraft
+	val referenceOpacityDraft: kotlinx.coroutines.flow.StateFlow<ReferenceOpacityDraft?> = _referenceOpacityDraft
 
-	fun previewReferenceOpacity(id: String, opacity: Float) { _referenceOpacityDraft.value = id to opacity.coerceIn(0f, 1f) }
+	fun previewReferenceOpacity(id: String, opacity: Float) = previewReferenceOpacity(ReferenceTarget.Image(id), opacity)
+	fun previewReferenceOpacity(target: ReferenceTarget, opacity: Float) {
+		_referenceOpacityDraft.value = ReferenceOpacityDraft(target, opacity.coerceIn(0f, 1f))
+	}
 
-	fun commitReferenceOpacity(id: String, opacity: Float) {
+	fun commitReferenceOpacity(id: String, opacity: Float) = commitReferenceOpacity(ReferenceTarget.Image(id), opacity)
+	fun commitReferenceOpacity(target: ReferenceTarget, opacity: Float) {
 		val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen || _state.value.workspaceEditBusy }
 		if (workspace == null) { _referenceOpacityDraft.value = null; return }
 		val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace
 		runWorkspaceCommand(onFinished = { _referenceOpacityDraft.value = null }) { state ->
 			port.applyDocumentEdits(state, tr("references.edited"), listOf(io.github.psd2live.application.WorkspaceDocumentOperation(
-				io.github.psd2live.application.WorkspaceMaterialEdits.REFERENCE,
-				kotlinx.serialization.json.buildJsonObject { put("id", id); put("opacity", opacity.coerceIn(0f, 1f)) })), MutationAuthor.USER)
+				io.github.psd2live.application.WorkspaceReferenceOpacity.OP,
+				kotlinx.serialization.json.buildJsonObject {
+					when (target) {
+						is ReferenceTarget.Image -> put("reference_id", target.id)
+						is ReferenceTarget.Layer -> put("layer_id", target.layerId)
+					}
+					put("opacity", opacity.coerceIn(0f, 1f))
+				})), MutationAuthor.USER)
 		}
 	}
 
