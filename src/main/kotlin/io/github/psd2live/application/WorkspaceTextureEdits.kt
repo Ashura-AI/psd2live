@@ -393,9 +393,7 @@ internal object WorkspaceTextureEdits {
     }
 
     /**
-     * [edit] on [document]. A layer placed since the last generation ([WorkspaceLayoutPreview]) has no rig and no tile
-     * the arrangement holds: it is moved, scaled and given new pixels by its own edits ([WorkspaceGenerationEdits]).
-     * The rest reads the document as the generators do, and its pending layers come back unchanged.
+     * [edit] on the complete workspace. Every placed layer has its ordinary editable mesh and texture tile.
      */
     fun apply(document: WorkspaceDocument, model: RigPreviewModel, edit: WorkspaceTextureEdit, checkCancelled: () -> Unit = {}): WorkspaceDocument {
         checkCancelled()
@@ -404,18 +402,7 @@ internal object WorkspaceTextureEdits {
             val replaced = apply(document, model, edit.copy(image = WorkspaceTextureImage.Raster(item.raster)), checkCancelled)
             return replaced.copy(layout = replaced.layout.copy(layerMaterials = replaced.layout.layerMaterials + (edit.layerId to item.id)))
         }
-        val pending = WorkspaceLayoutPreview.pendingIds(document)
-        val targets = targets(edit)
-        if (targets.isNotEmpty() && targets.all { it in pending }) return when (edit) {
-            is WorkspaceTextureEdit.SetCanvasRect -> WorkspaceGenerationEdits.place(document, edit.layerId, edit.rect)
-            is WorkspaceTextureEdit.ReplaceImage -> WorkspaceGenerationEdits.replace(document, edit.layerId, raster(edit.image, checkCancelled), edit.fit)
-            is WorkspaceTextureEdit.SetPixelDensity -> density(document, model, edit)
-            else -> throw WorkspaceNotGenerated("${edit.operation} needs the layer's tile in the generated atlas; generate the rig first (rig_generate)")
-        }
-        if (!document.layout.generation.generated) throw WorkspaceNotGenerated()
-        targets.firstOrNull { it in pending }?.let { throw WorkspaceNotGenerated("Layer $it was placed since the last generation; generate the rig first (rig_generate)") }
-        val edited = if (pending.isEmpty()) applyGenerated(document, model, edit, checkCancelled)
-            else WorkspaceLayoutPreview.restore(document, applyGenerated(WorkspaceLayoutPreview.base(document), model.generated, edit, checkCancelled))
+        val edited = applyGenerated(document, model, edit, checkCancelled)
         return if (edit is WorkspaceTextureEdit.ReplaceImage && edited !== document) WorkspaceGenerationEdits.replacedGenerated(edited, edit.layerId) else edited
     }
 

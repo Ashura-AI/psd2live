@@ -15,13 +15,9 @@ internal class WorkspaceExportSession(
     private val pipeline: PSD2LivePipeline = PSD2LivePipeline(),
     private val publish: (List<Pair<Path, Path>>) -> Unit = { WorkspaceExportFiles.publish(it) },
 ) {
-    /**
-     * The model exports read: the generated layers alone. Layers placed since the last generation have no rig yet and
-     * stay out; a project not generated yet has nothing to export.
-     */
+    /** Exports read the complete committed editing model, including meshes awaiting semantic generation. */
     private val generated: RigPreviewModel get() {
-        if (captured.model.layoutPreview) throw WorkspaceNotGenerated("The project is not generated yet; generate the rig before exporting (rig_generate)")
-        return captured.model.generated
+        return captured.model
     }
 
     suspend fun model(outputDirectory: Path): JsonObject {

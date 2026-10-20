@@ -263,8 +263,12 @@ data class PipelineConfig(
 	val layerVisibility: Map<String, Boolean> = emptyMap(),
 	/** Layers deleted by the user, excluded from atlas packing and rigging. */
 	val deletedLayerIds: Set<String> = emptySet(),
-	/** Builds art without a visible pixel too, as the placement preview of a project not yet generated does. */
+	/** Editable workspaces may have no artwork or visible pixels. */
 	val allowEmptyArt: Boolean = false,
+	/** Layers with editable meshes whose semantic rig has not been generated yet. */
+	val rigPendingLayerIds: Set<String> = emptySet(),
+	/** An empty Layout workspace also has no automatic rig until generation is requested. */
+	val deferRig: Boolean = false,
 	/** Manual parent deformer overrides (layerId or deformerId -> parentDeformerId or null for root). */
 	val parentOverrides: Map<String, String?> = emptyMap(),
 	/** Manual draw order overrides (layerId or drawableId -> drawOrder within 0..1000). */
@@ -505,21 +509,11 @@ data class RigPreviewModel(
 	 */
 	val generationAtlas: PackedAtlas? = null,
 	/**
-	 * The model of the generated layers alone, when this one also shows layers placed since the last generation as
-	 * plain meshes ([io.github.psd2live.project.WorkspaceGeneration]); generation, replay and export read it.
-	 */
-	val layoutBase: RigPreviewModel? = null,
-	/** A placement preview of a project not yet generated: plain meshes, no rig to edit or export. */
-	val layoutPreview: Boolean = false,
-	/**
 	 * The reference layers this model shows as bare quads: the artwork pass skips them and the canvas draws their
-	 * pixels on their own, under or over the model. Never in [layoutBase], so never generated or exported.
+	 * pixels on their own, under or over the model.
 	 */
 	val referenceLayerIds: Set<String> = emptySet(),
 ) {
-	/** The model generation and export read: [layoutBase] when this one shows pending layers, else this one. */
-	val generated: RigPreviewModel get() = layoutBase ?: this
-
 	/**
 	 * The generated rig the document's edits replay onto. A model built from a stored authored rig generates it only
 	 * when something asks for it.

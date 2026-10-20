@@ -57,9 +57,11 @@ internal object RigGenerationSource {
      */
     internal fun createdCoverage(overlay: RigEditOverlay): Map<String, LayerBounds> {
         val coverage = LinkedHashMap<String, LayerBounds>()
+        val adopted = RigMeshSeed.adopted(overlay)
         for (command in overlay.authoringJournal) {
             if (command["op"]?.jsonPrimitive?.contentOrNull != RasterMeshCreation.OP) continue
             val layer = command.getValue("layer_id").jsonPrimitive.content
+            if (layer in adopted) continue
             val bounds = RasterMeshCreation.sourceBounds(command)
             coverage[layer] = coverage[layer]?.let { union(it, bounds) } ?: bounds
         }

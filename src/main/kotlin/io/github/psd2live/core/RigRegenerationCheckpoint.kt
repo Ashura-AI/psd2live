@@ -47,8 +47,9 @@ internal object RigRegenerationCheckpoint {
 		checkpoint()
 		// The new generation as the entries up to the boundary see it: later splits' parts not yet in place.
 		val records = after.authoringJournal.subList(0, boundary)
-		val (previous, seen) = ArtPrimitiveReplay.withVersion1Parts(current.baseRig.resolvedPuppet().reboundTo(base.puppet.atlas, base.puppet.sources),
+		val (old, seen) = ArtPrimitiveReplay.withVersion1Parts(current.baseRig.resolvedPuppet().reboundTo(base.puppet.atlas, base.puppet.sources),
 			current.baseRig.primitiveSkins, base.resolvedPuppet(records.filter(ArtPrimitiveV2::isV2)), base.primitiveSkins, records)
+		val previous = RigMeshSeed.previous(old, after)
 		if (PuppetIr.toIr(previous) == PuppetIr.toIr(seen)) return null
 		checkpoint()
 		val record = merged(RigGenerationFrames.named(previous, records), RigGenerationFrames.named(seen, records), current.authored, base,

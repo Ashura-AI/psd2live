@@ -96,7 +96,10 @@ class VectorDrawingScenario {
 		edit("draw it larger", "material_draw", req("id" to "eye_white", "svg" to svg("90 95 60 30")))
 		val larger = requireNotNull(now.document.layout.materials.item("eye_white"))
 		val layer = now.document.source.layers.single { it.id.raw == "eye_white" }
-		expect("redraw", larger.raster.width == 240 && layer.canvasRect() == LayerCanvasRect(90f, 95f, 60f, 30f) &&
+		val rect = layer.canvasRect()
+		val shown = LayerCanvasRect(layer.transform.x(rect.left, rect.top), layer.transform.y(rect.left, rect.top),
+			layer.transform.a * rect.width, layer.transform.d * rect.height)
+		expect("redraw", larger.raster.width == 240 && shown == LayerCanvasRect(90f, 95f, 60f, 30f) &&
 			now.document.layout.layerMaterials["eye_white"] == "eye_white" && layer.raster.rgba.contentEquals(larger.raster.rgba)) {
 			"the layer did not follow the drawing: ${layer.canvasRect()} with ${layer.raster.width} pixels" }
 

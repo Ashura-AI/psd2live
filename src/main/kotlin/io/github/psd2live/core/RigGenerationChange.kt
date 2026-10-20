@@ -20,6 +20,7 @@ internal object RigGenerationChange {
     }
 
     private fun settingsChanged(before: PipelineConfig, after: PipelineConfig): Boolean =
+        before.deferRig != after.deferRig || before.rigPendingLayerIds != after.rigPendingLayerIds ||
         before.meshOnly != after.meshOnly || (!before.meshOnly && before.generateDeformers) != (!after.meshOnly && after.generateDeformers) ||
             before.featureDisplacementEnabled != after.featureDisplacementEnabled || before.mouthOutlineEnabled != after.mouthOutlineEnabled ||
             before.mouthShape != after.mouthShape || before.mouthCurve != after.mouthCurve || before.mouthColor != after.mouthColor ||

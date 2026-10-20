@@ -106,7 +106,7 @@ internal class WorkspaceSourceImporter(
         // An imported file's layers are also materials of the new project, each layer showing its own: they can be
         // replaced, placed again or exported from the material browser. The rig reads only the source, as before.
         val context = currentCoroutineContext()
-        val document = runInterruptible(Dispatchers.Default) {
+        var document = runInterruptible(Dispatchers.Default) {
             RigBuildProfile.threadStage("source import: linked materials and raster hashes") {
                 input.materials?.let { file ->
                     input.materialFolder?.let { WorkspaceMaterialEdits.addLinked(created, file, it, context::ensureActive) }
@@ -115,7 +115,11 @@ internal class WorkspaceSourceImporter(
             }
         }
         progress(0.6f, "Rebuilding new source project")
-        val built = RigBuildProfile.stage("source import: preview build (wall time)") { build(document) }
+        var built = RigBuildProfile.stage("source import: preview build (wall time)") { build(document) }
+        if (input.references.isNotEmpty()) {
+            document = runInterruptible(Dispatchers.Default) { WorkspaceReferenceMeshes.ensure(document, built, context::ensureActive) }
+            built = build(document)
+        }
         if (layout) {
             progress(0.9f, "Installing new layout project")
             val id = newProjectId()

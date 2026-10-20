@@ -337,10 +337,14 @@ class EditorAndAgentScenario {
 
 		// A dry run names the objects the commit then makes.
 		val sleeve = vm.state.value.previewModel!!.rig.layerIdByDrawableId.entries.single { it.value == layers.getValue("sleeve_r") }.key
-		val warp = buildJsonArray { add(buildJsonObject { put("operation", "canvas_warp"); put("request", req("name" to "Cuff", "meshes" to listOf(sleeve))) }) }
+		val warp = buildJsonArray { add(buildJsonObject { put("operation", "canvas_warp"); put("request", req("id" to "CuffWarp", "name" to "Cuff", "meshes" to listOf(sleeve))) }) }
 		val preview = call("workspace_preview_edits", buildJsonObject { put("state", state()); put("edits", warp) }).data()
 		val applied = call("workspace_apply_edits", buildJsonObject { put("request_id", "warp-1"); put("state", state()); put("edits", warp) }).data()
-		assertEquals(preview["changed"], applied["changed"], "the dry run and the commit made different objects")
+		assertNotNull(preview["changed"], "the dry run must succeed")
+		assertNotNull(applied["changed"], "the commit must succeed")
+		// Commit changes also include explicit request IDs; compare the created object handles.
+		val created = applied.getValue("changed").jsonArray.filter { it.jsonPrimitive.content.startsWith("warp:") }
+		assertEquals(preview["changed"], JsonArray(created), "the dry run and the commit made different objects")
 		consistent("warp")
 
 		// An agent working from a stale state is refused without touching the workspace.

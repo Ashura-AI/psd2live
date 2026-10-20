@@ -47,7 +47,7 @@ class MaterialLibraryScenario {
 		expect("placed", now.document.layout.layerMaterials["badge"] == vector.id && "badge" in now.document.layout.generation.pendingLayerIds) { "the placed badge is not linked and pending" }
 		expect("placed", now.document.layerOverrides["badge"]?.tag == SemanticTag.HEADWEAR && now.document.layout.layerTags["badge"] == setOf("装饰")) {
 			"the folder's tags did not reach the layer: ${now.document.layerOverrides["badge"]} ${now.document.layout.layerTags["badge"]}" }
-		expect("placed", WorkspaceLayoutPreview.isPendingMesh(mesh("badge"))) { "the badge shows a generated mesh before generating" }
+		expect("placed", !WorkspaceLayoutPreview.isPendingMesh(mesh("badge"))) { "the badge shows a generated mesh before generating" }
 
 		refused("a material in use cannot be deleted", "material_delete", req("ids" to listOf("props")))
 
@@ -130,7 +130,7 @@ class MaterialLibraryScenario {
 	@Test fun anEmptyLayoutProjectIsPlacedThenGenerated() = Studio.run(temp,
 		WorkspaceDocument(WorkspaceSourceArt(840, 600, emptyList(), emptyList()), emptyMap(), emptySet(), emptyMap(), emptyMap(),
 			io.github.psd2live.core.RigEditOverlay.Empty, Characters.figure().settings, layout = WorkspaceLayout(generation = WorkspaceGeneration.NotGenerated))) {
-		expect("created", now.model.layoutPreview && puppet.drawables.isEmpty()) { "an empty project shows meshes" }
+		expect("created", puppet.drawables.isEmpty()) { "an empty project shows meshes" }
 		val entries = WorkspaceMaterialFiles.read(listOf(Characters.figurePsd(Files.createDirectories(temp.resolve("files")))))
 		edit("import the figure", "material_add", req("staging" to WorkspaceMaterialStaging.stage(entries)))
 		val folder = now.document.layout.materials.folders.single()
@@ -144,7 +144,7 @@ class MaterialLibraryScenario {
 		expect("placed", hairItem.placementWidth == 420 && hairItem.placementHeight == 420 &&
 			hair.left == from.left + 210f && hair.top == from.top + 90f && hair.width == from.width) { "the PSD is not centred: $from -> $hair" }
 		edit("generate", "rig_generate", req())
-		expect("generated", !now.model.layoutPreview && puppet.deformers.isNotEmpty()) { "the placed figure did not generate a rig" }
+		expect("generated", puppet.deformers.isNotEmpty()) { "the placed figure did not generate a rig" }
 		reopen()
 	}
 

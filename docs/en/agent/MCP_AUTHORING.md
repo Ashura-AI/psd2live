@@ -194,7 +194,6 @@ When an immediate call fails, the tool returns `ok:false` and a structured `erro
 | `request_id_reused` | The same ID was used for a different operation, arguments or author; use a new request ID |
 | `unsaved_changes` | Save first, or explicitly pass a supported discard flag |
 | `workspace_busy` | Wait for the ongoing work to finish, then read the current state |
-| `not_generated` | The operation needs a generated rig: the project is not generated yet, or the target is a layer placed after the last generation. Run `rig_generate` first; a failing batch member also carries `edit_index` and `edit_operation` |
 | `io_error` / `permission_denied` | Check the file path, access permissions or disk according to `message` |
 | `invalid_state` / `operation_failed` | Diagnose the business precondition or execution problem from `message` and the current project state |
 
@@ -558,7 +557,7 @@ The in-project material library and the "place first, generate later" workflow; 
 | `layer_reorder` | `state`, `layer_ids` (1–128), `to` (`front/back/forward/backward/above/below`); `above/below` need `target` | Changes the stacking order (that is, the base draw order): to the front or back, past one unmoved layer, or directly above or below `target`; moved layers keep their relative order. Only accepts layers the generator has not read (layers of an ungenerated project, pending layers); generated layers return an error, and their draw order is changed with `layer_draw_order` |
 | `rig_generate` | `state`, optional `refresh_geometry` | Generates or regenerates: an ungenerated project is built from all current layers; a generated project takes in layers placed after the last generation and waiting classifications, keeping user edits by three-way merge, with what could not migrate cleanly in `quality.regeneration`. `refresh_geometry` lists generated layers whose meshes are rebuilt from current pixels; omitted means all layers whose image was replaced, `[]` keeps them all |
 
-Ungenerated projects and pending layers only accept materials, placement, move/scale/mirror (`layer_set_canvas_rect`, `layer_transform`; rotation needs generation first), stacking order changes (`layer_reorder`), replacement, deletion, tags and generation settings; other rig edits return `not_generated`, and export only includes the generated part (an ungenerated project refuses to export). A new project from an imported PSD likewise registers each layer as a material and links it.
+Ungenerated projects, empty canvases and pending layers use the ordinary editing workspace, including mesh, deformer, parameter, hierarchy, rotation and texture edits. Exports include the current model. `rig_generate` fits bindings and parameters from tags on existing mesh topology; explicit `refresh_geometry` retraces artwork. Imported PSD projects also register and link each layer as a material.
 
 A typical flow: `project_create` → `material_import` → `material_list` → several `layer_place` (or placing a whole PSD folder) → `layer_tag` → `layer_reorder` → `rig_generate` → authoring edits → more `layer_place` → `rig_generate`. When an external tool has already split the parts, write a Layout manifest and use `project_import_layout` to get a placed, ungenerated project in one step; check it, then `rig_generate`.
 

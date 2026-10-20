@@ -44,6 +44,7 @@ internal object RigAuthoringJournal {
         RigLayerDeletion.OP -> RigLayerDeletion.replay(model, edit)
         // Replay starts after the last checkpoint; an earlier one is history and changes nothing here.
         RigCheckpoint.OP -> model
+        RigMeshSeed.OP -> model
         GeneratedOverrides.OP -> GeneratedOverrides.apply(model, edit).model
         MeshGenerationBaseline.OP -> MeshGenerationBaseline.replay(model, edit)
         RigGenerationBaseline.OP -> RigGenerationBaseline.replay(model, edit)

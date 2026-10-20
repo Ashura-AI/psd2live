@@ -30,10 +30,8 @@ internal object WorkspaceDocumentEdits {
         WorkspaceLayoutEdits.supported + WorkspaceMaterialEdits.supported
 
     /**
-     * [operation] on [document]. Layout edits (tags, classification, placement, generation) read the whole document;
-     * an edit of the rig reads it as the generators do, without the layers placed since the last generation
-     * ([WorkspaceLayoutPreview.base]), and those layers come back unchanged. An edit naming a pending layer takes the
-     * pending layer's own edit ([WorkspaceGenerationEdits.pendingEdit]); a project not generated yet has no rig to edit.
+     * [operation] on the complete editing document. Layout generation state only gates automatic semantic rigging;
+     * every mesh, including one placed since the last generation, accepts the ordinary authoring commands.
      */
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
               simulationWork: WorkspaceSimulationWork = WorkspaceSimulationWork.Direct,
@@ -41,33 +39,8 @@ internal object WorkspaceDocumentEdits {
               rasterWork: WorkspaceRasterWork = WorkspaceRasterWork.Direct,
               assetResources: WorkspaceAssetWorkflow? = null): WorkspaceDocument =
         // A layer an edit gave pixels of its own no longer shows its material.
-        WorkspaceReferenceMeshes.ensure(WorkspaceMaterialLinks.reconcile(document, routed(operation, document, model, simulationWork, physicsWork, rasterWork, assetResources)), model)
-
-    private fun routed(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel,
-                       simulationWork: WorkspaceSimulationWork, physicsWork: WorkspacePhysicsWork, rasterWork: WorkspaceRasterWork,
-                       assetResources: WorkspaceAssetWorkflow?): WorkspaceDocument {
-        val id = operation.operation
-        // Layout edits read the whole document; texture edits route pending layers themselves.
-        if (id in WorkspaceLayoutEdits.supported || id in WorkspaceMaterialEdits.supported || id == "layer_classify" ||
-            id in WorkspaceTextureEdits.supported) return applyGenerated(operation, document, model,
-            simulationWork, physicsWork, rasterWork, assetResources)
-        val pending = WorkspaceLayoutPreview.pendingIds(document)
-        val targets = WorkspaceGenerationEdits.targets(operation)
-        if (targets.isNotEmpty() && targets.all { it in pending } && id in WorkspaceGenerationEdits.pendingLayerOperations)
-            return WorkspaceGenerationEdits.pendingEdit(operation, document, model)
-        if (!document.layout.generation.generated) {
-            if (id in WorkspaceGenerationEdits.ungeneratedOperations) return applyGenerated(operation, document, model,
-                simulationWork, physicsWork, rasterWork, assetResources)
-            throw WorkspaceNotGenerated()
-        }
-        targets.firstOrNull { it in pending }?.let { throw WorkspaceNotGenerated("Layer $it was placed since the last generation; generate the rig first (rig_generate)") }
-        if (pending.isNotEmpty() && WorkspaceLayoutPreview.MESH_PREFIX in operation.request.toString())
-            throw WorkspaceNotGenerated("A layer placed since the last generation has no rig to edit yet; generate the rig first (rig_generate)")
-        val edited = if (pending.isEmpty()) applyGenerated(operation, document, model, simulationWork, physicsWork, rasterWork, assetResources)
-            else WorkspaceLayoutPreview.restore(document, applyGenerated(operation, WorkspaceLayoutPreview.base(document), model.generated,
-                simulationWork, physicsWork, rasterWork, assetResources))
-        return edited
-    }
+        WorkspaceReferenceMeshes.ensure(WorkspaceMaterialLinks.reconcile(document,
+            applyGenerated(operation, document, model, simulationWork, physicsWork, rasterWork, assetResources)), model)
 
     /** [layerId] showing [raster] over its unchanged rectangle, as `layer_replace_image` does. */
     fun replaceImage(document: WorkspaceDocument, model: RigPreviewModel, layerId: String, raster: org.umamo.format.art.LayerRaster,

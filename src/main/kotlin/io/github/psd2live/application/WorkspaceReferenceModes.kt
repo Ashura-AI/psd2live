@@ -66,9 +66,8 @@ internal object WorkspaceReferenceModes {
             if (pin.isNotEmpty()) put("points", JsonArray(pin.map { point -> JsonObject(point.mapValues { JsonPrimitive(it.value) }) }))
         })
         // A reference in the model goes with its mesh; one not in it yet leaves no trace.
-        val removed = if (id in WorkspaceReferenceMeshes.createdLayerIds(document))
-            WorkspaceLayerEdits.apply(added, model, WorkspaceDocumentOperation(WorkspaceLayerEdits.DELETE, buildJsonObject { put("layer_id", id) }))
-        else WorkspaceGenerationEdits.delete(added, id)
+        val removed = WorkspaceLayerEdits.apply(added, model,
+            WorkspaceDocumentOperation(WorkspaceLayerEdits.DELETE, buildJsonObject { put("layer_id", id) }))
         return removed.copy(layout = removed.layout.copy(referencePins = removed.layout.referencePins - id))
     }
 }

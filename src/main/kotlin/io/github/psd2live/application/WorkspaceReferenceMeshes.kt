@@ -19,7 +19,7 @@ import org.umamo.runtime.model.withDerivedRenderRoot
  * as an imported image is ([WorkspaceLayerInsertionEdits.materialize]) - a member of the rig the generators never
  * remesh, drawn by drawing order among the other ArtMeshes, moved, bound and deformed like any of them. Its mesh sits
  * in the reference part ([PART_ID]), a Cubism guide-image part: exports leave it out unless they write guide images.
- * Before the first generation it waits with the other layers and shows as a quad ([WorkspaceLayoutPreview]).
+ * The same mesh is available before semantic generation, including in a new Layout project.
  */
 internal object WorkspaceReferenceMeshes {
     /** The guide-image part holding the reference layers' meshes. */
@@ -39,11 +39,11 @@ internal object WorkspaceReferenceMeshes {
     }
 
     /**
-     * [document] with every reference layer of a generated project in the model: those still without a mesh get one,
+     * [document] with every reference layer in the model: those still without a mesh get one,
      * at the root, read by no generator ([LayerType.PRESET], no tag). [model] is the model before the edit.
      */
     fun ensure(document: WorkspaceDocument, model: RigPreviewModel, checkCancelled: () -> Unit = {}): WorkspaceDocument {
-        if (!document.layout.generation.generated || document.layout.referenceLayerIds.isEmpty()) return document
+        if (document.layout.referenceLayerIds.isEmpty()) return document
         val created = createdLayerIds(document)
         val missing = document.source.layers.filter { layer ->
             val id = layer.id.raw

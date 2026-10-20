@@ -47,7 +47,7 @@ internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: (
 		.collectAsState(viewModel.state.value.layout.generation)
 	val busy by remember(viewModel) { viewModel.state.map { it.canvasEditBusy || it.workspaceEditBusy }.distinctUntilChanged() }
 		.collectAsState(false)
-	val layers by remember(viewModel) { viewModel.state.map { it.analysis?.source?.layers?.size ?: 0 }.distinctUntilChanged() }.collectAsState(0)
+	val ready by remember(viewModel) { viewModel.state.map { it.previewModel != null }.distinctUntilChanged() }.collectAsState(false)
 	val waiting = generation.pendingLayerIds.size + generation.pendingClassifications.keys.count { it !in generation.pendingLayerIds }
 	val visible = !generation.generated || waiting > 0 || generation.refreshLayerIds.isNotEmpty()
 	var menu by remember { mutableStateOf(false) }
@@ -78,7 +78,7 @@ internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: (
 					onClick = { viewModel.generateLayout(refresh = true); focus() },
 					open = menu,
 					onMenu = { menu = !menu },
-					enabled = !busy && layers > 0,
+					enabled = !busy && ready,
 					tooltip = (if (compact) "$status\n" else "") +
 						if (generation.generated) tr("layout.generate.again.tip") else tr("layout.generate.tip"),
 					menuTooltip = tr("layout.generate.options"),
@@ -86,9 +86,9 @@ internal fun BoxScope.LayoutGenerationBar(viewModel: PSD2LiveViewModel, focus: (
 				FloatingMenu(expanded = menu, onDismiss = { menu = false }, width = 250.dp, alignment = Alignment.TopEnd) {
 					FloatingMenuSection(tr("layout.generate.options"))
 					FloatingMenuRow(tr("layout.generate.refresh"), { menu = false; viewModel.generateLayout(refresh = true); focus() },
-						trailing = generation.refreshLayerIds.size.takeIf { it > 0 }?.toString(), enabled = !busy && layers > 0)
+						trailing = generation.refreshLayerIds.size.takeIf { it > 0 }?.toString(), enabled = !busy && ready)
 					FloatingMenuRow(tr("layout.generate.keep"), { menu = false; viewModel.generateLayout(refresh = false); focus() },
-						enabled = !busy && layers > 0 && generation != WorkspaceGeneration.Generated)
+						enabled = !busy && ready && generation != WorkspaceGeneration.Generated)
 				}
 			}
 		}

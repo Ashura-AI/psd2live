@@ -196,7 +196,6 @@ CMO3 导入共用独立应用层导入器，GUI 入口确认后携带可信用�
 | `request_id_reused` | 同一 ID 被用于不同操作、参数或作者；使用新的请求 ID |
 | `unsaved_changes` | 先保存，或明确传入支持的放弃标志 |
 | `workspace_busy` | 等待正在进行的工作完成，再读取当前状态 |
-| `not_generated` | 操作需要已生成的 Rig：工程尚未生成，或目标是上次生成后放置的图层。先执行 `rig_generate`；批量成员失败时另带 `edit_index` 和 `edit_operation` |
 | `io_error` / `permission_denied` | 根据 `message` 检查文件路径、访问权限或磁盘问题 |
 | `invalid_state` / `operation_failed` | 根据 `message` 和当前工程状态诊断业务前提或执行问题 |
 
@@ -560,7 +559,7 @@ View 从模型数据渲染 PNG，不依赖桌面截图。`canvas_rect` 给出画
 | `layer_reorder` | `state`、`layer_ids`（1–128）、`to`（`front/back/forward/backward/above/below`），`above/below` 需 `target` | 调整上下顺序（即基础绘制顺序）：移到最前或最后、越过一个未移动图层、或移到 `target` 正上方或正下方，被移动的图层之间保持原先后。只接受生成器未读过的图层（未生成工程的图层、待生成图层）；已生成图层返回错误，其描画顺序用 `layer_draw_order` 调整 |
 | `rig_generate` | `state`，可选 `refresh_geometry` | 生成或重新生成：未生成工程按当前全部图层构建；已生成工程并入上次生成后放置的图层与等待的分类，按三方合并保留用户编辑，未能干净迁移的内容见 `quality.regeneration`。`refresh_geometry` 列出按当前像素重建网格的已生成图层，省略为全部替换过图片的图层，`[]` 全部保留 |
 
-未生成工程与待生成图层只接受素材、放置、移动缩放镜像（`layer_set_canvas_rect`、`layer_transform`，旋转需生成后）、调整上下顺序（`layer_reorder`）、替换、删除、标签与生成设置；其余 Rig 编辑返回 `not_generated`，导出只包含已生成部分（未生成工程拒绝导出）。导入 PSD 的新工程同样把每个图层登记为素材并关联。
+未生成工程、空画布与待生成图层都使用普通编辑工作区，支持网格、变形器、参数、层级、旋转和纹理编辑，导出包含当前模型。`rig_generate` 按标签在已有网格上生成绑定与参数，保持网格拓扑；`refresh_geometry` 显式刷新时除外。导入 PSD 的新工程同样把每个图层登记为素材并关联。
 
 一个典型流程：`project_create` → `material_import` → `material_list` → 若干 `layer_place`（或放置整个 PSD 文件夹）→ `layer_tag` → `layer_reorder` → `rig_generate` → 作者编辑 → 再 `layer_place` → `rig_generate`。外部工具已经拆好部件时，写出 Layout 清单，用 `project_import_layout` 一步得到摆好的未生成工程，检查后 `rig_generate`。
 

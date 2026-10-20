@@ -233,15 +233,12 @@ class PSD2LivePipeline {
 
 	private fun createdIds(config: PipelineConfig): Set<String> =
 		config.rigEdits.authoringJournal.filter { it["op"]?.jsonPrimitive?.contentOrNull == RasterMeshCreation.OP }
-			.mapTo(HashSet()) { it.getValue("id").jsonPrimitive.content } +
+			.mapTo(HashSet()) { it.getValue("id").jsonPrimitive.content }.minus(RigMeshSeed.adopted(config.rigEdits).values.toSet()) +
 			SourcePartitionJournal.commands(config.rigEdits).flatMap(SourcePartitionJournal::pieces).map { it.getValue("id").jsonPrimitive.content }
 
     /** Keep the original analysis/parent frames, but let journal creations own their mesh IDs. */
     private fun withoutCreatedMeshes(rig: BuiltRig, config: PipelineConfig): BuiltRig {
-        val ids = config.rigEdits.authoringJournal.filter { it["op"]?.jsonPrimitive?.contentOrNull == RasterMeshCreation.OP }
-            .mapTo(HashSet()) { it.getValue("id").jsonPrimitive.content }
-        ids += SourcePartitionJournal.commands(config.rigEdits).flatMap(SourcePartitionJournal::pieces)
-            .map { it.getValue("id").jsonPrimitive.content }
+        val ids = createdIds(config)
         if (ids.isEmpty()) return rig
         val deleted = ids.mapTo(HashSet()) { DrawableId(it) }
         return rig.copy(puppet = rig.puppet.withDrawablesDeleted(deleted), unbound = rig.unbound?.withDrawablesDeleted(deleted),

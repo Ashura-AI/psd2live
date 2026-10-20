@@ -62,7 +62,7 @@ class LayoutManifestScenario {
 		}
 		check("open")
 		val document = now.document
-		expect("not generated", !document.layout.generation.generated && now.model.layoutPreview) { "a manifest opens to arrange before generating" }
+		expect("not generated", !document.layout.generation.generated && puppet.deformers.isEmpty()) { "a manifest opens to arrange before generating" }
 		val overrides = document.layerOverrides
 		val id = { name: String -> document.source.layers.single { it.name == name }.id.raw }
 		expect("tags", overrides[id("legwear-l")]?.let { it.tag to it.side } == (SemanticTag.LEGWEAR to Side.LEFT) &&
@@ -93,7 +93,7 @@ class LayoutManifestScenario {
 		expect("front", front.take(2).toSet() == setOf("face", "front hair") && front.drop(2) == expected.drop(2)) { "$front" }
 
 		edit("generate", "rig_generate", req())
-		expect("generated", !now.model.layoutPreview && puppet.deformers.isNotEmpty()) { "the manifest's layers did not generate a rig" }
+		expect("generated", puppet.deformers.isNotEmpty()) { "the manifest's layers did not generate a rig" }
 		refused("a generated layer keeps its order", WorkspaceLayoutEdits.REORDER, req("layer_ids" to listOf("face"), "to" to "back"))
 		reopen()
 	}
@@ -179,7 +179,7 @@ class LayoutManifestScenario {
 		val path = manifest(Files.createDirectories(temp.resolve("out")), references = setOf("back_hair"))
 		step("open the manifest") { WorkspaceSourceImporter(runtime).importLayout(path, null, runtime.state.value.state, initialConfig = config) }
 		val hair = now.document.source.layers.single { it.name == "back hair" }.id.raw
-		fun generated() = now.model.generated.rig.layerIdByDrawableId.values.toSet()
+		fun generated() = now.model.rig.layerIdByDrawableId.values.toSet()
 		fun shown() = now.model.rig.layerIdByDrawableId.values.toSet()
 		fun listed(key: String) = inspect("generation").getValue(key).jsonArray.map { it.jsonPrimitive.content }
 		expect("marked", now.document.layout.referenceLayerIds == setOf(hair) &&
@@ -188,7 +188,7 @@ class LayoutManifestScenario {
 		// A reference shows as a bare quad over its rectangle, drawn apart from the artwork: no atlas holds its pixels.
 		fun quad() = now.model.rig.puppet.drawables.single { now.model.rig.layerIdByDrawableId[it.id.raw] == hair }
 		fun corners() = quad().mesh!!.positions.toList()
-		fun apart(stage: String) = expect(stage, now.model.referenceLayerIds == setOf(hair) && hair !in now.model.atlas.placementByLayerId &&
+		fun apart(stage: String) = expect(stage, now.model.referenceLayerIds.isEmpty() && hair in now.model.atlas.placementByLayerId &&
 			quad().mesh!!.vertexCount == 4 && now.model.analysis.layers.any { it.source.id.raw == hair }) {
 			"references ${now.model.referenceLayerIds}, atlas ${now.model.atlas.placementByLayerId.keys}, ${quad().mesh!!.vertexCount} vertices" }
 		apart("apart before generating")
@@ -238,7 +238,7 @@ class LayoutManifestScenario {
 		edit("place the face", "layer_place", req("material_id" to face.id))
 		val placed = now.document.source.layers.single().id.raw
 		expect("as reference", now.document.layout.referenceLayerIds == setOf(placed)) { "${now.document.layout.referenceLayerIds}" }
-		refused("only a reference to generate from", "rig_generate", req())
+		edit("generate with only a reference", "rig_generate", req())
 		edit("place it as a model layer", "layer_place", req("material_id" to face.id, "reference" to false))
 		expect("as model", now.document.layout.referenceLayerIds == setOf(placed)) { "${now.document.layout.referenceLayerIds}" }
 		val root = library.folders.single { it.parentId == null }.id

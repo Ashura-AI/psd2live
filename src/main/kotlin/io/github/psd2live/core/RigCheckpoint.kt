@@ -86,8 +86,14 @@ internal fun PuppetModel.reboundTo(atlas: PuppetAtlas, sources: List<ArtSource>)
 	return target.copy(drawables = drawables.map { drawable ->
 		val mesh = drawable.mesh ?: return@map drawable
 		val tile = drawable.atlasTileId?.let { atlas.tileById[it] } ?: return@map drawable
-		val canvas = runCatching { RasterMeshJournal.TextureCoordinates(this, drawable).toCanvas(mesh.uvs) }.getOrNull() ?: return@map drawable
 		val placed = drawable.copy(texturePage = tile.placement?.pageIndex ?: -1)
+		val from = runCatching { LayerTexture.of(this, drawable).texture }.getOrNull()
+		val to = runCatching { LayerTexture.of(target, placed).texture }.getOrNull()
+		// A combined workspace can change the inventory order without changing this tile's binding. Keep exact UVs.
+		if (from != null && to != null && from.space == to.space && from.placement == to.placement &&
+			from.pageWidth == to.pageWidth && from.pageHeight == to.pageHeight &&
+			from.offsetOriginX == to.offsetOriginX && from.offsetOriginY == to.offsetOriginY) return@map placed
+		val canvas = runCatching { RasterMeshJournal.TextureCoordinates(this, drawable).toCanvas(mesh.uvs) }.getOrNull() ?: return@map drawable
 		placed.copy(mesh = DrawableMesh(mesh.positions, RasterMeshJournal.TextureCoordinates(target, placed).toUvs(canvas), mesh.indices))
 	})
 }

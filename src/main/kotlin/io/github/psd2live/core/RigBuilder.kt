@@ -602,14 +602,15 @@ object RigBuilder {
 		resolution: PrimitiveResolution,
 	): List<ClassifiedLayer> {
 		val unitScale = MeshResolution.unitScale(config, analysis.source)
+		val seeds = RigMeshSeed.layers(config.rigEdits)
 		// Generate the layers' meshes side by side first; the footprints below, and the mesh stage, read them cached.
 		meshCache?.prefetch(layers.mapNotNull { layer ->
-			if (resolution.partByLayer[layer.source.id.raw] != null || layer.opaquePixels <= 0 ||
+			if (layer.source.id.raw in seeds || resolution.partByLayer[layer.source.id.raw] != null || layer.opaquePixels <= 0 ||
 				layer.semantic.tag in setOf(SemanticTag.TOOTH_T, SemanticTag.TOOTH_B)) null
 			else MeshResolution.input(layer.source, config.meshTrace, unitScale) to meshSettings(layer, config).first
 		}, config.alphaThreshold)
 		return layers.map { layer ->
-			val pinned = resolution.partByLayer[layer.source.id.raw]
+			val pinned = resolution.partByLayer[layer.source.id.raw] ?: seeds[layer.source.id.raw]
 			val footprint = (if (pinned != null) pinnedFootprint(pinned) else meshFootprint(layer, config, meshCache, unitScale)) ?: return@map layer
 			layer.copy(
 				bounds = footprint.bounds,
@@ -854,10 +855,64 @@ object RigBuilder {
 
 	fun build(inputAnalysis: PipelineAnalysis, atlas: PackedAtlas, config: PipelineConfig, meshCache: PreviewMeshCache? = null): BuiltRig =
 		RigBuildProfile.stage("build: total") {
+			if (config.deferRig || config.rigPendingLayerIds.isNotEmpty())
+				return@stage buildWithPendingMeshes(inputAnalysis, atlas, config, meshCache)
 			val context = RigBuildProfile.stage("build: context") { rigContext(inputAnalysis, config, meshCache) }
 			val ids = RigBuildProfile.stage("build: split ids") { splitStableDrawableIds(inputAnalysis, config) }
 			buildWithContext(inputAnalysis, atlas, config, meshCache, context, ids)
 		}
+
+	/** Pending means only that semantic generation waits; these meshes belong to the same replayable base rig. */
+	private fun buildWithPendingMeshes(input: PipelineAnalysis, atlas: PackedAtlas, config: PipelineConfig,
+	                                   meshCache: PreviewMeshCache?): BuiltRig {
+		val pending = input.layers.filter { config.deferRig || it.source.id.raw in config.rigPendingLayerIds }
+		val generated = input.layers - pending.toSet()
+		fun analysis(layers: List<ClassifiedLayer>) = input.copy(layers = layers,
+			anchors = if (layers.any { it.opaquePixels > 0 }) CharacterAnalyzer.anchorsFor(layers) else input.anchors,
+			calibration = null)
+		val plain = config.copy(deferRig = false, rigPendingLayerIds = emptySet())
+		val generatedRig = if (generated.isEmpty()) null else build(analysis(generated), atlas, plain, meshCache)
+		val generatedOrders = generatedRig?.puppet?.drawables.orEmpty().associate { drawable ->
+			generatedRig!!.layerIdByDrawableId[drawable.id.raw] to drawable.drawOrder
+		}
+		val stack = input.layers.sortedBy { it.source.order }.map { it.source.id.raw }
+		val pendingOrders = pending.associate { layer ->
+			val index = stack.indexOf(layer.source.id.raw)
+			val before = (index - 1 downTo 0).firstOrNull { stack[it] in generatedOrders }
+			val after = (index + 1 until stack.size).firstOrNull { stack[it] in generatedOrders }
+			val step = generatedOrderStep(config.drawOrderStep, stack.size).toFloat()
+			val high = before?.let { generatedOrders.getValue(stack[it]) } ?: ((after?.let { generatedOrders.getValue(stack[it]) } ?: 0f) + ((after ?: stack.size) + 1) * step)
+			val low = after?.let { generatedOrders.getValue(stack[it]) } ?: (high - (stack.size - (before ?: -1)) * step)
+			val fraction = (index - (before ?: -1)).toFloat() / ((after ?: stack.size) - (before ?: -1))
+			layer.source.id.raw to kotlin.math.round(high + (low - high) * fraction).coerceIn(0f, 1000f)
+		}
+		val pins = plain.rigEdits.splitDrawableIds + generatedRig?.layerIdByDrawableId.orEmpty().entries.associate { it.value to it.key }
+		val ids = assignSplitDrawableIds(analysis(pending), pins.mapValues { DrawableId(it.value) }).mapValues { it.value.raw }
+		val meshConfig = plain.copy(meshOnly = true, generateDeformers = false,
+			drawOrderOverrides = pendingOrders + plain.drawOrderOverrides,
+			layerOverrides = plain.layerOverrides + pending.associate { layer -> layer.source.id.raw to
+				LayerClassificationOverride(LayerType.PRESET, layer.semantic.tag, layer.semantic.side) },
+			rigEdits = plain.rigEdits.copy(splitDrawableIds = ids, skeleton = null))
+		val extra = build(analysis(pending), atlas, meshConfig, meshCache)
+		val meshIds = extra.puppet.drawables.mapTo(HashSet()) { it.id }
+		val base = generatedRig ?: extra
+		val (combinedAtlas, sources) = PuppetSourceAtlas.build(input, atlas)
+		val puppet = base.puppet.copy(
+			parameters = generatedRig?.puppet?.parameters.orEmpty(),
+			parameterTree = generatedRig?.puppet?.parameterTree.orEmpty(),
+			parameterLinks = generatedRig?.puppet?.parameterLinks.orEmpty(),
+			parts = generatedRig?.puppet?.parts.orEmpty(),
+			drawables = generatedRig?.puppet?.drawables.orEmpty() + extra.puppet.drawables,
+			rootChildren = generatedRig?.puppet?.rootChildren.orEmpty() + meshIds.map { OrgChild.Drawable(it) },
+			// Both builds bind to this atlas, including the other build's source inventory.
+			atlas = combinedAtlas,
+			sources = sources,
+		).withDerivedRenderRoot()
+		return base.copy(puppet = puppet, unbound = null,
+			pageByDrawableId = generatedRig?.pageByDrawableId.orEmpty() + extra.pageByDrawableId,
+			sourceBoundsByDrawableId = generatedRig?.sourceBoundsByDrawableId.orEmpty() + extra.sourceBoundsByDrawableId,
+			layerIdByDrawableId = generatedRig?.layerIdByDrawableId.orEmpty() + extra.layerIdByDrawableId)
+	}
 
 	/**
 	 * The drawable ids a document split with the layer splitter has to keep.
@@ -1066,6 +1121,7 @@ object RigBuilder {
 
 		val builtDeformPaths = mutableListOf<DeformPath>()
 		val meshConfig = stageConfig(config)
+		val seeds = RigMeshSeed.layers(config.rigEdits)
 		val reservedDrawableIds = stableDrawableIds.values.toMutableSet()
 		val orderedLayers = orderMouthLayers(baseLayers.sortedBy { it.source.order })
 		val orderStep = generatedOrderStep(config.drawOrderStep, orderedLayers.size)
@@ -1089,7 +1145,16 @@ object RigBuilder {
 				}
 				else stableSplitDrawableId(layer.source.id.raw, stableDrawableIds.values)
 			reservedDrawableIds += id
-			val parts = meshStage(
+			val seed = seeds[layer.source.id.raw]
+			val parts = if (seed != null) {
+				val (drawable, bounds) = pinnedPart(seed, layer, context, config, shouldBuildDeformers, switchParamKeys, stages,
+					0f, placement.page)
+				val pinned = requireNotNull(drawable.mesh)
+				val offsets = FloatArray(pinned.uvs.size) { index -> pinned.uvs[index] -
+					if (index % 2 == 0) layer.source.bounds.left else layer.source.bounds.top }
+				val mesh = DrawableMesh(pinned.positions, offsets, pinned.indices)
+				LayerMeshParts(mesh, MeshData(mesh, seed.positions), null, emptyList(), requireNotNull(drawable.geometryGrid), null, bounds)
+			} else meshStage(
 				layer,
 				rigLayer,
 				context,
@@ -1581,7 +1646,8 @@ object RigBuilder {
 	private fun handEditedTopology(config: PipelineConfig): Set<String> =
 		config.rigEdits.authoringJournal
 			.filter { it["op"]?.jsonPrimitive?.contentOrNull == "canvas_topology" }
-			.mapNotNullTo(HashSet()) { it["id"]?.jsonPrimitive?.contentOrNull }
+			.mapNotNullTo(HashSet()) { it["id"]?.jsonPrimitive?.contentOrNull } +
+			RigMeshSeed.layers(config.rigEdits).values.filter { it.fixedTopology }.map { it.drawableId.raw }
 
 	/**
 	 * The id of a deform path the builder generates on [drawable]: derived from the mesh and the path's role,

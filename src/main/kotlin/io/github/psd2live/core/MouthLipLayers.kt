@@ -36,17 +36,23 @@ internal class MouthLipLayer(
 internal object MouthLipLayers {
     fun prepare(input: PipelineAnalysis, config: PipelineConfig): PipelineAnalysis {
         val originals = input.layers.filter { it.source !is MouthLipLayer && it.source.id.raw !in config.deletedLayerIds }
-        if (!config.mouthOutlineEnabled || config.meshOnly) return input.copy(layers = originals)
+        if (!config.mouthOutlineEnabled || config.meshOnly || config.deferRig) return input.copy(layers = originals)
         // Version 2 records: superseded layers never feed the face rig, and parts own no ribbons (their meshes are pinned).
         val resolution = PrimitiveResolution.of(config.rigEdits)
         val layout = (input.calibration ?: input).let { if (resolution.active) it.copy(layers = resolution.aggregates(it.layers)) else it }
+            .let { analysis ->
+                if (config.rigPendingLayerIds.isEmpty()) analysis else {
+                    val layers = analysis.layers.filterNot { it.source.id.raw in config.rigPendingLayerIds }
+                    analysis.copy(layers = layers, anchors = if (layers.any { it.opaquePixels > 0 }) CharacterAnalyzer.anchorsFor(layers) else analysis.anchors)
+                }
+            }
         val faceRig = NinePoseFaceRig.from(layout)
         val headSpace = faceRig.coordinateSpace
         // A depth front copies exactly the selected mesh, including its already authored mouth motion.
         val depthFronts = DepthSplit.frontLayerIds(config)
         val unitScale = MeshResolution.unitScale(config, input.source)
         val layers = originals.flatMap { owner ->
-            if (owner.source.id.raw in depthFronts || resolution.isPartLayer(owner.source.id.raw) || owner.semantic.tag !in setOf(SemanticTag.MOUTH, SemanticTag.MOUTH_OPEN) || owner.opaquePixels == 0) listOf(owner)
+            if (owner.source.id.raw in config.rigPendingLayerIds || owner.source.id.raw in depthFronts || resolution.isPartLayer(owner.source.id.raw) || owner.semantic.tag !in setOf(SemanticTag.MOUTH, SemanticTag.MOUTH_OPEN) || owner.opaquePixels == 0) listOf(owner)
             else {
                 val rgb = config.mouthColor ?: perimeterColor(owner.source.raster, config.alphaThreshold)
                 val adaptive = AdaptiveMeshGenerator.generate(

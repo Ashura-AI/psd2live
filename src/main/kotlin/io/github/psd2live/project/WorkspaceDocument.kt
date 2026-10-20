@@ -240,6 +240,10 @@ internal fun WorkspaceDocument.rawConfig(base: PipelineConfig = PipelineConfig()
         atlasBudget = WorkspaceSettingsCodec.decodeAtlasBudget(settings),
         textureOverrides = storedTextureOverrides,
         atlasArrangement = AtlasArrangementCodec.decode(settings),
+        allowEmptyArt = true,
+        deferRig = !layout.generation.generated,
+        rigPendingLayerIds = (if (layout.generation.generated) layout.generation.pendingLayerIds
+            else source.layers.mapTo(LinkedHashSet()) { it.id.raw }) + layout.referenceLayerIds,
     )
 
 /** The document, rather than a renderer or UI projection, supplies all durable generation inputs. */
