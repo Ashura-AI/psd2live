@@ -54,6 +54,7 @@ import io.github.psd2live.ui.state.ReferenceTarget
 import io.github.psd2live.ui.state.referenceConversion
 import io.github.psd2live.ui.tooloptions.OptionIcon
 import io.github.psd2live.ui.views.tooloptions.OptionIconView
+import io.github.psd2live.ui.views.tooloptions.invokeMenuAction
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.handCursor
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
@@ -317,23 +318,23 @@ internal fun ReferenceTreeRow(row: ReferenceRow, startPadding: androidx.compose.
 
 /** Reference actions share the canvas menu's rows, continuous values and cascading pin panel. */
 @Composable
-internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: PSD2LiveViewModel, close: () -> Unit) {
-	val colors = LocalToolColors.current
+internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: PSD2LiveViewModel, onAction: () -> Unit = {}, close: () -> Unit) {
 	val image = row.target as? ReferenceTarget.Image
 	val layer = row.target as? ReferenceTarget.Layer
 	val puppet = state.previewModel?.rig?.puppet
 	var pinsOpen by remember { mutableStateOf(false) }
 	var opacity by remember(row.target, row.opacity) { mutableStateOf(row.opacity ?: 1f) }
-	val editable = !state.isBusy && !state.workspaceEditBusy
-	val rows = mutableListOf<Pair<Boolean, @Composable () -> Unit>>()
-	fun add(highlight: Boolean = true, content: @Composable () -> Unit) { rows += highlight to content }
+	val editable = !state.isBusy && !state.workspaceEditBusy && !state.editorDraftBusy
+    fun act(command: () -> Unit) = invokeMenuAction(close, onAction, action = command)
+	val rows = mutableListOf<Triple<Boolean, Boolean, @Composable () -> Unit>>()
+	fun add(highlight: Boolean = true, danger: Boolean = false, content: @Composable () -> Unit) { rows += Triple(highlight, danger, content) }
 	add(false) { FloatingMenuSection(row.name) }
-	if (layer != null) add { ReferenceConversionMenuRow(layer.layerId, state, viewModel, close) }
-	for (mode in ReferenceMode.entries) add {
-		FloatingMenuRow(tr(mode.labelKey), { close(); if (mode != row.mode) viewModel.setReferenceMode(row.target, mode) },
+	if (layer != null) add(highlight = state.referenceConversion(layer.layerId).enabled) { ReferenceConversionMenuRow(layer.layerId, state, viewModel, close, onAction) }
+	for (mode in ReferenceMode.entries) add(highlight = editable) {
+		FloatingMenuRow(tr(mode.labelKey), { act { if (mode != row.mode) viewModel.setReferenceMode(row.target, mode) } },
 			selected = mode == row.mode, enabled = editable, trailing = tr(if (mode.inModel) "references.inModel" else "references.notInModel"))
 	}
-	add { FloatingMenuRow(tr(if (row.visible) "references.hide" else "references.show"), { close(); viewModel.setReferenceVisible(row.target, !row.visible) },
+	add(highlight = editable) { FloatingMenuRow(tr(if (row.visible) "references.hide" else "references.show"), { act { viewModel.setReferenceVisible(row.target, !row.visible) } },
 		enabled = editable, icon = { IconEye(row.visible, Modifier.size(12.dp), it) }) }
 	if (row.opacity != null) {
 		add(false) {
@@ -343,22 +344,22 @@ internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: P
 		}
 	}
 	if (image != null) {
-		add { FloatingMenuRow(tr(if (row.locked) "references.unlock" else "references.lock"), { close(); viewModel.editReference(image.id) { put("locked", !row.locked) } },
+		add(highlight = editable) { FloatingMenuRow(tr(if (row.locked) "references.unlock" else "references.lock"), { act { viewModel.editReference(image.id) { put("locked", !row.locked) } } },
 			enabled = editable, icon = { IconLock(row.locked, Modifier.size(12.dp), it) }) }
 	}
 	if (puppet != null && puppet.parameters.isNotEmpty()) add {
 		FloatingMenuSubmenuRow(tr("layers.pin.menu"), pinsOpen, { pinsOpen = true },
 			icon = { IconPin(row.pinned, Modifier.size(12.dp), it) })
 	}
-	add { FloatingMenuRow(tr("references.remove"), { close(); viewModel.removeReference(row.target) }, enabled = editable,
-		icon = { IconTrash(Modifier.size(12.dp), colors.error) }) }
+	add(highlight = editable, danger = true) { FloatingMenuRow(tr("references.remove"), { act { viewModel.removeReference(row.target) } }, enabled = editable,
+		danger = true, icon = { IconTrash(Modifier.size(12.dp), it) }) }
 	val pinIndex = if (puppet != null && puppet.parameters.isNotEmpty()) rows.lastIndex - 1 else -1
 	MenuCascade {
-		GlidingColumn(Modifier.width(236.dp), rows.size, { rows[it].first }, onHover = { if (it != pinIndex) pinsOpen = false }) { rows[it].second() }
+		GlidingColumn(Modifier.width(236.dp), rows.size, { rows[it].first }, onHover = { if (it != pinIndex) pinsOpen = false }, dangers = { rows[it].second }) { rows[it].third() }
 		MenuSecondLevel("pins".takeIf { pinsOpen }) {
 			if (puppet != null) {
 				val points = row.target.pin(state.layout)
-				GlidingColumn(Modifier.width(236.dp), if (points.isEmpty()) 2 else 3, { it == 2 }) { i ->
+				GlidingColumn(Modifier.width(236.dp), if (points.isEmpty()) 2 else 3, { it == 2 && editable }) { i ->
 					when (i) {
 						0 -> FloatingMenuSection(tr("layers.pin.menu"))
 						1 -> ReferencePinPanel(puppet, state.parameterValues, points, enabled = editable && state.analysis != null) { viewModel.toggleReferencePoint(row.target, it) }
@@ -372,11 +373,10 @@ internal fun ReferenceMenu(row: ReferenceRow, state: PSD2LiveState, viewModel: P
 
 /** The first action under a layer's name, with the destination's icon, in both directions. */
 @Composable
-internal fun ReferenceConversionMenuRow(layerId: String, state: PSD2LiveState, viewModel: PSD2LiveViewModel, close: () -> Unit) {
+internal fun ReferenceConversionMenuRow(layerId: String, state: PSD2LiveState, viewModel: PSD2LiveViewModel, close: () -> Unit, onAction: () -> Unit = {}) {
 	val conversion = state.referenceConversion(layerId)
 	FloatingMenuRow(tr(conversion.labelKey), {
-		close()
-		viewModel.markLayersReference(listOf(layerId), conversion.toReference)
+        invokeMenuAction(close, onAction) { viewModel.markLayersReference(listOf(layerId), conversion.toReference) }
 	}, enabled = conversion.enabled, icon = {
 		OptionIconView(if (conversion.toReference) OptionIcon.REFERENCE else OptionIcon.MESH, it)
 	})

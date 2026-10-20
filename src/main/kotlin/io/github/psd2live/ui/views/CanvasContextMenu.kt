@@ -34,7 +34,7 @@ internal fun CanvasContextMenu(
     if (!expanded && !canvasContextMenuHasContent(editor)) return
     PressMenu(expanded, clickOffset, onDismissRequest) {
         val reference = selectedReferenceRow(editor.state)
-        if (reference != null) ReferenceMenu(reference, editor.state, editor.viewModel) { onDismissRequest(); onAction() }
+        if (reference != null) ReferenceMenu(reference, editor.state, editor.viewModel, close = onDismissRequest, onAction = onAction)
         else ToolOptionMenu(editor, onDismiss = onDismissRequest, onAction = onAction)
     }
 }

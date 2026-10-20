@@ -321,15 +321,15 @@ private fun MutableList<ToolOption>.addLayerActions(editor: CanvasEditor, layerI
         add(ActionOption("layer.meshRebuild", "mesh.rebuild", { it.editable }, { it.viewModel.rebuildLayerMesh(layerId) },
             OptionIcon.REBUILD, place = OptionPlace.MENU))
         add(ActionOption("layer.meshSplit", "canvas.hierarchy.splitMeshComponents", { it.editable }, { it.viewModel.requestMeshSplit(layerId) },
-            OptionIcon.SPLIT, place = OptionPlace.MENU))
+            OptionIcon.SPLIT, place = OptionPlace.MENU, opensDialog = true))
         val split = meshId?.let { id -> editor.model.drawables.firstOrNull { it.id.raw == id }?.takeIf { editor.viewModel.depthSplitMiddleIds(id).isNotEmpty() } }
         if (split != null) add(ActionOption("layer.depthSplit", "editor.depthSplit.quick", { it.editable }, { it.viewModel.requestDepthSplit(split.id.raw) },
-            OptionIcon.DEPTH_SPLIT, labelArgs = { listOf(split.name) }, place = OptionPlace.MENU))
+            OptionIcon.DEPTH_SPLIT, labelArgs = { listOf(split.name) }, place = OptionPlace.MENU, opensDialog = true))
     }
     val material = editor.state.layout.layerMaterials[layerId]?.let(editor.state.layout.materials::item) ?: return
     add(SectionOption("layer.material", "editor.menu.material", OptionPlace.MENU, submenu = true, icon = OptionIcon.MATERIAL, alwaysFolds = true))
     add(ActionOption("layer.materialOpen", "materials.menu.edit", { true }, { it.viewModel.openMaterialEditor(material.id) },
-        OptionIcon.MATERIAL, place = OptionPlace.MENU))
+        OptionIcon.MATERIAL, place = OptionPlace.MENU, opensDialog = true))
     add(ActionOption("layer.materialUnlink", "materials.link.unlink", { it.editable }, { it.viewModel.unlinkMaterials(listOf(layerId)) },
         OptionIcon.UNLINK, place = OptionPlace.MENU))
 }

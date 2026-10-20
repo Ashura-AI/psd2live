@@ -61,7 +61,7 @@ class ReferenceConversionMenuTest {
                                 if (open) Box(Modifier.offset(12.dp, 12.dp)) {
                                     val close = { open = false; dismissals++; Unit }
                                     val drawable = state.previewModel!!.rig.puppet.drawables.single { it.id.raw == meshId }
-                                    if (layerId in state.layout.referenceLayerIds) ReferenceMenu(referenceLayerRow(state, layerId, drawable.name), state, vm, close)
+                                    if (layerId in state.layout.referenceLayerIds) ReferenceMenu(referenceLayerRow(state, layerId, drawable.name), state, vm, close = close)
                                     else ArtMeshMenu(drawable, layerId, null, state, vm, close)
                                 }
                             }
@@ -113,6 +113,40 @@ class ReferenceConversionMenuTest {
                 val generated = vm.state.value.analysis!!.source.layers.first { it.id.raw != layerId }.id.raw
                 assertFalse(vm.state.value.referenceConversion(generated).enabled)
                 assertFalse(vm.state.value.referenceConversion("missing").enabled)
+                // A user-created ArtMesh remains convertible even though it cannot be reordered as a pending layer.
+                vm.toggleSelectedLayersReference()
+                withTimeout(10_000) { while (vm.state.value.workspaceEditBusy || layerId in vm.state.value.layout.referenceLayerIds) delay(10) }
+                val one = vm.state.value.referenceSelectionConversion()
+                assertTrue(one.enabled && one.toReference)
+                assertTrue(vm.reorderableSelection().isEmpty())
+                assertEquals(listOf(layerId), vm.referenceSelection())
+                assertEquals("references.toReference", one.labelKey)
+                vm.toggleLayerSelection(generated)
+                val mixed = vm.state.value.referenceSelectionConversion()
+                assertEquals(setOf(layerId, generated), mixed.layerIds.toSet())
+                assertFalse(mixed.enabled)
+                val beforeMixed = workspace.snapshot().state
+                assertFalse(vm.toggleSelectedLayersReference())
+                assertEquals(beforeMixed, workspace.snapshot().state)
+                vm.selectLayer(layerId)
+                // Two eligible members are converted atomically, with a target and count in the label.
+                workspace.applyDocumentEdits(workspace.snapshot().state, "Another reference", listOf(
+                    WorkspaceDocumentOperation(WorkspaceMaterialEdits.PLACE, buildJsonObject {
+                        put("material_id", vm.state.value.layout.materials.items.first().id)
+                        put("layer_id", "second_guide"); put("reference", true)
+                    })), MutationAuthor.USER)
+                vm.toggleLayerSelection("second_guide")
+                val batch = vm.state.value.referenceSelectionConversion()
+                assertEquals(2, batch.layerIds.size)
+                assertTrue(batch.enabled && batch.toReference)
+                assertEquals("references.toReferenceMany", batch.labelKey)
+                val beforeBatch = vm.state.value.historySnapshot!!.nodes.size
+                assertTrue(vm.toggleSelectedLayersReference())
+                withTimeout(10_000) { while (vm.state.value.workspaceEditBusy || layerId !in vm.state.value.layout.referenceLayerIds) delay(10) }
+                assertEquals(beforeBatch + 1, vm.state.value.historySnapshot!!.nodes.size)
+                assertEquals(setOf(layerId, "second_guide"), vm.state.value.referenceSelectionConversion().layerIds.toSet())
+                assertEquals("references.toModelMany", vm.state.value.referenceSelectionConversion().labelKey)
+                assertNull(vm.state.value.errorMessage)
             }
         }
     }

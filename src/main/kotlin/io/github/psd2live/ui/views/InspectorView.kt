@@ -73,6 +73,8 @@ import io.github.psd2live.ui.components.CompactTextField
 import io.github.psd2live.ui.components.IconChevron
 import io.github.psd2live.ui.components.IconTrash
 import io.github.psd2live.ui.localizedName
+import io.github.psd2live.ui.components.IconMeshWireframe
+import io.github.psd2live.ui.state.referenceSelectionConversion
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
@@ -527,8 +529,10 @@ internal fun LayersTableView(
 	Column(modifier = Modifier.fillMaxSize()) {
 		// Visibility for every layer at once, then what the panel lists.
 		val restoreLabel = tr("layers.restoreAll", state.deletedLayerIds.size)
+        val conversion = state.referenceSelectionConversion()
+        val conversionLabel = tr(conversion.labelKey, conversion.layerIds.size)
 		val labels = listOf(tr("layers.popup.showAll"), tr("layers.popup.hideAll"), tr("layers.popup.invertVisibility"),
-			tr("layers.reorder.forward"), tr("layers.reorder.backward"), tr("layers.reference.toggle")) +
+			tr("layers.reorder.forward"), tr("layers.reorder.backward"), conversionLabel) +
 			if (state.deletedLayerIds.isNotEmpty()) listOf(restoreLabel) else emptyList()
 		// Only layers the generator has not read move in the stack; a generated layer's drawing order is the ruler's.
 		val movable = viewModel.reorderableSelection(state).isNotEmpty()
@@ -555,12 +559,11 @@ internal fun LayersTableView(
 				enabled = movable, tooltip = withKey(labels[4], ShortcutAction.LAYER_BACKWARD)) {
 				IconArrowVertical(up = false, tint = colors.textPrimary)
 			}
-			// Reference layers stay on the canvas but out of the rig and exports; the button flips the selection.
-			val referenced = movable && viewModel.reorderableSelection(state).all { it in state.layout.referenceLayerIds }
-			PanelToolButton(labels[5], showLabel = labelsShown > 5, onClick = { viewModel.toggleSelectedLayersReference() },
-				enabled = movable, active = referenced, tooltip = withKey(labels[5], ShortcutAction.LAYER_TOGGLE_REFERENCE)) {
-				IconReferenceImage(tint = if (referenced) colors.accent else colors.textPrimary, size = 12.dp)
-			}
+            PanelToolButton(labels[5], showLabel = labelsShown > 5, onClick = { viewModel.toggleSelectedLayersReference() },
+                enabled = conversion.enabled, tooltip = withKey(labels[5], ShortcutAction.LAYER_TOGGLE_REFERENCE)) {
+                if (conversion.toReference) IconReferenceImage(tint = colors.textPrimary, size = 12.dp)
+                else IconMeshWireframe(tint = colors.textPrimary, modifier = Modifier.size(12.dp))
+            }
 			if (state.deletedLayerIds.isNotEmpty()) {
 				PanelToolbarSeparator()
 				PanelToolButton(restoreLabel, showLabel = labelsShown > 6, onClick = { viewModel.restoreAllDeletedLayers() },
@@ -680,11 +683,10 @@ internal fun LayersTableView(
 									overflow = TextOverflow.Ellipsis,
 								)
 							}
-							// A reference layer: on the canvas, out of the rig and exports; the mark gives it back to the model.
+							// The badge describes the layer; conversions are explicit actions in the toolbar and context menu.
 							if (layerId in state.layout.referenceLayerIds) {
 								io.github.psd2live.ui.views.texture.BarTooltip(tr("layers.reference.tip")) {
-									Box(Modifier.padding(start = 4.dp).size(16.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(3.dp)).handCursor()
-										.clickable { viewModel.markLayersReference(listOf(layerId), false) }, contentAlignment = Alignment.Center) {
+									Box(Modifier.padding(start = 4.dp).size(16.dp), contentAlignment = Alignment.Center) {
 										IconReferenceImage(tint = colors.accent, size = 12.dp)
 									}
 								}

@@ -139,6 +139,7 @@ internal class ToggleOption(
 /**
  * A command of the tool. [labelArgs] fills the label's placeholders; [primary] is the action the tool exists for;
  * [keepsMenu] leaves the context menu open after it, for a step taken several times in a row.
+ * [opensDialog] keeps focus with the dialog or editor window the action opens.
  */
 internal class ActionOption(
     override val id: String,
@@ -151,6 +152,7 @@ internal class ActionOption(
     val keepsMenu: Boolean = false,
     val labelArgs: (CanvasEditor) -> List<Any> = { emptyList() },
     override val place: OptionPlace = OptionPlace.BOTH,
+    val opensDialog: Boolean = false,
 ) : ToolOption
 
 /**

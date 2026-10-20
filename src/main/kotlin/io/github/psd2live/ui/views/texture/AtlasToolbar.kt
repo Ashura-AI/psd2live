@@ -423,6 +423,7 @@ internal val LocalMenuGlide = androidx.compose.runtime.staticCompositionLocalOf 
 internal class MenuGlideHost {
 	var coordinates: androidx.compose.ui.layout.LayoutCoordinates? = null
 	var target by mutableStateOf<androidx.compose.ui.geometry.Rect?>(null)
+	var danger by mutableStateOf(false)
 	private var rows = 0
 	fun nextRow(): Int = rows++
 }
@@ -443,6 +444,7 @@ internal fun MenuGlide(modifier: Modifier = Modifier, content: @Composable () ->
 	val host = remember { MenuGlideHost() }
 	val target = host.target
 	val glow by animateFloatAsState(if (target != null) 1f else 0f, tween(Motion.Quick, easing = FastOutSlowInEasing))
+	val highlightColor by animateColorAsState(if (host.danger) colors.error.copy(alpha = 0.14f) else colors.controlHover.copy(alpha = 0.75f), tween(Motion.Instant))
 	val left = remember { androidx.compose.animation.core.Animatable(0f) }
 	val top = remember { androidx.compose.animation.core.Animatable(0f) }
 	val width = remember { androidx.compose.animation.core.Animatable(0f) }
@@ -463,7 +465,7 @@ internal fun MenuGlide(modifier: Modifier = Modifier, content: @Composable () ->
 				.size(with(density) { width.value.toDp() }, with(density) { height.value.toDp() })
 				.alpha(glow)
 				.clip(RoundedCornerShape(5.dp))
-				.background(colors.controlHover.copy(alpha = 0.75f)),
+				.background(highlightColor),
 		)
 		CompositionLocalProvider(LocalMenuGlide provides true, LocalMenuGlideHost provides host) { content() }
 	}
@@ -474,10 +476,10 @@ internal fun MenuGlide(modifier: Modifier = Modifier, content: @Composable () ->
  * [enabled] and the pointer enters it, telling [onEnter]. Outside a [MenuGlide] it changes nothing.
  */
 @Composable
-internal fun Modifier.glideRow(enabled: Boolean, onEnter: () -> Unit = {}): Modifier {
+internal fun Modifier.glideRow(enabled: Boolean, danger: Boolean = false, onEnter: () -> Unit = {}): Modifier {
 	val host = LocalMenuGlideHost.current ?: return this
 	val index = remember { host.nextRow() }
-	return glideItem(enabled, onEnter, spanWidth = true).menuArrival(index)
+	return glideItem(enabled, onEnter, spanWidth = true, danger = danger).menuArrival(index)
 }
 
 /**
@@ -488,9 +490,10 @@ internal fun Modifier.glideRow(enabled: Boolean, onEnter: () -> Unit = {}): Modi
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-internal fun Modifier.glideItem(enabled: Boolean, onEnter: () -> Unit = {}, spanWidth: Boolean = false): Modifier {
+internal fun Modifier.glideItem(enabled: Boolean, onEnter: () -> Unit = {}, spanWidth: Boolean = false, danger: Boolean = false): Modifier {
 	val host = LocalMenuGlideHost.current ?: return this
 	val holder = remember { arrayOfNulls<androidx.compose.ui.geometry.Rect>(1) }
+    androidx.compose.runtime.SideEffect { if (!enabled && host.target == holder[0]) host.target = null }
 	androidx.compose.runtime.DisposableEffect(host) {
 		onDispose { if (holder[0] != null && host.target == holder[0]) host.target = null }
 	}
@@ -503,7 +506,7 @@ internal fun Modifier.glideItem(enabled: Boolean, onEnter: () -> Unit = {}, span
 				holder[0] = bounds
 			}
 		}
-		.onPointerEvent(PointerEventType.Enter) { host.target = if (enabled) holder[0] else null; onEnter() }
+		.onPointerEvent(PointerEventType.Enter) { host.target = if (enabled) holder[0] else null; host.danger = enabled && danger; onEnter() }
 }
 
 /** A caption over a group of [FloatingMenu] rows. */
@@ -545,6 +548,7 @@ internal fun FloatingMenuRow(
 	hint: String? = null,
 	trailing: String? = null,
 	bar: Boolean = true,
+	danger: Boolean = false,
 	icon: (@Composable (Color) -> Unit)? = null,
 	control: (@Composable () -> Unit)? = null,
 ) {
@@ -553,16 +557,19 @@ internal fun FloatingMenuRow(
 	val hovered by interactionSource.collectIsHoveredAsState()
 	val tint by animateColorAsState(when {
 		!enabled -> colors.textMuted.copy(alpha = 0.5f)
+		danger -> colors.error
 		selected -> colors.accent
 		hovered -> colors.textPrimary
 		else -> colors.textMuted
 	}, tween(Motion.Instant))
 	val glide = LocalMenuGlide.current
-	val background by animateColorAsState(if (hovered && enabled && !glide) colors.controlHover.copy(alpha = 0.75f) else Color.Transparent, tween(Motion.Instant))
+	val background by animateColorAsState(if (hovered && enabled && !glide) {
+		if (danger) colors.error.copy(alpha = 0.14f) else colors.controlHover.copy(alpha = 0.75f)
+	} else Color.Transparent, tween(Motion.Instant))
 	val edge by animateFloatAsState(if (selected && bar) 1f else 0f, tween(Motion.Instant, easing = FastOutSlowInEasing))
 	Row(
 		Modifier
-			.glideRow(enabled)
+			.glideRow(enabled, danger)
 			.fillMaxWidth()
 			.defaultMinSize(minHeight = 28.dp)
 			.clip(RoundedCornerShape(5.dp))
@@ -580,7 +587,7 @@ internal fun FloatingMenuRow(
 			Spacer(Modifier.width(7.dp))
 		} else Spacer(Modifier.width(2.dp))
 		Column(Modifier.weight(1f)) {
-			Text(label, color = if (enabled && (selected || hovered)) colors.textPrimary else tint, fontSize = 11.5.sp,
+			Text(label, color = if (enabled && !danger && (selected || hovered)) colors.textPrimary else tint, fontSize = 11.5.sp,
 				fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
 			if (hint != null) Text(hint, color = colors.textMuted.copy(alpha = 0.8f), fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
 		}

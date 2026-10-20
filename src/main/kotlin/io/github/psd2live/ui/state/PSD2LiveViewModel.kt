@@ -6415,13 +6415,12 @@ class PSD2LiveViewModel : AutoCloseable {
 	}
 
 	/**
-	 * The selected layers that can be kept as reference: those the stack can move ([reorderableSelection]) and those whose
-	 * mesh the user made, such as imported images.
+	 * The complete selection when every member can change reference type, otherwise none.
+     * A generated source layer must not silently disappear from a mixed conversion.
 	 */
 	fun referenceSelection(state: PSD2LiveState = _state.value): List<String> {
-		val created = state.createdLayerIds
-		return (listOfNotNull(state.selectedLayerId) + state.selectedLayerIds).distinct()
-			.filter { it in reorderableSelection(state) || it in created }
+		val conversion = state.referenceSelectionConversion()
+		return if (conversion.enabled) conversion.layerIds else emptyList()
 	}
 
 	/** Keeps [layerIds] as reference layers or gives them back to the model (`layer_mark_reference`). */
@@ -6434,12 +6433,12 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	/**
 	 * Toggles the selected layers between reference and model: all of them back to the model when every one is a
-	 * reference, else all of them to reference. False when none can change.
+	 * reference, else all of them to reference. False when any member cannot change.
 	 */
 	fun toggleSelectedLayersReference(): Boolean {
-		val ids = referenceSelection()
-		if (ids.isEmpty()) return false
-		markLayersReference(ids, !ids.all { it in _state.value.layout.referenceLayerIds })
+		val conversion = _state.value.referenceSelectionConversion()
+		if (!conversion.enabled) return false
+		markLayersReference(conversion.layerIds, conversion.toReference)
 		return true
 	}
 

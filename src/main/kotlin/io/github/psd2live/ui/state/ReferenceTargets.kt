@@ -49,6 +49,20 @@ internal fun PSD2LiveState.referenceConversion(layerId: String): ReferenceConver
 	return ReferenceConversion(layerId, !reference, known && allowed && !isBusy && !workspaceEditBusy && !editorDraftBusy)
 }
 
+/** A conversion applies to the complete selection; an ineligible member disables the whole action. */
+internal data class ReferenceSelectionConversion(val layerIds: List<String>, val toReference: Boolean, val enabled: Boolean) {
+	val labelKey get() = when {
+		layerIds.size > 1 -> if (toReference) "references.toReferenceMany" else "references.toModelMany"
+		else -> if (toReference) "references.toReference" else "references.toModel"
+	}
+}
+
+internal fun PSD2LiveState.referenceSelectionConversion(): ReferenceSelectionConversion {
+	val ids = (listOfNotNull(selectedLayerId) + selectedLayerIds).distinct()
+	return ReferenceSelectionConversion(ids, ids.isEmpty() || !ids.all { it in layout.referenceLayerIds },
+		ids.isNotEmpty() && ids.size <= 128 && ids.all { referenceConversion(it).enabled })
+}
+
 /** Where a reference shows, as `reference_set_mode` names it. */
 enum class ReferenceMode(val key: String, val labelKey: String, val descriptionKey: String, val inModel: Boolean) {
 	/** Behind the whole model, in the editor only. */

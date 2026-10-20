@@ -11,8 +11,8 @@ import io.github.psd2live.ui.CreatePlacementKind
 import io.github.psd2live.ui.CreateRelation
 import io.github.psd2live.ui.components.*
 import io.github.psd2live.ui.state.PSD2LiveState
+import io.github.psd2live.ui.state.referenceConversion
 import io.github.psd2live.ui.state.PSD2LiveViewModel
-import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.utils.NativeFilePicker
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
 import io.github.psd2live.ui.views.texture.FloatingMenuSection
@@ -32,14 +32,13 @@ internal fun ArtMeshMenu(
     onRequestSetOrder: ((String, String, Float, Float, Boolean) -> Unit)? = null,
     onRequestCreate: ((CreatePlacementKind, CreateRelation, Boolean, String) -> Unit)? = null,
 ) {
-    val colors = LocalToolColors.current
     val editable = !state.isBusy && !state.workspaceEditBusy && !state.editorDraftBusy
-    val rows = mutableListOf<Pair<Boolean, @Composable () -> Unit>>()
-    fun add(highlight: Boolean = true, content: @Composable () -> Unit) { rows += highlight to content }
+    val rows = mutableListOf<Triple<Boolean, Boolean, @Composable () -> Unit>>()
+    fun add(highlight: Boolean = true, danger: Boolean = false, content: @Composable () -> Unit) { rows += Triple(highlight, danger, content) }
     fun section(key: String) = add(false) { FloatingMenuSection(tr(key)) }
     add(false) { FloatingMenuSection(drawable.name) }
     if (layerId != null) {
-        add { ReferenceConversionMenuRow(layerId, state, viewModel, close) }
+        add(highlight = state.referenceConversion(layerId).enabled) { ReferenceConversionMenuRow(layerId, state, viewModel, close) }
         section("canvas.hierarchy.menuView")
         val isolated = state.isolatedLayerId == layerId
         val visible = state.isLayerVisible(layerId)
@@ -49,46 +48,46 @@ internal fun ArtMeshMenu(
         add { FloatingMenuRow(tr(if (visible) "canvas.hierarchy.hideLayer" else "canvas.hierarchy.showLayer"),
             { close(); viewModel.toggleLayerVisibility(layerId) }, icon = { IconEye(visible, Modifier.size(12.dp), it) }) }
         section("canvas.hierarchy.menuAdd")
-        add { FloatingMenuRow(tr("editor.treeAddWarpParent"),
+        add(highlight = editable) { FloatingMenuRow(tr("editor.treeAddWarpParent"),
             { close(); onRequestCreate?.invoke(CreatePlacementKind.WARP, CreateRelation.AS_PARENT, false, drawable.id.raw) },
             enabled = editable, icon = { IconWarpDeformer(it, Modifier.size(12.dp)) }) }
-        add { FloatingMenuRow(tr("editor.treeAddRotationParent"),
+        add(highlight = editable) { FloatingMenuRow(tr("editor.treeAddRotationParent"),
             { close(); onRequestCreate?.invoke(CreatePlacementKind.ROTATION, CreateRelation.AS_PARENT, false, drawable.id.raw) },
             enabled = editable, icon = { IconRotationDeformer(Modifier.size(12.dp), it) }) }
         if (drawable.mesh != null) {
             val swung = state.rigEdits.swingEdits.any { swing -> swing.targets.any { it == drawable.id.raw || it == drawable.parentDeformerId?.raw } }
-            add { FloatingMenuRow(tr(if (swung) "swing.menuEdit" else "swing.menu"),
+            add(highlight = editable) { FloatingMenuRow(tr(if (swung) "swing.menuEdit" else "swing.menu"),
                 { close(); viewModel.beginSwing(listOf(drawable.id.raw)) }, enabled = editable,
                 icon = { IconWarpDeformer(it, Modifier.size(12.dp)) }) }
-            add { FloatingMenuRow(tr("editor.treeAddPath"),
+            add(highlight = editable) { FloatingMenuRow(tr("editor.treeAddPath"),
                 { close(); onRequestCreate?.invoke(CreatePlacementKind.PATH, CreateRelation.AS_CHILD, false, drawable.id.raw) },
                 enabled = editable, icon = { IconDeformPath(Modifier.size(12.dp), it) }) }
         }
-        add { FloatingMenuRow(tr("canvas.hierarchy.importLayer"), {
+        add(highlight = editable) { FloatingMenuRow(tr("canvas.hierarchy.importLayer"), {
             close()
             val picked = NativeFilePicker.chooseTransparentImages()
             if (picked.isNotEmpty()) viewModel.importLayersFromFiles(picked, ImageLayerInsertion(parentId, drawable.id.raw))
         }, enabled = editable, icon = { IconSelectionBounds(it, Modifier.size(12.dp)) }) }
         section("canvas.hierarchy.menuSettings")
-        add { FloatingMenuRow(if (viewModel.depthSplitMiddleIds(drawable.id.raw).isNotEmpty())
+        add(highlight = editable && drawable.mesh != null) { FloatingMenuRow(if (viewModel.depthSplitMiddleIds(drawable.id.raw).isNotEmpty())
             tr("editor.depthSplit.quick", drawable.name) else tr("editor.depthSplit.menu"),
             { close(); viewModel.requestDepthSplit(drawable.id.raw) }, enabled = editable && drawable.mesh != null,
             icon = { IconDrawOrder(Modifier.size(12.dp), it) }) }
         val order = state.getEffectiveDrawOrder(drawable.id.raw, layerId, drawable.drawOrder)
         val overridden = layerId in state.drawOrderOverrides || drawable.id.raw in state.drawOrderOverrides
-        add { FloatingMenuRow(tr("canvas.hierarchy.setDrawOrder"),
+        add(highlight = editable) { FloatingMenuRow(tr("canvas.hierarchy.setDrawOrder"),
             { close(); onRequestSetOrder?.invoke(layerId, drawable.name, order, drawable.drawOrder, overridden) },
             selected = overridden, enabled = editable, trailing = order.roundToInt().toString(),
             icon = { IconDrawOrder(Modifier.size(12.dp), it) }) }
-        if (overridden) add { FloatingMenuRow(tr("canvas.drawOrder.reset"),
+        if (overridden) add(highlight = editable) { FloatingMenuRow(tr("canvas.drawOrder.reset"),
             { close(); viewModel.resetLayerDrawOrder(layerId) }, enabled = editable,
             icon = { IconReset(Modifier.size(12.dp), it) }) }
-        add { FloatingMenuRow(tr("canvas.hierarchy.splitMeshComponents"),
+        add(highlight = editable && drawable.mesh != null) { FloatingMenuRow(tr("canvas.hierarchy.splitMeshComponents"),
             { close(); viewModel.requestMeshSplit(layerId) }, enabled = editable && drawable.mesh != null,
             icon = { IconMeshWireframe(it, Modifier.size(12.dp)) }) }
-        add { FloatingMenuRow(tr("canvas.hierarchy.deleteLayer"),
+        add(highlight = editable, danger = true) { FloatingMenuRow(tr("canvas.hierarchy.deleteLayer"),
             { close(); viewModel.deleteLayer(layerId) }, enabled = editable,
-            icon = { IconTrash(Modifier.size(12.dp), colors.error) }) }
+            danger = true, icon = { IconTrash(Modifier.size(12.dp), it) }) }
     }
-    GlidingColumn(Modifier.width(236.dp), rows.size, { rows[it].first }) { rows[it].second() }
+    GlidingColumn(Modifier.width(236.dp), rows.size, { rows[it].first }, dangers = { rows[it].second }) { rows[it].third() }
 }

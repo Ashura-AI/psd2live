@@ -183,7 +183,7 @@ private fun BarOption(editor: CanvasEditor, option: ToolOption, focus: () -> Uni
         })
         is ActionOption -> {
             val label = tr(option.labelKey, *option.labelArgs(editor).toTypedArray())
-            val run = { option.run(editor); focus() }
+            val run = { invokeMenuAction({}, focus, opensDialog = option.opensDialog) { option.run(editor) } }
             val icon: (@Composable (Color) -> Unit)? = option.icon?.let { icon -> { tint -> OptionIconView(icon, tint) } }
             if (option.primary) AccentButton(label, onClick = run, enabled = option.enabled(editor), icon = icon)
             else BarChip(label, selected = false, onClick = run, enabled = option.enabled(editor), icon = icon)
@@ -299,7 +299,8 @@ internal fun ToolOptionMenu(editor: CanvasEditor, onDismiss: () -> Unit, onActio
         GlidingColumn(
             modifier = Modifier.width(236.dp),
             count = entries.size,
-            highlights = { i -> (entries[i] as? MenuEntry.Single)?.option.let { rowHighlights(it) } },
+            highlights = { i -> (entries[i] as? MenuEntry.Single)?.option.let { rowHighlights(it, editor) } },
+            dangers = { i -> ((entries[i] as? MenuEntry.Single)?.option as? ActionOption)?.danger == true },
             // A plain row closes the second level the pointer has left, the way a cascading menu does.
             onHover = { i -> if (entries[i] is MenuEntry.Single) openId = null },
         ) { i ->
@@ -321,7 +322,8 @@ internal fun ToolOptionMenu(editor: CanvasEditor, onDismiss: () -> Unit, onActio
             GlidingColumn(
                 modifier = Modifier.width(196.dp),
                 count = rows + 1,
-                highlights = { i -> i > 0 && (choice != null || rowHighlights(level.options[i - 1])) },
+                highlights = { i -> i > 0 && (choice != null || rowHighlights(level.options[i - 1], editor)) },
+                dangers = { i -> i > 0 && choice == null && (level.options[i - 1] as? ActionOption)?.danger == true },
             ) { i ->
                 when {
                     i == 0 -> FloatingMenuSection(level.label)
@@ -338,10 +340,12 @@ internal fun ToolOptionMenu(editor: CanvasEditor, onDismiss: () -> Unit, onActio
  * folded group; a caption or a note does not, and neither does a row of controls of its own (a slider, a row of
  * choices), whose controls answer the pointer themselves.
  */
-private fun rowHighlights(option: ToolOption?): Boolean = when (option) {
+private fun rowHighlights(option: ToolOption?, editor: CanvasEditor): Boolean = when (option) {
     null -> true
     is NoteOption, is SectionOption, is SliderOption, is ReferencePinsOption -> false
     is ChoiceOption<*> -> !(option.inline || option.variant)
+    is ActionOption -> option.enabled(editor)
+    is PinOption -> option.enabled(editor)
     else -> true
 }
 
@@ -356,12 +360,13 @@ internal fun GlidingColumn(
     count: Int,
     highlights: (Int) -> Boolean,
     onHover: (Int) -> Unit = {},
+    dangers: (Int) -> Boolean = { false },
     row: @Composable (Int) -> Unit,
 ) {
     MenuGlide(modifier) {
         Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
             // The column's rows take the highlight; a row's own glideRow stays out of it.
-            for (i in 0 until count) Box(Modifier.glideRow(highlights(i)) { onHover(i) }) {
+            for (i in 0 until count) Box(Modifier.glideRow(highlights(i), dangers(i)) { onHover(i) }) {
                 CompositionLocalProvider(LocalMenuGlideHost provides null) { row(i) }
             }
         }
@@ -397,13 +402,12 @@ private fun MenuOption(editor: CanvasEditor, option: ToolOption, onDismiss: () -
         is ActionOption -> FloatingMenuRow(
             label = tr(option.labelKey, *option.labelArgs(editor).toTypedArray()),
             onClick = {
-                option.run(editor)
-                onAction()
-                if (!option.keepsMenu) onDismiss()
+                invokeMenuAction(onDismiss, onAction, option.keepsMenu, option.opensDialog) { option.run(editor) }
             },
             enabled = option.enabled(editor),
+            danger = option.danger,
             icon = option.icon?.let { icon ->
-                { tint -> OptionIconView(icon, if (option.danger && option.enabled(editor)) colors.error else tint) }
+                { tint -> OptionIconView(icon, tint) }
             },
         )
         is NoteOption -> option.text(editor)?.let { text ->

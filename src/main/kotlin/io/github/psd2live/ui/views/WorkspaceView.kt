@@ -90,12 +90,7 @@ import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.CreatePlacementKind
 import io.github.psd2live.ui.CreateRelation
 import io.github.psd2live.core.ComponentPalette
-import io.github.psd2live.ui.components.CompactMenuDivider
-import io.github.psd2live.ui.components.CompactMenuHeader
-import io.github.psd2live.ui.components.CompactMenuItem
-import io.github.psd2live.ui.components.CompactMenuSection
 import io.github.psd2live.ui.components.CompactToggleChip
-import io.github.psd2live.ui.components.TreeContextMenu
 import io.github.psd2live.ui.components.IconChevron
 import io.github.psd2live.ui.components.IconCollapseBranch
 import io.github.psd2live.ui.components.IconDeformPath
@@ -113,6 +108,7 @@ import io.github.psd2live.ui.components.IconWarpDeformer
 import io.github.psd2live.ui.components.DrawOrderRuler
 import io.github.psd2live.ui.components.DrawOrderInputDialog
 import io.github.psd2live.ui.components.IconContextualWarp
+import io.github.psd2live.ui.components.IconPin
 import io.github.psd2live.ui.components.IconMeshWireframe
 import io.github.psd2live.ui.state.AppSettings
 import io.github.psd2live.ui.state.CanvasMode
@@ -262,7 +258,7 @@ private fun HierarchyTypeIcon(
 private fun deformerIconKind(deformer: Deformer): HierarchyIconKind =
 	if (deformer is Deformer.Warp) HierarchyIconKind.WARP else HierarchyIconKind.ROTATION
 
-private data class CompactedDeformerChain(
+internal data class CompactedDeformerChain(
 	val deformers: List<Deformer>,
 ) {
 	val head: Deformer get() = deformers.first()
@@ -281,7 +277,7 @@ private fun effectiveParent(id: String, defaultParent: String?, overrides: Map<S
  * - [visibleIds]: matches + ancestors (path) + descendants of matches (context under a hit)
  * - [expandIds]: nodes that must be expanded so matches remain reachable
  */
-private data class HierarchySearchFilter(
+internal data class HierarchySearchFilter(
 	val active: Boolean,
 	val query: String,
 	val matchedIds: Set<String>,
@@ -463,7 +459,7 @@ private fun isDescendantOf(deformerId: String, potentialAncestorId: String, defo
 	return false
 }
 
-private data class ItemLayoutInfo(
+internal data class ItemLayoutInfo(
 	val id: String,
 	val targetId: String,
 	/** Specific item to select on click (compact-chain segment or layer). */
@@ -477,7 +473,21 @@ private data class ItemLayoutInfo(
 	val objectId: String = id,
 )
 
-private class TreeDragState {
+internal fun selectHierarchyItem(viewModel: PSD2LiveViewModel, state: PSD2LiveState, item: ItemLayoutInfo,
+                                 orderedLayers: List<String>, additive: Boolean, subtractive: Boolean, toggle: Boolean) {
+    if (item.isDeformer) {
+        if (additive || subtractive || toggle) return
+        viewModel.selectDeformer(item.selectId.takeUnless { state.selectedDeformerId == it })
+    } else when {
+        subtractive -> viewModel.selectLayer(item.selectId, subtractive = true)
+        additive -> viewModel.selectLayerRange(orderedLayers, item.selectId)
+        toggle -> viewModel.toggleLayerSelection(item.selectId)
+        state.selectedLayerId == item.selectId && state.selectedLayerIds.size <= 1 -> viewModel.selectLayer(null)
+        else -> viewModel.selectLayer(item.selectId)
+    }
+}
+
+internal class TreeDragState {
 	var draggedItem by mutableStateOf<ItemLayoutInfo?>(null)
 	var hoverTargetId by mutableStateOf<String?>(null)
 	var isDragging by mutableStateOf(false)
@@ -720,25 +730,9 @@ private fun HierarchyTreeList(
 							.sortedBy { it.top }
 							.map { it.selectId }
 							.distinct()
-						treeDragState.onRelease(viewModel) { clickedItem ->
-							if (clickedItem.isDeformer) {
-								if (additive || subtractive || toggle) return@onRelease
-								if (state.selectedDeformerId == clickedItem.selectId) {
-									viewModel.selectDeformer(null)
-								} else {
-									viewModel.selectDeformer(clickedItem.selectId)
-								}
-							} else {
-								when {
-									subtractive -> viewModel.selectLayer(clickedItem.selectId, subtractive = true)
-									additive -> viewModel.selectLayerRange(orderedLayers, clickedItem.selectId)
-									toggle -> viewModel.toggleLayerSelection(clickedItem.selectId)
-									state.selectedLayerId == clickedItem.selectId && state.selectedLayerIds.size <= 1 ->
-										viewModel.selectLayer(null)
-									else -> viewModel.selectLayer(clickedItem.selectId)
-								}
-							}
-						}
+                        treeDragState.onRelease(viewModel) { clickedItem ->
+                            selectHierarchyItem(viewModel, state, clickedItem, orderedLayers, additive, subtractive, toggle)
+                        }
 					}
 				}
 				.pointerHoverIcon(
@@ -1130,7 +1124,6 @@ private fun DeformerTreeItem(
 	}
 
 	val startX = (TREE_BASE_PADDING_DP + depth * TREE_INDENT_STEP_DP).dp
-	val menuIconAwt = ComponentPalette.strong((selectedInChain ?: tailDeformer).id.raw)
 
 	Box(modifier = Modifier.fillMaxWidth()) {
 		Row(
@@ -1460,109 +1453,18 @@ private fun DeformerTreeItem(
 			}
 		}
 
-		// Deformer context menu: add → hierarchy → view → delete
-		val menuFocus = selectedInChain ?: tailDeformer
-		val menuType = if (menuFocus is Deformer.Warp) "Warp" else "Rotation"
-		TreeContextMenu(
-			expanded = showMenu,
-			onDismissRequest = { showMenu = false },
-			clickOffset = menuClickOffset,
-		) {
-			CompactMenuHeader(
-				name = menuFocus.name,
-				badge = menuType,
-				icon = {
-					HierarchyTypeIcon(
-						kind = deformerIconKind(menuFocus),
-						tint = Color(menuIconAwt.red, menuIconAwt.green, menuIconAwt.blue),
-						modifier = Modifier.size(13.dp),
-					)
-				},
-			)
-
-			CompactMenuSection(tr("canvas.hierarchy.menuAdd"))
-			CompactMenuItem(
-				text = tr("editor.treeAddWarpParent"),
-				onClick = {
-					onRequestCreate?.invoke(CreatePlacementKind.WARP, CreateRelation.AS_PARENT, true, menuFocus.id.raw)
-					showMenu = false
-				},
-				icon = { IconContextualWarp(tint = colors.textMuted, modifier = Modifier.size(13.dp)) },
-			)
-			CompactMenuItem(
-				text = tr("editor.treeAddWarpChild"),
-				onClick = {
-					onRequestCreate?.invoke(CreatePlacementKind.WARP, CreateRelation.AS_CHILD, true, menuFocus.id.raw)
-					showMenu = false
-				},
-				icon = { IconWarpDeformer(tint = colors.textMuted, modifier = Modifier.size(13.dp)) },
-			)
-			CompactMenuItem(
-				text = tr("editor.treeAddRotationParent"),
-				onClick = {
-					onRequestCreate?.invoke(CreatePlacementKind.ROTATION, CreateRelation.AS_PARENT, true, menuFocus.id.raw)
-					showMenu = false
-				},
-				icon = { IconRotationDeformer(tint = colors.textMuted, modifier = Modifier.size(13.dp)) },
-			)
-			if (menuFocus is Deformer.Warp) {
-				val swung = state.rigEdits.swingEdits.any { menuFocus.id.raw in it.targets }
-				CompactMenuItem(
-					text = tr(if (swung) "swing.menuEdit" else "swing.menu"),
-					onClick = {
-						viewModel.beginSwing(listOf(menuFocus.id.raw))
-						showMenu = false
-					},
-					icon = { IconWarpDeformer(tint = colors.textMuted, modifier = Modifier.size(13.dp)) },
-				)
-			}
-			CompactMenuItem(
-				text = tr("canvas.hierarchy.importLayer"),
-				onClick = {
-					showMenu = false
-					val picked = NativeFilePicker.chooseTransparentImages()
-					if (picked.isNotEmpty()) {
-						viewModel.importLayersFromFiles(picked, ImageLayerInsertion(menuFocus.id.raw))
-					}
-				},
-				icon = { IconSelectionBounds(tint = colors.textMuted, modifier = Modifier.size(13.dp)) },
-			)
-
-			CompactMenuDivider()
-			CompactMenuSection(tr("canvas.hierarchy.menuView"))
-			CompactMenuItem(
-				text = tr("canvas.hierarchy.expandBranch"),
-				onClick = {
-					chain.deformers.forEach { expandedMap[it.id.raw] = true }
-					fun expandRecursive(dId: String) {
-						expandedMap[dId] = true
-						deformerChildrenMap[dId]?.forEach { expandRecursive(it.id.raw) }
-					}
-					expandRecursive(tailId)
-					showMenu = false
-				},
-				icon = { IconExpandBranch(tint = colors.textMuted, modifier = Modifier.size(13.dp)) },
-			)
-			CompactMenuItem(
-				text = tr("canvas.hierarchy.collapseBranch"),
-				onClick = {
-					chain.deformers.forEach { expandedMap[it.id.raw] = false }
-					showMenu = false
-				},
-				icon = { IconCollapseBranch(tint = colors.textMuted, modifier = Modifier.size(13.dp)) },
-			)
-
-			CompactMenuDivider()
-			CompactMenuItem(
-				text = tr("canvas.hierarchy.deleteDeformer"),
-				onClick = {
-					viewModel.deleteDeformers(chain.deformers.asReversed().map { it.id.raw })
-					showMenu = false
-				},
-				danger = true,
-				icon = { IconTrash(modifier = Modifier.size(12.dp), tint = colors.error) },
-			)
-		}
+        val menuFocus = selectedInChain ?: tailDeformer
+        PressMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, press = menuClickOffset) {
+            DeformerMenu(menuFocus, chain.deformers.map { it.id.raw }, state, viewModel, close = { showMenu = false },
+                expandBranch = {
+                    chain.deformers.forEach { expandedMap[it.id.raw] = true }
+                    fun expandRecursive(id: String) {
+                        expandedMap[id] = true
+                        deformerChildrenMap[id]?.forEach { expandRecursive(it.id.raw) }
+                    }
+                    expandRecursive(tailId)
+                }, collapseBranch = { chain.deformers.forEach { expandedMap[it.id.raw] = false } }, onRequestCreate = onRequestCreate)
+        }
 	}
 
 	// Render children recursively
@@ -1617,7 +1519,7 @@ private fun DeformerTreeItem(
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun DrawableTreeItem(
+internal fun DrawableTreeItem(
 	drawable: org.umamo.runtime.model.Drawable,
 	depth: Int,
 	isLastChild: Boolean,
@@ -1651,11 +1553,7 @@ private fun DrawableTreeItem(
 	if (!searchFilter.isVisible(drawable.id.raw)) {
 		return
 	}
-	// A reference layer is a member of its own kind, wherever it hangs.
-	if (layerId != null && layerId in state.layout.referenceLayerIds) {
-		ReferenceTreeRow(referenceLayerRow(state, layerId, drawable.name), (TREE_BASE_PADDING_DP + depth * TREE_INDENT_STEP_DP).dp, state, viewModel)
-		return
-	}
+    val reference = layerId?.takeIf { it in state.layout.referenceLayerIds }?.let { referenceLayerRow(state, it, drawable.name) }
 
 	val guideColor = colors.textPrimary.copy(alpha = 0.42f)
 	val activeGuideColor = if (isLayerSelected) colors.selectionText.copy(alpha = 0.9f) else guideColor
@@ -1792,10 +1690,8 @@ private fun DrawableTreeItem(
 		) {
 			// 1. Drawable / ArtMesh type icon (aligned with deformer icons)
 			Spacer(Modifier.width(1.dp))
-			HierarchyTypeIcon(
-				kind = HierarchyIconKind.MESH,
-				tint = Color(layerDotAwt.red, layerDotAwt.green, layerDotAwt.blue),
-			)
+            if (reference != null) IconReferenceImage(if (isLayerSelected) colors.selectionText else colors.accent, 12.dp)
+            else HierarchyTypeIcon(kind = HierarchyIconKind.MESH, tint = Color(layerDotAwt.red, layerDotAwt.green, layerDotAwt.blue))
 
 			// Spacer matching the Chevron slot (2.dp + 10.dp + 2.dp = 14.dp) so layer text aligns with deformer text
 			Spacer(Modifier.width(14.dp))
@@ -1817,6 +1713,10 @@ private fun DrawableTreeItem(
 				modifier = Modifier.weight(1f),
 			)
 
+            if (reference?.pinned == true) {
+                IconPin(true, Modifier.size(11.dp), if (isLayerSelected) colors.selectionText else colors.accent)
+                Spacer(Modifier.width(4.dp))
+            }
 			// Visibility Eye icon
 			if (layerId != null) {
 				Spacer(Modifier.width(4.dp))
@@ -1840,7 +1740,8 @@ private fun DrawableTreeItem(
 		}
 
         PressMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, press = menuClickOffset) {
-            ArtMeshMenu(drawable, layerId, effectiveParent(drawable.id.raw, drawable.parentDeformerId?.raw, state.hierarchyParentOverrides),
+            if (reference != null) ReferenceMenu(reference, state, viewModel, close = { showMenu = false })
+            else ArtMeshMenu(drawable, layerId, effectiveParent(drawable.id.raw, drawable.parentDeformerId?.raw, state.hierarchyParentOverrides),
                 state, viewModel, close = { showMenu = false }, onRequestSetOrder = onRequestSetOrder, onRequestCreate = onRequestCreate)
         }
 	}
