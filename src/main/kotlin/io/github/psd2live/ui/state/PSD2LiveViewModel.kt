@@ -6084,20 +6084,18 @@ class PSD2LiveViewModel : AutoCloseable {
         scope.launch {
             try {
                 updateState { it.copy(statusText = tr("status.importingLayers", files.size)) }
-                val result = importImagesNow(files, insertion, expected)
+                val result = importImagesNow(files, insertion.copy(reference = asReference), expected)
                 // The import is committed with its meshes: select the last image in object mode, where the transform
                 // handles move, scale and rotate it like any mesh (undo removes the import).
                 if (workspaceBackend?.snapshot()?.state != result.state || _state.value.activeWorkspace.id != workspaceId) return@launch
                 val ids = result.affectedLayerIds
                 val placeId = ids.lastOrNull() ?: return@launch
-                // Imported to be a reference in the layer stack: its mesh goes into the model's reference part.
-                if (asReference) { markLayersReference(ids, true); return@launch }
                 val revealed = revealCanvasLayers(result.state, workspaceId, canvasId, ids)
                 if (workspaceBackend?.snapshot()?.state != revealed || _state.value.activeWorkspace.id != workspaceId) return@launch
                 if (_state.value.activeCanvas.id == canvasId && _state.value.activeCanvas.mode != CanvasMode.EDIT) setCanvasMode(canvasId, CanvasMode.EDIT)
                 canvasEditorFor(canvasId).selectImportedLayer(placeId)
                 selectOnCanvas(workspaceId, canvasId, CanvasMode.EDIT, placeId)
-                offerMeshSplit(ids)
+                if (!asReference) offerMeshSplit(ids)
             } catch (failure: Exception) {
                 if (failure is kotlinx.coroutines.CancellationException) throw failure
                 setErrorMessage(failure.message ?: tr("error.importLayerFailed"))

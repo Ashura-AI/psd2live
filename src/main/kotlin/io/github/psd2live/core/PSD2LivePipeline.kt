@@ -117,7 +117,8 @@ class PSD2LivePipeline {
 		// Another atlas: [rebind] moves the texture coordinates onto it through the canvas (the data is the authored rig);
 		// otherwise the caller builds by generation, which binds exactly.
 		@Suppress("NAME_SHADOWING")
-		val authored = if (inputs.bindingKey == bindingKey) authored else if (!rebind) return null else
+		val authored = if (inputs.bindingKey != bindingKey && !rebind) return null else
+			// Older stored rigs can carry placeholder tile sizes even under the correct binding key.
 			PuppetSourceAtlas.build(inputs.analyses.textures, inputs.atlas).let { (atlas, sources) -> authored.reboundTo(atlas, sources) }
 		val (atlas, rig) = RigLayerDeletion.compact(inputs.atlas, inputs.visible, inputs.visible,
 			authored.finished(config.rigEdits, config.layerVisibility, config.drawOrderOverrides), config, previousAtlas)
@@ -184,8 +185,14 @@ class PSD2LivePipeline {
 		val generationConfig = inputs.generationConfig
 		val atlas = inputs.atlas
 		val visible = inputs.visible
-		if (config.generationSource == null) return GeneratedBase(visible, atlas,
-			withoutCreatedMeshes(RigBuilder.build(analyses.geometry, atlas, generationConfig, meshCache), config))
+		if (config.generationSource == null) {
+			val generated = withoutCreatedMeshes(RigBuilder.build(analyses.geometry, atlas, generationConfig, meshCache), config)
+			if (analyses.geometry === analyses.textures) return GeneratedBase(visible, atlas, generated)
+			// Creation records replace their geometry with transparent stand-ins. Their texture inventory must
+			// still describe the current rasters, or replay binds the new meshes to a transparent 1 x 1 tile.
+			val (textures, sources) = PuppetSourceAtlas.build(analyses.textures, atlas)
+			return GeneratedBase(visible, atlas, generated.copy(puppet = generated.puppet.copy(atlas = textures, sources = sources)))
+		}
 		// The geometry rig's UVs are moved onto the texture atlas below, so its own layout ignores the texture
 		// overrides and the stored arrangement, and a texture commit keeps hitting the geometry cache.
 		val geometryConfig = generationConfig.withoutTextureLayout()

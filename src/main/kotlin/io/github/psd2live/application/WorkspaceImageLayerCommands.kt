@@ -54,6 +54,7 @@ internal class WorkspaceImageLayerCommands(private val runtime: WorkspaceRuntime
             // An imported image is the user's object: its mesh is created once, under its parent, in the authored rig, and the
             // generators never read it ([RigGenerationSource.createdCoverage]). Moving it later is a mesh edit like any other.
             val candidate = document.copy(source = source, layerVisibility = document.layerVisibility + ids.associateWith { true },
+                layout = if (insertion.reference) document.layout.copy(referenceLayerIds = document.layout.referenceLayerIds + ids) else document.layout,
                 layerOverrides = document.layerOverrides + ids.associateWith { LayerClassificationOverride(LayerType.PRESET, SemanticTag.UNKNOWN, Side.NONE) })
             // Each image is a material of the library, the one source of its layer's pixels.
             val linked = WorkspaceMaterialEdits.addLinked(candidate, IMPORTED_FOLDER, IMPORTED_FOLDER, { context.ensureActive() }, ids.toSet())

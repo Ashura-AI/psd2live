@@ -118,6 +118,8 @@ data class ImageLayerInsertion(
     val anchorLayerId: String? = null,
     val inFront: Boolean = true,
     val centre: Pair<Float, Float>? = null,
+    /** Import as a reference rectangle, bypassing pixel mesh generation. */
+    val reference: Boolean = false,
 )
 
 interface WorkspaceSourcePort {
