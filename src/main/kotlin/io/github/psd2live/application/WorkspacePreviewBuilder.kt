@@ -214,10 +214,15 @@ internal class WorkspacePreviewBuilder {
         val after = document.source.layers.associateBy { it.id.raw }
         val created = io.github.psd2live.core.RigGenerationSource.createdCoverage(config.rigEdits).keys +
             io.github.psd2live.core.RigGenerationSource.createdCoverage(current.config.rigEdits).keys
+        // Reference layers stay out of generation: their opacity is the only source field an edit may change.
+        val references = document.layout.referenceLayerIds
         for ((id, layer) in after) {
             val old = before[id] ?: if (id in created) continue else return false
             if (old !== layer && old != layer && !(old is io.github.psd2live.project.WorkspaceSourceLayer && layer is io.github.psd2live.project.WorkspaceSourceLayer &&
-                    old.copy(layerTransform = null, order = 0) == layer.copy(layerTransform = null, order = 0) && (id in created || old.order == layer.order))) return false
+                    (id in created || old.order == layer.order) &&
+                    (old.copy(layerTransform = null, order = 0) == layer.copy(layerTransform = null, order = 0) ||
+                        (id in references && old.copy(layerTransform = null, order = 0, opacity = layer.opacity) ==
+                            layer.copy(layerTransform = null, order = 0))))) return false
         }
         return before.keys.all { it in after || it in created }
     }
@@ -247,7 +252,7 @@ internal class WorkspacePreviewBuilder {
         importedRecordsCheckpointed(buildModel(document, current, legacyDrawOrders), current).let { model ->
             // A model reused across a layer move carries the moved layers, so the canvas and paint read where they now are.
             if (model.analysis.source !== document.source && model.analysis.source != document.source &&
-                pipeline.sameArt(model.analysis.source, document.source)) model.copy(analysis = model.analysis.copy(source = document.source))
+                pipeline.sameArt(model.analysis.source, document.source, document.layout.referenceLayerIds)) model.copy(analysis = model.analysis.copy(source = document.source))
             else model
         }
 
@@ -262,7 +267,7 @@ internal class WorkspacePreviewBuilder {
                 else decoded.copy(drawOrderOverrides = legacyDrawOrders)
             val materializable = pipeline.materializable(config)
             val revision = if (materializable) WorkspaceRevisions.of(document) else null
-            val fast = current != null && pipeline.canFastUpdateRig(current, document.source, config)
+            val fast = current != null && pipeline.canFastUpdateRig(current, document.source, config, document.layout.referenceLayerIds)
             // A revision built before - in this process or by whoever saved the archive - builds from its authored rig,
             // unless the current model updates more cheaply: entries added to its journal act on its authored rig, any other
             // edit of a checkpointed journal replays the entries after the checkpoint, and with its base at hand an edit of

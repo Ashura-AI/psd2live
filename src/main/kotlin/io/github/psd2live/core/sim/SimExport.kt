@@ -32,14 +32,18 @@ internal object SimExport {
 	fun export(model: PuppetModel, sims: List<RigSimEdit>, parameters: Set<String>, physicsGroups: Set<String>): Exported {
 		val simulations = ArrayList<SimulationIR>()
 		val colliders = ArrayList<ColliderIR>()
+		var failure: IllegalStateException? = null
 		for (edit in sims) {
 			val bake = edit.bake?.takeIf { edit.enabled } ?: continue
 			val scene = try {
 				SimScene.build(model, edit).also { it.calibrate(model) }
 			} catch (cancelled: java.util.concurrent.CancellationException) {
 				throw cancelled
-			} catch (failure: Exception) {
-				throw IllegalStateException("Cannot prepare runtime simulation '${edit.id}': ${failure.message}", failure)
+			} catch (error: Exception) {
+				// Report every simulation that cannot be prepared, not only the first; the caller still fails.
+				val reported = IllegalStateException("Cannot prepare runtime simulation '${edit.id}': ${error.message}", error)
+				if (failure == null) failure = reported else failure.addSuppressed(reported)
+				continue
 			}
 			val ids = edit.colliders.mapIndexed { k, c ->
 				val id = "${edit.id}#$k"
@@ -48,6 +52,7 @@ internal object SimExport {
 			}
 			simulations += scene(edit, scene, bake, parameters, physicsGroups, ids)
 		}
+		failure?.let { throw it }
 		return Exported(simulations, colliders)
 	}
 

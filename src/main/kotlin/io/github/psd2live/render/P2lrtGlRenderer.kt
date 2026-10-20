@@ -72,6 +72,11 @@ internal class P2lrtGlRenderer : AutoCloseable {
 	private var capacityHeight = 0
 	private var frameWidth = 0
 	private var frameHeight = 0
+	/** Reused per frame: group ends and the stack that finds them, plus one color scratch per nesting depth. */
+	private var groupEndsBuffer = IntArray(0)
+	private var groupStack = IntArray(0)
+	private val groupMultiplyScratch = ArrayList<FloatArray>()
+	private val groupScreenScratch = ArrayList<FloatArray>()
 
 	init {
 		program = link(VERTEX, FRAGMENT, bindAttributes = true)
@@ -161,11 +166,29 @@ internal class P2lrtGlRenderer : AutoCloseable {
 			GL15.glBufferSubData(GL15.GL_ARRAY_BUFFER, 0L, vertices)
 		}
 		val commands = rig.renderCommands()
-		drawSpan(rig, commands, groupEnds(commands), 0, commands.size, target, 0)
+		drawSpan(rig, commands, groupEndsInto(commands), 0, commands.size, target, 0)
 		GL11.glDisable(GL11.GL_STENCIL_TEST)
 		GL11.glDisable(GL11.GL_CULL_FACE)
 		GL30.glBindVertexArray(0)
 		GL20.glUseProgram(0)
+	}
+
+	/**
+	 * [groupEnds]' result in a buffer reused between frames: the commands' group structure changes with visibility,
+	 * but its length is bounded by the command count, so allocating each frame is avoidable.
+	 */
+	private fun groupEndsInto(commands: IntArray): IntArray {
+		if (groupEndsBuffer.size < commands.size) groupEndsBuffer = IntArray(commands.size)
+		else java.util.Arrays.fill(groupEndsBuffer, 0, commands.size, 0)
+		if (groupStack.size < commands.size) groupStack = IntArray(commands.size)
+		var depth = 0
+		for (i in commands.indices) {
+			val command = commands[i]
+			if (command <= -2) groupStack[depth++] = i
+			else if (command == P2lRuntime.END_GROUP && depth > 0) groupEndsBuffer[groupStack[--depth]] = i
+		}
+		while (depth > 0) groupEndsBuffer[groupStack[--depth]] = commands.size
+		return groupEndsBuffer
 	}
 
 	/** Draws commands [from] until [to] into [surface]; layers it needs come from [depth] on. */
@@ -204,8 +227,9 @@ internal class P2lrtGlRenderer : AutoCloseable {
 
 	private fun drawGroup(rig: P2lRuntime.Rig, part: Int, commands: IntArray, ends: IntArray, from: Int, to: Int, surface: Surface, depth: Int) {
 		val info = parts.getOrNull(part) ?: return drawSpan(rig, commands, ends, from, to, surface, depth)
-		val groupMultiply = FloatArray(3)
-		val groupScreen = FloatArray(3)
+		// One pair per nesting depth: a child group composites with its own arrays after drawing.
+		val groupMultiply = groupScratch(groupMultiplyScratch, depth)
+		val groupScreen = groupScratch(groupScreenScratch, depth)
 		val groupOpacity = rig.partComposite(part, groupMultiply, groupScreen)
 		if (!(groupOpacity > 0f)) return
 		val blend = colorMode(info.blend)
@@ -219,6 +243,11 @@ internal class P2lrtGlRenderer : AutoCloseable {
 		val masked = info.masks.isNotEmpty()
 		if (masked) drawCoverage(info.masks)
 		compositeLayer(surface, layers[depth], blend, alphaBlend, groupOpacity.coerceAtMost(1f), groupMultiply, groupScreen, masked, info.invertMask)
+	}
+
+	private fun groupScratch(scratch: ArrayList<FloatArray>, depth: Int): FloatArray {
+		while (scratch.size <= depth) scratch.add(FloatArray(3))
+		return scratch[depth]
 	}
 
 	/**

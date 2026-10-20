@@ -542,14 +542,16 @@ class PSD2LivePipeline {
 	/**
 	 * Whether [a] and [b] are the same art for generation and texturing: equal, or different only in where layers were
 	 * moved as a whole ([io.github.psd2live.project.LayerTransform]), which neither generation nor the atlas reads.
+	 * Layers in [ignoredOpacity] - reference layers, which generators leave out - may also differ in opacity alone.
 	 */
-	fun sameArt(a: SourceArt, b: SourceArt): Boolean {
+	fun sameArt(a: SourceArt, b: SourceArt, ignoredOpacity: Set<String> = emptySet()): Boolean {
 		if (a === b || a == b) return true
 		if (a.widthPx != b.widthPx || a.heightPx != b.heightPx || a.groups != b.groups || a.layers.size != b.layers.size) return false
 		return a.layers.indices.all { i ->
 			val x = a.layers[i]; val y = b.layers[i]
 			x === y || x == y || (x is io.github.psd2live.project.WorkspaceSourceLayer && y is io.github.psd2live.project.WorkspaceSourceLayer &&
-				x.copy(layerTransform = null) == y.copy(layerTransform = null))
+				(x.copy(layerTransform = null) == y.copy(layerTransform = null) ||
+					(x.id.raw in ignoredOpacity && x.copy(layerTransform = null, opacity = y.opacity) == y.copy(layerTransform = null))))
 		}
 	}
 
@@ -557,10 +559,11 @@ class PSD2LivePipeline {
 		current: RigPreviewModel?,
 		source: SourceArt,
 		config: PipelineConfig,
+		ignoredOpacity: Set<String> = emptySet(),
 	): Boolean {
 		if (current == null) return false
 		if (current.config.rigEdits.importedCmo3 != config.rigEdits.importedCmo3) return false
-		if (!sameArt(current.analysis.source, source)) return false
+		if (!sameArt(current.analysis.source, source, ignoredOpacity)) return false
 		if (current.config.rigEdits.skeleton != config.rigEdits.skeleton) return false
 		if (RigBuilder.skeletonJournalInputs(current.config) != RigBuilder.skeletonJournalInputs(config)) return false
 		return current.config.copy(rigEdits = config.rigEdits) == config

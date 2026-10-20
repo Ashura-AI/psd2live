@@ -710,12 +710,36 @@ class CubismSdkPreviewSession internal constructor(
 	private fun onNativeThread(task: () -> Unit): Boolean =
 		gpu.execute { context ->
 			if (binding != null && bindingResources !== context) {
-				postStatus("Cubism cannot reuse a model after its OpenGL context was replaced")
+				// Native models and textures belong to the lost context. They cannot be disposed on the new one, but
+				// keeping the binding would make every later task fail: drop it so the next load initializes again.
+				abandonLostContext()
+				postStatus("Cubism cannot reuse a model after its OpenGL context was replaced; loading starts a new runtime")
 				return@execute
 			}
 			resources = context
 			try { task() } finally { resources = null }
 		}
+
+	/**
+	 * Forgets the native state of a context that no longer exists. The old binding is intentionally not shut down:
+	 * its API can only be called on the context that initialized it. Native memory it owns stays until the process
+	 * exits, which is bounded; a later load starts a fresh binding on the new context.
+	 */
+	private fun abandonLostContext() {
+		binding = null
+		bindingResources = null
+		model = null
+		nativeCanvases.clear()
+		modelSource = null
+		loadedFingerprint = null
+		loadedGeneration = -1L
+		parameterIds = emptyList()
+		parameterMemory?.close()
+		parameterMemory = null
+		parameterMemoryCapacity = 0
+		hasIdleMotion = false
+		motionSlots = emptyMap()
+	}
 
 	private object CubismNativeRuntime {
 		private fun isWindows(): Boolean =

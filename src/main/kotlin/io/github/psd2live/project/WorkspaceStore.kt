@@ -51,6 +51,8 @@ import org.umamo.runtime.model.ParameterKind
 import java.io.ByteArrayOutputStream
 import java.nio.file.AccessDeniedException
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileAlreadyExistsException
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -264,16 +266,9 @@ internal class WorkspaceStore(
                 val target = destinationRoot.resolve(stage.source.relativize(file)).normalize()
                 check(target.startsWith(destinationRoot)) { "Asset candidate escaped its project" }
                 Files.createDirectories(target.parent)
-                if (Files.exists(target)) {
-                    // Raster names address RGBA/dimensions; keep the existing PNG encoder output.
-                    val same = target.parent == destinationRoot.resolve("blobs") ||
-                        if (target.fileName.toString().endsWith(".json")) readJson(file) == readJson(target) else Files.mismatch(file, target) == -1L
-                    require(same) { "Immutable asset content changed" }
-                } else {
-                    try { Files.move(file, target, StandardCopyOption.ATOMIC_MOVE) }
-                    catch (_: AtomicMoveNotSupportedException) { Files.move(file, target) }
-                    created.add(target)
-                }
+                // Raster names address RGBA/dimensions; keep the existing PNG encoder output.
+                val acceptExisting = target.parent == destinationRoot.resolve("blobs")
+                if (publishImmutable(file, target, acceptExisting)) created.add(target)
             } }
             checkCancelled()
             beforePublished()
@@ -1192,11 +1187,11 @@ internal class WorkspaceStore(
 		try {
 			val output = if (pretty && path.fileName.toString().endsWith(".json")) json.encodeToString(JsonElement.serializer(), json.parseToJsonElement(bytes.decodeToString())).encodeToByteArray() else bytes
             Files.write(temporary, output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
-			val options = if (replace) {
-				arrayOf(StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-			} else {
-				arrayOf(StandardCopyOption.ATOMIC_MOVE)
+			if (!replace) {
+				publishNoReplace(temporary, path)
+				return
 			}
+			val options = arrayOf(StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
 			// Windows refuses to replace a file another process (a scanner or indexer) holds open for a moment.
 			var attempt = 0
 			while (true) {
@@ -1204,12 +1199,11 @@ internal class WorkspaceStore(
 					try {
 						Files.move(temporary, path, *options)
 					} catch (_: AtomicMoveNotSupportedException) {
-						if (replace) Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING)
-						else Files.move(temporary, path)
+						Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING)
 					}
 					break
 				} catch (error: AccessDeniedException) {
-					if (!replace || ++attempt >= REPLACE_ATTEMPTS) throw error
+					if (++attempt >= REPLACE_ATTEMPTS) throw error
 					Thread.sleep(10L * attempt)
 				}
 			}
@@ -1217,6 +1211,56 @@ internal class WorkspaceStore(
 			Files.deleteIfExists(temporary)
 		}
 	}
+
+	/**
+	 * Publishes [temporary] at [path] without replacing a file that is already there. [StandardCopyOption.ATOMIC_MOVE]
+	 * alone is rename(2) on POSIX and would silently replace it; a hard link fails when the target exists on every
+	 * platform that has links, with a verified move as the fallback.
+	 */
+	private fun publishNoReplace(temporary: Path, path: Path) {
+		try {
+			Files.createLink(path, temporary)
+			return
+		} catch (_: FileAlreadyExistsException) {
+		} catch (_: UnsupportedOperationException) {
+		} catch (_: FileSystemException) {
+		}
+		if (Files.exists(path)) {
+			require(sameFileContent(temporary, path)) { "Immutable file content changed: ${path.fileName}" }
+			return
+		}
+		try { Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE) }
+		catch (_: AtomicMoveNotSupportedException) { Files.move(temporary, path) }
+	}
+
+	/** [source] into [target] without replacing what is there; true when this call created [target]. */
+	private fun publishImmutable(source: Path, target: Path, acceptExisting: Boolean): Boolean {
+		if (Files.exists(target)) {
+			if (!acceptExisting) require(sameFileContent(source, target)) { "Immutable asset content changed" }
+			Files.delete(source)
+			return false
+		}
+		try {
+			Files.createLink(target, source)
+			Files.delete(source)
+			return true
+		} catch (_: FileAlreadyExistsException) {
+		} catch (_: UnsupportedOperationException) {
+		} catch (_: FileSystemException) {
+		}
+		if (Files.exists(target)) {
+			if (!acceptExisting) require(sameFileContent(source, target)) { "Immutable asset content changed" }
+			Files.delete(source)
+			return false
+		}
+		try { Files.move(source, target, StandardCopyOption.ATOMIC_MOVE) }
+		catch (_: AtomicMoveNotSupportedException) { Files.move(source, target) }
+		return true
+	}
+
+	/** Whether two immutable files hold the same content; JSON compares objects so formatting does not matter. */
+	private fun sameFileContent(a: Path, b: Path): Boolean =
+		if (b.fileName.toString().endsWith(".json")) readJson(a) == readJson(b) else Files.mismatch(a, b) == -1L
 
 	private fun fileKey(value: String): String = sha256(value.encodeToByteArray())
 

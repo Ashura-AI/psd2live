@@ -1452,8 +1452,13 @@ fun CanvasViewportComposable(
 						canvasState.hierarchyParentOverrides, editor.hierarchyMode, editor.objects,
 						editor.glueSwapped, editor.drawsTransformBox,
 					)
-					val drawableBounds = RigCanvasSupport.boundsByDrawable(geometry)
-					val deformerBounds = RigCanvasSupport.boundsByDeformer(model, drawableBounds)
+					val transformBoxOwnsSelection = mode == CanvasMode.EDIT && editor.drawsTransformBox
+					// Selection boxes are the only readers of these bounds; preview frames and unselected edits skip the
+					// full vertex scan.
+					val selectionBounds = showSelectionBounds && !transformBoxOwnsSelection &&
+						(selectedLayerId != null || (mode == CanvasMode.EDIT && selectedDeformerId != null))
+					val drawableBounds = if (selectionBounds) RigCanvasSupport.boundsByDrawable(geometry) else emptyMap()
+					val deformerBounds = if (selectionBounds) RigCanvasSupport.boundsByDeformer(model, drawableBounds) else emptyMap()
 					val deformEditTarget = selectedDeformerId?.takeIf {
 						mode == CanvasMode.EDIT && showRotation && (
 							editor.hierarchyMode == EditHierarchyMode.DEFORM ||
@@ -1465,7 +1470,6 @@ fun CanvasViewportComposable(
 						deformEditTarget != null -> rotationIds - deformEditTarget
 						else -> rotationIds
 					}
-					val transformBoxOwnsSelection = mode == CanvasMode.EDIT && editor.drawsTransformBox
 					// The rig guides the GPU draws itself; their names and indices are Compose text over its frame.
 					// 3e's paths. A path belongs to the part it deforms, so it is drawn only while that part (or the part's
 					// deformer) is selected -- an edit-time guide, never part of the Preview tab's render. Hovering a

@@ -42,6 +42,12 @@ internal object ProjectFormatV2 {
 	const val NODE_SCHEMA_TEXTURES = 2
 	/** A node with a layer moved as a whole ([LayerTransform], `transform`), which schema-2 readers would drop. */
 	const val NODE_SCHEMA_TRANSFORMS = 3
+	/**
+	 * A layout or materials node holding a field older layout readers would drop: reference images and layers, their
+	 * pins, drawings, or a material's canvas and reference mark. Layout nodes themselves were introduced after
+	 * [NODE_SCHEMA] was fixed, so their original field set is the schema-1 baseline.
+	 */
+	const val NODE_SCHEMA_LAYOUT = 4
 	/** Schema of a revision index whose journal names no payload node. */
 	const val REVISION_SCHEMA = 1
 	/** Schema of a revision index whose journal names payload nodes (listed under `payloads`). */
@@ -80,6 +86,10 @@ internal object ProjectFormatV2 {
 	 * rather than open the document without its materials.
 	 */
 	private val layoutParts = mapOf(WorkspaceLayoutCodec.LAYOUT to "layout", WorkspaceLayoutCodec.MATERIALS to "materials")
+	/** What a layout node held when layout nodes were introduced: fields outside these sets need [NODE_SCHEMA_LAYOUT]. */
+	private val layoutV1Keys = setOf("layerTags", "layerMaterials", "generation")
+	private val materialV1Keys = setOf("id", "name", "folderId", "kind", "rasterWidth", "rasterHeight", "rgbaBlob", "placement", "svg", "tags", "origin", "opacity", "visible")
+	private val materialFolderV1Keys = setOf("id", "name", "parentId", "tags")
 	private val clipKeys = listOf("motions", "motionPresets")
 	private const val JOURNAL = "authoringJournal"
 	private const val SIMULATIONS = "simulations"
@@ -295,9 +305,10 @@ internal object ProjectFormatV2 {
 
 	/**
 	 * The schema a node of [kind] needs: 2 when it holds a field schema-1 readers would drop (a layer's float
-	 * `rect`, `textureOverrides`, the `atlas` setting), so those builds reject it instead of losing data.
+	 * `rect`, `textureOverrides`, the `atlas` setting), 3 for a layer's `transform`, and 4 for layout fields added
+	 * after layout nodes were introduced, so those builds reject it instead of losing data.
 	 */
-	private fun schemaOf(kind: String, value: JsonObject): Int {
+	internal fun schemaOf(kind: String, value: JsonObject): Int {
 		fun layersHaveRect(source: JsonObject?) = source?.get("layers")?.jsonArray.orEmpty().any { (it as? JsonObject)?.containsKey("rect") == true }
 		fun layersHaveTransform(source: JsonObject?) = source?.get("layers")?.jsonArray.orEmpty().any { (it as? JsonObject)?.containsKey("transform") == true }
 		val transformed = when (kind) {
@@ -306,6 +317,20 @@ internal object ProjectFormatV2 {
 			else -> false
 		}
 		if (transformed) return NODE_SCHEMA_TRANSFORMS
+		// Layout nodes hold their state under one key ([layoutParts]), as source parts do.
+		val layoutValue = value[kind] as? JsonObject
+		val layout = when (kind) {
+			"layout" -> layoutValue?.keys?.any { it !in layoutV1Keys } == true
+			"materials" -> layoutValue?.let { materials ->
+				materials["folders"]?.jsonArray.orEmpty().any { element ->
+					(element as? JsonObject)?.keys?.any { it !in materialFolderV1Keys } == true
+				} || materials["items"]?.jsonArray.orEmpty().any { element ->
+					(element as? JsonObject)?.keys?.any { it !in materialV1Keys } == true
+				}
+			} == true
+			else -> false
+		}
+		if (layout) return NODE_SCHEMA_LAYOUT
 		val newer = when (kind) {
 			"source" -> layersHaveRect(value)
 			in sourceParts.values -> value.values.any { layersHaveRect(it as? JsonObject) }
@@ -340,7 +365,7 @@ internal object ProjectFormatV2 {
 		}
 		fun load(folder: String, kind: String, hash: String): JsonObject {
 			val value = cache.getOrPut("$folder/$hash") { read(root, folder, hash) }
-			require(value["schema"]?.jsonPrimitive?.intOrNull in NODE_SCHEMA..NODE_SCHEMA_TRANSFORMS && value["kind"]?.jsonPrimitive?.contentOrNull == kind) {
+			require(value["schema"]?.jsonPrimitive?.intOrNull in NODE_SCHEMA..NODE_SCHEMA_LAYOUT && value["kind"]?.jsonPrimitive?.contentOrNull == kind) {
 				"Unsupported document node: $kind $hash"
 			}
 			return value

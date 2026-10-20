@@ -33,9 +33,15 @@ class P2lrtPreviewSession(
 	private class Delivery(val generation: Long, val frame: PreviewFrame)
 
 	private class View(val rig: P2lRuntime.Rig, val gpu: WindowGpu, val generation: Long) {
+		/** Serializes this rig's native use with a close on another window's thread, if the view moves between windows. */
+		val native = Any()
 		var advanced = -1
 		/** The frame time of the last step, for the simulation's own clock. */
 		var lastFrameNanos = 0L
+		/** The rig's default values, reset per frame without allocating. */
+		var values = FloatArray(0)
+		/** `parameterIds` by raw id, built once per rig instead of on every frame. */
+		var parameterIndex: Map<String, Int>? = null
 	}
 
 	/** One context's renderer and the rig generation its meshes and pages are uploaded for. */
@@ -94,23 +100,16 @@ class P2lrtPreviewSession(
 					val rt = synchronized(lock) {
 						runtime ?: (P2lRuntime.load() ?: error("The PSD2Live runtime library is not available")).also { runtime = it }
 					}
-					val bytes = P2lrt.write(RigIrCompiler.compile(model, simulations = true))
-					val shared = rt.loadModel(bytes)
 					try {
-						shared.createRig().use { rig ->
-							// Fitting is cached on the shared native model, including for future views and mode switches.
-							rig.setAdvanced(rig.advancedAvailable)
-						}
-						Loaded(target, shared, model.atlas.pages.map { it.image })
+						compile(rt, model, target, simulations = true)
 					} catch (failure: Throwable) {
-						shared.close()
-						throw failure
+						// A simulation that cannot be prepared must not take the whole preview down: play the rig without it.
+						try { compile(rt, model, target, simulations = false) }
+						catch (fallback: Throwable) { fallback.addSuppressed(failure); throw fallback }
 					}
 				}
 				result.onFailure {
-					synchronized(lock) {
-						if (target == generation.get()) { loaded?.model?.close(); loaded = null }
-					}
+					// Keep the last model drawing: a failed build of a newer document must not blank the preview.
 					postStatus("compile p2lrt: ${it.message ?: it.javaClass.simpleName}", target)
 				}
 				val next = result.getOrNull() ?: continue
@@ -127,6 +126,21 @@ class P2lrtPreviewSession(
 		} finally {
 			compileScheduled.set(false)
 			if (!closed && pendingModel.get() != null) scheduleCompile()
+		}
+	}
+
+	private fun compile(runtime: P2lRuntime, model: RigPreviewModel, target: Long, simulations: Boolean): Loaded {
+		val bytes = P2lrt.write(RigIrCompiler.compile(model, simulations = simulations))
+		val shared = runtime.loadModel(bytes)
+		try {
+			shared.createRig().use { rig ->
+				// Fitting is cached on the shared native model, including for future views and mode switches.
+				rig.setAdvanced(rig.advancedAvailable)
+			}
+			return Loaded(target, shared, model.atlas.pages.map { it.image })
+		} catch (failure: Throwable) {
+			shared.close()
+			throw failure
 		}
 	}
 
@@ -177,69 +191,81 @@ class P2lrtPreviewSession(
 		others.mapNotNull { it.gpu }.toSet().forEach(::scheduleRender)
 	}
 
-	private fun renderFrame(current: Loaded, resources: GpuResources, gpu: WindowGpu, request: PreviewRenderRequest): Unit = synchronized(lock) {
-		if (closed || loaded !== current || lastRequests[request.viewId]?.gpu !== gpu) return
-		try {
+	private fun renderFrame(current: Loaded, resources: GpuResources, gpu: WindowGpu, request: PreviewRenderRequest) {
+		// The global lock only guards the maps and the loaded model: evaluation and drawing below run without it, so a
+		// slow frame cannot hold up the UI's next request or a finished compile.
+		val view = synchronized(lock) {
+			if (closed || loaded !== current || lastRequests[request.viewId]?.gpu !== gpu) return
 			var view = views[request.viewId]
 			if (view == null || view.generation != current.generation || view.gpu !== gpu) {
-				view?.rig?.close()
+				// A frame on another window's thread may still be drawing the rig this view replaces.
+				view?.let { old -> synchronized(old.native) { old.rig.close() } }
 				view = View(current.model.createRig().also { it.behaviors(0) }, gpu, current.generation)
 				views[request.viewId] = view
 			}
-			val context = resources.service(serviceKey) { ContextRenderer(P2lrtGlRenderer()) }
-			if (context.generation != current.generation) {
-				if (context.failedGeneration == current.generation) return
-				context.failedGeneration = current.generation
-				context.renderer.setRig(view.rig, current.pages)
-				context.generation = current.generation
-				context.failedGeneration = -1L
-			}
-			val rig = view.rig
-			// The physics switch decides whether the simulation runs; without it the baked swing shows, skinned.
-			val features = when {
-				!request.advanced -> 0
-				request.physics -> rig.advancedAvailable
-				else -> rig.advancedAvailable and (SIM or COLLISION).inv()
-			}
-			if (view.advanced != features) {
-				rig.setAdvanced(features)
-				view.advanced = features
-				view.lastFrameNanos = 0L
-			}
-			// The pose is the whole pose: parameters it leaves out sit at their defaults.
-			val values = rig.defaults.copyOf()
-			val index = rig.parameterIds.withIndex().associate { it.value to it.index }
-			for ((id, value) in request.parameterOverrides) index[id.raw]?.let { values[it] = value }
-			rig.values = values
-			if (features and SIM != 0) {
-				// Stepped by the frame clock, not playback: a paused preview with physics on keeps swinging.
-				val elapsed = if (view.lastFrameNanos == 0L) 0f else ((request.frameTimeNanos - view.lastFrameNanos) / 1e9f).coerceIn(0f, 0.1f)
-				view.lastFrameNanos = request.frameTimeNanos
-				rig.updateSimulation(elapsed)
-			} else {
-				rig.evaluate()
-			}
-
-			// Cubism's camera (the canvas height fits the shorter side times scale, offsets in clip units) in view pixels.
-			val (canvasWidth, canvasHeight) = rig.canvas
-			val pixelsPerCanvas = request.scale * minOf(request.width, request.height) / canvasHeight.coerceAtLeast(1f)
-			val centerX = request.width * 0.5f * (1f + request.offsetX)
-			val centerY = request.height * 0.5f * (1f - request.offsetY)
-			resources.render(request.viewId, request.width, request.height, bottomUp = false) {
-				context.renderer.draw(rig, request.width, request.height, pixelsPerCanvas,
-					centerX - canvasWidth * 0.5f * pixelsPerCanvas, centerY - canvasHeight * 0.5f * pixelsPerCanvas)
-			} ?: return
-			val currentValues = rig.current
-			val parameters = HashMap<ParameterId, Float>(currentValues.size)
-			for ((i, id) in rig.parameterIds.withIndex()) parameters[ParameterId(id)] = currentValues[i]
-			postFrame(PreviewFrame(
-				width = request.width, height = request.height, parameters = parameters, animationEnabled = request.animationEnabled,
-				viewId = request.viewId, cameraScale = request.scale, cameraOffsetX = request.offsetX, cameraOffsetY = request.offsetY,
-				backend = PreviewBackend.P2LRT, advanced = features != 0, advancedAvailable = rig.advancedAvailable,
-			), current.generation)
+			view
+		}
+		try {
+			synchronized(view.native) { draw(view, current, resources, request) }
 		} catch (failure: Throwable) {
 			postStatus(failure.message ?: failure.javaClass.simpleName)
 		}
+	}
+
+	private fun draw(view: View, current: Loaded, resources: GpuResources, request: PreviewRenderRequest) {
+		val context = resources.service(serviceKey) { ContextRenderer(P2lrtGlRenderer()) }
+		if (context.generation != current.generation) {
+			if (context.failedGeneration == current.generation) return
+			context.failedGeneration = current.generation
+			context.renderer.setRig(view.rig, current.pages)
+			context.generation = current.generation
+			context.failedGeneration = -1L
+		}
+		val rig = view.rig
+		// The physics switch decides whether the simulation runs; without it the baked swing shows, skinned.
+		val features = when {
+			!request.advanced -> 0
+			request.physics -> rig.advancedAvailable
+			else -> rig.advancedAvailable and (SIM or COLLISION).inv()
+		}
+		if (view.advanced != features) {
+			rig.setAdvanced(features)
+			view.advanced = features
+			view.lastFrameNanos = 0L
+		}
+		// The pose is the whole pose: parameters it leaves out sit at their defaults.
+		val defaults = rig.defaults
+		val values = if (view.values.size != defaults.size) defaults.copyOf().also { view.values = it }
+			else view.values.also { System.arraycopy(defaults, 0, it, 0, defaults.size) }
+		val index = view.parameterIndex ?: rig.parameterIds.withIndex().associate { it.value to it.index }.also { view.parameterIndex = it }
+		for ((id, value) in request.parameterOverrides) index[id.raw]?.let { values[it] = value }
+		rig.values = values
+		if (features and SIM != 0) {
+			// Stepped by the frame clock, not playback: a paused preview with physics on keeps swinging.
+			val elapsed = if (view.lastFrameNanos == 0L) 0f else ((request.frameTimeNanos - view.lastFrameNanos) / 1e9f).coerceIn(0f, 0.1f)
+			view.lastFrameNanos = request.frameTimeNanos
+			rig.updateSimulation(elapsed)
+		} else {
+			rig.evaluate()
+		}
+
+		// Cubism's camera (the canvas height fits the shorter side times scale, offsets in clip units) in view pixels.
+		val (canvasWidth, canvasHeight) = rig.canvas
+		val pixelsPerCanvas = request.scale * minOf(request.width, request.height) / canvasHeight.coerceAtLeast(1f)
+		val centerX = request.width * 0.5f * (1f + request.offsetX)
+		val centerY = request.height * 0.5f * (1f - request.offsetY)
+		resources.render(request.viewId, request.width, request.height, bottomUp = false) {
+			context.renderer.draw(rig, request.width, request.height, pixelsPerCanvas,
+				centerX - canvasWidth * 0.5f * pixelsPerCanvas, centerY - canvasHeight * 0.5f * pixelsPerCanvas)
+		} ?: return
+		val currentValues = rig.current
+		val parameters = HashMap<ParameterId, Float>(currentValues.size)
+		for ((i, id) in rig.parameterIds.withIndex()) parameters[ParameterId(id)] = currentValues[i]
+		postFrame(PreviewFrame(
+			width = request.width, height = request.height, parameters = parameters, animationEnabled = request.animationEnabled,
+			viewId = request.viewId, cameraScale = request.scale, cameraOffsetX = request.offsetX, cameraOffsetY = request.offsetY,
+			backend = PreviewBackend.P2LRT, advanced = features != 0, advancedAvailable = rig.advancedAvailable,
+		), current.generation)
 	}
 
 	fun removeView(viewId: String) {
