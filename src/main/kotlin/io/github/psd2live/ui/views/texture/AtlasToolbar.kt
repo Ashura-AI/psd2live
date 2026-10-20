@@ -139,17 +139,25 @@ internal fun BarDivider() {
 @Composable
 internal fun BarTooltip(text: String?, content: @Composable () -> Unit) {
 	if (text.isNullOrBlank()) { content(); return }
-	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	TooltipArea(
 		tooltip = {
-			Surface(color = colors.panelElevated, shape = RoundedCornerShape(4.dp), border = BorderStroke(0.5.dp, colors.border), elevation = 4.dp) {
-				Text(text, style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textPrimary,
+			BarTooltipPanel {
+				Text(text, style = typography.caption.copy(fontSize = 10.5.sp), color = LocalToolColors.current.textPrimary,
 					modifier = Modifier.widthIn(max = 280.dp).padding(horizontal = 7.dp, vertical = 4.dp))
 			}
 		},
 		delayMillis = Motion.TooltipDelay,
 	) { content() }
+}
+
+/** Shared tooltip chrome for text tips and richer thumbnail previews. */
+@Composable
+internal fun BarTooltipPanel(content: @Composable () -> Unit) {
+	val colors = LocalToolColors.current
+	Surface(color = colors.panelElevated, shape = RoundedCornerShape(4.dp), border = BorderStroke(0.5.dp, colors.border), elevation = 4.dp) {
+		content()
+	}
 }
 
 /**

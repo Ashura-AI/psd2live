@@ -67,6 +67,10 @@ import io.github.psd2live.ui.utils.rgbaImageBitmap
 import io.github.psd2live.ui.views.texture.FloatingMenuDivider
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
 import io.github.psd2live.ui.views.texture.FloatingMenuSection
+import io.github.psd2live.ui.views.texture.FloatingMenuSubmenuRow
+import io.github.psd2live.ui.views.tooloptions.GlidingColumn
+import io.github.psd2live.ui.views.tooloptions.MenuCascade
+import io.github.psd2live.ui.views.tooloptions.MenuSecondLevel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.umamo.format.art.LayerRaster
@@ -185,11 +189,12 @@ private sealed interface MaterialEntry {
 private fun fileKind(folder: MaterialFolder): String? = folder.origin.substringAfterLast('.', "").uppercase().takeIf { it == "PSD" || it == "CMO3" }
 
 /** A line of the material context menu. */
-private sealed interface MenuLine {
+internal sealed interface MenuLine {
 	data class Section(val text: String) : MenuLine
 	data object Rule : MenuLine
 	data class Action(val label: String, val run: () -> Unit, val enabled: Boolean = true, val trailing: String? = null,
 	                  val selected: Boolean = false, val danger: Boolean = false, val edits: Boolean = true) : MenuLine
+	data class Submenu(val label: String, val actions: List<Action>) : MenuLine
 }
 
 /** Items affected by an entry action, including all descendants of a folder. */
@@ -437,14 +442,14 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 					when (view) {
 						MaterialView.GRID -> LazyVerticalGrid(GridCells.Adaptive(thumb.dp + 14.dp), Modifier.fillMaxSize().padding(4.dp)) {
 							items(shown, key = { it.id }) { entry ->
-								MaterialTile(entry, thumb.dp, entry.id == selected, entry.id == dropFolder, references[entry.id].orEmpty().size,
+								MaterialTile(entry, thumb.dp, entry.id == selected, entry.id == dropFolder, references[entry.id].orEmpty(), state,
 									counts(entry.id), vm, if (entry is MaterialEntry.Folder) track("tile:${entry.id}") else Modifier,
 									{ select(entry) }, { open(entry) }, { at -> openMenu(entry.id, at) }, ::drop, first = entry == shown.first())
 							}
 						}
 						MaterialView.LIST -> LazyColumn(Modifier.fillMaxSize()) {
 							items(shown, key = { it.id }) { entry ->
-								MaterialRow(entry, entry.id == selected, entry.id == dropFolder, references[entry.id].orEmpty().size, counts(entry.id), vm,
+								MaterialRow(entry, entry.id == selected, entry.id == dropFolder, references[entry.id].orEmpty(), state, counts(entry.id), vm,
 									if (entry is MaterialEntry.Folder) track("tile:${entry.id}") else Modifier,
 									{ select(entry) }, { open(entry) }, { at -> openMenu(entry.id, at) }, ::drop)
 							}
@@ -501,12 +506,13 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 				val layer = state.selectedLayerId?.takeIf { id -> id !in state.deletedLayerIds && state.analysis?.source?.layers?.any { it.id.raw == id } == true }
 				if (item != null && layer != null) add(MenuLine.Action(tr("materials.menu.replace"), { close(); vm.replaceLayerWithMaterial(layer, item.id) }))
 				// One reference, three places to show it - the hierarchy's reference menu moves it between them later.
-				add(MenuLine.Section(tr("materials.menu.addReference")))
 				val out = tr("references.notInModel")
-				if (item != null) add(MenuLine.Action(tr("references.mode.background"), { close(); vm.setLayoutReference(item.id, under = true) }, trailing = out))
-				add(MenuLine.Action(tr("references.mode.layer"), { close(); vm.placeMaterial(target, reference = true) }, enabled = items.isNotEmpty(),
-					trailing = tr("references.inModel")))
-				if (item != null) add(MenuLine.Action(tr("references.mode.foreground"), { close(); vm.setLayoutReference(item.id) }, trailing = out))
+				add(MenuLine.Submenu(tr("materials.menu.addReference"), buildList {
+					if (item != null) add(MenuLine.Action(tr("references.mode.background"), { close(); vm.setLayoutReference(item.id, under = true) }, trailing = out))
+					add(MenuLine.Action(tr("references.mode.layer"), { close(); vm.placeMaterial(target, reference = true) }, enabled = items.isNotEmpty(),
+						trailing = tr("references.inModel")))
+					if (item != null) add(MenuLine.Action(tr("references.mode.foreground"), { close(); vm.setLayoutReference(item.id) }, trailing = out))
+				}))
 				if (item?.kind == MaterialKind.VECTOR) add(MenuLine.Action(tr("materials.menu.resolution"), { close(); resolution = item.id },
 					trailing = "${item.raster.width}×${item.raster.height}"))
 				val ids = items.mapTo(HashSet()) { it.id }
@@ -536,17 +542,16 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 					trailing = when { users.isNotEmpty() -> tr("materials.references", users.size)
 						referenceCount > 0 -> tr("materials.menu.referenceUses", referenceCount); else -> null }))
 			}
-		}.map { line -> if (line is MenuLine.Action && line.edits) line.copy(enabled = line.enabled && editable) else line }
-		PressMenu(menuShown && lines.isNotEmpty(), menuAt, onDismissRequest = { menuShown = false }) {
-			io.github.psd2live.ui.views.tooloptions.GlidingColumn(Modifier.width(236.dp), lines.size,
-				highlights = { i -> (lines[i] as? MenuLine.Action)?.enabled == true },
-				dangers = { i -> (lines[i] as? MenuLine.Action)?.danger == true }) { i ->
-				when (val line = lines[i]) {
-					is MenuLine.Section -> FloatingMenuSection(line.text)
-					MenuLine.Rule -> FloatingMenuDivider()
-					is MenuLine.Action -> FloatingMenuRow(line.label, line.run, enabled = line.enabled, trailing = line.trailing, selected = line.selected, danger = line.danger)
-				}
+		}.map { line ->
+			fun MenuLine.Action.available() = if (edits) copy(enabled = enabled && editable) else this
+			when (line) {
+				is MenuLine.Action -> line.available()
+				is MenuLine.Submenu -> line.copy(actions = line.actions.map { it.available() })
+				else -> line
 			}
+		}
+		PressMenu(menuShown && lines.isNotEmpty(), menuAt, onDismissRequest = { menuShown = false }) {
+			key(menuTarget, menuBackground, menuShown) { MaterialMenuContent(lines) }
 		}
 
 		tagging?.let { id ->
@@ -572,6 +577,37 @@ internal fun MaterialsPanel(state: PSD2LiveState, vm: PSD2LiveViewModel) {
 		}
 	}
 }
+
+/** The material menu uses the same cascade and gliding rows as the hierarchy and canvas. */
+@Composable
+internal fun MaterialMenuContent(lines: List<MenuLine>) {
+	var openIndex by remember { mutableStateOf<Int?>(null) }
+	val open = openIndex?.let { lines.getOrNull(it) as? MenuLine.Submenu }
+	MenuCascade {
+		GlidingColumn(Modifier.width(236.dp), lines.size,
+			highlights = { i -> lines[i] is MenuLine.Submenu || (lines[i] as? MenuLine.Action)?.enabled == true },
+			dangers = { i -> (lines[i] as? MenuLine.Action)?.danger == true },
+			onHover = { i -> if (lines[i] !is MenuLine.Submenu) openIndex = null }) { i ->
+			when (val line = lines[i]) {
+				is MenuLine.Section -> FloatingMenuSection(line.text)
+				MenuLine.Rule -> FloatingMenuDivider()
+				is MenuLine.Action -> MaterialMenuAction(line)
+				is MenuLine.Submenu -> FloatingMenuSubmenuRow(line.label, openIndex == i, { openIndex = i },
+					icon = { IconReferenceImage(it, 13.dp) })
+			}
+		}
+		MenuSecondLevel(openIndex?.toString()) {
+			val level = open ?: return@MenuSecondLevel
+			GlidingColumn(Modifier.width(236.dp), level.actions.size + 1, highlights = { i -> i > 0 && level.actions[i - 1].enabled }) { i ->
+				if (i == 0) FloatingMenuSection(level.label) else MaterialMenuAction(level.actions[i - 1])
+			}
+		}
+	}
+}
+
+@Composable
+private fun MaterialMenuAction(line: MenuLine.Action) =
+	FloatingMenuRow(line.label, line.run, enabled = line.enabled, trailing = line.trailing, selected = line.selected, danger = line.danger)
 
 private const val ROOT = "#root"
 
@@ -710,7 +746,7 @@ private fun FolderFace(kind: String?, size: Dp, count: Int, dropping: Boolean) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MaterialTile(entry: MaterialEntry, size: Dp, selected: Boolean, dropping: Boolean, references: Int, count: Int, vm: PSD2LiveViewModel,
+private fun MaterialTile(entry: MaterialEntry, size: Dp, selected: Boolean, dropping: Boolean, references: List<String>, state: PSD2LiveState, count: Int, vm: PSD2LiveViewModel,
                          target: Modifier, onSelect: () -> Unit, onOpen: () -> Unit, onMenu: (Offset) -> Unit, onDrop: () -> Boolean, first: Boolean = false) {
 	val colors = LocalToolColors.current
 	var origin by remember { mutableStateOf(Offset.Zero) }
@@ -721,29 +757,31 @@ private fun MaterialTile(entry: MaterialEntry, size: Dp, selected: Boolean, drop
 		is MaterialEntry.Item -> listOfNotNull(entry.name, "${entry.item.raster.width}×${entry.item.raster.height}", entry.item.origin.substringBefore('#').takeIf { it.isNotEmpty() },
 			tr("materials.item.referenceHint").takeIf { entry.item.reference }, tr("materials.item.openHint")).joinToString("\n")
 	}
-	io.github.psd2live.ui.views.texture.BarTooltip(tip) {
-		Column(target.padding(3.dp).clip(shape)
-			.background(when { dropping -> colors.accent.copy(alpha = 0.25f); selected -> colors.selection; else -> Color.Transparent })
-			.border(if (dropping) 1.dp else 0.5.dp, if (dropping || selected) colors.accent.copy(alpha = 0.7f) else Color.Transparent, shape)
-			.onGloballyPositioned {
-				origin = it.positionInRoot()
-				if (first) MaterialsPanelProbe.firstEntry = androidx.compose.ui.geometry.Rect(origin, androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat()))
-			}
-			.materialGestures(entry, vm, onSelect, onOpen, onMenu, onDrop) { origin }
-			.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-			Box(Modifier.size(size)) {
+	Column(target.padding(3.dp).clip(shape)
+		.background(when { dropping -> colors.accent.copy(alpha = 0.25f); selected -> colors.selection; else -> Color.Transparent })
+		.border(if (dropping) 1.dp else 0.5.dp, if (dropping || selected) colors.accent.copy(alpha = 0.7f) else Color.Transparent, shape)
+		.onGloballyPositioned {
+			origin = it.positionInRoot()
+			if (first) MaterialsPanelProbe.firstEntry = androidx.compose.ui.geometry.Rect(origin, androidx.compose.ui.geometry.Size(it.size.width.toFloat(), it.size.height.toFloat()))
+		}
+		.materialGestures(entry, vm, onSelect, onOpen, onMenu, onDrop) { origin }
+		.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+		Box(Modifier.size(size)) {
+			// Sibling tooltip targets keep the image's text tip from covering the badge's mesh preview.
+			io.github.psd2live.ui.views.texture.BarTooltip(tip) {
 				when (entry) {
 					is MaterialEntry.Item -> MaterialThumbnail(entry.item.raster, px, Modifier.fillMaxSize().clip(RoundedCornerShape(3.dp)))
 					is MaterialEntry.Folder -> FolderFace(fileKind(entry.folder), size, count, dropping)
 				}
-				if (references > 0) Text("$references", color = colors.selectionText, fontSize = 9.sp,
-					modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).clip(RoundedCornerShape(6.dp)).background(colors.accent).padding(horizontal = 4.dp))
-				// Placed as a reference layer by default.
-				if (entry is MaterialEntry.Item && entry.item.reference) Box(Modifier.align(Alignment.TopStart).padding(2.dp).clip(RoundedCornerShape(3.dp))
-					.background(colors.panelElevated.copy(alpha = 0.85f)).padding(1.dp)) { IconReferenceImage(colors.accent, 10.dp) }
-				if (entry is MaterialEntry.Item && entry.item.kind == MaterialKind.VECTOR) Text("SVG", color = colors.textMuted, fontSize = 8.sp,
-					modifier = Modifier.align(Alignment.BottomStart).padding(2.dp).background(colors.panelElevated.copy(alpha = 0.8f)).padding(horizontal = 2.dp))
 			}
+			if (references.isNotEmpty()) MaterialUsageBadge(state, references, Modifier.align(Alignment.TopEnd).padding(3.dp))
+			// Placed as a reference layer by default.
+			if (entry is MaterialEntry.Item && entry.item.reference) Box(Modifier.align(Alignment.TopStart).padding(2.dp).clip(RoundedCornerShape(3.dp))
+				.background(colors.panelElevated.copy(alpha = 0.85f)).padding(1.dp)) { IconReferenceImage(colors.accent, 10.dp) }
+			if (entry is MaterialEntry.Item && entry.item.kind == MaterialKind.VECTOR) Text("SVG", color = colors.textMuted, fontSize = 8.sp,
+				modifier = Modifier.align(Alignment.BottomStart).padding(2.dp).background(colors.panelElevated.copy(alpha = 0.8f)).padding(horizontal = 2.dp))
+		}
+		io.github.psd2live.ui.views.texture.BarTooltip(tip) {
 			Text(entry.name, color = if (selected) colors.selectionText else colors.textPrimary, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
 				textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.width(size).padding(top = 3.dp))
 		}
@@ -751,7 +789,7 @@ private fun MaterialTile(entry: MaterialEntry, size: Dp, selected: Boolean, drop
 }
 
 @Composable
-private fun MaterialRow(entry: MaterialEntry, selected: Boolean, dropping: Boolean, references: Int, count: Int, vm: PSD2LiveViewModel, target: Modifier,
+private fun MaterialRow(entry: MaterialEntry, selected: Boolean, dropping: Boolean, references: List<String>, state: PSD2LiveState, count: Int, vm: PSD2LiveViewModel, target: Modifier,
                         onSelect: () -> Unit, onOpen: () -> Unit, onMenu: (Offset) -> Unit, onDrop: () -> Boolean) {
 	val colors = LocalToolColors.current
 	var origin by remember { mutableStateOf(Offset.Zero) }
@@ -773,7 +811,8 @@ private fun MaterialRow(entry: MaterialEntry, selected: Boolean, dropping: Boole
 				if (entry.item.reference) io.github.psd2live.ui.views.texture.BarTooltip(tr("materials.item.referenceHint")) { IconReferenceImage(colors.accent, 12.dp) }
 				Text(if (entry.item.kind == MaterialKind.VECTOR) "SVG" else tr("materials.kind.bitmap"), color = colors.textMuted, fontSize = 10.sp)
 				Text("${entry.item.raster.width}×${entry.item.raster.height}", color = colors.textMuted, fontSize = 10.sp)
-				Text(if (references > 0) tr("materials.references", references) else tr("materials.unused"), color = colors.textMuted, fontSize = 10.sp)
+				if (references.isNotEmpty()) MaterialUsageBadge(state, references)
+				else Text(tr("materials.unused"), color = colors.textMuted, fontSize = 10.sp)
 			}
 			is MaterialEntry.Folder -> {
 				fileKind(entry.folder)?.let { Text(it, color = colors.textMuted, fontSize = 10.sp) }
