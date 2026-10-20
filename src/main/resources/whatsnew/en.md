@@ -1,3 +1,29 @@
+## v3.6.0 · 2026-10-20
+
+### New
+
+- **Manual and tutorials**: the help page is laid out like the Cubism manual and tutorial site, each page tagged its relation to Cubism, linked to its Cubism page and ending with its MCP operations.
+- **References are hierarchy members**: background, in-stack and foreground references coexist in any number, lock, pin to keyforms, with a continuous opacity slider and Alt+R to show or hide; a reference image and an ArtMesh convert into each other.
+- **Mesh along texture structure**: rebuild a mesh's inside along the creases, shading boundaries and pattern lines drawn into its texture, migrating keyforms, paths, weights and glue.
+- **Mirror keyforms**: the deform menu mirrors a key onto its opposite key, the opposite-side object or in place; Shift+M mirrors in one step.
+- **Drop where you mean it**: the drop position decides the action (material, hierarchy insert, placed layer, reference, image replacement or library-only import); a dropped CMO3 opens directly.
+- **Materials and CMO3**: every layer has its material and links no longer break silently; an imported CMO3 gets its atlas packed from the current layers.
+- **Compressed history tree**: consecutive linear versions share one card, a toolbar toggle restores the per-node view, and double-clicking a card checks out the last step of its run.
+
+### Improved
+
+- **Edit before generating**: a Layout project not generated yet edits meshes, deformers, parameters and the hierarchy like any project, and exports directly.
+- **Smoother**: the edit canvas paints on its own, parameter drags and pose-less panels no longer recompose every frame, and PSD import prepares in the background (#50).
+- **Materials panel**: shows usage counts, lists the layers using a material on hover, and its menu edits tags, sets the default reference and selects the using layers.
+- **Interior panel**: uses the same toolbar and folding sections as the other inspectors, with the audition as sliders and a 2D pad.
+- **Freeze diagnostics**: the console goes to a log file and a UI freeze over 5 seconds writes a thread dump (#52).
+
+### Fixes
+
+- **MOC3 user data**: exporting user data writes `userdata3.json` and references it from `model3.json`.
+- **Texture binding**: imported images and reference layers no longer bind their textures to a placeholder tile.
+- **Reference layer placement**: a Layout reference layer draws at its own canvas rectangle.
+
 ## v3.5.2 · 2026-10-18
 
 ### Fixes
