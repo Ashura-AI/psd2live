@@ -42,10 +42,10 @@ Jobs `build-windows`, `build-linux`, and `release` use the GitHub Environment na
 
 Prerequisites: the SDK zip is uploaded to the private repository, and the variables, secrets and `release-cubism` environment above are configured. `<version>` below stands for the target version, such as `3.6.0`.
 
-1. **Bump the version first.** The workflow does not modify the repository. Set `version` and `packageVersion` in `build.gradle.kts`, update version strings shown in the UI, add the release to `docs/zh/CHANGELOG.md` and write the release notes to `.github/release-notes.md` (Chinese first, English in a collapsed `<details><summary>English</summary>` block; no download section, `.github/scripts/release_notes.py` builds categorized download badges from the actual assets at release time), then commit and push.
+1. **Bump the version first.** The workflow does not modify the repository. Set `version` in `build.gradle.kts` — `packageVersion` and the resource `psd2live/version.properties` derive from it — and also change the command-line help's version (the `cli.usage` entry in the four `Messages*.properties`) and the first release in the four `src/main/resources/whatsnew/<language>.md` files; `VersionConsistencyTest` holds all of these to the build version in CI. Add the release to `docs/zh/CHANGELOG.md` and write the release notes to `.github/release-notes.md` (Chinese first, English in a collapsed `<details><summary>English</summary>` block; no download section, `.github/scripts/release_notes.py` builds categorized download badges from the actual assets at release time), then commit and push.
 2. Open Actions → **Release Cubism** → **Run workflow** and set `version` to `<version>` (no leading `v`).
 3. Keep `create_github_release` enabled unless you only want build artifacts; for a preview tick `prerelease`, which publishes a pre-release not marked latest.
-4. Approve the environment gate and wait for the Windows and Linux jobs.
+4. If the `release-cubism` environment has required reviewers, approve the gate here; without them the builds start at once. Wait for the Windows and Linux jobs.
 5. With publishing enabled, the workflow creates or updates tag `v<version>` as a GitHub Release (a full release by default, a pre-release with `prerelease` ticked) with:
    All named `PSD2Live-<version>-<os>-<arch>[-<kind>][-ffmpeg].<ext>`: os `windows` / `linux`, arch `x64` / `arm64`, and for Windows the kind `setup` (installer) / `portable`.
    - `PSD2Live-<version>-windows-x64-setup.exe`, `PSD2Live-<version>-windows-x64-portable.zip`
