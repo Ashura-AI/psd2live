@@ -367,7 +367,8 @@ compose.desktop {
 			// installer is built below from the app image instead, with Inno Setup.
 			targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Deb)
 			packageName = "PSD2Live"
-			packageVersion = "3.6.0"
+			// One place bumps the version: the packages and the resource-stamped version.properties follow it.
+			packageVersion = project.version.toString()
 			description = "PSD2Live - Automated Live2D Rigging Pipeline"
 			copyright = "© 2026 PSD2Live. Licensed under GPL-3.0."
 			vendor = "PSD2Live"
