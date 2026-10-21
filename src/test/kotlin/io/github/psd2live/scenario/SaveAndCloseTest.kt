@@ -521,22 +521,39 @@ class SaveAndCloseTest {
         assertEquals(token, workspace.stateToken())
     }
 
-    @Test fun aRejectedGestureRestoresTheCommittedDocumentAndDoesNotPoisonFutureSaves() = editor { vm, workspace ->
-        val archive = temp.resolve("rejected.psd2live")
+    @Test fun aGestureOverAnExternalCommitLandsAndDoesNotPoisonFutureSaves() = editor { vm, workspace ->
+        val archive = temp.resolve("carried.psd2live")
         vm.saveProjectNow(archive)
-        val thickness = vm.state.value.mouthThickness
         vm.beginEditorField("probe-thickness")
         vm.setMouthThickness(4f)
         workspace.updateParameter(WorkspaceUpdateParameterRequest("ParamAngleX", workspace.stateToken()!!, name = "Renamed axis"))
         vm.endEditorField("probe-thickness")
-        withTimeout(20_000) { vm.state.first { !it.editorDraftBusy && it.errorMessage != null } }
         workspace.awaitEditorDrafts()
-        assertEquals(thickness, vm.state.value.mouthThickness)
+        withTimeout(20_000) { vm.state.first { !it.editorDraftBusy } }
+        assertNull(vm.state.value.errorMessage)
+        assertEquals(4f, vm.state.value.mouthThickness)
+        assertEquals(4f, workspace.captureQueries().projectSettings().getValue("mouthThickness").jsonPrimitive.float)
         assertEquals("Renamed axis", vm.state.value.previewModel!!.rig.puppet.parameters.single { it.id.raw == "ParamAngleX" }.name)
         val model = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
         repeat(3) { vm.saveProjectNow(archive); assertFalse(vm.state.value.projectDirty) }
         workspace.open(archive)
         assertEquals(model, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
+    }
+
+    @Test fun aGestureOverAnExternalCommitOfTheSameSettingYieldsToIt() = editor { vm, workspace ->
+        val archive = temp.resolve("yielded.psd2live")
+        vm.saveProjectNow(archive)
+        val nodes = workspace.history().nodes.size
+        vm.beginEditorField("probe-thickness")
+        vm.setMouthThickness(4f)
+        workspace.updateProjectSettings(workspace.stateToken()!!, buildJsonObject { put("mouthThickness", 6f) })
+        assertEquals(6f, vm.state.value.mouthThickness, "the editor kept its draft over the committed value")
+        vm.endEditorField("probe-thickness")
+        workspace.awaitEditorDrafts()
+        withTimeout(20_000) { vm.state.first { !it.editorDraftBusy } }
+        assertEquals(6f, workspace.captureQueries().projectSettings().getValue("mouthThickness").jsonPrimitive.float)
+        assertEquals(nodes + 1, workspace.history().nodes.size, "the dropped draft was still committed")
+        repeat(2) { vm.saveProjectNow(archive); assertFalse(vm.state.value.projectDirty) }
     }
 
     @Test fun failuresBeforeArchiveCaptureAreReportedAndRetryCanSucceed() = editor { vm, workspace ->

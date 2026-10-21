@@ -13,7 +13,7 @@ import org.umamo.runtime.model.ParameterId
 import java.nio.file.Path
 
 /**
- * The presentation of a host without a window: it shows nothing, so it never refuses a commit, and it keeps only what
+ * The presentation of a host without a window: it shows nothing and holds no drafts, and it keeps only what
  * the workspace's queries report - which project is open, from what source, saved where. An archive's own
  * presentation (an editor's layout and canvases) passes through untouched, so saving it back keeps it.
  */
@@ -46,7 +46,6 @@ internal class HeadlessPresentation(
         activeWorkspaceId = WORKSPACE, workspaceIds = listOf(WORKSPACE), canvasAddresses = { emptyList() },
         sourceName = view.sourceName, inputPath = view.inputPath, projectFile = view.projectFile)
 
-    override fun document(view: View): WorkspaceDocument? = null
     override fun visibleLayers(capture: WorkspaceCapture<RigPreviewModel>, view: View): Set<String>? = null
     override fun auxiliary(view: View): JsonObject = JsonObject(emptyMap())
 
@@ -57,8 +56,8 @@ internal class HeadlessPresentation(
     override fun config(view: View): PipelineConfig = config
     override fun basis(view: View): Pair<RigPreviewModel?, Map<String, Float>> = null to emptyMap()
 
-    override fun project(view: View, preview: RigPreviewModel, expected: WorkspaceDocument?, next: WorkspaceDocument, status: String,
-                         restoreCheckedOutPose: Boolean): Boolean = true
+    override fun show(view: View, preview: RigPreviewModel, base: WorkspaceDocument?, next: WorkspaceDocument, status: String,
+                      restoreCheckedOutPose: Boolean) = Unit
 
     override fun historyChanged(history: WorkspaceHistorySnapshot) = Unit
     override fun shownHistoryHead(): String? = null

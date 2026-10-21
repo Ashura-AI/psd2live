@@ -16,8 +16,9 @@ import java.nio.file.Path
  * presentation, captured when an operation starts and handed back with each notification so the host can tell
  * whether the presentation moved on meanwhile.
  *
- * The runtime's document is authoritative. A presentation may hold its own copy of the document while the editor
- * shows it ([document]); then the host projects each commit into it before the commit lands ([project]).
+ * The runtime's document is the only authority. A presentation shows it and may hold field drafts over it - edits
+ * the editor has not committed yet, which it submits through the host's draft queue; the host shows each commit to
+ * it before the commit lands ([show]), and the presentation carries its drafts over that commit.
  */
 internal interface WorkspaceHostPresentation<V> {
     fun current(): V
@@ -26,9 +27,6 @@ internal interface WorkspaceHostPresentation<V> {
     fun <T> withCurrent(read: (V) -> T): T
 
     fun facts(view: V): WorkspaceHostFacts
-
-    /** The document [view] shows, or null when it shows the runtime's own. */
-    fun document(view: V): WorkspaceDocument?
 
     /** The layers [view] shows of [capture], or null for the document's visible layers. */
     fun visibleLayers(capture: WorkspaceCapture<RigPreviewModel>, view: V): Set<String>?
@@ -49,11 +47,13 @@ internal interface WorkspaceHostPresentation<V> {
     fun basis(view: V): Pair<RigPreviewModel?, Map<String, Float>>
 
     /**
-     * Shows [next] built as [preview] if the presentation still shows [expected] as [view] did; false refuses the
-     * commit. Called inside the runtime's commit, so the presentation and the history change together.
+     * Shows [next] built as [preview]. Fields of the presentation's drafts that still equal [base] follow [next], the
+     * others are carried over it ([WorkspaceDraftRebase]); a null [base] replaces every draft, as a history checkout
+     * does. Called inside the runtime's commit, so the presentation and the history change together; it never
+     * refuses the commit. A presentation that moved on to another project load than [view] shows nothing.
      */
-    fun project(view: V, preview: RigPreviewModel, expected: WorkspaceDocument?, next: WorkspaceDocument, status: String,
-                restoreCheckedOutPose: Boolean = false): Boolean
+    fun show(view: V, preview: RigPreviewModel, base: WorkspaceDocument?, next: WorkspaceDocument, status: String,
+             restoreCheckedOutPose: Boolean = false)
 
     fun historyChanged(history: WorkspaceHistorySnapshot)
 

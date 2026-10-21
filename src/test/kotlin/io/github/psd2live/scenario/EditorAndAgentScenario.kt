@@ -429,6 +429,50 @@ class EditorAndAgentScenario {
 		assertEquals(20f, vm.state.value.parameterValues[ParameterId("ParamAngleX")], "the slider jumped back")
 	}
 
+	@Test fun anAgentEditDuringAnOpenFieldLandsAndTheFieldCommitsOverIt() = editor {
+		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
+		consistent("imported")
+		fun setting(key: String) = workspace.captureQueries().projectSettings().getValue(key).jsonPrimitive.int
+		val nodes = workspace.history().nodes.size
+		withContext(Dispatchers.Main) { vm.beginEditorField("texturePadding"); vm.setTexturePadding(5) }
+		// The open field is only a draft: the agent's commit lands rather than being refused, and the draft stays shown.
+		call("settings_update", req("state" to state(), "changes" to mapOf("alphaThreshold" to 40))).data()
+		assertEquals(40, vm.state.value.alphaThreshold, "the editor does not show the agent's edit")
+		assertEquals(5, vm.state.value.texturePadding, "the agent's commit dropped the open field")
+		assertNotEquals(5, setting("texturePadding"), "the draft reached the runtime before the field closed")
+		withContext(Dispatchers.Main) { vm.endEditorField("texturePadding") }
+		consistent("field committed over the agent's edit")
+		assertEquals(5, setting("texturePadding"))
+		assertEquals(40, setting("alphaThreshold"))
+		assertEquals(nodes + 2, workspace.history().nodes.size)
+
+		// Both changing the same setting: the committed one wins and the editor drops its draft of it.
+		withContext(Dispatchers.Main) { vm.beginEditorField("texturePadding"); vm.setTexturePadding(9) }
+		call("settings_update", req("state" to state(), "changes" to mapOf("texturePadding" to 11))).data()
+		assertEquals(11, vm.state.value.texturePadding)
+		withContext(Dispatchers.Main) { vm.endEditorField("texturePadding") }
+		settle()
+		assertEquals(11, setting("texturePadding"))
+		assertEquals(nodes + 3, workspace.history().nodes.size, "the dropped draft still committed")
+		consistent("conflicting field dropped")
+	}
+
+	@Test fun savingRecordsTheRuntimeAndNotTheEditorsCopy() = editor {
+		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
+		consistent("imported")
+		val nodes = workspace.history().nodes.size
+		val padding = workspace.captureQueries().projectSettings().getValue("texturePadding").jsonPrimitive.int
+		// A value only the editor's state holds, never submitted as a draft, is not the project's.
+		vm.setStateForTest(vm.state.value.copy(texturePadding = padding + 3))
+		val archive = temp.resolve("figure.psd2live")
+		vm.saveProjectNow(archive)
+		assertEquals(nodes, workspace.history().nodes.size, "saving wrote the editor's copy back as a revision")
+		assertEquals(padding, workspace.captureQueries().projectSettings().getValue("texturePadding").jsonPrimitive.int)
+		workspace.open(archive)
+		consistent("reopened")
+		assertEquals(padding, vm.state.value.texturePadding, "the archive holds the editor's copy")
+	}
+
 	@Test fun aSliderDragReachesRecoveryOnRelease() = editor {
 		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
 		consistent("imported")

@@ -2534,7 +2534,6 @@ class PSD2LiveViewModel : AutoCloseable {
      * per keystroke. See [EditorFieldSessions].
      */
     private val editorSessions = EditorFieldSessions { commitEditorChange() }
-    private var editorDraftExpected: io.github.psd2live.project.WorkspaceProjectSnapshot? = null
     private var editorDraftCount = 0
     /** Settings switches made while a field session is open; the draft replays them through the settings intent. */
     private val editorSettingsIntents = mutableListOf<kotlinx.serialization.json.JsonObject>()
@@ -2543,7 +2542,6 @@ class PSD2LiveViewModel : AutoCloseable {
 
     private fun beginEditorSession(token: String) {
         if (!editorSessions.anyOpen) {
-            editorDraftExpected = workspaceBackend?.snapshot()
             synchronized(stateLock) {
                 editorSettingsIntents.clear(); editorSettingsEffects.clear(); editorDraftHasDocumentEdits = false
             }
@@ -2822,18 +2820,20 @@ class PSD2LiveViewModel : AutoCloseable {
     }
 
     private fun commitEditorChange(summary: String? = null): kotlinx.coroutines.Deferred<WorkspaceMutationResult>? {
-        val expected = editorDraftExpected ?: workspaceBackend?.snapshot()
-        editorDraftExpected = null
         val intents = synchronized(stateLock) { editorSettingsIntents.toList().also { editorSettingsIntents.clear() } }
         val settingsOnly = !editorDraftHasDocumentEdits && intents.isNotEmpty()
         editorDraftHasDocumentEdits = false
         val effects = synchronized(stateLock) { editorSettingsEffects.toList().also { editorSettingsEffects.clear() } }
-        val workspace: io.github.psd2live.application.WorkspaceEditorDraftPort = workspaceBackend ?: return null
-        if (expected?.loaded != true || expected.projectId == null) return null
-        val (current, document) = synchronized(stateLock) {
+        val backend = workspaceBackend ?: return null
+        val workspace: io.github.psd2live.application.WorkspaceEditorDraftPort = backend
+        val (current, document, expected) = synchronized(stateLock) {
             val captured = _state.value
             if (captured.analysis == null) return null
             val draft = WorkspaceStateCodec.document(captured)
+            // Every commit is shown under this lock before the runtime publishes it, so the state read after the
+            // draft is the one the draft's untouched fields mirror, or an older one the queue rebases from.
+            val expected = backend.snapshot()
+            if (!expected.loaded || expected.projectId == null) return null
             // A switch turned off and back on leaves the document as it was but still released poses.
             if (intents.isEmpty() && !captured.editorDraftBusy &&
                 io.github.psd2live.project.WorkspaceRevisions.of(draft) == expected.revisionId) return null
@@ -2841,11 +2841,11 @@ class PSD2LiveViewModel : AutoCloseable {
             // preview rebuild in flight would write rigEdits/atlasSize in between, so it is superseded here.
             previewRebuildToken++
             previewRebuildJob?.cancel()
-            captured to draft
+            Triple(captured, draft, expected)
         }
-        val result = if (settingsOnly) workspace.submitEditorSettingsDraft(expected.projectId, expected.state, intents,
+        val result = if (settingsOnly) workspace.submitEditorSettingsDraft(expected.projectId!!, expected.state!!, document, intents,
             summary ?: "Updated model presets", MutationAuthor.USER)
-        else workspace.submitEditorDraft(expected.projectId, expected.state, document, intents,
+        else workspace.submitEditorDraft(expected.projectId!!, expected.state!!, document, intents,
             summary ?: "Workspace changed in the editor", MutationAuthor.USER)
         synchronized(stateLock) {
             editorDraftCount++
@@ -3578,7 +3578,6 @@ class PSD2LiveViewModel : AutoCloseable {
         val settings = io.github.psd2live.application.WorkspaceSettingsIntent.patchSettings(
             WorkspaceStateCodec.settings(current), changes, current.rigEdits.importedCmo3 != null)
         if (settings == WorkspaceStateCodec.settings(current)) return
-        if (editorDraftExpected == null) editorDraftExpected = workspaceBackend?.snapshot()
         synchronized(stateLock) {
             editorSettingsIntents.add(changes)
             editorSettingsEffects.add(after)
@@ -7309,56 +7308,43 @@ class PSD2LiveViewModel : AutoCloseable {
                                           progress: (Float) -> Unit, cancelled: () -> Boolean): List<Map<ParameterId, Float>> =
         sdkSession.sampleMotionAwait(bundle, parameters, "AgentObservation", frames, fps, progress, cancelled)
 
-	/** Publish one already-built authoritative workspace snapshot atomically to Compose and preview. */
-	internal fun applyAgentWorkspacePreview(
+	/**
+	 * Shows one already-built authoritative commit atomically in Compose and the preview. The editor's field drafts
+	 * are carried over it: fields still equal to [base] follow [next], the others stay drafts unless the commit
+	 * changed them too ([io.github.psd2live.application.WorkspaceDraftRebase]); a null [base] replaces them. A state
+	 * already showing another project load is left alone.
+	 */
+	internal fun showWorkspaceCommit(
 		preview: RigPreviewModel,
-        expectedProjectId: String? = _state.value.projectId,
-        expectedProjectOpenGeneration: Long = _state.value.projectOpenGeneration,
-		expectedSource: SourceArt,
-		expectedLayerVisibility: Map<String, Boolean>,
-		expectedDeletedLayerIds: Set<String>,
-		expectedLayerOverrides: Map<String, LayerClassificationOverride>,
-		expectedParentOverrides: Map<String, String?>,
-		expectedRigEdits: RigEditOverlay,
-        expectedSettings: kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.JsonObject(emptyMap()),
-		expectedMeshOverrides: Map<String, MeshSettings> = emptyMap(),
-        expectedGenerationSource: SourceArt? = null,
-        expectedMeshSource: SourceArt? = null,
-        expectedTextureOverrides: Map<String, io.github.psd2live.project.TextureOverride> = emptyMap(),
-        expectedLayout: io.github.psd2live.project.WorkspaceLayout = io.github.psd2live.project.WorkspaceLayout.Empty,
-		layerVisibility: Map<String, Boolean>,
-		deletedLayerIds: Set<String>,
-		layerOverrides: Map<String, LayerClassificationOverride>,
-		parentOverrides: Map<String, String?>,
-		rigEdits: RigEditOverlay,
+		base: io.github.psd2live.project.WorkspaceDocument?,
+		next: io.github.psd2live.project.WorkspaceDocument,
 		status: String,
-        settings: kotlinx.serialization.json.JsonObject = kotlinx.serialization.json.JsonObject(emptyMap()),
-		meshOverrides: Map<String, MeshSettings> = emptyMap(),
-        generationSource: SourceArt? = null,
-        meshSource: SourceArt? = null,
-        textureOverrides: Map<String, io.github.psd2live.project.TextureOverride> = emptyMap(),
-        layout: io.github.psd2live.project.WorkspaceLayout = io.github.psd2live.project.WorkspaceLayout.Empty,
-        restoreCheckedOutPose: Boolean = false,
-	): Boolean {
+		expectedProjectId: String? = _state.value.projectId,
+		expectedProjectOpenGeneration: Long = _state.value.projectOpenGeneration,
+		restoreCheckedOutPose: Boolean = false,
+	) {
 		var applied = false
+		var drafted = false
 		updateState { current ->
 			applied = false
-			if (
-                current.projectId != expectedProjectId || current.projectOpenGeneration != expectedProjectOpenGeneration ||
-				current.analysis?.source !== expectedSource ||
-				current.documentLayerVisibility != expectedLayerVisibility ||
-				current.deletedLayerIds != expectedDeletedLayerIds ||
-				current.layerOverrides != expectedLayerOverrides ||
-				current.parentOverrides != expectedParentOverrides ||
-				current.rigEdits != expectedRigEdits ||
-                current.generationSource != expectedGenerationSource ||
-                current.meshSource != expectedMeshSource ||
-                current.textureOverrides != expectedTextureOverrides ||
-                current.layout != expectedLayout ||
-                current.meshOverrides != expectedMeshOverrides ||
-                (expectedSettings.isNotEmpty() && io.github.psd2live.ui.state.WorkspaceStateCodec.settings(current) != expectedSettings)
-			) return@updateState current
+			if (current.projectId != expectedProjectId || current.projectOpenGeneration != expectedProjectOpenGeneration) return@updateState current
+			val rebased = if (base == null || current.analysis == null) io.github.psd2live.application.WorkspaceDraftRebase.Result(next, emptyList())
+				else io.github.psd2live.application.WorkspaceDraftRebase.rebase(base, WorkspaceStateCodec.document(current), next)
+			val shown = rebased.document
 			applied = true
+			drafted = shown != next
+			dropSettingsIntents(rebased.conflicts.mapNotNullTo(HashSet()) { it.removePrefix("settings.").takeIf { key -> key != it } })
+			val settings = shown.settings
+			val layerVisibility = shown.layerVisibility
+			val deletedLayerIds = shown.deletedLayerIds
+			val layerOverrides = shown.layerOverrides
+			val parentOverrides = shown.parentOverrides
+			val rigEdits = shown.rigEdits
+			val generationSource = shown.generationSource
+			val meshSource = shown.meshSource
+			val textureOverrides = shown.textureOverrides
+			val layout = shown.layout
+			val meshOverrides = shown.meshOverrides
 			io.github.psd2live.ui.state.WorkspaceStateCodec.decode(settings, current).copy(
 				analysis = preview.analysis,
 				previewModel = preview,
@@ -7396,13 +7382,26 @@ class PSD2LiveViewModel : AutoCloseable {
 				},
 				statusText = status,
 				errorMessage = null,
-			)
+			).let { shownState ->
+				if (rebased.clean) shownState else shownState.withLog(level = LogLevel.WARNING, tag = "Workspace",
+					message = tr("log.editorDraftConflict", rebased.conflicts.joinToString(", ")))
+			}
 		}
 		if (applied) {
 			previewRebuildJob?.cancel()
 			resetCanvasPaintSessions()
 		}
-		return applied
+		// Fields the editor still drafts over the commit need a preview of their own.
+		if (drafted) schedulePreviewRebuild()
+	}
+
+	/** The settings switches of an open session that a commit has overridden no longer replay with its draft. */
+	private fun dropSettingsIntents(keys: Set<String>) {
+		if (keys.isEmpty()) return
+		synchronized(stateLock) {
+			val kept = editorSettingsIntents.mapNotNull { intent -> kotlinx.serialization.json.JsonObject(intent - keys).takeIf { it.isNotEmpty() } }
+			editorSettingsIntents.clear(); editorSettingsIntents.addAll(kept)
+		}
 	}
 
 	internal fun refreshWorkspaceRenderer(preview: RigPreviewModel) = synchronized(stateLock) {
@@ -7546,6 +7545,11 @@ class PSD2LiveViewModel : AutoCloseable {
                     // A superseded upscale must not leave the editor busy; the job replacing it sets its own flag.
                     if (isUpscalingJob) updateState { it.copy(isUpscaling = false) }
                     throw failure
+                }
+                if (failure is io.github.psd2live.application.WorkspaceConflict) {
+                    // A commit landed while the draft preview was built; showing that commit schedules the next one.
+                    if (isUpscalingJob) updateState { it.copy(isUpscaling = false) }
+                    return@launch
                 }
 				val detail = workspaceFailureMessage(failure)
 				updateState {

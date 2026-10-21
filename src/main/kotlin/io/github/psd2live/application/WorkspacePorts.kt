@@ -23,7 +23,8 @@ interface WorkspaceStatePort {
 
 interface WorkspaceEditorDraftPort {
     suspend fun previewEditorSettingsDraft(projectId: String, state: String, changes: List<JsonObject>): RigPreviewModel
-    fun submitEditorSettingsDraft(projectId: String, state: String, changes: List<JsonObject>,
+    /** [document] is the editor's draft as it shows it; only [changes] are committed, the rest carries later drafts. */
+    fun submitEditorSettingsDraft(projectId: String, state: String, document: WorkspaceDocument, changes: List<JsonObject>,
                                   summary: String, author: MutationAuthor): Deferred<WorkspaceMutationResult>
     /** Build a transient field preview from the captured committed rig, using the same preparation as submission. */
     suspend fun previewEditorDraft(projectId: String, state: String, document: WorkspaceDocument,
