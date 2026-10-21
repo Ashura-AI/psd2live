@@ -2,6 +2,7 @@ package io.github.psd2live.core
 
 import org.umamo.edit.MergeTarget
 import org.umamo.edit.MeshElement
+import org.umamo.edit.MeshManualOps
 import kotlinx.serialization.json.*
 import org.umamo.edit.MeshRefinementOps
 import org.umamo.edit.MeshTopology
@@ -47,8 +48,15 @@ internal object CanvasTopology {
         "delete" -> MeshRefinementOps.deleteWithFill(mesh, selected)
         "subdivide", "split" -> MeshRefinementOps.subdivideEdges(mesh, edges.ifEmpty { subdivisionEdges(mesh, selected) })
         "knife" -> MeshRefinementOps.knifeCut(mesh, anchors)
+        // Hand placement: free points only - an anchor on an existing vertex has nothing to add.
+        "add_points" -> MeshManualOps.addPoints(mesh, anchors.filterIsInstance<MeshRefinementOps.KnifeAnchor.AtPoint>().map { it.x to it.y })
+        "delete_edges" -> MeshManualOps.deleteEdges(mesh, edges.ifEmpty { MeshTopology.edgesWithBothEndpointsSelected(mesh.indices, selected) })
+        "retriangulate" -> MeshManualOps.retriangulate(mesh, selected)
         else -> error("Unknown topology operation")
     }
+
+    /** Every action [build] knows, in the order the public schema lists them. */
+    val ACTIONS = listOf("merge", "duplicate", "connect", "delete", "subdivide", "split", "knife", "add_points", "delete_edges", "retriangulate")
 
     /** A single selected vertex refines its incident edges; a region refines all fully selected edges. */
     fun subdivisionEdges(mesh: DrawableMesh, selected: Set<Int>): Set<MeshElement.Edge> =

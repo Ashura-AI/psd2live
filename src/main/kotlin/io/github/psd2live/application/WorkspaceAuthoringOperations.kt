@@ -627,7 +627,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         }, listOf("state", "mesh_a", "mesh_b")),
         variant("mode", "topology", buildJsonObject {
             put("state", string()); put("id", string())
-            put("action", choices("merge", "duplicate", "connect", "delete", "subdivide", "split", "knife"))
+            put("action", choices(*io.github.psd2live.core.CanvasTopology.ACTIONS.toTypedArray()))
             put("vertices", arraySchema(integer(0), 0, 65536))
             put("anchors", arraySchema(objectSchema(buildJsonObject {
                 put("vertex", integer(0)); put("x", number()); put("y", number())
@@ -635,7 +635,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
             put("edges", arraySchema(arraySchema(integer(0), 2, 2), 0, 65536))
         }, listOf("state", "id", "action", "vertices")),
     )
-    registerJsonOperation("canvas", "Use the canvas editor's persisted algorithms to create a Warp or Rotation, pair Glue vertices where both meshes rest (the default pose, as Cubism's glue), or edit mesh topology. Glue requires two different art-mesh ids (mesh_a and mesh_b) and fails when a mesh is missing, the ids match, or no vertices fall inside distance. Set replace to update an existing glue on that pair. Topology indices are from the current mesh and require fresh state. Creation accepts an optional stable ID; otherwise one is generated.",
+    registerJsonOperation("canvas", "Use the canvas editor's persisted algorithms to create a Warp or Rotation, pair Glue vertices where both meshes rest (the default pose, as Cubism's glue), or edit mesh topology. Glue requires two different art-mesh ids (mesh_a and mesh_b) and fails when a mesh is missing, the ids match, or no vertices fall inside distance. Set replace to update an existing glue on that pair. Topology indices are from the current mesh and require fresh state. Topology actions: merge/duplicate/connect (two vertices)/delete (vertices, the hole is refilled)/subdivide/split act on vertices or edges; knife cuts through anchors; add_points adds a vertex at each anchor {x,y} given in the mesh's own rest space (inside: splits the face or edge, outside: grows the outline); delete_edges deletes edges (an interior edge flips across its quad, an outline edge removes its triangle; refuses what would break the triangulation); retriangulate flips edges around the given vertices (all when empty) toward Delaunay without moving the picture. Creation accepts an optional stable ID; otherwise one is generated.",
         buildJsonObject { put("request", oneOf(canvasBranches)) }, listOf("request"), true) { a ->
         val input = a.getValue("request").jsonObject
         validateOperationSchema(input, oneOf(canvasBranches))

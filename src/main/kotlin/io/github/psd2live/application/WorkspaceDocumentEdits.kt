@@ -243,8 +243,40 @@ internal object WorkspaceDocumentEdits {
         // Recorded on the shown rig, they replay on the authored one, before the generators.
         val journal = JournalRecording.record(model.rig.puppet, model.authored.rig.puppet, document.rigEdits, edits, model.primitiveSkins)
         // A deleted Warp leaves the swings that moved it in the same step.
-        return document.copy(rigEdits = SwingAuthoring.withoutTargets(document.rigEdits.copy(
+        val next = document.copy(rigEdits = SwingAuthoring.withoutTargets(document.rigEdits.copy(
             authoringJournal = document.rigEdits.authoringJournal + journal), SwingAuthoring.deletedDeformers(journal)))
+        return rebakeInteriors(next, model, journal)
+    }
+
+    /**
+     * Hand edits to a mesh carrying an interior effect - its topology, or its rest shape - bake the effect again on the
+     * edited mesh in the same step, as the structure rebuild does, so the point tools work on interior meshes as on any
+     * other. An effect that was already out of date stays as it was. A bake the new mesh cannot take (its area checks
+     * fail) does not refuse the edit: the effect keeps its recipe and reports the mesh mismatch until it is baked again.
+     */
+    private fun rebakeInteriors(document: WorkspaceDocument, model: RigPreviewModel, journal: List<JsonObject>): WorkspaceDocument {
+        val effects = document.rigEdits.interiorEffects
+        if (effects.isEmpty()) return document
+        val touched = journal.mapNotNullTo(HashSet()) { command ->
+            val op = command["op"]?.jsonPrimitive?.contentOrNull
+            val rest = op == "canvas_geometry" && command["kind"]?.jsonPrimitive?.contentOrNull == "mesh" &&
+                command["key"]?.jsonObject.isNullOrEmpty()
+            if (op == "canvas_topology" || rest) command["id"]?.jsonPrimitive?.contentOrNull else null
+        }
+        val before = model.authored.rig.puppet
+        val targets = effects.filter { effect -> effect.target in touched &&
+            before.drawables.firstOrNull { it.id.raw == effect.target }?.mesh?.let(io.github.psd2live.core.interior.InteriorMeshStamp::of) == effect.meshStamp }
+        if (targets.isEmpty()) return document
+        val authored = model.authoredPuppet(document.rigEdits)
+        var overlay = document.rigEdits
+        for (effect in targets) {
+            val mesh = authored.drawables.firstOrNull { it.id.raw == effect.target }?.mesh ?: continue
+            if (io.github.psd2live.core.interior.InteriorMeshStamp.of(mesh) == effect.meshStamp) continue
+            overlay = try {
+                io.github.psd2live.core.interior.NativeInteriorAuthoring.put(model, overlay, buildJsonObject { put("target", effect.target) }, authored)
+            } catch (failure: IllegalArgumentException) { overlay } catch (failure: IllegalStateException) { overlay }
+        }
+        return document.copy(rigEdits = overlay)
     }
 
     fun paint(document: WorkspaceDocument, model: RigPreviewModel, request: JsonObject,
