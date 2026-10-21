@@ -790,7 +790,7 @@ internal class WorkspaceHost<V>(
                     if (ui.facts().workspaceEditBusy) throw WorkspaceBusy()
                     ProjectCapture(before.projectId, history, presentation.encode(captured, ui, checkpoint = false), tasks, workspaceStore,
                         spatialByViewId.toMap(), result.applied, captured.state,
-                        JsonObject(captured.auxiliary + ("assetCatalog" to catalog.encode())), baseline = ui,
+                        JsonObject(captured.auxiliary + ("assetCatalog" to catalog.encode())), baseline = presentation.savedView(captured, ui),
                         model = captured.model, layerVisibility = captured.document.layerVisibility)
                 }
             }

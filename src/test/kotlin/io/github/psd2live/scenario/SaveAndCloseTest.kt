@@ -597,6 +597,36 @@ class SaveAndCloseTest {
         assertTrue(showsTheRuntime(vm, workspace))
     }
 
+    @Test fun deletingADeformerLeavesNoDraftBehind() = editor { vm, workspace ->
+        val deformer = vm.state.value.previewModel!!.rig.puppet.deformers.first { it.parent != null }.id.raw
+        // An old v1 parent override on the deformer, committed through a draft.
+        vm.setStateForTest(vm.state.value.copy(parentOverrides = mapOf(deformer to null)))
+        vm.setTexturePadding(vm.state.value.texturePadding + 1)
+        idle(vm, workspace)
+        assertTrue(showsTheRuntime(vm, workspace))
+        vm.deleteDeformers(listOf(deformer))
+        idle(vm, workspace)
+        assertTrue(vm.state.value.previewModel!!.rig.puppet.deformers.none { it.id.raw == deformer })
+        assertTrue(showsTheRuntime(vm, workspace), "the editor drafts a field the deletion never commits")
+    }
+
+    @Test fun aMotionKeyDragOvertakenByAnAgentCommitLeavesNoDraftBehind() = editor { vm, workspace ->
+        vm.createMotionClip()
+        idle(vm, workspace)
+        vm.addMotionCurve("ParamAngleX")
+        idle(vm, workspace)
+        vm.beginMotionKeyDrag()
+        vm.dragMotionKeys(0.1f)
+        workspace.updateProjectSettings(workspace.stateToken()!!, buildJsonObject { put("alphaThreshold", 40) })
+        vm.dragMotionKeys(0.2f)
+        vm.endMotionKeyDrag()
+        idle(vm, workspace)
+        vm.setStateForTest(vm.state.value.copy(errorMessage = null))
+        assertTrue(showsTheRuntime(vm, workspace), "the drag's preview stayed as a draft")
+        vm.saveProjectNow(temp.resolve("drag.psd2live"))
+        assertFalse(vm.state.value.projectDirty)
+    }
+
     @Test fun failuresBeforeArchiveCaptureAreReportedAndRetryCanSucceed() = editor { vm, workspace ->
         val fail = AtomicBoolean(true)
         vm.attachWorkspace(object : WorkspaceBackend by workspace {

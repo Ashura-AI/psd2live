@@ -58,6 +58,12 @@ internal interface WorkspaceHostPresentation<V> {
     /** A draft of [view]'s editor gave up [fields] to another author's commit that changed them too. */
     fun draftYielded(view: V, fields: List<String>)
 
+    /**
+     * [view] as a save of [capture] leaves it: its document fields are [capture]'s, so a field the presentation still
+     * drafts over the runtime stays unsaved.
+     */
+    fun savedView(capture: WorkspaceCapture<RigPreviewModel>, view: V): V
+
     fun historyChanged(history: WorkspaceHistorySnapshot)
 
     /** The history head the presentation shows, to repair one left behind by a failed notification. */

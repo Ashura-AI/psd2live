@@ -2141,11 +2141,10 @@ class PSD2LiveViewModel : AutoCloseable {
         }
         if (edits.isEmpty()) return
         val removed = idsInnermostFirst.toSet()
+        // The journal's delete is the whole edit: old v1 parent overrides stay in the document, as the build reads
+        // them before the journal replays. Only the selection is the editor's own.
         updateState { current ->
-            current.copy(
-                parentOverrides = current.parentOverrides.filterKeys { it !in removed },
-                selectedDeformerId = if (current.selectedDeformerId in removed) null else current.selectedDeformerId,
-            )
+            current.copy(selectedDeformerId = if (current.selectedDeformerId in removed) null else current.selectedDeformerId)
         }
         val expected = currentWorkspaceState() ?: return
         val command = kotlinx.serialization.json.JsonObject(
@@ -4145,7 +4144,12 @@ class PSD2LiveViewModel : AutoCloseable {
 		motionEditor.dragSelection = emptySet()
 		motionEditor.dragState = null
 		motionEditor.dragClips = emptyList()
-		if (expected == currentWorkspaceState()) updateState { it.copy(rigEdits = it.rigEdits.copy(motionClips = before)) }
+		// The drag only previewed; the committed clips come back whatever landed meanwhile, and the timeline command
+		// records the drag (or conflicts, if another author's commit moved the state on).
+		updateState { state ->
+			val committed = shownDocument?.takeIf { it.first == state.projectOpenGeneration }?.second?.rigEdits?.motionClips ?: before
+			state.copy(rigEdits = state.rigEdits.copy(motionClips = committed))
+		}
 		if (expected != null && request != null && next != before) editTimeline(mode, request, origin, expected)
 	}
 

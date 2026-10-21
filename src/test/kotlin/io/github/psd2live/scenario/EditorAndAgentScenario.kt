@@ -467,6 +467,7 @@ class EditorAndAgentScenario {
 		val archive = temp.resolve("figure.psd2live")
 		vm.saveProjectNow(archive)
 		assertEquals(nodes, workspace.history().nodes.size, "saving wrote the editor's copy back as a revision")
+		assertTrue(vm.state.value.projectDirty, "a value the save left out counts as saved")
 		assertEquals(padding, workspace.captureQueries().projectSettings().getValue("texturePadding").jsonPrimitive.int)
 		workspace.open(archive)
 		consistent("reopened")

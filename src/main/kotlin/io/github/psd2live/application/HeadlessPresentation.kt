@@ -60,6 +60,7 @@ internal class HeadlessPresentation(
                       restoreCheckedOutPose: Boolean) = Unit
 
     override fun draftYielded(view: View, fields: List<String>) = Unit
+    override fun savedView(capture: WorkspaceCapture<RigPreviewModel>, view: View): View = view
     override fun historyChanged(history: WorkspaceHistorySnapshot) = Unit
     override fun shownHistoryHead(): String? = null
     override fun modelPublished(model: RigPreviewModel) = Unit
