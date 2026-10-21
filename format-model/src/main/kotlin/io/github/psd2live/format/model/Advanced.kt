@@ -15,7 +15,7 @@ public data class AdvancedIR(
 	val colliders: List<ColliderIR> = emptyList(),
 	/** Facial expressions a host switches between, each a few parameters set over the motion. */
 	val expressions: List<ExpressionIR> = emptyList(),
-	/** Named regions a host hit-tests, such as Head and Body. */
+	/** Named regions a host hit-tests, such as Head and Body, derived from the rig where the document set up none ([RigIR.hitAreas]). */
 	val hitAreas: List<HitAreaIR> = emptyList(),
 	/** Part poses: groups of parts of which one shows at a time. */
 	val pose: PoseIR? = null,

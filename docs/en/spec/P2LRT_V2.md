@@ -394,7 +394,7 @@ The runtime plays one expression at a time, and the previous expression fades ou
 u32 n × { sref id, sref name, u32 n × ref mesh }
 ```
 
-A hit area covers the area its meshes draw. `p2l_hit_test(x, y)` returns, in file order, the first area with a visible mesh containing that canvas point. Export generates `HitAreaHead` (face) and `HitAreaBody` (top, otherwise neck or bottoms).
+A hit area covers the area its meshes draw. `p2l_hit_test(x, y)` returns, in file order, the first area with a visible mesh containing that canvas point. Export writes the hit areas the document set up (see [export targets](EXPORT_TARGETS.md#hit-areas)); without any it generates `HitAreaHead` (face) and `HitAreaBody` (top, otherwise neck or bottoms).
 
 ### `UDAT`
 

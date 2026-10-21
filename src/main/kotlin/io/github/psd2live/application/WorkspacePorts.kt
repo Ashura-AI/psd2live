@@ -88,6 +88,10 @@ interface WorkspaceQueries : WorkspaceStatePort {
                           cancelled: () -> Boolean = noSamplingCancellation): JsonObject
     fun listInteriorEffects(): List<io.github.psd2live.core.interior.NativeInteriorEffect> = emptyList()
     fun listSwings(): List<RigSwingEdit>
+    /** The captured document's hit areas, in test order. */
+    fun hitAreas(): List<io.github.psd2live.core.RigHitArea>
+    /** The captured model hit areas are tested on; null when nothing is loaded. */
+    fun hitAreaModel(): io.github.psd2live.core.RigPreviewModel?
     /** Generated overrides of the captured model that did not apply as recorded, in journal order. */
     fun generatedOverrideIssues(): List<io.github.psd2live.core.GeneratedOverrideIssue>
     /** Journal entries of the captured model that replay skipped because they address only what a later split supersedes. */

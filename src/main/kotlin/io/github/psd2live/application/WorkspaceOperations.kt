@@ -18,6 +18,7 @@ internal class WorkspaceOperations(private val workspace: WorkspaceBackend,
         registerCanvasWeightOperations(registry, workspace)
         registerCanvasDeformOperations(registry, workspace)
         registerDrawOrderOperations(registry, workspace)
+        registerHitAreaOperations(registry, workspace, workspace)
         registerWarpControlOperations(registry, workspace, jobs)
         registerTextureOperations(registry, workspace, workspace, jobs)
         registerPhysicsPresetApplyOperation(registry, workspace)

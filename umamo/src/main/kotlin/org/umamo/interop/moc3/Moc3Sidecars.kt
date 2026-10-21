@@ -18,6 +18,7 @@ import org.umamo.interop.moc3.export.CanvasToParentSpace
 import org.umamo.interop.moc3.export.Moc3Export
 import org.umamo.interop.moc3.export.Moc3WrittenIds
 import org.umamo.interop.mocVersion
+import org.umamo.runtime.model.DrawableId
 import org.umamo.runtime.model.ParameterNode
 import org.umamo.runtime.model.PuppetModel
 
@@ -194,7 +195,10 @@ object Moc3Sidecars {
 				// the manifest.  Nothing in PuppetModel holds them, so dropping them here would quietly
 				// delete a rigger's eye-blink wiring on the first MOC3 round trip.
 				groups = source?.groups,
-				hitAreas = source?.hitAreas,
+				// Each names its ArtMesh as the moc wrote it; one the moc left out names nothing it contains.
+				hitAreas = source?.hitAreas?.mapNotNull { area ->
+					DrawableId(area.id).takeIf(lowered.writtenIds::wroteDrawable)?.let { area.copy(id = lowered.writtenIds.drawableId(it)) }
+				},
 			)
 		files.add(BundleFile("$basename.model3.json", Moc3.writeModel3(manifest).encodeToByteArray()))
 		return Bundle(files, mocFileName, report)

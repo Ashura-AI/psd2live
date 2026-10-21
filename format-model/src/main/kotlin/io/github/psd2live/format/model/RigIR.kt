@@ -36,6 +36,11 @@ public data class RigIR(
 	val authoring: Authoring = Authoring(),
 	/** What only the PSD2Live runtime's advanced mode reads. */
 	val advanced: AdvancedIR = AdvancedIR(),
+	/**
+	 * The hit areas the document set up, in test order: every target with hit areas writes these. Empty when it set up
+	 * none; the PSD2Live runtime then falls back to [AdvancedIR.hitAreas].
+	 */
+	val hitAreas: List<HitAreaIR> = emptyList(),
 ) {
 	public companion object {
 		public const val DEFAULT_DRAW_ORDER: Int = 500

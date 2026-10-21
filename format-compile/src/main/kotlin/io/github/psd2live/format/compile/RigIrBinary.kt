@@ -20,9 +20,11 @@ import java.io.IOException
  * and so on - which DEFLATE compresses far better than interleaved floats; values and order are unchanged.
  */
 public object RigIrBinary {
-	public const val VERSION: Int = 5
+	public const val VERSION: Int = 6
 	/** The first version writing float arrays as byte planes. */
 	internal const val PLANAR_FLOATS: Int = 5
+	/** The first version with the rig's own hit areas ([RigIR.hitAreas]). */
+	internal const val HIT_AREAS: Int = 6
 	private const val MAGIC = 0x50524952 // "PRIR"
 
 	public fun encode(ir: RigIR): ByteArray {
@@ -103,6 +105,7 @@ public object RigIrBinary {
 			list(ir.restPose.entries.toList()) { string(it.key); float(it.value) }
 			authoring(ir.authoring)
 			advanced(ir.advanced)
+			list(ir.hitAreas) { string(it.id); string(it.name); list(it.meshes, ::string) }
 		}
 
 		fun advanced(a: AdvancedIR) {
@@ -344,8 +347,9 @@ public object RigIrBinary {
 			val restPose = map(::float)
 			val authoring = authoring()
 			val advanced = advanced()
+			val hitAreas = if (version < HIT_AREAS) emptyList() else list { HitAreaIR(string(), string(), list(::string)) }
 			return RigIR(canvas, parameters, links, tree, roles, parts, rootChildren, rootPart, deformers, meshes, glues, renderRoot,
-				textures, physics, clips, restPose, authoring, advanced)
+				textures, physics, clips, restPose, authoring, advanced, hitAreas)
 		}
 
 		fun advanced(): AdvancedIR {

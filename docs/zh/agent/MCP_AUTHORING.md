@@ -157,6 +157,8 @@
 | `canvas_deform_stroke` | brush/smooth/inflate、多网格、连通限制及 Glue 保持；采样为画布像素，edit 保留图像，deform 写精确关键形；整笔一次提交 |
 | `canvas_glue_edit / vertex_group_paint` | Glue 刷接、方向权重、解绑、重连及模拟权重笔刷/渐变/反转；保留连续 Glue 顺序与动画通道 |
 | `layer_draw_order` | 以 `target` 设置 0–1000 的显式绘制顺序；`order:null` 重置为原有生成或作者动画顺序 |
+| `hit_area_put / hit_area_delete / hit_area_preset` | 文档的点击区域（`rigEdits.hitAreas`），可批量的文档编辑，与检查器和层级树右键菜单共用：`put` 以 `id`（Cubism ID 字母表，如 `HitAreaHead`）新建或修改，`meshes` 为 `mesh:<id>` 列表（新建必需，给出时整体替换），`name` 为宿主查询的名称（缺省为去掉 `HitArea` 前缀的 ID），`new_id` 改名，`before_id` 排在另一区域之前（`null` 排最后）；`delete` 按 `id` 删除；`preset` 按语义加入 Head（脸）与 Body（上衣，否则颈或下装），已有同 ID 的保留。区域按列表顺序判定，先命中者优先；导出写入 model3.json `HitAreas`（每项一个 ArtMesh，多网格区域写成同名多项）与 `.p2lrt` 的 `HITA`，无区域时运行时使用自动的 Head/Body |
+| `hit_area_list / hit_area_test` | 查询，来自一次已提交捕获：`list` 按测试顺序返回各区域的现有网格与已不存在的 `missing` 网格，`automatic=true` 表示未设置任何区域；`test` 在画布点 `x, y`（画布单位，y 向下）、可选 `pose` 姿势上按运行时规则命中测试（网格可见、不透明度大于 0、三角形含该点），返回 `hit` 与命中区域的 `id/name/meshes` |
 | `warp_get_controls` | 从一次已提交捕获读取 Bezier 分段数与编辑控制；`detail=summary` 不含控制点，`points` 按锚点、切线顺序分页（每页最多 256）；坐标为父级局部空间，`persisted=false` 表示控制由采样格点重建。CMO3 只保存采样几何与分段信息，不含这些编辑控制 |
 | `warp_set_topology` | 后台重采样全部普通与混合关键形；返回父级局部空间的实际表面采样误差 |
 | `warp_bezier_divisions / warp_bezier_anchor / warp_bezier_handle / warp_bezier_reset` | 后台保存分段数、锚点、切线或重置；控制坐标为父级局部空间，持久化完整编辑控制与采样格点 |

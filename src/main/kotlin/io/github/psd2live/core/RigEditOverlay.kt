@@ -244,8 +244,11 @@ data class RigEditOverlay(
     /** Simulated bodies; they read the rebuilt rig and, once baked, write back through their own generator. */
     val simEdits: List<io.github.psd2live.core.sim.RigSimEdit> = emptyList(),
     val interiorEffects: List<io.github.psd2live.core.interior.NativeInteriorEffect> = emptyList(),
+    /** The hit areas the user set up, in test order; they do not touch the rig. Empty leaves the runtime its automatic ones. */
+    val hitAreas: List<RigHitArea> = emptyList(),
 ) {
 	init {
+        RigHitAreas.problem(hitAreas)?.let { throw IllegalArgumentException(it) }
         require(motionClips.map { it.id }.distinct().size == motionClips.size) { "Duplicate motion IDs" }
         require(motionClips.mapNotNull { it.builtin?.lowercase() }.let { it.distinct().size == it.size }) { "A generated motion has one override" }
 		require(warpEdits.map { it.id }.distinct().size == warpEdits.size) { "Duplicate Warp IDs" }

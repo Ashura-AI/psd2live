@@ -164,6 +164,8 @@ internal class WorkspaceReadSession(
     }
     override fun listInteriorEffects() = capture().document.rigEdits.interiorEffects
     override fun listSwings(): List<RigSwingEdit> = capture().document.rigEdits.swingEdits
+    override fun hitAreas() = capture().document.rigEdits.hitAreas
+    override fun hitAreaModel() = read.runtime.capture?.model
     override fun layoutState(): WorkspaceLayoutState? = read.runtime.capture?.document?.let { document ->
         WorkspaceLayoutState(document.layout, document.source.layers, WorkspaceLayoutPreview.pendingIds(document), document.deletedLayerIds,
             document.source.widthPx, document.source.heightPx)

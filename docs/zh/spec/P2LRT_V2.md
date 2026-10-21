@@ -394,7 +394,7 @@ u32 n × { sref id, sref name, f32 fadeIn, f32 fadeOut, u32 n × { ref parameter
 u32 n × { sref id, sref name, u32 n × ref mesh }
 ```
 
-点击区域覆盖其网格绘制出的范围。`p2l_hit_test(x, y)` 按文件顺序返回第一个有可见网格包含该画布点的区域。导出时生成 `HitAreaHead`（脸）与 `HitAreaBody`（上衣，否则颈或下装）。
+点击区域覆盖其网格绘制出的范围。`p2l_hit_test(x, y)` 按文件顺序返回第一个有可见网格包含该画布点的区域。导出时写入文档设置的点击区域（见[导出目标](EXPORT_TARGETS.md#点击区域)），文档没有设置时生成 `HitAreaHead`（脸）与 `HitAreaBody`（上衣，否则颈或下装）。
 
 ### `UDAT`
 

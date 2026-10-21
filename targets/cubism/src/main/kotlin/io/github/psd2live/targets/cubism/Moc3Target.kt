@@ -11,6 +11,7 @@ import io.github.psd2live.format.model.RigIR
 import org.umamo.format.moc3.Moc3
 import org.umamo.format.moc3.json.FileReferences
 import org.umamo.format.moc3.json.Model3Group
+import org.umamo.format.moc3.json.Model3HitArea
 import org.umamo.format.moc3.json.Model3Json
 import org.umamo.format.moc3.json.Model3Motion
 import org.umamo.interop.ExportNotice
@@ -80,9 +81,25 @@ public object Moc3Target : ExportTarget {
 			groups = ir.parameterRoles.filter { it.role == "EyeBlink" || it.role == "LipSync" }.mapNotNull { role ->
 				role.parameters.filter(parameterIds::contains).takeIf { it.isNotEmpty() }?.let { Model3Group("Parameter", role.role, it) }
 			},
+			hitAreas = hitAreas(ir),
 		)
 		return Moc3Sidecars.bundle(exportPuppet, baseName, pages = pages, sidecars = sidecars, source = manifest,
 			canvasToParentSpace = canvasToParentSpaceFor(exportPuppet), options = moc3Options)
+	}
+
+	/**
+	 * The document's hit areas as model3 names them: one ArtMesh per entry, so an area of several meshes is one entry
+	 * per mesh under the area's name, in test order. Null without any, so such a manifest stays as it was.
+	 */
+	private fun hitAreas(ir: RigIR): List<Model3HitArea>? {
+		val meshes = ir.meshes.mapTo(HashSet()) { it.id }
+		return ir.hitAreas.flatMap { area -> area.meshes.filter(meshes::contains).map { Model3HitArea(area.name, it) } }.takeIf { it.isNotEmpty() }
+	}
+
+	/** What model3 cannot say about the document's hit areas: their own IDs, and more than one mesh each. */
+	public fun hitAreaLosses(ir: RigIR): List<LossEntry> = ir.hitAreas.filter { it.meshes.size > 1 }.map { area ->
+		LossEntry(area.id, Feature.STRUCTURE, Handling.APPROXIMATED,
+			note = "model3 hit areas name one ArtMesh each: ${area.meshes.size} entries named ${area.name}, which a host testing only the first entry by name reads as its first mesh")
 	}
 
 	/** What the physics3 and motion3 texts of a bundle depend on. */
@@ -116,7 +133,7 @@ public object Moc3Target : ExportTarget {
 	override fun plan(ir: RigIR, options: ExportOptions): LoweredExport {
 		val bundle = bundle(ir, options)
 		val losses = CapabilityScan.scan(ir, capabilities, options) + losses(ir, options, bundle.report.notices) +
-			clampedMotions(ir, bundle.report.notices)
+			clampedMotions(ir, bundle.report.notices) + hitAreaLosses(ir)
 		return object : LoweredExport {
 			override val losses: List<LossEntry> = losses
 			override fun write(sink: OutputSink) = bundle.files.forEach { sink.write(it.name, it.bytes) }

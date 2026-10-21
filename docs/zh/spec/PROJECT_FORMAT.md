@@ -33,7 +33,7 @@ GUI 放弃并打开会先等待此前正在执行的编辑与字段提交完成�
 | `history/HEAD.json` | 当前节点与节点顺序 |
 | `history/nodes/` | 不可变父链节点和元数据（与 v1 相同） |
 | `history/revisions/<key>.json` | 每个修订的索引：`{schema, nodes:{类型:哈希}, overrides?, clips?, payloads?}` |
-| `document/nodes/<类型>/<sha256>.json` | 文档节点 `{schema, kind, value}`；类型为 `source`（源图层与组）、`generation-source` / `mesh-source`（旧版写入的 `placement-source` 读取时忽略）、`layers`（可见性、软删除、分类、父级、网格与纹理覆盖）、`settings`、`rig`（参数、骨架、摆动、模拟、物理等 Rig 定义）、`journal`（作者编辑日志，不含覆盖）、`layout`（用户标签、素材关联、生成状态）、`materials`（素材库：文件夹与条目，像素引用 `assets/` 中的栅格，SVG 原文内嵌；读自 PSD / CMO3 的文件夹带 `origin` 文件名，其条目的 `placementCanvas` 为默认摆放所在的画布尺寸）、`document`（其余字段）。`layout` 与 `materials` 只在文档带有 [Layout 状态](MATERIAL_LAYOUT_WORKSPACE.md)时写入，不认识它们的旧版本拒绝打开 |
+| `document/nodes/<类型>/<sha256>.json` | 文档节点 `{schema, kind, value}`；类型为 `source`（源图层与组）、`generation-source` / `mesh-source`（旧版写入的 `placement-source` 读取时忽略）、`layers`（可见性、软删除、分类、父级、网格与纹理覆盖）、`settings`、`rig`（参数、骨架、摆动、模拟、物理、点击区域等 Rig 定义）、`journal`（作者编辑日志，不含覆盖）、`layout`（用户标签、素材关联、生成状态）、`materials`（素材库：文件夹与条目，像素引用 `assets/` 中的栅格，SVG 原文内嵌；读自 PSD / CMO3 的文件夹带 `origin` 文件名，其条目的 `placementCanvas` 为默认摆放所在的画布尺寸）、`document`（其余字段）。`layout` 与 `materials` 只在文档带有 [Layout 状态](MATERIAL_LAYOUT_WORKSPACE.md)时写入，不认识它们的旧版本拒绝打开 |
 | `document/nodes/payload/<sha256>.json` | 大型日志条目的内容寻址载荷节点，由 schema 2 修订在 `payloads` 中列出 |
 | `document/overrides/<sha256>.json` | 生成结果覆盖 `generated_override`，连同其在编辑日志中的位置 |
 | `document/clips/<sha256>.json` | 动作片段与生成动作设置 |
@@ -67,7 +67,7 @@ GUI 放弃并打开会先等待此前正在执行的编辑与字段提交完成�
 | `rig/objects/<sha256>.bin` | 一个 Rig 对象（`RigIrObjects`）：框架（变形器与网格以外的全部内容）、单个变形器或单个网格，按字节 SHA-256 命名，在修订与固化点之间共享 |
 | `rig/revisions/<revision>.json` | `{header, frame, deformers:[...], meshes:[...]}`：头部与按 Rig 顺序列出的对象哈希 |
 
-- 对象编码为中立 IR 的二进制形式（`RigIrBinary`，浮点按原始位保存），自带魔数、编码版本与对象类型；读取接受 `RigIrObjects.MIN_VERSION` 起的每个版本，IR 新增字段只在其加入的版本起读取。编码版本 5 起浮点数组按字节平面写出（全部值的第一个字节，然后第二个……），数值不变而 DEFLATE 压缩率明显提高；已有对象以其哈希被固化点引用，保持原编码。
+- 对象编码为中立 IR 的二进制形式（`RigIrBinary`，浮点按原始位保存），自带魔数、编码版本与对象类型；读取接受 `RigIrObjects.MIN_VERSION` 起的每个版本，IR 新增字段只在其加入的版本起读取。编码版本 5 起浮点数组按字节平面写出（全部值的第一个字节，然后第二个……），数值不变而 DEFLATE 压缩率明显提高；版本 6 加入 IR 的点击区域；已有对象以其哈希被固化点引用，保持原编码。
 - 头部 `{format:"psd2live-authored-rig", version:1, build, binding_key, pages, layers, bounds, face, warnings, skipped, visibility}`：网格到纹理页、源图层与中性边界的映射，面部中心、半径与初始倾角，生成警告，重放跳过的条目，需应用图层显隐的网格，以及纹理集绑定键。浮点按原始位写成整数。
 - 文件名中的修订键为文档的修订 ID（`WorkspaceRevisions.of`），即构建按其查找的键。
 - 绑定键是生成基础 Rig 时纹理集的放置、页尺寸与纹理图层矩形的摘要。打开时按当前程序为该修订打包纹理集；键相同时直接使用保存的纹理坐标，不同时（本程序打包得不同）按画布纹理坐标把它们移到新的图块上。条目无法读取或校验失败时照常构建。

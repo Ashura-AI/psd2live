@@ -86,7 +86,7 @@ public object VTubeStudioTarget : ExportTarget {
 		val motions = bundle.files.map { it.name }.filter { it.endsWith(".motion3.json") }
 		val config = config(ir, options.baseName, motions)
 		val mapped = mappings.map { it.parameter }.toSet()
-		val losses = CapabilityScan.scan(ir, capabilities, options) + Moc3Target.losses(ir, options, bundle.report.notices) +
+		val losses = CapabilityScan.scan(ir, capabilities, options) + Moc3Target.losses(ir, options, bundle.report.notices) + Moc3Target.hitAreaLosses(ir) +
 			listOf(LossEntry("*", Feature.STRUCTURE, Handling.APPROXIMATED,
 				note = "Face tracking drives the standard parameters only: ${ir.parameters.count { it.id in mapped }} of ${ir.parameters.size}"))
 		return object : LoweredExport {

@@ -76,10 +76,10 @@ class ProjectFileScenario {
 			"history-9720a4c9-5233-4a5b-848c-220ad1c5d75c" to "ca99aaf7971bbbc12c7a3f3783cb3df16a93a213e60aee61a34e1cca61353af7",
 			"history-0493aaf9-0a1c-4310-baf5-5896117ab92e" to "1c0d97c54f189f64a79c4f4f877a8b4e7f153658249d63b65d1f01bb8b48e7db",
 		)
-		// The IR's advanced block came after these hashes were taken; it is empty here and left out.
+		// The IR's advanced block and hit areas came after these hashes were taken; they are empty here and left out.
 		fun legacyHash(model: RigPreviewModel): String {
 			val ir = PuppetIr.toIr(model.rig.puppet)
-			return ContentHash.of(ir.toString().removeSuffix(", advanced=${ir.advanced})") + ")")
+			return ContentHash.of(ir.toString().removeSuffix(", advanced=${ir.advanced}, hitAreas=${ir.hitAreas})") + ")")
 		}
 		openArchive(fixture("legacy-split.psd2live")).use { project ->
 			for (selection in project.history.selections()) {
