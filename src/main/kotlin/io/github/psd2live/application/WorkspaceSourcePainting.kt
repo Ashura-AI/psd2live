@@ -135,7 +135,43 @@ internal fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
             val (x, y) = point(arguments.getValue("point"))
             val tolerance = arguments["tolerance"]?.jsonPrimitive?.int ?: 0
             require(tolerance in 0..255)
-            RasterPaintEngine.floodFill(image, x.toInt(), y.toInt(), color, tolerance, before = before, checkpoint = work::checkpoint, opacity = opacity)
+            RasterPaintEngine.floodFill(image, x.toInt(), y.toInt(), color, tolerance, before = before, checkpoint = work::checkpoint,
+                opacity = opacity, contiguous = arguments["contiguous"]?.jsonPrimitive?.boolean ?: true)
+        }
+        "blur" -> {
+            val points = arguments.getValue("points").jsonArray.map(::point)
+            require(points.size in 1..512) { "Use 1..512 stroke points" }
+            val radius = arguments["radius"]?.jsonPrimitive?.float ?: 8f
+            val hardness = arguments["hardness"]?.jsonPrimitive?.float ?: 0.5f
+            require(radius.isFinite() && radius in 0.5f..512f && hardness.isFinite() && hardness in 0f..1f)
+            val stroke = RasterPaintEngine.Stroke(width, height)
+            val tip = RasterPaintEngine.Tip(space.imageLength(radius), hardness)
+            if (points.size == 1) stroke.addSegment(points[0].first, points[0].second, points[0].first, points[0].second, tip, work::checkpoint)
+            else points.zipWithNext().forEach { (a, b) -> stroke.addSegment(a.first, a.second, b.first, b.second, tip, work::checkpoint) }
+            stroke.bounds?.let { claimed ->
+                val kernel = blurKernel(tip.radius)
+                val padded = java.awt.Rectangle(claimed.x - kernel, claimed.y - kernel, claimed.width + 2 * kernel, claimed.height + 2 * kernel)
+                    .intersection(java.awt.Rectangle(0, 0, width, height))
+                before(claimed)
+                val original = image.getRGB(padded.x, padded.y, padded.width, padded.height, null, 0, padded.width)
+                stroke.landBlur(image, original, padded, claimed, opacity, kernel)
+            }
+        }
+        "fill" -> {
+            // The whole raster: a session confines it to its selection afterwards, the way every edit is.
+            val area = java.awt.Rectangle(0, 0, width, height)
+            before(area)
+            RasterPaintEngine.gradient(image, 0f, 0f, 0f, 0f, color, color, false, opacity, area, work::checkpoint)
+        }
+        "gradient" -> {
+            val (x0, y0) = point(arguments.getValue("from"))
+            val (x1, y1) = point(arguments.getValue("to"))
+            val end = arguments["end_color"]?.jsonArray?.map { it.jsonPrimitive.int } ?: listOf(rgba[0], rgba[1], rgba[2], 0)
+            require(end.size == 4 && end.all { it in 0..255 }) { "end_color must be four RGBA bytes" }
+            val area = java.awt.Rectangle(0, 0, width, height)
+            before(area)
+            RasterPaintEngine.gradient(image, x0, y0, x1, y1, color, (end[3] shl 24) or (end[0] shl 16) or (end[1] shl 8) or end[2],
+                arguments["kind"]?.jsonPrimitive?.content == "radial", opacity, area, work::checkpoint)
         }
         "shape" -> {
             val (x0, y0) = point(arguments.getValue("from"))
@@ -153,6 +189,9 @@ internal fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
     }
     work.progress(0.2f, "Rasterized paint gesture")
 }
+
+/** The blur brush's box radius for a tip of [radius] raster pixels: a quarter of the tip, 1..16 pixels. */
+internal fun blurKernel(radius: Float): Int = (radius / 4f).toInt().coerceIn(1, 16)
 
 /** Pure raster-only fixture edit; application commits additionally preserve and migrate rig inputs. */
 internal fun WorkspaceDocument.paintSource(arguments: JsonObject): WorkspaceDocument {

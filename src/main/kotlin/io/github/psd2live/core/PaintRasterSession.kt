@@ -102,6 +102,50 @@ internal class PaintPixelPatch {
         return changed
     }
 
+    /**
+     * The pixels of [area] as they were before the edit: the kept value where a tile was captured, the layer's own
+     * where none was (the edit has not touched it). [area] must lie on [image].
+     */
+    fun original(image: BufferedImage, area: Rectangle): IntArray {
+        val out = image.getRGB(area.x, area.y, area.width, area.height, null, 0, area.width)
+        for ((key, pixels) in tiles) {
+            val x = (key ushr 32).toInt() * TILE
+            val y = (key and 0xFFFFFFFFL).toInt() * TILE
+            val width = min(TILE, image.width - x)
+            val overlap = Rectangle(x, y, width, min(TILE, image.height - y)).intersection(area)
+            if (overlap.isEmpty) continue
+            for (row in 0 until overlap.height) {
+                System.arraycopy(pixels, (overlap.y - y + row) * width + (overlap.x - x),
+                    out, (overlap.y - area.y + row) * area.width + (overlap.x - area.x), overlap.width)
+            }
+        }
+        return out
+    }
+
+    /**
+     * Takes the edit back wherever [selection] does not fully reach, and with [lockAlpha] gives every pixel its
+     * original alpha back: how a fill, shape, gradient or clear is confined to the selection and to what is
+     * already painted. Only captured tiles can have changed, so only they are visited.
+     */
+    fun confine(image: BufferedImage, selection: PaintSelection?, lockAlpha: Boolean) {
+        if (selection == null && !lockAlpha) return
+        for ((key, pixels) in tiles) {
+            val x = (key ushr 32).toInt() * TILE
+            val y = (key and 0xFFFFFFFFL).toInt() * TILE
+            val width = min(TILE, image.width - x); val height = min(TILE, image.height - y)
+            if (width <= 0 || height <= 0) continue
+            val current = image.getRGB(x, y, width, height, null, 0, width)
+            for (row in 0 until height) for (column in 0 until width) {
+                val at = row * width + column
+                var value = current[at]
+                if (lockAlpha) value = if (pixels[at] ushr 24 == 0) pixels[at] else (pixels[at] and -0x1000000) or (value and 0xFFFFFF)
+                if (selection != null) value = mixArgb(pixels[at], value, selection.at(x + column, y + row))
+                current[at] = value
+            }
+            image.setRGB(x, y, width, height, current, 0, width)
+        }
+    }
+
     private fun key(tileX: Int, tileY: Int): Long = (tileX.toLong() shl 32) or (tileY.toLong() and 0xFFFFFFFFL)
 
     private companion object {
@@ -189,12 +233,34 @@ internal class PaintRasterSession(
      * from, and the stroke's whole coverage is laid over them at [opacity]. Doing it in this order is
      * what makes a stroke that crosses itself land once, and land the same however the drag was cut up.
      */
-    internal fun landSegment(claimed: Rectangle, color: Int, opacity: Float, erase: Boolean) {
+    internal fun landSegment(claimed: Rectangle, color: Int, opacity: Float, erase: Boolean,
+        mask: PaintSelection? = null, lockAlpha: Boolean = false) {
         touch(claimed)
         pending.capture(workingImage, claimed)
         pending.restore(workingImage, claimed)
-        stroke().land(workingImage, color, opacity, erase, claimed)
+        stroke().land(workingImage, color, opacity, erase, claimed, mask = mask, lockAlpha = lockAlpha)
         markDirty(claimed)
+    }
+
+    /**
+     * Lands the pixels a blur segment has just claimed: the stroke-start pixels around them, [kernel] pixels
+     * further on every side, are read back and blurred, and each claimed pixel moves towards that blur by its
+     * coverage. Like [landSegment], the result does not depend on how the drag was cut up.
+     */
+    internal fun landBlurSegment(claimed: Rectangle, strength: Float, kernel: Int, mask: PaintSelection? = null) {
+        val padded = Rectangle(claimed.x - kernel, claimed.y - kernel, claimed.width + 2 * kernel, claimed.height + 2 * kernel)
+            .intersection(Rectangle(0, 0, docWidth, docHeight))
+        if (padded.isEmpty) return
+        touch(claimed)
+        pending.capture(workingImage, claimed)
+        val original = pending.original(workingImage, padded)
+        stroke().landBlur(workingImage, original, padded, claimed, strength, kernel, mask)
+        markDirty(claimed)
+    }
+
+    /** Confines the gesture in progress to [selection] and, with [lockAlpha], to the pixels already painted. */
+    internal fun confinePending(selection: PaintSelection?, lockAlpha: Boolean) {
+        pending.confine(workingImage, selection, lockAlpha)
     }
 
     /** Remembers the pixels [rect] is about to lose. See [edit] for the usual way in. */

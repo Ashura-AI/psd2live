@@ -11,7 +11,7 @@ import io.github.psd2live.project.WorkspaceWorkflowResult
 internal object WorkspacePaintSessionSchemas {
     private val s = WorkspaceResultSchema
     private val color = s.array(s.integer(0, 255), 4, 4)
-    private val common = mapOf("color" to color, "opacity" to s.number(0, 1))
+    private val common = mapOf("color" to color, "opacity" to s.number(0, 1), "lock_alpha" to s.boolean())
     private fun branch(mode: String, fields: Map<String, JsonObject>, required: Set<String>) =
         s.obj(common + fields + ("mode" to s.constant(mode)), required + "mode")
     val gesture = s.union(listOf(
@@ -20,20 +20,42 @@ internal object WorkspacePaintSessionSchemas {
         branch("pencil", mapOf("points" to s.array(s.vector(2), 1, 512), "radius" to s.number(0.5, 512)), setOf("points")),
         branch("eraser", mapOf("points" to s.array(s.vector(2), 1, 512), "radius" to s.number(0.5, 512),
             "hardness" to s.number(0, 1)), setOf("points")),
-        branch("bucket", mapOf("point" to s.vector(2), "tolerance" to s.integer(0, 255)), setOf("point")),
+        branch("bucket", mapOf("point" to s.vector(2), "tolerance" to s.integer(0, 255), "contiguous" to s.boolean()), setOf("point")),
         branch("shape", mapOf("from" to s.vector(2), "to" to s.vector(2), "shape" to s.choices("line", "rectangle", "ellipse"),
             "stroke_width" to s.number(1, 512), "filled" to s.boolean()), setOf("from", "to", "shape")),
         s.obj(mapOf("mode" to s.constant("clear"))),
+        // A blur stroke takes opacity as its strength and has no colour of its own.
+        branch("blur", mapOf("points" to s.array(s.vector(2), 1, 512), "radius" to s.number(0.5, 512),
+            "hardness" to s.number(0, 1)), setOf("points")),
+        branch("fill", emptyMap(), emptySet()),
+        branch("gradient", mapOf("from" to s.vector(2), "to" to s.vector(2), "end_color" to color,
+            "kind" to s.choices("linear", "radial")), setOf("from", "to")),
     ))
+    /** A change of the session's selection; shape points are canvas units like a gesture's. */
+    val selection = run {
+        val op = mapOf("op" to s.choices("replace", "add", "subtract", "intersect"), "antialias" to s.boolean())
+        fun shape(mode: String, fields: Map<String, JsonObject>) = s.obj(op + fields + ("mode" to s.constant(mode)), fields.keys + "mode")
+        s.union(listOf(
+            shape("rectangle", mapOf("from" to s.vector(2), "to" to s.vector(2))),
+            shape("ellipse", mapOf("from" to s.vector(2), "to" to s.vector(2))),
+            shape("lasso", mapOf("points" to s.array(s.vector(2), 3, 4096))),
+            s.obj(op + mapOf("mode" to s.constant("wand"), "point" to s.vector(2), "tolerance" to s.integer(0, 255),
+                "contiguous" to s.boolean()), setOf("mode", "point")),
+            s.obj(mapOf("mode" to s.constant("all"))), s.obj(mapOf("mode" to s.constant("none"))),
+            s.obj(mapOf("mode" to s.constant("invert"))),
+            s.obj(mapOf("mode" to s.constant("feather"), "radius" to s.number(0.5, 256)), setOf("mode", "radius")),
+        ))
+    }
     private fun control(action: String, fields: Map<String, JsonObject> = emptyMap(), required: Set<String> = fields.keys) =
         s.obj(fields + ("action" to s.constant(action)), required + "action")
     val edit = s.union(listOf(control("gesture", mapOf("gesture" to gesture, "name" to s.handle()), setOf("gesture")),
-        control("undo"), control("redo"), control("jump", mapOf("index" to s.integer(0))), control("abandon"),
+        control("select", mapOf("selection" to selection)), control("undo"), control("redo"), control("jump", mapOf("index" to s.integer(0))), control("abandon"),
         control("cancel"), control("inspect"), control("sample", mapOf("x" to s.integer(0), "y" to s.integer(0))),
         control("render", mapOf("max_edge" to s.integer(128, 2048)), emptySet())))
     val snapshot = s.obj(mapOf("session_id" to s.handle(), "session_state" to s.handle(), "project_id" to s.handle(),
         "workspace_state" to s.handle(), "layer_id" to s.handle(), "layer_name" to s.string(), "material_id" to s.handle(),
-        "width" to s.integer(1), "height" to s.integer(1), "canvas_rect" to s.vector(4), "index" to s.integer(0), "dirty" to s.boolean(),
+        "width" to s.integer(1), "height" to s.integer(1), "canvas_rect" to s.vector(4), "selection" to s.vector(4),
+        "index" to s.integer(0), "dirty" to s.boolean(),
         "active_stroke" to s.boolean(), "closed" to s.boolean(),
         "strokes" to s.array(s.obj(mapOf("id" to s.handle(), "name" to s.string())), 1, Int.MAX_VALUE)),
         setOf("session_id", "session_state", "project_id", "workspace_state", "layer_id", "layer_name", "width", "height", "canvas_rect",
@@ -57,6 +79,7 @@ internal fun WorkspacePaintSession.control(request: JsonObject, checkpoint: () -
         when (action) {
             "gesture" -> gesture(edit.getValue("gesture").jsonObject, edit["name"]?.jsonPrimitive?.content
                 ?: edit.getValue("gesture").jsonObject.getValue("mode").jsonPrimitive.content, expected, checkpoint)
+            "select" -> select(edit.getValue("selection").jsonObject, expected)
             "undo" -> undo(expected)
             "redo" -> redo(expected)
             "jump" -> jump(edit.getValue("index").jsonPrimitive.int, expected)
@@ -110,7 +133,8 @@ internal fun registerPaintSessionOperations(registry: WorkspaceOperationRegistry
         WorkspaceOperationOutput(buildJsonObject { put("kind", "state"); put("session", session.snapshot()) })
     }
     registry.register(WorkspaceOperationDefinition("paint_session_control",
-        "Edit, undo, redo or jump within the private paint candidate; cancel discards the entire session, abandon discards only the active live stroke. Sample and render read candidate pixels. Pass the latest session_state to prevent concurrent stroke loss. Mutations reject a changed committed workspace; inspection and cancellation remain available.",
+        "Edit, undo, redo or jump within the private paint candidate; cancel discards the entire session, abandon discards only the active live stroke. Sample and render read candidate pixels. " +
+            "select changes the session's selection (rectangle, ellipse, lasso or wand met with it by op replace/add/subtract/intersect, or all, none, invert, feather); every later gesture lands only inside it, and lock_alpha keeps a gesture to already painted pixels. The selection is not in the stroke history. Pass the latest session_state to prevent concurrent stroke loss. Mutations reject a changed committed workspace; inspection and cancellation remain available.",
         s.obj(ids + ("edit" to WorkspacePaintSessionSchemas.edit)), WorkspaceOperationKind.SESSION,
         resultSchema = WorkspacePaintSessionSchemas.result)) { request, _ ->
         val result = port.controlPaintSession(request)

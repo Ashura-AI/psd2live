@@ -14,7 +14,7 @@ internal object LayerPaintEngine {
 
     class Stroke(width: Int, height: Int) : RasterPaintEngine.Stroke(width, height) {
         fun land(target: BufferedImage, color: Color, opacity: Float, erase: Boolean, region: Rectangle) =
-            super.land(target, color.toArgb(), opacity, erase, region, {})
+            super.land(target, color.toArgb(), opacity, erase, region, {}, null, false)
     }
 
     fun floodFill(image: BufferedImage, startX: Int, startY: Int, fillColor: Color, tolerance: Int,
