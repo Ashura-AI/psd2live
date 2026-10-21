@@ -971,6 +971,14 @@ fun CanvasViewportComposable(
 			ShortcutAction.SELECT_LINKED -> { editor.selectLinked(); true }
 			ShortcutAction.MIRROR_KEYFORM -> editor.editable && editor.keyformMirrorPlan(CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_KEY) != null &&
 				true.also { editor.mirrorKeyform(CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_KEY) }
+			ShortcutAction.KEYFORM_COPY -> editor.canCopyKeyform() && true.also { editor.copyKeyform() }
+			ShortcutAction.KEYFORM_PASTE -> editor.keyformToolCommand(CanvasEditor.KeyformToolAction.PASTE) != null &&
+				true.also { editor.runKeyformTool(CanvasEditor.KeyformToolAction.PASTE) }
+			ShortcutAction.KEYFORM_RESET -> editor.keyformToolCommand(CanvasEditor.KeyformToolAction.RESET_DEFAULT) != null &&
+				true.also { editor.runKeyformTool(CanvasEditor.KeyformToolAction.RESET_DEFAULT) }
+			// The first axis the key sits between keys of; the menu lists each.
+			ShortcutAction.KEYFORM_INTERPOLATE -> editor.keyformInterpolationAxes().firstOrNull()?.let { parameter ->
+				editor.runKeyformTool(CanvasEditor.KeyformToolAction.INTERPOLATE, parameter); true } ?: false
 			ShortcutAction.LAYER_TO_FRONT -> viewModel.reorderSelectedLayers("front")
 			ShortcutAction.LAYER_FORWARD -> viewModel.reorderSelectedLayers("forward")
 			ShortcutAction.LAYER_BACKWARD -> viewModel.reorderSelectedLayers("backward")

@@ -153,6 +153,11 @@ enum class ShortcutAction(
     SELECTION_STYLE_LASSO(ShortcutCategory.CANVAS_EDIT, "shortcut.selectionLasso"),
     SELECT_LINKED(ShortcutCategory.CANVAS_EDIT, "shortcut.selectLinked"),
     MIRROR_KEYFORM(ShortcutCategory.CANVAS_EDIT, "shortcut.mirrorKeyform"),
+    // Deform's keyform tools.
+    KEYFORM_COPY(ShortcutCategory.CANVAS_EDIT, "shortcut.keyformCopy"),
+    KEYFORM_PASTE(ShortcutCategory.CANVAS_EDIT, "shortcut.keyformPaste"),
+    KEYFORM_RESET(ShortcutCategory.CANVAS_EDIT, "shortcut.keyformReset"),
+    KEYFORM_INTERPOLATE(ShortcutCategory.CANVAS_EDIT, "shortcut.keyformInterpolate"),
     CANCEL(ShortcutCategory.CANVAS_EDIT, "shortcut.cancel"),
     FINISH_PATH(ShortcutCategory.CANVAS_EDIT, "shortcut.finishPath"),
     DELETE_SELECTION(ShortcutCategory.CANVAS_EDIT, "editor.delete"),
@@ -360,6 +365,11 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.SELECTION_STYLE_LASSO to keys("Shift+Q"),
     ShortcutAction.SELECT_LINKED to keys("Shift+L"),
     ShortcutAction.MIRROR_KEYFORM to keys("Shift+M"),
+    // Deform's keyform tools, on Ctrl+Alt beside the clipboard keys that copy objects.
+    ShortcutAction.KEYFORM_COPY to keys("Ctrl+Alt+C"),
+    ShortcutAction.KEYFORM_PASTE to keys("Ctrl+Alt+V"),
+    ShortcutAction.KEYFORM_RESET to keys("Ctrl+Alt+X"),
+    ShortcutAction.KEYFORM_INTERPOLATE to keys("Ctrl+Alt+I"),
     ShortcutAction.CANCEL to keys("Esc"),
     ShortcutAction.FINISH_PATH to keys("Enter", "NumPadEnter"),
     ShortcutAction.DELETE_SELECTION to keys("Del", "Backspace"),

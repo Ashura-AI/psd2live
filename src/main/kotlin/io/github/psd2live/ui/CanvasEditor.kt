@@ -4184,6 +4184,104 @@ internal class CanvasEditor(
         if (!committed && error == null) error = tr("editor.mirror.nothing")
     }
 
+    /** A keyform copied in Deform: the object, the key it was copied at and what the paste row names it. */
+    internal data class KeyformClip(val kind: String, val id: String, val key: Map<String, Float>, val count: Int, val label: String)
+
+    /** What [pasteKeyform] writes; it is read from the model when pasting, so a later edit of the source carries over. */
+    var keyformClipboard by mutableStateOf<KeyformClip?>(null)
+
+    /** A keyform tool the deform menu runs on the key in hand (see [KeyformTools]). */
+    enum class KeyformToolAction { RESET_DEFAULT, RESET_REST, INTERPOLATE, PASTE }
+
+    /** The target in hand that has keyforms, with the key the canvas shows it at; null outside Deform. */
+    private fun keyformTarget(): Pair<CanvasTarget, Map<String, Float>>? {
+        if (hierarchyMode != EditHierarchyMode.DEFORM) return null
+        val source = state.previewModel?.rig?.puppet ?: return null
+        val t = target(source)?.takeIf { it.kind in setOf("mesh", "warp", "rotation") } ?: return null
+        return t to canvasDeformationCoordinate(source, t.geometry.axes, pose, deformationParameters)
+    }
+
+    /** [keyformTarget] when its key is one of the target's keyforms: no new axis, every value one of the axis's keys. */
+    private fun keyedTarget(): Pair<CanvasTarget, Map<String, Float>>? {
+        val (t, key) = keyformTarget() ?: return null
+        val axes = t.geometry.axes
+        if (axes.isEmpty() || key.keys != axes.mapTo(HashSet()) { it.parameterId.raw }) return null
+        if (axes.any { axis -> axis.keys.none { abs(it - key.getValue(axis.parameterId.raw)) <= org.umamo.runtime.eval.EPS_KEY } }) return null
+        return t to key
+    }
+
+    /** The points a keyform tool keeps to: the picked ones, but none of a warp's at the Bezier level or of a rotation. */
+    private fun keyformPoints(t: CanvasTarget): Set<Int> =
+        if (t.kind == "rotation" || (t.kind == "warp" && editLevel != 1)) emptySet() else vertices
+
+    /** How many points the keyform tools would keep to: 0 when they write the whole shape. */
+    fun keyformPointCount(): Int = keyformTarget()?.first?.let { keyformPoints(it).size } ?: 0
+
+    /** The parameters the key in hand sits between two keys of, which [KeyformToolAction.INTERPOLATE] can run along. */
+    fun keyformInterpolationAxes(): List<String> {
+        val (t, key) = keyedTarget() ?: return emptyList()
+        return t.geometry.axes.filter { axis ->
+            val value = key.getValue(axis.parameterId.raw)
+            axis.keys.any { it < value - org.umamo.runtime.eval.EPS_KEY } && axis.keys.any { it > value + org.umamo.runtime.eval.EPS_KEY }
+        }.map { it.parameterId.raw }
+    }
+
+    /** A parameter's display name. */
+    fun parameterLabel(id: String): String = (preview ?: state.previewModel?.rig?.puppet)?.parameters?.firstOrNull { it.id.raw == id }?.name?.ifBlank { null } ?: id
+
+    fun canCopyKeyform(): Boolean = keyformTarget() != null
+
+    /** Copies the shape in hand at the key the canvas shows, for [KeyformToolAction.PASTE]. */
+    fun copyKeyform() {
+        val (t, key) = keyformTarget() ?: return
+        val source = state.previewModel?.rig?.puppet ?: return
+        val name = source.drawables.firstOrNull { it.id.raw == t.id }?.name ?: source.deformers.firstOrNull { it.id.raw == t.id }?.name ?: t.id
+        keyformClipboard = KeyformClip(t.kind, t.id, key, t.count, if (key.isEmpty()) name else "$name · ${describeKey(source, key)}")
+    }
+
+    /**
+     * The command [action] runs on the key in hand, or null when it cannot: the pose is off the target's keys, a reset
+     * to rest asks it of a deformer, there is nothing on both sides to interpolate from ([parameter] names the axis), or
+     * the copied shape is of another kind or point count.
+     */
+    internal fun keyformToolCommand(action: KeyformToolAction, parameter: String? = null): JsonObject? {
+        val (t, key) = keyedTarget() ?: return null
+        val clip = keyformClipboard
+        when (action) {
+            KeyformToolAction.RESET_REST -> if (t.kind != "mesh") return null
+            KeyformToolAction.INTERPOLATE -> if (parameter !in keyformInterpolationAxes()) return null
+            KeyformToolAction.PASTE -> if (clip == null || clip.kind != t.kind || clip.count != t.count) return null
+            KeyformToolAction.RESET_DEFAULT -> Unit
+        }
+        fun Map<String, Float>.json() = JsonObject(mapValues { JsonPrimitive(it.value) })
+        val points = keyformPoints(t)
+        return buildJsonObject {
+            when (action) {
+                KeyformToolAction.RESET_DEFAULT, KeyformToolAction.RESET_REST -> {
+                    put("op", KeyformTools.RESET); put("target", "${t.kind}:${t.id}")
+                    put("to", if (action == KeyformToolAction.RESET_REST) "rest" else "default")
+                }
+                KeyformToolAction.INTERPOLATE -> {
+                    put("op", KeyformTools.INTERPOLATE); put("target", "${t.kind}:${t.id}"); put("parameter", parameter!!)
+                }
+                KeyformToolAction.PASTE -> {
+                    put("op", KeyformTools.PASTE); put("target", "${clip!!.kind}:${clip.id}"); put("from", clip.key.json())
+                    put("destination", "${t.kind}:${t.id}")
+                }
+            }
+            put("key", key.json())
+            if (points.isNotEmpty()) put("vertices", JsonArray(points.sorted().map(::JsonPrimitive)))
+        }
+    }
+
+    /** Runs [action] as one history step; says so when it would change nothing. */
+    fun runKeyformTool(action: KeyformToolAction, parameter: String? = null) {
+        if (!editable) return
+        val command = keyformToolCommand(action, parameter) ?: return
+        val committed = commitBatch(listOf(command))
+        if (!committed && error == null) error = tr("editor.keyform.nothing")
+    }
+
     /**
      * Runs a topology op on the mesh selection.
      *

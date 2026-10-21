@@ -236,6 +236,56 @@ class EditorAndAgentScenario {
 		assertTrue(bound(), "undo must bind the mesh again")
 	}
 
+	@Test fun theDeformMenuCopiesPastesInterpolatesAndResetsAKeyform() = editor {
+		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
+		consistent("imported")
+		val angle = ParameterId("ParamAngleX")
+		val parameters = vm.state.value.previewModel!!.rig.puppet.parameters
+		val range = parameters.single { it.id == angle }
+		val warp = vm.state.value.previewModel!!.rig.puppet.deformers.filterIsInstance<org.umamo.runtime.model.Deformer.Warp>().first { warp ->
+			warp.geometryGrid?.axes.orEmpty().any { axis -> axis.parameterId == angle && listOf(range.min, 0f, range.max).all { value -> axis.keys.any { it == value } } }
+		}
+		val axes = warp.geometryGrid!!.axes.map { it.parameterId.raw }
+		fun key(value: Float) = axes.associateWith { id -> if (id == angle.raw) value else parameters.single { it.id.raw == id }.default }
+		fun shape(value: Float) = io.github.psd2live.core.RigGeometryTools.geometry(vm.state.value.previewModel!!.rig.puppet, "warp", warp.id.raw, key(value)).points
+		fun differs(a: FloatArray, b: FloatArray) = a.indices.maxOf { kotlin.math.abs(a[it] - b[it]) }
+		val turned = shape(range.max)
+		assertTrue(differs(turned, shape(range.min)) > 1e-3f, "the two turns must differ for a paste to show")
+		val canvas = withContext(Dispatchers.Main) {
+			vm.selectDeformer(warp.id.raw)
+			io.github.psd2live.ui.CanvasEditor(vm, vm.state.value.activeWorkspace.id, "deform-test").also {
+				it.hierarchyMode = io.github.psd2live.ui.EditHierarchyMode.DEFORM
+				vm.setParameterValue(angle, range.max)
+			}
+		}
+		settle()
+		withContext(Dispatchers.Main) {
+			canvas.copyKeyform()
+			assertEquals(key(range.max), canvas.keyformClipboard?.key)
+			vm.setParameterValue(angle, range.min)
+		}
+		settle()
+		withContext(Dispatchers.Main) { canvas.runKeyformTool(io.github.psd2live.ui.CanvasEditor.KeyformToolAction.PASTE) }
+		consistent("pasted the right turn onto the left")
+		assertTrue(differs(turned, shape(range.min)) < 1e-4f, "the paste did not write the copied shape")
+		withContext(Dispatchers.Main) { vm.setParameterValue(angle, 0f) }
+		settle()
+		withContext(Dispatchers.Main) {
+			assertTrue(angle.raw in canvas.keyformInterpolationAxes(), "the neutral key sits between the two turns")
+			canvas.runKeyformTool(io.github.psd2live.ui.CanvasEditor.KeyformToolAction.INTERPOLATE, angle.raw)
+		}
+		consistent("interpolated the neutral key")
+		assertTrue(differs(turned, shape(0f)) < 1e-3f, "both turns are the same shape, so the middle must be too")
+		withContext(Dispatchers.Main) { vm.undoHistory() }
+		consistent("undo the interpolation")
+		withContext(Dispatchers.Main) { vm.setParameterValue(angle, range.min) }
+		settle()
+		val neutral = shape(0f)
+		withContext(Dispatchers.Main) { canvas.runKeyformTool(io.github.psd2live.ui.CanvasEditor.KeyformToolAction.RESET_DEFAULT) }
+		consistent("reset the left turn")
+		assertTrue(differs(neutral, shape(range.min)) < 1e-4f, "the reset did not write the default-key shape")
+	}
+
 	@Test fun mouthPresetAndThicknessChangePreviewAndSurviveReopening() = editor {
 		workspace.importPsd(Characters.mouthPsd(temp).toString(), true)
 		consistent("imported mouth")
