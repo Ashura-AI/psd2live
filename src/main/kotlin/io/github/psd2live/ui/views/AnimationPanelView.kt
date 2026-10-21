@@ -91,11 +91,11 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import io.github.psd2live.ui.theme.Motion
 
-private const val MOTION_SETTINGS_FIELD = "motion-settings"
+internal const val MOTION_SETTINGS_FIELD = "motion-settings"
 private const val BUILTIN_SECTION = "builtin"
 private const val CUSTOM_SECTION = "custom"
-private val MotionRowHeight = 24.dp
-private val MotionRowIndent = 12.dp
+internal val MotionRowHeight = 24.dp
+internal val MotionRowIndent = 12.dp
 
 /** One motion as the panel lists it, generated or the user's own. */
 private data class MotionEntry(
@@ -125,7 +125,7 @@ internal fun AnimationPanelView(
 	val previewState = state.previewPanelState()
 	val skeleton = state.rigEdits.skeleton
 	var query by remember { mutableStateOf("") }
-	val openSections = remember { mutableStateMapOf(BUILTIN_SECTION to true, CUSTOM_SECTION to true) }
+	val openSections = remember { mutableStateMapOf(BUILTIN_SECTION to true, CUSTOM_SECTION to true, *SIDECAR_SECTIONS.map { it to true }.toTypedArray()) }
 	val openSettings = remember { mutableStateMapOf<String, Boolean>() }
 	var newMenuOpen by remember { mutableStateOf(false) }
 
@@ -180,7 +180,7 @@ internal fun AnimationPanelView(
 			PanelResetButton(onClick = { viewModel.resetPreviewParameters() }, enabled = state.previewModel != null, tooltip = tr("animation.resetPose"))
 		}
 
-		if (state.previewModel == null || (needle.isNotEmpty() && shownBuiltins.isEmpty() && shownCustoms.isEmpty())) {
+		if (state.previewModel == null || (needle.isNotEmpty() && shownBuiltins.isEmpty() && shownCustoms.isEmpty() && !sidecarsMatch(state, needle))) {
 			Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
 				Text(
 					text = tr(if (state.previewModel == null) "animation.editor.noModel" else "animation.noResults"),
@@ -227,6 +227,7 @@ internal fun AnimationPanelView(
 				}
 				section(BUILTIN_SECTION, builtinTitle, shownBuiltins, null)
 				section(CUSTOM_SECTION, tr("animation.customSection"), shownCustoms, tr("animation.customEmpty").takeIf { needle.isEmpty() })
+				sidecarSections(viewModel, state, needle, openSections, openSettings)
 			}
 			VerticalScrollbar(
 				adapter = rememberScrollbarAdapter(listState),
@@ -263,6 +264,7 @@ private fun NewMotionMenu(
 				CompactMenuItem(text = builtinMotionTitle(name), onClick = { onDismiss(); viewModel.restoreMotionPreset(name) })
 			}
 		}
+		NewExpressionMenuItems(viewModel, state, onDismiss)
 	}
 }
 
@@ -539,7 +541,7 @@ private fun PresetSettings(viewModel: PSD2LiveViewModel, name: String, settings:
 	}
 }
 
-/** The advanced settings of a user clip: its fades, which the editor's toolbar leaves out. */
+/** The advanced settings of a user clip: its fades, which the editor's toolbar leaves out, and its events. */
 @Composable
 private fun ClipSettings(viewModel: PSD2LiveViewModel, clip: MotionClip) {
 	Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -550,10 +552,11 @@ private fun ClipSettings(viewModel: PSD2LiveViewModel, clip: MotionClip) {
 			viewModel.updateMotionClipProperties(clip.id) { it.copy(fadeOut = value) }
 		}
 	}
+	MotionEventSettings(viewModel, clip)
 }
 
 @Composable
-private fun SettingField(
+internal fun SettingField(
 	label: String,
 	value: Float,
 	min: Float,
@@ -599,7 +602,7 @@ private fun SettingField(
 }
 
 @Composable
-private fun MotionBadge(label: String, tint: Color) {
+internal fun MotionBadge(label: String, tint: Color) {
 	val typography = LocalToolTypography.current
 	Box(
 		modifier = Modifier

@@ -7313,7 +7313,8 @@ class PSD2LiveViewModel : AutoCloseable {
 		setParameterValues(saved.values.filterKeys { it in known && it !in current.lockedParameters }, autoKey = null)
 	}
 
-	private fun shownParameterValues(): Map<ParameterId, Float>? {
+	/** Every parameter as the parameters panel shows it, the live pose included while previewing. */
+	internal fun shownParameterValues(): Map<ParameterId, Float>? {
 		val current = _state.value
 		val parameters = current.previewModel?.rig?.puppet?.parameters ?: return null
 		val live = current.activeCanvas.mode == CanvasMode.PREVIEW && current.activeWorkspace.pose?.authoringPose != true && current.previewLive && (current.animationEnabled || current.mouseTrackingEnabled ||

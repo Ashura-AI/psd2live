@@ -213,11 +213,11 @@
   - external-application-integration-api different cubism=external-application-integration-api
   - external-application-integration-api-list different cubism=external-application-integration-api-list
 + viewer
-  - pose-setting missing cubism=pose-setting
-  - facial-expression-system missing cubism=facial-expression-system
-  - create-facial-expressions missing cubism=create-facial-expressions
-  - setting-and-exporting-facial-expressions missing cubism=setting-and-exporting-facial-expressions
-  - userdata-event-information missing cubism=userdata-event-information
+  - pose-setting different cubism=pose-setting
+  - facial-expression-system same cubism=facial-expression-system
+  - create-facial-expressions different cubism=create-facial-expressions
+  - setting-and-exporting-facial-expressions different cubism=setting-and-exporting-facial-expressions
+  - userdata-event-information different cubism=userdata-event-information
 
 [tutorials]
 + t-beginner

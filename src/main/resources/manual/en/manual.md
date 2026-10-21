@@ -1760,7 +1760,8 @@ All motions are written into `Motions` in `model3.json`; `Groups` gets `EyeBlink
 - Bezier handles are limited within the segment (`AreBeziersRestricted: true`), so every SDK version plays them correctly.
 - Parameters driven by physics are not written into the idle animation.
 - Motions unticked in the **Animation** panel are not exported; mesh-only export writes no motions.
-- Motions contain no events (user data events); see [[userdata]].
+- A motion's events are written into the `UserData` of that motion's `motion3.json`; see [[userdata]].
+- Expressions are written as `<model name>.<expression ID>.exp3.json` and listed in the `Expressions` of `model3.json` in the order of the expression list; when there are pose groups, `<model name>.pose3.json` is written too. See [[setting-and-exporting-facial-expressions]] and [[pose-setting]].
 @@ parameter-controller | Parameter Controller
 @@ about-the-parameter-controller | About the parameter controller
 @@ parameter-controller-target-setting | Controller target settings
@@ -1819,7 +1820,10 @@ To put a model into an application, streaming software or a game, you export emb
 | `<name>.model3.json` | Model settings, referencing the files below |
 | `<name>.physics3.json` | Physics; `Fps` is the project's physics frame rate |
 | `<name>.<motion>.motion3.json` | One per motion; see [[notes-for-sdk]] |
+| `<name>.<expression ID>.exp3.json` | One per expression; see [[setting-and-exporting-facial-expressions]] |
+| `<name>.pose3.json` | Pose groups, written only when there are groups; see [[pose-setting]] |
 | `<name>.cdi3.json` | Display names of parameters, parts and meshes |
+| `<name>.userdata3.json` | Mesh user data, written only when there is some; see [[userdata]] |
 | `<name>.<width>/texture_00.png` etc. | Texture atlas pages; see [[texture-atlas-edit]] |
 | `<name>.cmo3` / `<name>.can3` | Cubism Editor project and Animator project |
 What is exported is the currently committed model; it is not regenerated from the PSD. The Cubism SDK preview in the editor and the moc3 export are the same compilation, so what you see in the preview is the export result.
@@ -1833,7 +1837,7 @@ The same model can be exported directly for VTube Studio, the web, Unity and so 
 ## Runtimes and players
 | Menu item | Output | Main limits |
 |---|---|---|
-| VTube Studio… | The full set of moc3 files + `.vtube.json` | Face tracking maps only standard parameters; one hotkey per motion |
+| VTube Studio… | The full set of moc3 files + `.vtube.json` | Face tracking maps only standard parameters; one hotkey per motion and one toggle hotkey per expression |
 | PSD2Live runtime rig… | `.p2lrt` | Without the data the editor attaches; optional compression, stripping names and so on |
 | Web player… | `index.html`, the player script, the WebAssembly runtime and `.p2lrt` | Must be accessed over http |
 | Unity prefab… | `.p2lunity`, textures and an install script | Needs Unity 6.0 or later; parameters are baked into Blend Shapes and combinations are approximated additively; masks and physics are not written |
@@ -1849,7 +1853,12 @@ User data is a piece of text attached to an ArtMesh that an application can read
 ## Export
 - User data is saved with the project and written into the exported `.cmo3`.
 - When exporting MOC3, if **Include userdata3.json** is ticked (the default) and some mesh has user data filled in, `<name>.userdata3.json` is written and referenced in `model3.json`; without user data this file is not generated.
-*> Motions cannot hold events, and the exported `motion3.json` contains no user data; to notify the application at a moment in a motion, handle it by time on the application side.
+## Motion events
+An event is a piece of text at a moment in a motion: when the SDK plays to that moment it hands the text to the application, for example to play a sound at the top of a wave.
+1. In the Animation panel, expand the settings of a custom motion.
+2. Under **Events**, click **Add event at playhead**; drag the playhead in the Animation Editor first to pick the moment.
+3. Change the time or text; click x to delete. Each change is recorded as one history entry.
+On export the events are written into the `UserData` of that motion's `motion3.json` (`UserDataCount` and `TotalUserDataSize` are updated too), and into the matching frames in the `.can3`. All events and mesh user data can be reviewed in one place in [[userdata-event-information]].
 @@ physics-playlist | Physics Settings and Playlists
 @@ switch-viewer-setting | Physics Settings
 Physics is part of the project: in the **Physics** panel you tune while pulling on the model, changes go into the undo history, and on export they are written to `physics3.json` and `.cmo3` automatically, with no separate Viewer and no separate physics file to save.
@@ -1965,7 +1974,8 @@ The table below lists the main MCP tools by purpose (names in the compact tool s
 | Edit | `workspace_apply_edits`, `workspace_preview_edits`, `rig_deform`, `keyform_apply` | Atomic batch edits, trial runs, editing keyforms |
 | Intent tools | `author_axis`, `author_physics`, `author_compile` | Create parameter-axis shapes and physics groups and fit them in one step |
 | Parameters and preview | `parameter`, `preview_set`, `preview_reset`, `snapshot_*` | Parameters, preview pose and parameter snapshots |
-| Motion | `motion` | Motion clips and keyframes |
+| Motion | `motion` | Motion clips, keyframes and events |
+| Expression / pose | `expression`, `pose` | Expressions (exp3) and pose groups (pose3) |
 | Skeleton / path | `skeleton`, `path` | Skeleton and deform paths |
 | Physics / swing / simulation | `physics`, `swing`, `simulation` | Physics groups, swing, cloth and hair simulation and baking |
 | Painting | `source_paint` | Source layer pixels |
@@ -1976,7 +1986,59 @@ The table below lists the main MCP tools by purpose (names in the compact tool s
 | Other | `workspace_call` | Call operations not published directly as tools |
 @@ viewer | Expressions and Poses
 @@ pose-setting | Pose Settings
+A pose makes a group of parts show only one at a time, such as arm A and arm B, or two outfits. The SDK reads the exported `pose3.json`: on load each group shows its first part, and on switching the new part fades in and the old one fades out within the set time.
+## Setting up pose groups
+1. Open the Animation panel and expand the **Pose** section.
+2. Click **New group** and choose the first part of the group; the first part in a group is marked **Shown first**.
+3. Expand the group and click **Add part** to add the other parts of the group. A part can appear only once across all groups.
+4. For a part that should show and hide together with another (for example the hand of arm A), click **Link** on that row and pick it; click again to unlink.
+5. At the bottom of the section set **Switch fade (s)** (seconds, default 0.5).
+Each change is recorded as one history entry, can be undone, and is saved with the project. When a part is deleted, the group marks it **(missing)** and export skips it.
+## Differences from Cubism
+- It is set in the editor, with no separate Viewer and no separately saved `pose3.json`.
+- The editing canvas and preview do not apply poses: all parts show at their own opacity as usual, and the pose only takes effect when the SDK loads the model.
+- Exporting moc3 writes `<name>.pose3.json` and references it in the `Pose` of `model3.json`; with no groups it is not written.
 @@ facial-expression-system | Facial Expression Mechanism
+An expression is a set of parameter values that the host layers on top of a motion, for example switching to "smile" while the idle motion keeps playing. The SDK reads the exported `exp3.json`, and each parameter is combined with the value the motion gives according to its blend:
+| Blend | Result |
+|---|---|
+| Add | motion value + expression value |
+| Multiply | motion value x expression value |
+| Overwrite | expression value, motion ignored |
+When switching expressions, the new one fades in during its fade-in time and the old one fades out during its fade-out time, so you do not need a separate motion for each mood.
+## Standard expressions
+A generated model comes with four standard expressions (Smile, Sad, Angry, Surprised), made from the mouth shape, eye opening and eyebrow parameters the model already has; missing parameters are left out automatically. The first time you change the expression list (create, delete or edit any), the standard expressions are taken into the project as ordinary expressions and from then on only the project's expressions are exported; choose **Back to standard expressions** in the expression's right-click menu to return to the automatically generated set.
+## When a parameter is deleted or its range changes
+Deleting a parameter also deletes its entry in the expressions; narrowing a parameter's range pulls Overwrite values into the new range.
 @@ create-facial-expressions | Create Facial Expressions in Animation View
+Expressions are made straight from the parameter state: pose the face the way you want on the Parameters panel or the canvas, then save it as an expression.
+## New from the current parameters
+1. Adjust the expression on the Parameters panel (eyes, eyebrows, mouth and so on). While a motion plays in the preview, the values currently shown in the panel are taken.
+2. In the Animation panel toolbar click **+** and choose **New expression from current parameters**.
+3. Every parameter that differs from its default becomes an Add entry whose value is the difference from the default, matching the starting point of making expressions in Cubism's animation view.
+## Other ways to create
+- **New expression from snapshot**: uses the values of a parameter snapshot saved in the snapshot bar of the Parameters panel; the expression takes the snapshot's name.
+- **New empty expression**: an expression with no parameters, which the host can reset to as "no expression".
+- Right-click an existing expression and choose **Set from current parameters** to regenerate all its entries from the current parameters.
+## Previewing
+Click the eye icon at the right of an expression row (or right-click and choose **Preview on the parameters**); the expression is applied to the current parameters by its blends, so you see the effect directly on the canvas and in the preview. This changes only the preview parameters and is not recorded in history.
 @@ setting-and-exporting-facial-expressions | Expression Settings and Export
+Each expression's entries, blends and fades are set in the **Expressions** section of the Animation panel and written automatically on export.
+## Settings
+1. Click an expression row to expand its settings.
+2. **Fade In Time** and **Fade Out Time**: the seconds taken to switch to and away from this expression (default 0.5).
+3. Each entry is one row: parameter name, blend buttons (Add / Multiply / Overwrite), value, remove. When you change the blend without changing the value, the value is converted so that the parameter default gives the same result.
+4. **Add parameter** adds a parameter that is not set yet.
+5. The right-click menu can rename, duplicate, **Move up** / **Move down** and delete. The order of expressions is the order in `model3.json`.
+Each change is recorded as one history entry, can be undone, and is saved with the project.
+## Export
+- Exporting moc3 writes each expression as `<name>.<expression ID>.exp3.json` (`Type`, `FadeInTime`, `FadeOutTime`, `Parameters`) and references it by name in the `Expressions` of `model3.json`. Parameters that no longer exist in the model are skipped; an expression with no entries is still written.
+- The VTube Studio package adds a hotkey per expression that toggles it.
+- The PSD2Live runtime model (`.p2lrt`) and the web player carry the expressions as well.
+- `.cmo3` / `.can3` do not store expressions, and the export report says so; to hand them to the SDK, export moc3.
+*> Mesh-only export writes no expressions or poses.
 @@ userdata-event-information | Check User Data and Event Information
+The **User data and events** section at the bottom of the Animation panel lists in one place all the text the host can receive from the model: each motion's events (motion name, time, value) and each ArtMesh's user data (mesh name, value).
+- Click an event to open that motion and move the playhead to that moment.
+- Events are edited in a custom motion's settings and mesh user data in the Inspector; see [[userdata]].
+- After export, events are in each motion's `motion3.json` `UserData` and mesh user data is in `userdata3.json`.

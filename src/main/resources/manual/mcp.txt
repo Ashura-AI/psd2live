@@ -103,7 +103,7 @@ loop-editing-support: motion_close_loop motion_properties motion_get
 exporting-images: project_export_target view_sample_motion
 export-moc3-motion3-files: project_export_model settings_update job_wait
 other-formats: project_export_target project_export_psd job_wait
-userdata: rig_edit_structure workspace_inspect project_export_model
+userdata: rig_edit_structure workspace_inspect motion_set_event motion_delete_event project_export_model
 switch-viewer-setting: physics_config preview_physics
 physics-operation: physics_simulate preview_physics workspace_overview
 physical-operation-setting: physics_put physics_fit author_physics physics_apply_preset physics_audition physics_preset_list
@@ -112,6 +112,11 @@ simulation: simulation_put simulation_bake model_apply_preset vertex_group_paint
 external-application-integration: workspace_inspect workspace_overview workspace_list_operations
 external-application-integration-api: workspace_list_operations workspace_get_operation workspace_apply_edits workspace_preview_edits job_wait job_get
 external-application-integration-api-list: workspace_list_operations workspace_get_operation
+pose-setting: pose_get pose_add_group pose_set_group pose_update pose_put
+facial-expression-system: expression_list expression_get expression_set_entries expression_reset
+create-facial-expressions: expression_create expression_capture snapshot_list preview_set
+setting-and-exporting-facial-expressions: expression_update expression_set_entries expression_move project_export_model
+userdata-event-information: motion_events motion_set_event rig_edit_structure
 t-eye-blink: settings_update rig_deform canvas_deform_stroke keyform_apply layer_tag preview_set
 t-mouth-aiueo: settings_update rig_deform canvas_deform_stroke keyform_apply preview_set
 t-psd: project_import_psd layer_tag layer_classify source_split_components
