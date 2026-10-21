@@ -46,28 +46,29 @@ The table compares the deformation and keyform editing tools with the public fea
 | Transform | Transform box: move, scale, rotate, anchor | Transform tool (T): drag the body to move, corners / edges to scale, the ring to rotate, a draggable anchor; Alt from the center, Shift proportional or 15°, X / Y axis constraint; precise numeric transform in Tool details | Existing |
 | Soft selection | No direct counterpart (the deform brush is used instead) | **Soft selection** (O): dragging or transforming selected points carries the points around them by a falloff of their distance, with an adjustable radius and curve, shown as red rings; committed as an ordinary geometry edit | New |
 | Deform brush | Deform brush (push, smooth, inflate / shrink) | Push (B), Smooth (Shift+B), Inflate / shrink (I); circle / line / rectangle tips, radius, hardness, strength, 8 falloffs, connected only | Existing |
-| Temporary deform tool | Hold a key to switch to a deform tool | Only temporary select (Z); a temporary switch to the deform brush or transform is missing | Later |
+| Temporary deform tool | Disposable path / lattice / free transform | **Temporary deform (lattice)** (Shift+T): a disposable 1×1–4×4 lattice over the selected points or the whole object; dragging its points carries them by bilinear interpolation, one history step per release; scale and rotate with the Transform tool, bend along a path with deform paths | New |
 | Warp deformer | Create, transform box, grid division, Bezier editing | Create Warp (C, sized from the selection or the keyform envelope, with an attach point); vertex / Bezier levels; `warp_set_topology` changes the divisions and migrates keyforms | Existing |
 | Rotation deformer | Create, drag the origin, turn by the handle, scale | Create rotation (R); drag the origin to move, the end to turn (Shift 15°), Alt + end to scale | Existing |
 | Deform path | Deform path | Deform path (P / D): Edit mode rebinds, Deform mode writes shapes, baked into mesh keyforms on export | Existing |
 | Glue | Glue and its weights | Glue (G): glue brush, weight brush, re-merge by distance | Existing |
-| Keyform copy / paste | Copy and paste form | Deform context menu **Keyform → Copy / Paste** (`Ctrl+Alt+C` / `Ctrl+Alt+V`); pastes onto other objects of the same kind and point count, only onto the selected points when there are some; MCP `keyform_apply op=paste` (`op=copy` copies a whole key with channels) | New |
-| Blended paste, paste special, multi-object paste targets | Blend paste, paste special | No blending by ratio or flipped paste yet (flip with the mirror) | Later |
+| Keyform copy / paste | Copy and paste form | Deform context menu **Keyform → Copy / Paste** (`Ctrl+Alt+C` / `Ctrl+Alt+V`); copies every selected object at once and pastes onto itself or the next object of the same kind and point count, only onto the selected points when there are some; MCP `keyform_apply op=paste` (`op=copy` copies a whole key with channels) | New |
+| Blend form, paste special | Blend forms by a ratio; paste only checked properties, flipped | **Paste with options…**: any of shape, opacity, draw order, multiply and screen color, a blend ratio, a horizontal / vertical flip (a rotation's angle reversed); MCP `paste` `channels`, `ratio`, `flip` | New |
+| Targets for pasting several forms | Confirm and change source-to-target pairs | **Paste with options…** lists source → target rows to change or exclude; a plain paste pairs automatically | New |
 | Keyform reset | Reset form | **Reset to the default-key shape** (`Ctrl+Alt+X`), for meshes also **Reset to the mesh rest shape**, optionally on the selected points; MCP `op=reset` | New |
 | Keyform interpolation | Make a middle shape from the end keys | **Interpolate from neighbouring keys of (parameter)** (`Ctrl+Alt+I`) remakes the current key between the keys on either side; MCP `op=interpolate` | New |
 | Key from the current shape | Add a key at the current value | Add a key on an empty spot of the Parameters panel, taking the interpolated shape there; MCP `keyform_apply op=seed` samples the interpolated shape at a key | Existing |
 | Flip / mirror | Flip form, symmetric copy | **Mirror keyform** (`Shift+M`): to the opposite key, to the opposite object, in place, all keys | Existing |
 | Symmetric editing | Live symmetry while editing | Only mirroring after the edit | Later |
-| Multi-key editing | Edit several keys at once | One edit writes the current key only | Later |
+| Multi-key editing | Change draw order, opacity and colors of many keyforms at once | **Multi-key editing…**: pick a range by parameter key values and overwrite / add / multiply / screen opacity, draw order, multiply and screen color; MCP `keyform_apply op=multi_key`. Editing geometry on several keys at once is still missing | New |
 | Corner synthesis | Generate the four corner shapes | Corner shapes are made one by one | Later |
 | Interpolation types | Extended interpolation and others | Linear between keys | Later |
-| Restore deformer shape | Restore deformer shape | No dedicated entry (reset or undo) | Later |
+| Restore deformer shape | Revert to the recorded original shape | **Restore every key to the default-key shape**: each key of the object back to its default-key shape (no separate original is recorded); MCP `op=reset all_keys=true` | New |
 | Locking / hiding points | Lock and hide objects | Layers can be hidden and the canvas can show only the selection; locking or hiding single points is missing | Later |
 | Skeleton | Bones (baked where Cubism has no counterpart) | Skeleton pose (Shift+W, auto / FK / IK), Edit skeleton (Alt+W, edit / new / extrude / bind / weights), baked into parameters and deformers on export | Existing |
 | Simulation weights | No direct counterpart | Weight brush (Shift+V), weight gradient (Alt+V) | Existing |
 | Parameter keys | Add, delete and move keys | Add, drag, retype, delete and distribute keys in the Parameters panel; unbind the selection from a parameter | Existing |
 
-Keyform copy / paste, reset and interpolation expand into ordinary `set` entries on commit, as the mirror does: replay never reads another key, the GUI and MCP share the one `keyform_apply` command, and on keyforms a generator owns they are recorded as generated overrides. Soft selection only decides where the points of one drag go; what is committed is that canvas geometry edit.
+Keyform copy / paste, reset, interpolation and multi-key editing expand into ordinary `set` entries on commit, as the mirror does: replay never reads another key, the GUI and MCP share the one `keyform_apply` command, and on keyforms a generator owns they are recorded as generated overrides. Soft selection and the temporary lattice only decide where the points of one drag go; what is committed is that canvas geometry edit.
 
 ## Validation
 

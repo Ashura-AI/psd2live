@@ -1320,10 +1320,29 @@ The **Keyform** submenu of the Deform mode canvas right-click menu copies the sh
 - With points selected, paste, reset and interpolate change only those points, and the menu rows show how many; a Warp at the Bezier level and a rotation deformer are always handled whole.
 - Paste reads the source key's shape as it is when pasting.
 - On keyforms a generator owns the result is recorded as a generated override like any edit; see [[generated-overrides]].
-*> Unlike Cubism there is no blended paste by ratio and no paste special; flip left and right with [[motion-mirroring]].
+- **Paste with options…** pastes only some contents, blends by a ratio or flips, and sets where several shapes go; see [[paste-form-special]] and [[confirm-target-for-pasting-multiple-forms]]. **Restore every key to the default-key shape**: [[restore-deformer-shape]]; **Multi-key editing…**: [[multi-key]].
 
 @@ paste-form-special | Paste Form Special
+**Paste with options** pastes only the checked contents, and can blend by a ratio or flip before pasting.
+## How to use
+1. Select the object in Deform mode and copy with {key:KEYFORM_COPY} or the canvas right-click menu **Keyform → Copy keyform**.
+2. Set the parameters onto the key to write, and choose **Paste with options…** under **Keyform**.
+3. Set the options in the dialog and click **Paste** (or press Enter).
+| Option | What it does |
+|---|---|
+| What to paste | Any of shape (points), opacity, draw order, multiply color and screen color; objects with another point count skip the shape and take the rest |
+| Blend ratio | 100% pastes; less moves the current key that share of the way toward the copied values, blending the forms |
+| Flip | Flips the shape left to right or top to bottom: points mirror about the shape's own middle; a rotation deformer's angle is reversed |
+*> Unlike Cubism the flip line is the pasted shape's middle (MCP can set `flip_center`) and there is no Warp "flip over" option; a plain paste after the dialog closes still pastes the shape only.
+
 @@ confirm-target-for-pasting-multiple-forms | Where to apply form pasting
+After copying several objects' shapes together, the **Paste with options** dialog shows and lets you change which object each shape is pasted onto.
+## How pairs are made
+- Copying records one shape per selected mesh (the first is the current target).
+- When pasting, a source that is itself selected and sits on one of its keys gets its own shape back; otherwise each shape goes to the next selected object of the same kind and point count not yet taken.
+- The dialog's **Paste onto** rows list source → target; pick another fitting object, or **Do not paste** to leave a shape out.
+*> A plain paste ({key:KEYFORM_PASTE}) uses the automatic pairing without a dialog.
+
 @@ synthesize-corners | Automatic Generation of Four Corner Forms
 @@ face-auto-edit | Auto generation of facial motion
 Head turns, blinks, eyeballs, eyebrows, mouth shapes and lip sync are all generated when the PSD is imported; you do not have to make the up, down, left and right shapes by hand first. What you do is adjust the range with numbers and then correct a few places by hand.
@@ -1368,6 +1387,12 @@ Rotation and scaling are centered on the anchor of the transform box; when the t
 While dragging the transform box, the rotation angle, scale ratio or moved canvas pixels are shown beside the pointer; dragging the anchor changes the center, and it snaps when near the center, a corner or an edge midpoint.
 
 @@ restore-deformer-shape | Restore deformer shape
+When a deformer's (or mesh's) keyforms have gone wrong and you want to start over, **Restore every key to the default-key shape** puts each key of the object back to its shape at the parameters' defaults, as one history step that can be undone.
+## How to use
+1. Select the deformer or mesh in Deform mode.
+2. Canvas right-click menu **Keyform → Restore every key to the default-key shape**.
+*> Unlike Cubism no separate original shape is recorded: the object's current default-key shape (usually its shape when it was first keyed) is what it restores to. MCP: `keyform_apply op=reset all_keys=true`.
+
 @@ glue | Glue
 When two parts split apart at their seam as soon as they move, use glue to stick the vertices of the two meshes together. A glue point is one point shared by both meshes, drawn as a diamond on the canvas, and when it is selected or dragged the vertices on both sides always move together.
 ## Create
@@ -1459,6 +1484,21 @@ When there are problems, the Inspector toolbar shows an **n override issue(s)** 
 Related: [[auto-generation-of-sway-motion]] · [[simulation]] · [[update-generated-rig]]
 
 @@ multi-key | Multiple Keys Editing Function
+Changes the opacity, draw order, multiply color and screen color of many keyforms of several objects at once, for example bringing the eyelashes in front of the bangs on every blink key together.
+## How to use
+1. Select the objects to change in Deform mode (several meshes can be selected).
+2. Canvas right-click menu **Keyform → Multi-key editing…**.
+3. **Keys to edit** lists each parameter's key values; click values off to narrow the range. The number of keyforms that will change is shown below.
+4. Check what to change and set the values, pick a method and click **Apply**.
+| Method | What it does |
+|---|---|
+| Overwrite | Each keyform takes the value |
+| Add | The value is added to each keyform's own |
+| Multiply | Multiplied with each keyform's own |
+| Screen | 1 − (1 − own) × (1 − value), mostly for colors |
+- The result is one history step; keyforms a generator owns are recorded as generated overrides as usual.
+*> Deformers have no draw order; with deformers in the dialog the draw order cannot be changed. MCP: `keyform_apply op=multi_key`.
+
 @@ motion-mirroring | Motion Mirroring
 For left-right symmetric motion, make one side only: make the shape for Angle X 30 and mirror it to -30, or mirror the left eye's shape to the right eye. The symmetric key and the opposite object are decided automatically from the parameter and layer semantics, the result is written as ordinary keyforms, and it can be undone.
 ## How to use
@@ -1477,6 +1517,14 @@ For left-right symmetric motion, make one side only: make the shape for Angle X 
 - Only the object's own deformation is handled, and the parent's keyforms must be mirrored separately; when several layers are selected, each is mirrored in turn and committed in one history step.
 
 @@ temporary-deform-tool | Temporary deform tool
+The temporary deform tool lays a disposable lattice over the selected points (or the whole object); dragging its points bends those points together, for broad changes of shape. The lattice itself is not kept.
+## How to use
+1. Select a mesh or Warp in Deform mode (a Warp at the **Vertices** level), and the points to deform if only some.
+2. Press {key:TEMPORARY_DEFORM} or choose **Temporary deform (lattice)** in the canvas right-click menu.
+3. Drag lattice points: the points inside follow by bilinear interpolation, each release one history step.
+4. **Lattice** in the toolbar switches between 1×1 and 4×4 (laying the lattice again over the current shape); Enter, {key:CANCEL} or **Done** ends it.
+*> Unlike Cubism there is only the temporary lattice (warp) mode; scale and rotate with the Transform tool {key:TOOL_TRANSFORM}, and bend along a path with deform paths.
+
 @@ deform-brush | Deform brushes
 For places that need broad, soft adjustment, such as hair and face contours, the deform brush pushes the shape around like a brush, much faster than dragging point by point. It changes only geometry, not the texture.
 ## How to use

@@ -132,21 +132,21 @@
     - keyform-parent-chilid-relation same cubism=keyform-parent-chilid-relation
     - keyform-xydirection same cubism=keyform-xydirection
     - copy-and-blend-shape different cubism=copy-and-blend-shape
-    - paste-form-special missing cubism=paste-form-special
-    - confirm-target-for-pasting-multiple-forms missing cubism=confirm-target-for-pasting-multiple-forms
+    - paste-form-special different cubism=paste-form-special
+    - confirm-target-for-pasting-multiple-forms different cubism=confirm-target-for-pasting-multiple-forms
     - synthesize-corners missing cubism=synthesize-corners
     - face-auto-edit different cubism=face-auto-edit
     - auto-generation-of-sway-motion different cubism=auto-generation-of-sway-motion
     - edit-vertices different cubism=edit-vertices
-    - restore-deformer-shape missing cubism=restore-deformer-shape
+    - restore-deformer-shape different cubism=restore-deformer-shape
     - glue different cubism=glue
     - deformpath different cubism=deformpath
     - skinning different cubism=skinning
     - skeleton exclusive
     - generated-overrides exclusive
-    - multi-key missing cubism=multi-key
+    - multi-key different cubism=multi-key
     - motion-mirroring different cubism=motion-mirroring
-    - temporary-deform-tool missing cubism=temporary-deform-tool
+    - temporary-deform-tool different cubism=temporary-deform-tool
     - deform-brush same cubism=deform-brush
     - blend-shape different cubism=blend-shape
     - limit-settings-for-blend-shape-weights missing cubism=limit-settings-for-blend-shape-weights

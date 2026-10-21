@@ -79,7 +79,7 @@
 | `job_list` | 可选 `project_id`、`offset`、`limit` | 分页查询应用内任务 |
 | `job_cancel` | `request_id`、`id` | 请求取消；已完成提交保留 completed 状态 |
 | `rig_deform` | `request` 内 `state`、`changes` | 在明确参数键上编辑 Mesh / Warp 连续形状 |
-| `keyform_apply` | `request` 内 `state`、`changes` | `op: seed/copy/set/delete/mirror/reset/interpolate/paste`，编辑关键形集合、标量 / 颜色通道与旋转形状；旋转 `set` 只给部分字段（例如只给 `angle`）时，其余字段取该旋转在此关键点处的现值 |
+| `keyform_apply` | `request` 内 `state`、`changes` | `op: seed/copy/set/delete/mirror/reset/interpolate/paste/multi_key`，编辑关键形集合、标量 / 颜色通道与旋转形状；旋转 `set` 只给部分字段（例如只给 `angle`）时，其余字段取该旋转在此关键点处的现值 |
 | `rig_create_warp` | `name`、`targets`；可选 `id`、`rows/columns`、`fit_local` | 后台创建共用父 Warp 的 Mesh 的独立 Warp，也支持原子批量；终态返回 `target` |
 | `object_edit_appearance` | `request` 内 `state`、`edits` | 名称、显隐、结构等有序编辑；网格 `bind` 的 `space=local` 保留局部坐标与关键形（继承的运动与位置随新父级改变），`space=canvas` 把静止网格、关键形与混合形经新父级换算，使网格在默认姿态下留在画布原位（层级树拖放与检查器改父级即用此项）；变形器 `move` 只接受 `space=local` |
 | `rig_edit_structure` | `request` 内 `state`、`edits` | 静态对象属性、变形器删除与 Part 归属、参数文件夹和 XY 关联 |
@@ -510,6 +510,12 @@ GUI 参数定义、文件夹位置和参数关键点可组合为一次共享提�
 | `parameter`（interpolate） | 沿哪条轴补间；缺省为键恰好夹在两个键之间的那条轴，有多条时必须给出。按位置在两侧相邻键的形状之间线性插值 |
 | `from`（paste） | 来源键；来源缺少的轴取默认值，形状按该处插值读取 |
 | `destination`（paste） | 同类且点数相同的目标，缺省为 `target`；网格粘贴各点相对原形的位移，Warp 与旋转变形器粘贴形状本身 |
+| `all_keys`（reset） | 代替 `key`：对象的每个关键形都回到默认键形状（恢复变形器形状） |
+| `ratio`（paste） | 0–1，缺省 1：当前键向粘贴值移动的比例，小于 1 即混合 |
+| `flip` / `flip_center`（paste） | `horizontal` 或 `vertical`：粘贴的点关于 `flip_center`（父级局部坐标，缺省为粘贴形状的中点）镜像；旋转变形器角度取反 |
+| `channels`（paste） | `geometry`、`opacity`、`drawOrder`、`multiplyColor`、`screenColor` 的组合，缺省只粘贴几何；通道值同样按 `ratio` 混合 |
+
+`keyform_apply op=multi_key` 一次修改多个对象的多个关键形的通道，展开为每个关键形一条只含通道的 `set`：`targets`（网格、变形器或部件）；`keys`（部分键列表，关键形须匹配其中之一）与 `ranges`（每个参数允许的键值；不在该参数上的关键形不受限），缺省为全部关键形；`opacity`（0–1）、`drawOrder`（0–1000，变形器不可用）、`multiplyColor`、`screenColor`（`[r, g, b]`）；`method` 为 `overwrite`（缺省）、`add`、`multiply` 或 `screen`，结果限制在合法范围内。没有任何关键形匹配时拒绝。
 
 `path_get / path_list / path_preview / path_put / path_delete / path_deform` 点使用 Mesh 局部坐标，支持只读查询、预览、绑定和烘焙关键形。路径是编辑辅助，兼容性见[变形路径](../guide/DEFORM_PATHS.md)。
 

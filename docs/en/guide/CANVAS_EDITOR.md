@@ -75,10 +75,15 @@ The **Keyform** submenu of the same context menu works on the shape at the curre
 | Reset to the default-key shape | Puts the current key back to the shape at the parameters' defaults; `Ctrl+Alt+X` |
 | Reset to the mesh rest shape | Meshes only: back to the undeformed mesh |
 | Interpolate from neighbouring keys of (parameter) | Remakes the current key from the keys on either side along that parameter; with several such parameters each is listed, and `Ctrl+Alt+I` takes the first |
+| Paste with options… | A dialog picks what to paste (shape, opacity, draw order, multiply and screen color), a blend ratio (100% pastes, less blends), a left-right or top-bottom flip, and which object each copied shape goes onto |
+| Restore every key to the default-key shape | Every key of the object back to its default-key shape, to start over |
+| Multi-key editing… | Picks a range by parameter key values and changes opacity, draw order and colors of many keyforms of several objects at once (overwrite, add, multiply or screen) |
 
-With points selected, paste, reset and interpolate change only those points, and the menu rows show how many; a Warp at the Bezier level and a rotation deformer are always handled whole. On keyforms a generator owns the result is recorded as a generated override.
+Copying records a shape for each selected mesh; pasting writes each back onto itself or onto the next selected object of the same kind and point count. With points selected, paste, reset and interpolate change only those points, and the menu rows show how many; a Warp at the Bezier level and a rotation deformer are always handled whole. On keyforms a generator owns the result is recorded as a generated override.
 
 **Soft selection**: with the Select or Transform tool, turn on **Soft selection** in the tool options bar (`O`); dragging or transforming selected points then also moves the points around them, less the further they are from the nearest selected point. The **Falloff radius** is in canvas units and `[` / `]` adjust it; the falloff curve is shared with the deform brush. Affected points are ringed in red, larger rings following more. What is committed is still one ordinary geometry edit.
+
+**Temporary deform**: `Shift+T` or **Temporary deform (lattice)** in the context menu lays a disposable lattice over the selected points (with no selection, the whole mesh or Warp); dragging its points carries the points inside by bilinear interpolation, one history step per release. **Lattice** in the toolbar switches 1×1–4×4; Enter, Esc or **Done** ends it, and the lattice itself is not kept.
 
 ## Multiple canvases, parameters and animation
 

@@ -76,6 +76,11 @@ skeleton: skeleton_auto skeleton_get skeleton_draft_open skeleton_draft_commit s
 generated-overrides: workspace_inspect rig_update_generation workspace_preview_regeneration swing_delete
 motion-mirroring: keyform_apply author_axis
 copy-and-blend-shape: keyform_apply
+paste-form-special: keyform_apply
+confirm-target-for-pasting-multiple-forms: keyform_apply
+restore-deformer-shape: keyform_apply
+multi-key: keyform_apply
+temporary-deform-tool: rig_deform
 deform-brush: canvas_deform_stroke
 blend-shape: parameter_create keyform_apply rig_deform
 multiply-color-screen-color: rig_edit_structure keyform_apply workspace_inspect

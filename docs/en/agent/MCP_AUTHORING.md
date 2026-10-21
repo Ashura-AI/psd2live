@@ -77,7 +77,7 @@ Intent tools themselves have no dry run. `author_compile` compiles the same inte
 | `job_list` | Optional `project_id`, `offset`, `limit` | Page through in-app jobs |
 | `job_cancel` | `request_id`, `id` | Request cancellation; a commit that already finished keeps the completed status |
 | `rig_deform` | `state`, `changes` inside `request` | Edits continuous Mesh / Warp shapes at explicit parameter keys |
-| `keyform_apply` | `state`, `changes` inside `request` | `op: seed/copy/set/delete/mirror/reset/interpolate/paste`; edits keyform sets, scalar / color channels and rotation shapes; when a rotation `set` gives only some fields (for example only `angle`), the other fields take the rotation's current values at that key |
+| `keyform_apply` | `state`, `changes` inside `request` | `op: seed/copy/set/delete/mirror/reset/interpolate/paste/multi_key`; edits keyform sets, scalar / color channels and rotation shapes; when a rotation `set` gives only some fields (for example only `angle`), the other fields take the rotation's current values at that key |
 | `rig_create_warp` | `name`, `targets`; optional `id`, `rows/columns`, `fit_local` | Creates an independent warp in the background for meshes sharing a parent warp, also as an atomic batch member; the terminal status returns `target` |
 | `object_edit_appearance` | `state`, `edits` inside `request` | Ordered edits to names, visibility, structure and so on; for a mesh `bind`, `space=local` keeps local coordinates and keyforms (inherited motion and position change with the new parent), while `space=canvas` converts the rest mesh, keyforms and blend shapes through the new parent so the mesh stays in place on the canvas at the default pose (hierarchy drag and drop and reparenting in the inspector use this); deformer `move` only accepts `space=local` |
 | `rig_edit_structure` | `state`, `edits` inside `request` | Static object properties, deformer deletion and Part membership, parameter folders and XY links |
@@ -508,6 +508,12 @@ A mirror covers the object's own deformation: both objects' points are mapped to
 | `parameter` (interpolate) | The axis to interpolate along; defaults to the one axis the key sits between two keys of, and is required when there are several. Linear by position between the shapes at the neighbouring keys |
 | `from` (paste) | The source key; the source's missing axes take their defaults, and the shape is read interpolated there |
 | `destination` (paste) | A target of the same kind and point count, default `target`; meshes paste each point's move from its rest, Warps and rotations the shape itself |
+| `all_keys` (reset) | In place of `key`: every keyform of the object back to its default-key shape (restoring a deformer's shape) |
+| `ratio` (paste) | 0–1, default 1: how far the key moves toward the pasted values; below 1 it blends |
+| `flip` / `flip_center` (paste) | `horizontal` or `vertical`: the pasted points mirror about `flip_center` (parent-local, default the pasted shape's middle); a rotation's angle is reversed |
+| `channels` (paste) | Any of `geometry`, `opacity`, `drawOrder`, `multiplyColor`, `screenColor`, default geometry only; channel values blend by `ratio` too |
+
+`keyform_apply op=multi_key` changes the channels of many keyforms of several objects at once, expanding into one channel-only `set` per keyform: `targets` (meshes, deformers or parts); `keys` (partial keys a keyform must match one of) and `ranges` (per parameter, the key values allowed; keyforms not on that parameter pass), default every keyform; `opacity` (0–1), `drawOrder` (0–1000, not for deformers), `multiplyColor`, `screenColor` (`[r, g, b]`); `method` `overwrite` (default), `add`, `multiply` or `screen`, results clamped to the valid range. It is refused when no keyform matches.
 
 `path_get / path_list / path_preview / path_put / path_delete / path_deform` points use mesh local coordinates and support read-only queries, preview, binding and baking keyforms. Paths are an editing aid; for compatibility see [Deform paths](../guide/DEFORM_PATHS.md).
 
