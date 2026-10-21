@@ -21,7 +21,7 @@ import java.security.MessageDigest
  * | `document/nodes/<kind>/<sha256>.json` | document nodes, `{schema, kind, value}` |
  * | `document/nodes/payload/<sha256>.json` | large journal entries a schema-2 revision lists under `payloads` |
  * | `document/overrides/<sha256>.json` | generator overrides with their place in the journal |
- * | `document/clips/<sha256>.json` | motion clips and generated-motion settings |
+ * | `document/clips/<sha256>.json` | motion clips, generated-motion settings, expressions and the pose |
  * | `document/bakes/<sha256>.bin` | simulation bakes ([PackedJson]) a schema-4 revision lists under `bakes` |
  * | `assets/` | deduplicated rasters (PNG) |
  * | `auxiliary/` | staged assets, views, workflow records and tasks |
@@ -48,6 +48,11 @@ internal object ProjectFormatV2 {
 	 * [NODE_SCHEMA] was fixed, so their original field set is the schema-1 baseline.
 	 */
 	const val NODE_SCHEMA_LAYOUT = 4
+	/**
+	 * A clips node holding what older readers would drop: the document's expressions or pose, or motion events. Only
+	 * clips nodes take it; one without these fields keeps schema 1.
+	 */
+	const val NODE_SCHEMA_SIDECARS = 5
 	/** Schema of a revision index whose journal names no payload node. */
 	const val REVISION_SCHEMA = 1
 	/** Schema of a revision index whose journal names payload nodes (listed under `payloads`). */
@@ -90,7 +95,7 @@ internal object ProjectFormatV2 {
 	private val layoutV1Keys = setOf("layerTags", "layerMaterials", "generation")
 	private val materialV1Keys = setOf("id", "name", "folderId", "kind", "rasterWidth", "rasterHeight", "rgbaBlob", "placement", "svg", "tags", "origin", "opacity", "visible")
 	private val materialFolderV1Keys = setOf("id", "name", "parentId", "tags")
-	private val clipKeys = listOf("motions", "motionPresets")
+	private val clipKeys = listOf("motions", "motionPresets", "expressions", "pose")
 	private const val JOURNAL = "authoringJournal"
 	private const val SIMULATIONS = "simulations"
 	private const val OVERRIDE = "generated_override"
@@ -245,7 +250,7 @@ internal object ProjectFormatV2 {
 				})
 			}
 			JsonObject(rig.filterKeys { it in clipKeys }).takeIf { it.isNotEmpty() }?.let { value ->
-				clips = content(root, "document/clips", buildJsonObject { put("schema", NODE_SCHEMA); put("kind", "clips"); put("value", value) })
+				clips = content(root, "document/clips", buildJsonObject { put("schema", clipsSchema(value)); put("kind", "clips"); put("value", value) })
 			}
 		}
 		val known = sourceKeys + layerKeys + "settings" + sourceParts.keys + layoutParts.keys + "rigEdits"
@@ -341,6 +346,12 @@ internal object ProjectFormatV2 {
 		return if (newer) NODE_SCHEMA_TEXTURES else NODE_SCHEMA
 	}
 
+	/** The schema of a clips node holding [value]: [NODE_SCHEMA_SIDECARS] with expressions, a pose or motion events. */
+	internal fun clipsSchema(value: JsonObject): Int {
+		val events = (value["motions"] as? JsonArray).orEmpty().any { (it as? JsonObject)?.containsKey("events") == true }
+		return if ("expressions" in value || "pose" in value || events) NODE_SCHEMA_SIDECARS else NODE_SCHEMA
+	}
+
 	/** The snapshot a revision [index] names, read from the nodes under [root]. */
 	internal fun join(root: Path, index: JsonObject, cache: MutableMap<String, JsonObject> = HashMap(),
 		hasRigObject: (String) -> Boolean = { Files.isRegularFile(root.resolve(RIG_OBJECTS).resolve("$it.bin")) }): JsonObject {
@@ -365,7 +376,8 @@ internal object ProjectFormatV2 {
 		}
 		fun load(folder: String, kind: String, hash: String): JsonObject {
 			val value = cache.getOrPut("$folder/$hash") { read(root, folder, hash) }
-			require(value["schema"]?.jsonPrimitive?.intOrNull in NODE_SCHEMA..NODE_SCHEMA_LAYOUT && value["kind"]?.jsonPrimitive?.contentOrNull == kind) {
+			val newest = if (kind == "clips") NODE_SCHEMA_SIDECARS else NODE_SCHEMA_LAYOUT
+			require(value["schema"]?.jsonPrimitive?.intOrNull in NODE_SCHEMA..newest && value["kind"]?.jsonPrimitive?.contentOrNull == kind) {
 				"Unsupported document node: $kind $hash"
 			}
 			return value

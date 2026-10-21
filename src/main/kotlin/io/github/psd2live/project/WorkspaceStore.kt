@@ -568,6 +568,9 @@ internal class WorkspaceStore(
             putJsonArray("swings") { document.rigEdits.swingEdits.forEach { add(it.toJson()) } }
             putJsonArray("motions") { document.rigEdits.motionClips.forEach { add(io.github.psd2live.core.MotionClips.toJson(it)) } }
             if (document.rigEdits.motionPresets.isNotEmpty()) put("motionPresets", io.github.psd2live.core.MotionPresets.toJson(document.rigEdits.motionPresets))
+            // Only a document that took its expressions in or has a pose writes them, so others keep their stored form.
+            document.rigEdits.expressions?.let { expressions -> putJsonArray("expressions") { expressions.forEach { add(io.github.psd2live.core.ModelExpressions.toJson(it)) } } }
+            document.rigEdits.pose?.let { put("pose", io.github.psd2live.core.ModelPoses.toJson(it)) }
             if (document.rigEdits.simEdits.isNotEmpty()) putJsonArray("simulations") { document.rigEdits.simEdits.forEach { add(encodeSimulation(it)) } }
             if (document.rigEdits.hitAreas.isNotEmpty()) putJsonArray("hitAreas") { document.rigEdits.hitAreas.forEach { add(io.github.psd2live.core.RigHitAreas.toJson(it)) } }
 			putJsonArray("parameters") {
@@ -711,6 +714,8 @@ internal class WorkspaceStore(
             swingEdits = rigEditObject.optionalArray("swings").map { io.github.psd2live.core.RigSwingEdit.fromJson(it.jsonObject) },
             motionClips = rigEditObject.optionalArray("motions").map { io.github.psd2live.core.MotionClips.fromJson(it.jsonObject) },
             motionPresets = io.github.psd2live.core.MotionPresets.fromJson(rigEditObject["motionPresets"]?.jsonObject),
+            expressions = rigEditObject["expressions"]?.jsonArray?.map { io.github.psd2live.core.ModelExpressions.fromJson(it.jsonObject) },
+            pose = rigEditObject["pose"]?.jsonObject?.let(io.github.psd2live.core.ModelPoses::fromJson),
             simEdits = rigEditObject.optionalArray("simulations").map { decodeSimulation(it.jsonObject, bakes) },
             hitAreas = rigEditObject.optionalArray("hitAreas").map { io.github.psd2live.core.RigHitAreas.fromJson(it.jsonObject) },
 			parameterEdits = rigEditObject.optionalArray("parameters").map { element ->

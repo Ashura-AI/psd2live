@@ -10,6 +10,7 @@ import io.github.psd2live.format.model.Physics
 import io.github.psd2live.format.model.RigIR
 import org.umamo.format.moc3.Moc3
 import org.umamo.format.moc3.json.FileReferences
+import org.umamo.format.moc3.json.Model3Expression
 import org.umamo.format.moc3.json.Model3Group
 import org.umamo.format.moc3.json.Model3HitArea
 import org.umamo.format.moc3.json.Model3Json
@@ -23,7 +24,7 @@ import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.RuntimeFeature
 
 /**
- * The Cubism runtime family: `.moc3` with its model3, physics3, motion3, cdi3 and texture files.
+ * The Cubism runtime family: `.moc3` with its model3, physics3, motion3, exp3, pose3, cdi3, userdata3 and texture files.
  *
  * Settings (all optional): `physics`, `user_data`, `display_info`, `hidden_parts`, `hidden_meshes`,
  * `guide_parts` (booleans) and `pixels_per_unit` (a positive number overriding the bake scale).
@@ -67,15 +68,21 @@ public object Moc3Target : ExportTarget {
 		}
 		val texts = sidecarTexts(SidecarKey(ir.physics, ir.clips, parameterIds, baseName))
 		val motions = texts.motions
+		val expressions = expressionTexts(ir, baseName, parameterIds)
 		val sidecars = buildList {
 			if (moc3Options.includePhysics) texts.physics?.let {
 				add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Physics, "$baseName.physics3.json", it))
 			}
 			for ((_, file, json) in motions) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Motion, file, json))
+			for ((_, file, json) in expressions) add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Expression, file, json))
+			ir.advanced.pose?.let { Cubism3Json.pose3(it, ir.parts.mapTo(HashSet()) { part -> part.id }) }?.let {
+				add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Pose, "$baseName.pose3.json", Cubism3Json.normalize(it)))
+			}
 		}
 		val manifest = Model3Json(
 			version = 3,
 			fileReferences = FileReferences(moc = "", textures = emptyList(),
+				expressions = expressions.takeIf { it.isNotEmpty() }?.map { (name, file, _) -> Model3Expression(name = name, file = file) },
 				motions = motions.takeIf { it.isNotEmpty() }?.groupBy({ it.first }, { Model3Motion(file = it.second) })),
 			// Cubism knows these two groups; the other roles are for runtimes that drive them themselves.
 			groups = ir.parameterRoles.filter { it.role == "EyeBlink" || it.role == "LipSync" }.mapNotNull { role ->
@@ -104,6 +111,15 @@ public object Moc3Target : ExportTarget {
 				note = "model3 hit areas name one ArtMesh each: $count entries named ${area.name}, which a host testing only the first entry by name reads as its first mesh")
 		} }
 	}
+
+	/**
+	 * Each expression's manifest name, file and normalized exp3 text, in the IR's order: the file is named by the
+	 * expression's ID, which the document keeps unique and file-safe.
+	 */
+	private fun expressionTexts(ir: RigIR, baseName: String, parameterIds: Set<String>): List<Triple<String, String, String>> =
+		ir.advanced.expressions.map { expression ->
+			Triple(expression.name, "$baseName.${expression.id}.exp3.json", Cubism3Json.normalize(Cubism3Json.exp3(expression, parameterIds)))
+		}
 
 	/** What the physics3 and motion3 texts of a bundle depend on. */
 	private data class SidecarKey(val physics: Physics, val clips: List<Clip>, val parameterIds: Set<String>, val baseName: String)

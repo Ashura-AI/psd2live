@@ -8,7 +8,7 @@ import java.security.MessageDigest
 /**
  * A model folder VTube Studio loads: the Cubism runtime files plus `<name>.vtube.json`, which maps face
  * tracking to the rig's standard parameters (head, body, eyes, gaze, brows, mouth, breathing) and adds a
- * hotkey for each clip. VTube Studio fills every setting the file leaves out with its defaults. Takes
+ * hotkey for each clip and one toggling each expression. VTube Studio fills every setting the file leaves out with its defaults. Takes
  * the moc3 settings.
  */
 public object VTubeStudioTarget : ExportTarget {
@@ -46,7 +46,8 @@ public object VTubeStudioTarget : ExportTarget {
 	private fun id(seed: String): String = MessageDigest.getInstance("SHA-256").digest(seed.encodeToByteArray())
 		.take(16).joinToString("") { "%02x".format(it) }
 
-	public fun config(ir: RigIR, baseName: String, motionFiles: List<String>): String {
+	/** [expressionFiles] are each expression's name and exp3 file, in the manifest's order. */
+	public fun config(ir: RigIR, baseName: String, motionFiles: List<String>, expressionFiles: List<Pair<String, String>> = emptyList()): String {
 		val parameters = ir.parameters.associateBy { it.id }
 		val settings = mappings.mapNotNull { m ->
 			val p = parameters[m.parameter] ?: return@mapNotNull null
@@ -59,15 +60,15 @@ public object VTubeStudioTarget : ExportTarget {
 				put("OutputLive2D", m.parameter); put("Smoothing", if (m.blinking) 10 else 15); put("Minimized", false)
 			}
 		}
-		val hotkeys = motionFiles.map { file ->
-			buildJsonObject {
-				put("HotkeyID", id("$baseName/hotkey/$file")); put("Name", file.removePrefix("$baseName.").removeSuffix(".motion3.json"))
-				put("Action", "TriggerAnimation"); put("File", file); put("Folder", "")
-				putJsonObject("Triggers") { put("Trigger1", ""); put("Trigger2", ""); put("Trigger3", ""); put("ScreenButton", 0) }
-				put("IsGlobal", false); put("IsActive", true); put("Minimized", false)
-				put("StopsOnLastFrame", false); put("DeactivateAfterKeyTypedAfterMillis", -1)
-			}
+		fun hotkey(file: String, name: String, action: String) = buildJsonObject {
+			put("HotkeyID", id("$baseName/hotkey/$file")); put("Name", name)
+			put("Action", action); put("File", file); put("Folder", "")
+			putJsonObject("Triggers") { put("Trigger1", ""); put("Trigger2", ""); put("Trigger3", ""); put("ScreenButton", 0) }
+			put("IsGlobal", false); put("IsActive", true); put("Minimized", false)
+			put("StopsOnLastFrame", false); put("DeactivateAfterKeyTypedAfterMillis", -1)
 		}
+		val hotkeys = motionFiles.map { file -> hotkey(file, file.removePrefix("$baseName.").removeSuffix(".motion3.json"), "TriggerAnimation") } +
+			expressionFiles.map { (name, file) -> hotkey(file, name, "ToggleExpression") }
 		val json = buildJsonObject {
 			put("Version", 1)
 			put("Name", baseName)
@@ -84,7 +85,9 @@ public object VTubeStudioTarget : ExportTarget {
 	override fun plan(ir: RigIR, options: ExportOptions): LoweredExport {
 		val bundle = Moc3Target.bundle(ir, options)
 		val motions = bundle.files.map { it.name }.filter { it.endsWith(".motion3.json") }
-		val config = config(ir, options.baseName, motions)
+		val written = bundle.files.mapTo(HashSet()) { it.name }
+		val expressions = ir.advanced.expressions.map { it.name to "${options.baseName}.${it.id}.exp3.json" }.filter { it.second in written }
+		val config = config(ir, options.baseName, motions, expressions)
 		val mapped = mappings.map { it.parameter }.toSet()
 		val losses = CapabilityScan.scan(ir, capabilities, options) + Moc3Target.losses(ir, options, bundle.report.notices) + Moc3Target.hitAreaLosses(ir) +
 			listOf(LossEntry("*", Feature.STRUCTURE, Handling.APPROXIMATED,

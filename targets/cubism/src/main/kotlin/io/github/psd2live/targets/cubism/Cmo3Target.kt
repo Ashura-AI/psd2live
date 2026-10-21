@@ -99,11 +99,19 @@ public class Cmo3Target(
 		return converted
 	}
 
+	/** Expressions and the pose, which Cubism keeps beside the model (exp3 and pose3, as the moc3 export writes them), not in it. */
+	public fun sidecarLosses(ir: RigIR): List<LossEntry> = buildList {
+		if (ir.advanced.expressions.isNotEmpty()) add(LossEntry(ir.advanced.expressions.joinToString(",") { it.id }, Feature.STRUCTURE, Handling.DROPPED,
+			note = "Expressions are not stored in cmo3 or can3; the moc3 export writes them as exp3"))
+		if (ir.advanced.pose != null) add(LossEntry("*", Feature.STRUCTURE, Handling.DROPPED,
+			note = "The pose is not stored in cmo3; the moc3 export writes it as pose3"))
+	}
+
 	override fun plan(ir: RigIR, options: ExportOptions): LoweredExport {
 		val converted = convert(ir, options)
 		val can3 = can3(ir, options, converted)
 		val losses = CapabilityScan.scan(ir, capabilities, options) + Moc3Target.losses(ir, options, converted.report.notices) +
-			textureLosses(ir, options) + can3Losses(ir, options)
+			textureLosses(ir, options) + can3Losses(ir, options) + sidecarLosses(ir)
 		return object : LoweredExport {
 			override val losses: List<LossEntry> = losses
 			override fun write(sink: OutputSink) {

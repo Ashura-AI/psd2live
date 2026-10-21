@@ -44,6 +44,10 @@ internal object WorkspaceRevisions {
 		}
 		if (rig.hitAreas.isEmpty()) strip(", hitAreas=[]")
 		if (rig.interiorEffects.isEmpty()) strip(", interiorEffects=[]")
+		if (rig.pose == null) strip(", pose=null")
+		if (rig.expressions == null) strip(", expressions=null")
+		// A motion clip without events reads as clips did before they had them.
+		if (rig.motionClips.any { it.events.isEmpty() }) text = text.replace(", events=[])", ")")
 		return text
 	}
 

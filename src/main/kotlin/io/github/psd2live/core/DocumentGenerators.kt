@@ -247,7 +247,8 @@ internal object DocumentGenerators {
 		for (id in simsBefore.keys + simsAfter.keys) if (simsBefore[id]?.toJson() != simsAfter[id]?.toJson()) add("document:$id")
 		if (before.physicsEdits != after.physicsEdits || before.disabledPhysicsIds != after.disabledPhysicsIds ||
 			before.physicsOrder != after.physicsOrder || before.physicsFps != after.physicsFps) add("document:physics")
-		if (before.motionClips != after.motionClips || before.motionPresets != after.motionPresets) add("document:motions")
+		if (before.motionClips != after.motionClips || before.motionPresets != after.motionPresets ||
+			before.expressions != after.expressions || before.pose != after.pose) add("document:motions")
 	}
 
 	/** The generators [after] must run again over [before]: those reading a changed part, and everything downstream. */

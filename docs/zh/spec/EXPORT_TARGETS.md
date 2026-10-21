@@ -16,7 +16,7 @@
 | `:targets:gltf` | `gltf`：glTF 2.0 二进制（`.glb`），变形按参数关键点烘焙为变形目标，由宿主提供的几何求值器采样 | MIT |
 | `:targets:unity` | `unity`：Unity 预制体（`.p2lunity` + 贴图 + Editor 导入脚本），参数关键点烘焙为 Blend Shape，动作写成 Animator 片段 | MIT |
 | `:targets:web` | `web`：网页播放器（运行时的 WebAssembly 构建、WebGL 播放脚本、页面与模型） | MIT |
-| `:targets:cubism` | `PuppetModel` 与 IR 的双向转换器（`PuppetIr`）、`moc3`、`cmo3`、`vtube-studio`、motion3 / physics3 写出 | GPL-3 |
+| `:targets:cubism` | `PuppetModel` 与 IR 的双向转换器（`PuppetIr`）、`moc3`、`cmo3`、`vtube-studio`、motion3 / physics3 / exp3 / pose3 写出 | GPL-3 |
 | `:targets:psd` | `psd-pose`：指定姿势的分层 PSD | GPL-3 |
 | 根项目 | `RigIrCompiler`（预览模型 → IR）、`IrFrameRenderer`（宿主提供的渲染器）、`ExportService`、CLI 与界面 | GPL-3 |
 
@@ -27,6 +27,7 @@ MIT 模块不依赖任何 GPL 模块，由 Gradle 依赖关系在编译期保证
 - 网格的静止位置与各变形器的关键形都在父变形器的空间中：根部为画布像素（y 向下），Warp 子对象为其 0–1 格子空间，旋转子对象为其局部像素坐标。
 - 所有 ID 稳定，重新生成后不变。
 - 动作片段已经从预设编译成参数曲线；Bezier 段的控制点时间限制在段内，按时间线性推进曲线参数求值（与 Cubism 的 `AreBeziersRestricted` 一致）。
+- 表情、姿势与动作事件来自工程（`RigEditOverlay.expressions` / `pose`、`MotionClip.events`，见[表情、姿势与事件](#表情姿势与事件)），编译时去掉模型中已不存在的参数与部件；表情和姿势在 `advanced` 中，片段事件在 `Clip.events` 中。
 - `restPose` 给出需要画布空间基础网格的格式烘焙基础网格时使用的参数值（例如嘴保持张开，使纹理坐标覆盖整幅图）。
 - `PuppetIr` 双向无损：`toPuppet(toIr(model))` 与原模型逐字段一致。两边新增字段时须在同一改动中更新转换器。
 
@@ -36,10 +37,10 @@ MIT 模块不依赖任何 GPL 模块，由 Gradle 依赖关系在编译期保证
 
 | ID | 类别 | 输出 | 主要损失 |
 | --- | --- | --- | --- |
-| `moc3` | 结构化绑定 | `.moc3`、model3、physics3、motion3、cdi3、贴图 | 按目标运行时版本剥离不支持的功能；Cubism 5.3 的混合模式在更早的版本改为最接近的旧模式（滤色与加算类为加算，乘算类为乘算，其余为普通，Alpha 混合改为 over），每个受影响的网格与隔离部件按 ID 记一条 `blend_mode` 损失（默认 `approximated`，可由导出选项改写），注明改成的模式（`cmo3`、`vtube-studio` 按同一目标版本相同处理）；多网格的[点击区域](#点击区域)拆成同名多项 |
-| `cmo3` | 结构化绑定 | Cubism Editor 工程；有动作片段时另写同名 `.can3`（Cubism Animator 工程） | 生成器意图不保留；动作片段中眨眼、口型效果曲线不写入（见 [Cubism Animator](#cubism-animator)） |
+| `moc3` | 结构化绑定 | `.moc3`、model3、physics3、motion3、exp3、pose3、cdi3、userdata3、贴图 | 按目标运行时版本剥离不支持的功能；Cubism 5.3 的混合模式在更早的版本改为最接近的旧模式（滤色与加算类为加算，乘算类为乘算，其余为普通，Alpha 混合改为 over），每个受影响的网格与隔离部件按 ID 记一条 `blend_mode` 损失（默认 `approximated`，可由导出选项改写），注明改成的模式（`cmo3`、`vtube-studio` 按同一目标版本相同处理）；多网格的[点击区域](#点击区域)拆成同名多项 |
+| `cmo3` | 结构化绑定 | Cubism Editor 工程；有动作片段时另写同名 `.can3`（Cubism Animator 工程） | 生成器意图不保留；动作片段中眨眼、口型效果曲线不写入（见 [Cubism Animator](#cubism-animator)）；表情与姿势不写入（记为 `structure` / `dropped`） |
 | `dragonbones` | 结构化绑定 | `_ske.json`、每页 `_tex_<i>.json` 与贴图 | 与 Spine 相同的参数动画与片段烘焙；关键点取整到帧；透明度以整百分比记录；运行时以 16 位偏移寻址每个动画的变形数据，超出时按更大容差精简并报告（骨架模型的整身片段误差较大）；遮罩、屏幕色、物理未写入 |
-| `vtube-studio` | 结构化绑定 | `moc3` 的全部文件 + `.vtube.json` | 同 `moc3`；面部跟踪只映射标准参数（头、身体、眼、视线、眉、嘴、呼吸），每个动作片段一个热键；其余设置由 VTube Studio 取默认值 |
+| `vtube-studio` | 结构化绑定 | `moc3` 的全部文件 + `.vtube.json` | 同 `moc3`；面部跟踪只映射标准参数（头、身体、眼、视线、眉、嘴、呼吸），每个动作片段一个热键、每个表情一个 `ToggleExpression` 热键；其余设置由 VTube Studio 取默认值 |
 | `spine` | 结构化绑定 | 骨骼 JSON 或 `.skel`、`.atlas`、贴图页 | 旋转变形器成为骨骼链，网格挂在最近的旋转骨骼上；每个参数成为一段 1 秒动画（时间即参数归一化值），键入骨骼变换与骨骼空间内的变形，交叉项按 Spine 骨骼运算测量并报告；动作片段按帧采样后精简关键帧；无 Warp、混合形、Glue（已烘焙）；遮罩转为按轮廓多边形裁剪（反相遮罩丢弃）；驱动骨骼旋转的摆锤转为物理约束（近似），其余物理与屏幕色未写入 |
 | `p2lrt` | 结构化绑定 | `.p2lrt`（PSD2Live 运行时） | 编辑器附带数据（来源图层、图块、编辑路径）不写入；GPU 绘制由宿主完成，运行时的 `p2l_render`（ABI 1.3 起）可在 CPU 上画出遮罩与全部合成模式 |
 | `web` | 结构化绑定 | `index.html`、`p2l.js`、`p2l_runtime.wasm`、`.p2lrt` | 按运行时头文件的合成规则绘制全部颜色与 Alpha 混合模式（需要读取下层的模式复制网格下方像素后在着色器中合成）和隔离组（子网格先画入图层，再按组的不透明度、乘算/屏幕色、遮罩与混合模式合成）；遮罩（含组遮罩）以模板缓冲近似，纹素不透明度 ≥ 0.5 视为覆盖；无法创建图层帧缓冲时隔离组按直通绘制；需通过 http 访问 |
@@ -68,6 +69,16 @@ MIT 模块不依赖任何 GPL 模块，由 Gradle 依赖关系在编译期保证
 | `psd-pose` | `clip` 与 `time`（秒）按动作片段摆姿势，或 `pose`（`ParamAngleX=20,ParamEyeLOpen=0`，覆盖片段）；`scale`（0.25–2，默认 1） |
 | 视频类 | 同光栅类，另有 `ffmpeg`（ffmpeg 路径；缺省依次取环境变量 `PSD2LIVE_FFMPEG`、安装包自带的 `resources/ffmpeg/` 与 PATH） |
 | 光栅类 | `clip`（片段 ID 或名称，默认第一个片段，无片段时为静止姿势；未知时报错并列出现有片段）、`fps`（默认片段帧率）、`size`（长边像素，默认 1024）、`background`（ARGB 十六进制，默认透明）、`physics`（默认 true）；`gif` 另有 `dither`（Floyd–Steinberg 抖动，默认 true）。`sprite-sheet` 在渲染前按帧数与尺寸检查，超过 16384 px 时直接拒绝 |
+
+## 表情、姿势与事件
+
+表情、姿势与动作事件是工程数据，和动作片段一样不改变 Rig，由 `core/ModelSidecars.kt` 定义，编辑走 `expression_*` / `pose_*` / `motion_set_event` 等文档操作（见 [MCP 编辑参考](../agent/MCP_AUTHORING.md)）。`RigIrCompiler` 把它们编进 IR，各目标照 IR 写出：
+
+- **表情**：`RigEditOverlay.expressions` 为 null 时模型使用标准表情（`ModelExpressions.standard`：Smile、Sad、Angry、Surprised，各自只保留模型已有的标准面部参数，一个参数也没有的略去）；第一次编辑把它们收进工程，此后只导出工程中的列表（没有条目的表情照样导出，作为宿主重置用的无表情）。`moc3` 每个表情写一个 `<base>.<id>.exp3.json`（`Type`、`FadeInTime`、`FadeOutTime`、`Parameters` 的 `Id` / `Value` / `Blend`），并按列表顺序写入 model3 的 `FileReferences.Expressions`（`Name` 为表情名称，`File` 为文件名）；`p2lrt` 写 `EXPR` 块。表情 ID 限定为文件名安全的 1–64 个字符，名称在工程内唯一。
+- **姿势**：`moc3` 写 `<base>.pose3.json`（`Type`、`FadeInTime`、`Groups` 中每个部件的 `Id` 与 `Link`）并写入 model3 的 `FileReferences.Pose`，只保留模型中存在的部件，没有组时不写；`p2lrt` 写 `POSE` 块（只保留至少两个部件的组）。
+- **事件**：片段事件写进 motion3 的 `UserData`（按时间排序，`Meta.UserDataCount` / `TotalUserDataSize` 同步），`.can3` 写进场景的用户数据帧，`p2lrt` 写进片段扩展记录。只有事件、没有曲线的片段与其他空片段一样不导出。
+- **参数与部件的变化**：删除参数时其表情条目一并删除，缩小参数范围时覆盖方式的值收进新范围（`WorkspaceDocumentEdits.parameter`）；改写参数或部件 ID 的编辑用 `ModelSidecars.withIdRenamed` 同步动作曲线、表情条目与姿势部件。导出时不存在的参数和部件被跳过。
+- **读回**：`PSD2LivePipeline` 的 bundle 校验解析 model3 引用的每个 exp3、pose3 与 motion3。仅网格导出不写表情与姿势。
 
 ## Cubism Animator
 

@@ -727,9 +727,8 @@ class PSD2LivePipeline {
 		require(missing.isEmpty()) { tr("error.bundleMissing", missing.joinToString()) }
 		manifest.fileReferences.displayInfo?.let { Moc3.readCdi3(byName.getValue(it).bytes.decodeToString()) }
 		manifest.fileReferences.physics?.let { Moc3.readPhysics3(byName.getValue(it).bytes.decodeToString()) }
-		manifest.fileReferences.motions.orEmpty().values.flatten().forEach {
-			Json.parseToJsonElement(byName.getValue(it.file).bytes.decodeToString())
-		}
+		(manifest.fileReferences.motions.orEmpty().values.flatten().map { it.file } + manifest.fileReferences.expressions.orEmpty().map { it.file } +
+			listOfNotNull(manifest.fileReferences.pose)).forEach { Json.parseToJsonElement(byName.getValue(it).bytes.decodeToString()) }
 	}
 
 	private fun validateRigShape(label: String, expected: PuppetModel, actual: PuppetModel): List<String> {

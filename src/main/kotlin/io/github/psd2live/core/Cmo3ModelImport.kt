@@ -173,6 +173,9 @@ internal object Cmo3ModelImport {
                 else if (replace) config.rigEdits.physicsFps else RigEditOverlay.DEFAULT_PHYSICS_FPS,
             motionClips = if (replace) config.rigEdits.motionClips else emptyList(),
             motionPresets = if (replace) config.rigEdits.motionPresets else emptyMap(),
+            // Expressions and the pose name parameters and parts by ID, as the replacement keeps them.
+            expressions = if (replace) config.rigEdits.expressions else null,
+            pose = if (replace) config.rigEdits.pose else null,
             swingEdits = if (replace) config.rigEdits.swingEdits else emptyList(),
             simEdits = if (replace) config.rigEdits.simEdits else emptyList(),
             // A replacement keeps the mesh IDs, and with them the hit areas set up on them.

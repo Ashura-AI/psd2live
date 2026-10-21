@@ -246,9 +246,14 @@ data class RigEditOverlay(
     val interiorEffects: List<io.github.psd2live.core.interior.NativeInteriorEffect> = emptyList(),
     /** The hit areas the user set up, in test order; they do not touch the rig. Empty leaves the runtime its automatic ones. */
     val hitAreas: List<RigHitArea> = emptyList(),
+    /** The model's expressions; null until first edited, when the model has the standard ones ([ModelExpressions]). */
+    val expressions: List<ModelExpression>? = null,
+    /** The part groups of which one shows at a time; like the motions and expressions, they do not touch the rig. */
+    val pose: ModelPose? = null,
 ) {
 	init {
         RigHitAreas.problem(hitAreas)?.let { throw IllegalArgumentException(it) }
+        expressions?.let(ModelExpressions::validated)
         require(motionClips.map { it.id }.distinct().size == motionClips.size) { "Duplicate motion IDs" }
         require(motionClips.mapNotNull { it.builtin?.lowercase() }.let { it.distinct().size == it.size }) { "A generated motion has one override" }
 		require(warpEdits.map { it.id }.distinct().size == warpEdits.size) { "Duplicate Warp IDs" }

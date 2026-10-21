@@ -36,7 +36,7 @@ GUI 放弃并打开会先等待此前正在执行的编辑与字段提交完成�
 | `document/nodes/<类型>/<sha256>.json` | 文档节点 `{schema, kind, value}`；类型为 `source`（源图层与组）、`generation-source` / `mesh-source`（旧版写入的 `placement-source` 读取时忽略）、`layers`（可见性、软删除、分类、父级、网格与纹理覆盖）、`settings`、`rig`（参数、骨架、摆动、模拟、物理、点击区域等 Rig 定义）、`journal`（作者编辑日志，不含覆盖）、`layout`（用户标签、素材关联、生成状态）、`materials`（素材库：文件夹与条目，像素引用 `assets/` 中的栅格，SVG 原文内嵌；读自 PSD / CMO3 的文件夹带 `origin` 文件名，其条目的 `placementCanvas` 为默认摆放所在的画布尺寸）、`document`（其余字段）。`layout` 与 `materials` 只在文档带有 [Layout 状态](MATERIAL_LAYOUT_WORKSPACE.md)时写入，不认识它们的旧版本拒绝打开 |
 | `document/nodes/payload/<sha256>.json` | 大型日志条目的内容寻址载荷节点，由 schema 2 修订在 `payloads` 中列出 |
 | `document/overrides/<sha256>.json` | 生成结果覆盖 `generated_override`，连同其在编辑日志中的位置 |
-| `document/clips/<sha256>.json` | 动作片段与生成动作设置 |
+| `document/clips/<sha256>.json` | 动作片段（`motions`，含各片段的 `events`）、生成动作设置（`motionPresets`）、表情（`expressions`）与姿势（`pose`）；后两者只在工程编辑过表情或设置了姿势组时写入 |
 | `document/bakes/<sha256>.bin` | 模拟烘焙结果（打包 JSON，见下文“烘焙文件”），由 schema 4 修订在 `bakes` 中列出 |
 | `assets/` | 去重 RGBA 栅格，以 PNG 保存 |
 | `auxiliary/assets/` | 暂存素材元数据 |
@@ -97,12 +97,14 @@ GUI 放弃并打开会先等待此前正在执行的编辑与字段提交完成�
 | 节点 1 | 不含下列字段的节点 | — |
 | 节点 2 | `source` 及三种附加源图节点中有图层带 `rect`；`layers` 含 `textureOverrides`；`settings` 含 `atlas` 或 `atlasArrangement` | 见下文纹理字段 |
 | 节点 3 | `source` 或附加源图节点中有图层带 `transform` | 图层整体变换 `[a, b, c, d, e, f]`（`x' = a·x + c·y + e`，`y' = b·x + d·y + f`，画布单位、y 向下），作用于图层的帧（整数边界与 `rect`）；纹理坐标锚定在帧上，生成只读帧。单位变换不写 |
+| 节点 4 | `layout` / `materials` 节点含 Layout 节点引入后新增的字段 | 参考图、参考图层与钉点、绘图、素材的画布与参考标记 |
+| 节点 5 | `clips` 节点含 `expressions`、`pose`，或有动作片段带 `events` | 表情 `{id, name, fade_in, fade_out, entries:[{parameter, blend, value}]}`（`blend` 为 `ADD` / `MULTIPLY` / `OVERWRITE`）；姿势 `{fade_in, groups:[[{part, links?}]]}`；事件 `[{time, value}]` |
 | 修订 1 | 日志不引用载荷节点 | — |
 | 修订 2 | 日志引用载荷节点，索引列出 `payloads` | `{"$payload": "<sha256>"}` 日志条目 |
 | 修订 3 | 日志含固化点记录 `rig_checkpoint` | 索引的 `rig` 列出记录引用的 Rig 对象，归档在 `rig/objects/` 中保存它们；可同时列出 `payloads` |
 | 修订 4 | 有模拟带烘焙结果 | `rig` 节点中每个烘焙写成 `{"$bake": "<sha256>"}`，索引的 `bakes` 列出它们，内容在 `document/bakes/`；可同时列出 `payloads` 与 `rig` |
 
-只读取 schema 1 的程序遇到 schema 2 的节点或修订会拒绝打开，不会丢弃新字段；当前程序读取节点 schema 1–3、修订 schema 1–4，更高 schema 仍拒绝。修订 schema 4 的 `rig` 节点只能引用索引列出的烘焙，打开时按哈希核对每个烘焙文件；此前的程序遇到修订 schema 4 拒绝打开，因此带烘焙的工程保存后不能再用它们打开。修订 schema 3 的索引必须列出 `rig`，打开时逐个核对 `rig/objects/` 中有这些对象，缺少任何一个都拒绝打开；不支持 schema 3 的程序无法从这类修订构建模型，因此拒绝打开。修订 schema 2 必须列出至少一个载荷，日志只能引用自己列出的载荷。保存时，已含 schema 2 节点的修订把 512 字符以上的作者日志条目外置为载荷节点（日志节点中的引用不到 80 字符），每个载荷只写一次，修订索引为 schema 2；只读 schema 1 的程序本就打不开这类修订。不含新字段的文档仍全部写 schema 1，节点与索引逐字节不变。这样长历史的每个修订不再各存一份完整日志，归档体积与保存耗时不再随修订数平方增长。
+只读取 schema 1 的程序遇到 schema 2 的节点或修订会拒绝打开，不会丢弃新字段；当前程序读取节点 schema 1–4（`clips` 节点 1–5）、修订 schema 1–4，更高 schema 仍拒绝；不认识 schema 5 的程序遇到带表情、姿势或动作事件的 `clips` 节点拒绝打开，而不是丢掉它们。修订 schema 4 的 `rig` 节点只能引用索引列出的烘焙，打开时按哈希核对每个烘焙文件；此前的程序遇到修订 schema 4 拒绝打开，因此带烘焙的工程保存后不能再用它们打开。修订 schema 3 的索引必须列出 `rig`，打开时逐个核对 `rig/objects/` 中有这些对象，缺少任何一个都拒绝打开；不支持 schema 3 的程序无法从这类修订构建模型，因此拒绝打开。修订 schema 2 必须列出至少一个载荷，日志只能引用自己列出的载荷。保存时，已含 schema 2 节点的修订把 512 字符以上的作者日志条目外置为载荷节点（日志节点中的引用不到 80 字符），每个载荷只写一次，修订索引为 schema 2；只读 schema 1 的程序本就打不开这类修订。不含新字段的文档仍全部写 schema 1，节点与索引逐字节不变。这样长历史的每个修订不再各存一份完整日志，归档体积与保存耗时不再随修订数平方增长。
 
 ### 烘焙文件
 

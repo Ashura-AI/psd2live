@@ -58,7 +58,7 @@ GUI 与 MCP 共用应用层命令：参数公开 `parameter_create/update/delete
 | 变形路径 | 工作区编辑、CMO3 控制器、MOC3 烘焙 | 单 ArtMesh；未宣称与官方编辑算法一致 |
 | 物理 | 统一的物理组目录（预设 / 骨骼 / 摆动 / 自定义，可修改、关闭、恢复、调整计算顺序），多输入多输出与 1–16 个摆锤，计算 FPS，physics3.json 导入，输入与摆锤预置，面板可视化编辑，MCP `physics_put/delete/simulate/fit/config/import`、`physics_audition*` 试听与 `physics_preset_*` 预置，软件预览按 Cubism 求值 | 输入 / 输出类型限位置X 与角度（CMO3 支持的范围），不含风力等全局物理设置 |
 | 动作 | 基础动作生成与播放；动画面板与 `motion_*` 编辑片段、参数曲线和时间线关键帧（插值类型、控制柄、键的移动 / 粘贴 / 替换） | 生成的基础动作须先转为同名覆盖片段（`motion_seed_builtin`）才能编辑；导出须启用 `exportMotions` |
-| Expression / Pose / UserData | 格式 / 边车层有相应处理 | 不能把透传当作完整可编辑工程资产 |
+| Expression / Pose / UserData | 工程数据（`core/ModelSidecars.kt`、`MotionClip.events`、网格用户数据），动画面板与 `expression_*` / `pose_*` / `motion_set_event` 编辑，导出 exp3 / pose3 / motion3 `UserData` / userdata3，见[导出目标](EXPORT_TARGETS.md#表情姿势与事件) | 编辑画布与预览不套用姿势；动作没有部件透明度曲线，姿势只在加载时显示每组第一个部件；cmo3 / can3 不保存表情与姿势 |
 | ArtPath、Motion Sync、扩展插值与部分编辑器元数据 | 类型或原对象图可能存在 | 不能据此宣称从 PSD 可创建或完整语义编辑 |
 
 CMO3 新建及替换导入共用应用层 `WorkspaceCmo3Importer`：从文件准备可重建的源图和导入 Rig，不套用 PSD 自动 Rig 或动作预设；替换按 ID 更新、保留未出现对象，文档和姿态重置一次 CAS。GUI 与 MCP 调用同一源图能力，MCP 导入使用进程任务。支持范围仍受统一模型及转换器约束。

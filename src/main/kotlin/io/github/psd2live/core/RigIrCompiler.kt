@@ -3,6 +3,7 @@ package io.github.psd2live.core
 import io.github.psd2live.format.model.AdvancedIR
 import io.github.psd2live.format.model.Bytes
 import io.github.psd2live.format.model.Clip
+import io.github.psd2live.format.model.ClipEvent
 import io.github.psd2live.format.model.ParameterRole
 import io.github.psd2live.format.model.Physics
 import io.github.psd2live.format.model.RigIR
@@ -55,8 +56,9 @@ internal object RigIrCompiler {
 			// The open mouth keeps its texture coordinates over the whole artwork in a canvas-space base mesh.
 			restPose = if (config.rigEdits.importedCmo3 != null) emptyMap() else mapOf(StandardParameters.MOUTH_OPEN.raw to 1f),
 			advanced = advanced(exportedRig, config, base, simulations).copy(
-				expressions = RuntimeExtras.expressions(puppet),
+				expressions = if (config.meshOnly) emptyList() else RuntimeExtras.expressions(config.rigEdits, parameterIds),
 				hitAreas = RuntimeExtras.hitAreas(puppet, analysis, rig.layerIdByDrawableId),
+				pose = if (config.meshOnly) null else RuntimeExtras.pose(config.rigEdits, puppet.parts.mapTo(HashSet()) { it.id.raw }),
 			),
 			hitAreas = RigHitAreas.toIr(config.rigEdits.hitAreas),
 		)
@@ -118,7 +120,7 @@ internal object RigIrCompiler {
 			if (clip != null && clip.curves.any { it.parameter in parameterIds }) result += clip.copy(curves = clip.curves.filter { it.parameter in parameterIds })
 		}
 		fun authored(group: String, file: String, clip: MotionClip) = Clip(clip.id, clip.name, group, file, clip.duration, clip.fps, clip.loop,
-			clip.fadeIn, clip.fadeOut, clip.curves.map(MotionGenerator::curve))
+			clip.fadeIn, clip.fadeOut, clip.curves.map(MotionGenerator::curve), clip.events.map { ClipEvent(it.time, it.value) })
 		fun builtin(group: String, name: String, exclude: Set<String> = emptySet()) {
 			val settings = config.rigEdits.motionPresets[name] ?: MotionPresetSettings()
 			if (settings.deleted) return

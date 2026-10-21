@@ -1,9 +1,10 @@
 package io.github.psd2live.format.model
 
 /**
- * What the PSD2Live runtime's advanced mode adds on top of the rig every target exports: data the Cubism
- * rig has already baked into keyforms and pendulums, kept so the runtime can play it live. Other targets
- * ignore it.
+ * What a host adds on top of the rig every target exports. The bones, simulations and colliders are data the Cubism
+ * rig has already baked into keyforms and pendulums, kept so the PSD2Live runtime's advanced mode can play it live;
+ * the expressions, hit areas and pose are what a host builds interaction on, which the Cubism family writes beside
+ * the moc (exp3, pose3) as well. Targets without a place for them ignore them.
  */
 public data class AdvancedIR(
 	/**

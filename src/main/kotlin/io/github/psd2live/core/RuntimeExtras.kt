@@ -1,56 +1,30 @@
 package io.github.psd2live.core
 
-import io.github.psd2live.format.model.ExpressionBlend
 import io.github.psd2live.format.model.ExpressionIR
 import io.github.psd2live.format.model.ExpressionParameter
 import io.github.psd2live.format.model.HitAreaIR
+import io.github.psd2live.format.model.PoseIR
 import io.github.psd2live.i18n.tr
+import io.github.psd2live.format.model.ExpressionBlend as IrBlend
+import io.github.psd2live.format.model.PoseEntry as IrPoseEntry
 import org.umamo.runtime.model.PuppetModel
 
 /**
- * What a runtime host uses to make a generated rig interactive, derived from the rig itself: a set of facial
- * expressions over the standard face parameters, and hit areas on the head and the body.
+ * What a runtime host uses to make a rig interactive: the document's expressions and pose ([ModelExpressions],
+ * [ModelPoses]) in IR form, and hit areas on the head and the body derived from the rig.
  */
 internal object RuntimeExtras {
-	private class Preset(val id: String, val nameKey: String, val parameters: List<ExpressionParameter>)
-
-	private val presets = listOf(
-		Preset("smile", "model.expression.smile", listOf(
-			ExpressionParameter(StandardParameters.MOUTH_FORM.raw, ExpressionBlend.OVERWRITE, 1f),
-			ExpressionParameter(StandardParameters.EYE_L_OPEN.raw, ExpressionBlend.MULTIPLY, 0.75f),
-			ExpressionParameter(StandardParameters.EYE_R_OPEN.raw, ExpressionBlend.MULTIPLY, 0.75f),
-			ExpressionParameter(StandardParameters.BROW_L_Y.raw, ExpressionBlend.ADD, 0.3f),
-			ExpressionParameter(StandardParameters.BROW_R_Y.raw, ExpressionBlend.ADD, 0.3f),
-		)),
-		Preset("sad", "model.expression.sad", listOf(
-			ExpressionParameter(StandardParameters.MOUTH_FORM.raw, ExpressionBlend.OVERWRITE, -0.8f),
-			ExpressionParameter(StandardParameters.EYE_L_OPEN.raw, ExpressionBlend.MULTIPLY, 0.85f),
-			ExpressionParameter(StandardParameters.EYE_R_OPEN.raw, ExpressionBlend.MULTIPLY, 0.85f),
-			ExpressionParameter(StandardParameters.BROW_L_Y.raw, ExpressionBlend.ADD, -0.5f),
-			ExpressionParameter(StandardParameters.BROW_R_Y.raw, ExpressionBlend.ADD, -0.5f),
-		)),
-		Preset("angry", "model.expression.angry", listOf(
-			ExpressionParameter(StandardParameters.MOUTH_FORM.raw, ExpressionBlend.OVERWRITE, -0.5f),
-			ExpressionParameter(StandardParameters.EYE_L_OPEN.raw, ExpressionBlend.MULTIPLY, 0.9f),
-			ExpressionParameter(StandardParameters.EYE_R_OPEN.raw, ExpressionBlend.MULTIPLY, 0.9f),
-			ExpressionParameter(StandardParameters.BROW_L_Y.raw, ExpressionBlend.ADD, -0.8f),
-			ExpressionParameter(StandardParameters.BROW_R_Y.raw, ExpressionBlend.ADD, -0.8f),
-		)),
-		Preset("surprised", "model.expression.surprised", listOf(
-			ExpressionParameter(StandardParameters.EYE_L_OPEN.raw, ExpressionBlend.OVERWRITE, 1f),
-			ExpressionParameter(StandardParameters.EYE_R_OPEN.raw, ExpressionBlend.OVERWRITE, 1f),
-			ExpressionParameter(StandardParameters.BROW_L_Y.raw, ExpressionBlend.ADD, 0.8f),
-			ExpressionParameter(StandardParameters.BROW_R_Y.raw, ExpressionBlend.ADD, 0.8f),
-			ExpressionParameter(StandardParameters.MOUTH_OPEN.raw, ExpressionBlend.OVERWRITE, 0.6f),
-		)),
-	)
-
-	/** The standard expressions over the parameters [model] has; one with none of them is left out. Half-second fades, as Cubism's default. */
-	fun expressions(model: PuppetModel): List<ExpressionIR> {
-		val present = model.parameters.mapTo(HashSet()) { it.id.raw }
-		return presets.mapNotNull { preset ->
-			preset.parameters.filter { it.parameter in present }.takeIf { it.isNotEmpty() }?.let { ExpressionIR(preset.id, tr(preset.nameKey), 0.5f, 0.5f, it) }
+	/** The expressions an export writes ([ModelExpressions.exported]). */
+	fun expressions(overlay: RigEditOverlay, parameterIds: Set<String>): List<ExpressionIR> =
+		ModelExpressions.exported(overlay, parameterIds).map { expression ->
+			ExpressionIR(expression.id, expression.name, expression.fadeIn, expression.fadeOut, expression.entries.map {
+				ExpressionParameter(it.parameterId, IrBlend.valueOf(it.blend.name), it.value)
+			})
 		}
+
+	/** The pose an export writes ([ModelPoses.exported]), or none. */
+	fun pose(overlay: RigEditOverlay, partIds: Set<String>): PoseIR? = ModelPoses.exported(overlay.pose, partIds)?.let { pose ->
+		PoseIR(pose.fadeIn, pose.groups.map { group -> group.parts.map { IrPoseEntry(it.partId, it.links) } })
 	}
 
 	/** Head: the face. Body: the top, else the neck or the bottom. Each only where the rig draws such a mesh. */

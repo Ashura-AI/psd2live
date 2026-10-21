@@ -3,12 +3,15 @@ package io.github.psd2live.targets.cubism
 import io.github.psd2live.format.model.Clip
 import io.github.psd2live.format.model.CurveSegment
 import io.github.psd2live.format.model.CurveTarget
+import io.github.psd2live.format.model.ExpressionBlend
+import io.github.psd2live.format.model.ExpressionIR
+import io.github.psd2live.format.model.PoseIR
 import io.github.psd2live.format.model.PhysicsGroup
 import io.github.psd2live.format.model.PhysicsSource
 
 /**
- * motion3.json and physics3.json from the IR. The single writer of both: the editor's preview bundle and
- * every export go through it, so the files the editor plays are the files it exports.
+ * motion3.json, physics3.json, exp3.json and pose3.json from the IR. The single writer of them: the editor's preview
+ * bundle and every export go through it, so the files the editor plays are the files it exports.
  */
 public object Cubism3Json {
 	/**
@@ -139,6 +142,43 @@ public object Cubism3Json {
 		    "Position": { "Minimum": ${n.positionMin}, "Default": ${n.positionDefault}, "Maximum": ${n.positionMax} },
 		    "Angle": { "Minimum": ${n.angleMin}, "Default": ${n.angleDefault}, "Maximum": ${n.angleMax} }
 		  }
+		}
+		""".trimIndent()
+	}
+
+	/**
+	 * The exp3 JSON of [expression], keeping only parameters in [availableParameters]: its fades and each parameter's
+	 * value and blend. An expression left with none is still written, as the neutral one a host resets to.
+	 */
+	public fun exp3(expression: ExpressionIR, availableParameters: Set<String>): String {
+		val parameters = expression.parameters.filter { it.parameter in availableParameters }.joinToString(",") { p ->
+			val blend = when (p.blend) { ExpressionBlend.ADD -> "Add"; ExpressionBlend.MULTIPLY -> "Multiply"; ExpressionBlend.OVERWRITE -> "Overwrite" }
+			"{ \"Id\": ${quote(p.parameter)}, \"Value\": ${p.value}, \"Blend\": \"$blend\" }"
+		}
+		return """
+		{
+		  "Type": "Live2D Expression",
+		  "FadeInTime": ${expression.fadeIn},
+		  "FadeOutTime": ${expression.fadeOut},
+		  "Parameters": [$parameters]
+		}
+		""".trimIndent()
+	}
+
+	/** The pose3 JSON of [pose], keeping only parts in [availableParts]; null when no group keeps a part. */
+	public fun pose3(pose: PoseIR, availableParts: Set<String>): String? {
+		val groups = pose.groups.map { group ->
+			group.filter { it.part in availableParts }.map { entry -> entry to entry.links.filter(availableParts::contains) }
+		}.filter { it.isNotEmpty() }
+		if (groups.isEmpty()) return null
+		val text = groups.joinToString(",") { group ->
+			"[" + group.joinToString(",") { (entry, links) -> "{ \"Id\": ${quote(entry.part)}, \"Link\": [${links.joinToString(",", transform = ::quote)}] }" } + "]"
+		}
+		return """
+		{
+		  "Type": "Live2D Pose",
+		  "FadeInTime": ${pose.fadeIn},
+		  "Groups": [$text]
 		}
 		""".trimIndent()
 	}

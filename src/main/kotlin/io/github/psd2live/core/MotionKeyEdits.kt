@@ -160,12 +160,12 @@ internal object MotionKeyEdits {
 		return picked.map { (id, key) -> id to key.copy(time = key.time - start) }
 	}
 
-	/** A shorter clip drops the keys past its end, holding each curve's value there. */
+	/** A shorter clip drops the keys past its end, holding each curve's value there, and the events past it. */
 	fun withDuration(clip: MotionClip, duration: Float): MotionClip {
 		if (duration >= clip.duration) return clip.copy(duration = duration)
 		return clip.copy(duration = duration, curves = clip.curves.map { curve ->
 			MotionCurve(curve.parameterId, trimKeys(curve.keys, duration))
-		})
+		}, events = clip.events.filter { it.time <= duration + MotionClips.TIME_EPSILON })
 	}
 
 	/**

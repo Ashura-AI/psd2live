@@ -58,6 +58,27 @@ class ProjectFormatV2SchemaTest {
 		}))
 	}
 
+	@Test fun clipsWithExpressionsAPoseOrEventsNeedANewerSchemaAndSplitLosslessly(@org.junit.jupiter.api.io.TempDir root: java.nio.file.Path) {
+		val motion = buildJsonObject { put("id", "wave"); put("name", "Wave") }
+		assertEquals(ProjectFormatV2.NODE_SCHEMA, ProjectFormatV2.clipsSchema(buildJsonObject { putJsonArray("motions") { add(motion) } }))
+		assertEquals(ProjectFormatV2.NODE_SCHEMA_SIDECARS, ProjectFormatV2.clipsSchema(buildJsonObject {
+			putJsonArray("motions") { add(JsonObject(motion + ("events" to buildJsonArray { add(buildJsonObject { put("time", 0.5); put("value", "peak") }) }))) }
+		}))
+		val snapshot = buildJsonObject {
+			putJsonObject("rigEdits") {
+				putJsonArray("motions") { add(motion) }
+				putJsonArray("expressions") { add(buildJsonObject { put("id", "joy"); put("name", "Joy"); putJsonArray("entries") {} }) }
+				putJsonObject("pose") { put("fade_in", 0.5); putJsonArray("groups") { add(buildJsonArray { add(buildJsonObject { put("part", "PartArmA") }) }) } }
+			}
+		}
+		val index = ProjectFormatV2.split(root, snapshot)
+		val clips = kotlinx.serialization.json.Json.parseToJsonElement(java.nio.file.Files.readString(
+			root.resolve("document/clips/${(index.getValue("clips") as JsonPrimitive).content}.json"))) as JsonObject
+		assertEquals(JsonPrimitive(ProjectFormatV2.NODE_SCHEMA_SIDECARS), clips["schema"])
+		assertEquals(snapshot.getValue("rigEdits"), (ProjectFormatV2.join(root, index).getValue("rigEdits") as JsonObject)
+			.let { JsonObject(it.filterKeys { key -> key in setOf("motions", "expressions", "pose") }) })
+	}
+
 	@Test fun aSnapshotWithAReferenceLayoutAlreadyNeedsANewerSchema() {
 		assertTrue(ProjectFormatV2.needsNewerSchema(buildJsonObject {
 			put("layout", buildJsonObject {
