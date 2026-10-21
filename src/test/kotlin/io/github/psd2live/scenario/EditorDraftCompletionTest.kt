@@ -19,7 +19,7 @@ class EditorDraftCompletionTest {
                 val before = runtime.capture()
                 val next = before.document.copy(settings = buildJsonObject { put("step", runtime.history().selections.size) })
                 val submitted = queue.submit("project", before.state, next, "Edit", MutationAuthor.USER,
-                    beforeCommit = { _, _, _, _ -> }, committed = { throw failure })
+                    beforeCommit = { _, _, _ -> }, committed = { throw failure })
                 val committed = submitted.await()
                 assertTrue(committed.applied)
                 assertEquals(next, runtime.capture().document)

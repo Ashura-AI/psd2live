@@ -16,6 +16,8 @@ internal class WorkspaceDraftQueue<M>(
         val projectId: String,
         val inputState: String,
         val document: WorkspaceDocument,
+        /** The runtime's document at [inputState], when the draft was submitted on the current state. */
+        val base: WorkspaceDocument?,
         var previous: Entry?,
     ) {
         lateinit var result: Deferred<WorkspaceCommit<M>>
@@ -23,9 +25,13 @@ internal class WorkspaceDraftQueue<M>(
         var completedState: String? = null
     }
 
+    /**
+     * Queues [document], the editor's draft on [state]. A draft that finds another author's commit ahead of it is
+     * carried over that commit ([WorkspaceDraftRebase]) and tried again; only a conflicting change rejects it.
+     */
     fun submit(projectId: String, state: String, document: WorkspaceDocument, summary: String,
                author: MutationAuthor,
-               beforeCommit: (WorkspaceCapture<M>, WorkspaceDocument, M, WorkspaceDocument?) -> Unit,
+               beforeCommit: (WorkspaceCapture<M>, WorkspaceDocument, M) -> Unit,
                committed: (WorkspaceCommit<M>) -> Unit = {},
                prepare: suspend (WorkspaceDraft, M, WorkspaceDocument) -> WorkspaceDraft = { before, _, draft -> before.copy(document = draft) },
                rebase: (WorkspaceDocument, WorkspaceDocument, WorkspaceDocument) -> WorkspaceDocument = { _, draft, _ -> draft },
@@ -35,26 +41,42 @@ internal class WorkspaceDraftQueue<M>(
         val previous = tail?.takeUnless { it.result.isCompleted && it.result.isCancelled }
         // A finished draft's own predecessors are settled; dropping them keeps the chain from growing per edit.
         if (previous?.result?.isCompleted == true) previous.previous = null
-        val entry = Entry(projectId, state, document, previous)
+        val base = runtime.state.value.capture?.takeIf { it.state == state && it.projectId == projectId }?.document
+        val entry = Entry(projectId, state, document, base, previous)
         entry.result = scope.async(start = CoroutineStart.LAZY) {
             val preceding = previous?.result?.await()
             val follows = preceding != null && previous.projectId == projectId && state in previous.lineage
-            val expected = if (follows) preceding.capture.state else state
+            var expected = if (follows) preceding.capture.state else state
+            // The runtime's document at [expected], to carry the draft over a commit that lands first.
+            var origin = if (follows) preceding.capture.document else entry.base
+            var carried: WorkspaceDocument? = null
+            var attempts = 0
             // A draft may also move auxiliary data, such as the poses a settings switch released during the session.
-            val result = runtime.executeDraft(projectId, expected, summary, author,
-                listOf(WorkspaceDraftEdit { before, model ->
-                    val candidate = if (follows) rebase(previous.document, document, before.document) else document
-                    prepare(before, model, candidate)
-                })) { before, next, model ->
-                val following = synchronized(lock) {
-                    val newest = tail
-                    var cursor = newest?.previous
-                    while (cursor != null && cursor !== entry) cursor = cursor.previous
-                    newest?.document?.takeIf { cursor === entry && newest.projectId == projectId }
+            var committedDraft: WorkspaceCommit<M>? = null
+            while (committedDraft == null) {
+                try {
+                    committedDraft = runtime.executeDraft(projectId, expected, summary, author,
+                        listOf(WorkspaceDraftEdit { before, model ->
+                            val candidate = carried ?: if (follows) rebase(previous.document, document, before.document) else document
+                            prepare(before, model, candidate)
+                        })) { before, next, model ->
+                        beforeCommit(before, next.document, model)
+                        auxiliary(before, next, model)
+                    }
+                } catch (conflict: WorkspaceConflict) {
+                    // Another author committed first: carry the draft over it, unless both changed the same field.
+                    val from = origin ?: throw conflict
+                    val current = runtime.state.value.capture ?: throw conflict
+                    if (current.projectId != projectId || ++attempts > MAX_REBASES) throw conflict
+                    val draft = carried ?: if (follows) rebase(previous.document, document, from) else document
+                    val over = WorkspaceDraftRebase.rebase(from, draft, current.document)
+                    if (!over.clean) throw conflict
+                    carried = over.document
+                    expected = current.state
+                    origin = current.document
                 }
-                beforeCommit(before, next.document, model, following)
-                auxiliary(before, next, model)
             }
+            val result: WorkspaceCommit<M> = committedDraft
             entry.lineage = (if (follows) previous.lineage else emptySet()) + state + result.capture.state
             entry.completedState = result.capture.state
             // This callback persists/refreshes a commit already published by the runtime. A renderer failure
@@ -118,5 +140,10 @@ internal class WorkspaceDraftQueue<M>(
             current.result.cancel()
             current = current.previous
         }
+    }
+
+    private companion object {
+        /** Commits by other authors a draft follows before it gives up; each one rebuilds it. */
+        const val MAX_REBASES = 4
     }
 }

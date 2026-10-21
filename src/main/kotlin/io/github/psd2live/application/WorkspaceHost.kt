@@ -706,7 +706,7 @@ internal class WorkspaceHost<V>(
                             prepare: suspend (WorkspaceDraft, io.github.psd2live.core.RigPreviewModel, WorkspaceDocument) -> WorkspaceDraft): kotlinx.coroutines.Deferred<WorkspaceMutationResult> {
         val expectedUi = presentation.current()
         val submitted = draftQueue.submit(projectId, state, document, summary, author,
-            beforeCommit = { _, next, model, _ ->
+            beforeCommit = { _, next, model ->
                 val current = presentation.current()
                 check(current.facts().projectId == expectedUi.facts().projectId &&
                     current.facts().openGeneration == expectedUi.facts().openGeneration) { "Editor draft belongs to an old project load" }

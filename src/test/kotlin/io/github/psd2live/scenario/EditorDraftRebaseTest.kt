@@ -1,11 +1,17 @@
 package io.github.psd2live.scenario
 
+import io.github.psd2live.application.WorkspaceConflict
+import io.github.psd2live.application.WorkspaceDocumentEdit
+import io.github.psd2live.application.WorkspaceDraftQueue
 import io.github.psd2live.application.WorkspaceDraftRebase
+import io.github.psd2live.application.WorkspaceRuntime
+import io.github.psd2live.project.MutationAuthor
 import io.github.psd2live.project.WorkspaceDocument
+import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import kotlin.test.*
 
-/** An editor's field draft carried over commits it did not make. */
+/** An editor's field draft carried over commits it did not make, in the rebase and in the draft queue. */
 class EditorDraftRebaseTest {
     private val base = Characters.head().copy(settings = buildJsonObject { put("texturePadding", 2); put("alphaThreshold", 8) })
     private val layers = base.source.layers.map { it.id.raw }
@@ -46,5 +52,37 @@ class EditorDraftRebaseTest {
         // A draft that rewrote the journal rather than growing it cannot be carried.
         val rewritten = base.journal("b")
         assertEquals(listOf("rigEdits"), WorkspaceDraftRebase.rebase(start, rewritten, start.journal("agent")).conflicts)
+    }
+
+    @Test fun aQueuedDraftFollowsAnotherAuthorsCommitAndConflictsOnlyOnTheSameField() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val runtime = WorkspaceRuntime<String>({ it.settings.toString() })
+            runtime.install(runtime.state.value.state, "project", base, "initial")
+            val queue = WorkspaceDraftQueue(runtime, scope)
+            suspend fun external(document: WorkspaceDocument) {
+                val before = runtime.capture()
+                runtime.execute("project", before.state, "Agent edit", MutationAuthor.AGENT, listOf(WorkspaceDocumentEdit { _, _ -> document }))
+            }
+            suspend fun draftAround(draft: (WorkspaceDocument) -> WorkspaceDocument, agent: (WorkspaceDocument) -> WorkspaceDocument): Deferred<*> {
+                val before = runtime.capture()
+                val gate = CompletableDeferred<Unit>()
+                val submitted = queue.submit("project", before.state, draft(before.document), "Editor edit", MutationAuthor.USER,
+                    beforeCommit = { _, _, _ -> }, prepare = { start, _, candidate -> gate.await(); start.copy(document = candidate) })
+                external(agent(before.document))
+                gate.complete(Unit)
+                return submitted
+            }
+
+            val merged = draftAround({ it.setting("texturePadding", 5) }, { it.setting("alphaThreshold", 30) })
+            merged.await()
+            assertEquals(base.setting("texturePadding", 5).setting("alphaThreshold", 30), runtime.capture().document)
+            assertEquals(listOf("Agent edit", "Editor edit"), runtime.history().selections.drop(1).map { it.node.summary })
+
+            val refused = draftAround({ it.setting("texturePadding", 9) }, { it.setting("texturePadding", 11) })
+            assertFailsWith<WorkspaceConflict> { refused.await() }
+            assertEquals(11, runtime.capture().document.settings["texturePadding"]?.jsonPrimitive?.int)
+            queue.forgetRejected()
+        } finally { scope.cancel() }
     }
 }
