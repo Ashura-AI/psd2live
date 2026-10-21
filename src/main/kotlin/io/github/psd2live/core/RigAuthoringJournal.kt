@@ -147,6 +147,11 @@ internal object RigAuthoringJournal {
                 KeyformMirror.compile(current, command).forEach { record(it.text("op"), it) }
                 continue
             }
+            // Reset, interpolate and paste are materialized as the one set each computes.
+            if (op in KeyformTools.OPS) {
+                record("set", KeyformTools.compile(current, command))
+                continue
+            }
             val compiled = when (op) {
                 "deform", "seed" -> {
                     val ref = target(current, command.text("target"))

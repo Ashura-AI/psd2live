@@ -358,8 +358,11 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
     })
     val formBase = buildJsonObject { put("target", string()); put("key", key) }
     fun described(schema: JsonObject, text: String) = JsonObject(schema + ("description" to JsonPrimitive(text)))
+    val pointIndices = described(buildJsonObject { put("type", "array"); put("minItems", 1); put("uniqueItems", true); put("items", integer(0, 1_000_000)) },
+        "Only these points (mesh vertex or warp control point indices) change; the rest keep the shape at the key. Not for rotations.")
     registerJsonOperation("form", "Author key collections atomically. seed captures interpolated geometry without changing other keys. copy transfers selected channels (omit for all) from an explicit source key. set writes scalar/color channels or a rotation form, never mesh point arrays. " +
         "mirror reflects a keyform across a vertical canvas line onto the opposite key of the same object (from {ParamAngleX:30} writes ParamAngleX -30), onto the opposite-side object (destination, or \"auto\" to pair by L/R id or name), or in place; it writes ordinary keyforms. " +
+        "reset, interpolate and paste write a whole geometry keyform (or only the given vertices) as an ordinary set: reset takes the key back to its default-key shape (to rest: a mesh's undeformed points), interpolate remakes it from the keys on either side along one parameter, paste writes the shape another key of the same or another object of the same kind and point count shows. " +
         "Keys name only the destination object's axes, not the viewing pose. A keyed drawOrder channel: " + WorkspaceDrawOrderSchemas.GUIDE,
         buildJsonObject { put("state", string()); put("changes", arraySchema(oneOf(listOf(
             variant("op", "seed", formBase, listOf("target", "key")),
@@ -379,7 +382,21 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
                 put("reflect", described(arraySchema(string(), 0, 64), "Parameters whose value flips about the default; default the symmetric-range ones that are a 2D pad's horizontal axis or end in X or Z."))
                 put("channels", described(arraySchema(choices("geometry", "opacity", "drawOrder", "multiplyColor", "screenColor", "glueIntensity", "flipX", "flipY"), 1, 8),
                     "What to carry over: the reflected geometry and channel values as they are at from; default geometry only."))
-            }, listOf("target"))
+            }, listOf("target")),
+            variant("op", "reset", JsonObject(formBase + buildJsonObject {
+                put("to", described(choices("default", "rest"), "default (the default): the shape with the along parameters at their defaults; rest: a mesh's undeformed points."))
+                put("along", described(arraySchema(string(), 1, 64), "With to default: the key's parameters taken to their default; default all of them."))
+                put("vertices", pointIndices)
+            }), listOf("target", "key")),
+            variant("op", "interpolate", JsonObject(formBase + buildJsonObject {
+                put("parameter", described(string(), "The axis to interpolate along; default the one the key sits between two keys of."))
+                put("vertices", pointIndices)
+            }), listOf("target", "key")),
+            variant("op", "paste", JsonObject(formBase + buildJsonObject {
+                put("from", described(key, "Source key; the source's missing axes at their defaults."))
+                put("destination", described(string(), "Destination of the target's kind and point count; default the target."))
+                put("vertices", pointIndices)
+            }), listOf("target", "from", "key"))
         )), 1, 128)) }, listOf("state", "changes"), true) { a -> workspace.authorRig(a.text("state"), a.getValue("changes").jsonArray, MutationAuthor.AGENT).compact() }
 
     registerJsonOperation("rig", "Create a fitted independent Warp for meshes sharing a parent. Existing keyforms and UVs migrate; the parent lattice constrains fit precision. Use deform directly when no independent motion layer is needed. Returned target is the new Warp.",
