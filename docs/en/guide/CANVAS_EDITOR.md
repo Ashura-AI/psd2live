@@ -66,6 +66,20 @@ Objects without bound parameters edit the base shape; bound objects edit the cur
 
 Left-right parameters are those whose range is symmetric about the default and that are the horizontal axis of a 2D link or whose ID ends in X or Z (AngleX, AngleZ, BodyAngleX, EyeBallX and so on). The opposite object is paired by layer semantics first, then by L/R, Left/Right or 左/右 in its ID or name. A mirror covers only the object's own deformation, in the frame of its parents at the default pose; mirror the parents' keyforms separately. With several layers selected each mesh is mirrored, committed as one history step.
 
+The **Keyform** submenu of the same context menu works on the shape at the current key; its results are ordinary keyforms too and can be undone. The parameters must sit exactly on one of the object's keys:
+
+| Action | What it does |
+| --- | --- |
+| Copy keyform | Remembers the shape the object shows at the current parameters; shortcut `Ctrl+Alt+C` |
+| Paste keyform | Writes the copied shape onto the current key, also onto an object of the same kind with the same number of points (meshes take each point's move from its rest); it reads the source key as it is when pasting; `Ctrl+Alt+V` |
+| Reset to the default-key shape | Puts the current key back to the shape at the parameters' defaults; `Ctrl+Alt+X` |
+| Reset to the mesh rest shape | Meshes only: back to the undeformed mesh |
+| Interpolate from neighbouring keys of (parameter) | Remakes the current key from the keys on either side along that parameter; with several such parameters each is listed, and `Ctrl+Alt+I` takes the first |
+
+With points selected, paste, reset and interpolate change only those points, and the menu rows show how many; a Warp at the Bezier level and a rotation deformer are always handled whole. On keyforms a generator owns the result is recorded as a generated override.
+
+**Soft selection**: with the Select or Transform tool, turn on **Soft selection** in the tool options bar (`O`); dragging or transforming selected points then also moves the points around them, less the further they are from the nearest selected point. The **Falloff radius** is in canvas units and `[` / `]` adjust it; the falloff curve is shared with the deform brush. Affected points are ringed in red, larger rings following more. What is committed is still one ordinary geometry edit.
+
 ## Multiple canvases, parameters and animation
 
 All canvases of a workspace share the parameter pose, parameter locks and playback controls. Switching between edit and preview, changing focus or hiding a canvas never swaps back to another pose. Selection, tool, camera and display settings are still kept per canvas; different workspaces keep their own poses.

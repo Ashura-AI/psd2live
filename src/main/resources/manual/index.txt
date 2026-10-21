@@ -131,7 +131,7 @@
     - how-to-edit different cubism=how-to-edit
     - keyform-parent-chilid-relation same cubism=keyform-parent-chilid-relation
     - keyform-xydirection same cubism=keyform-xydirection
-    - copy-and-blend-shape missing cubism=copy-and-blend-shape
+    - copy-and-blend-shape different cubism=copy-and-blend-shape
     - paste-form-special missing cubism=paste-form-special
     - confirm-target-for-pasting-multiple-forms missing cubism=confirm-target-for-pasting-multiple-forms
     - synthesize-corners missing cubism=synthesize-corners

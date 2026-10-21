@@ -79,7 +79,7 @@
 | `job_list` | 可选 `project_id`、`offset`、`limit` | 分页查询应用内任务 |
 | `job_cancel` | `request_id`、`id` | 请求取消；已完成提交保留 completed 状态 |
 | `rig_deform` | `request` 内 `state`、`changes` | 在明确参数键上编辑 Mesh / Warp 连续形状 |
-| `keyform_apply` | `request` 内 `state`、`changes` | `op: seed/copy/set/delete/mirror`，编辑关键形集合、标量 / 颜色通道与旋转形状；旋转 `set` 只给部分字段（例如只给 `angle`）时，其余字段取该旋转在此关键点处的现值 |
+| `keyform_apply` | `request` 内 `state`、`changes` | `op: seed/copy/set/delete/mirror/reset/interpolate/paste`，编辑关键形集合、标量 / 颜色通道与旋转形状；旋转 `set` 只给部分字段（例如只给 `angle`）时，其余字段取该旋转在此关键点处的现值 |
 | `rig_create_warp` | `name`、`targets`；可选 `id`、`rows/columns`、`fit_local` | 后台创建共用父 Warp 的 Mesh 的独立 Warp，也支持原子批量；终态返回 `target` |
 | `object_edit_appearance` | `request` 内 `state`、`edits` | 名称、显隐、结构等有序编辑；网格 `bind` 的 `space=local` 保留局部坐标与关键形（继承的运动与位置随新父级改变），`space=canvas` 把静止网格、关键形与混合形经新父级换算，使网格在默认姿态下留在画布原位（层级树拖放与检查器改父级即用此项）；变形器 `move` 只接受 `space=local` |
 | `rig_edit_structure` | `request` 内 `state`、`edits` | 静态对象属性、变形器删除与 Part 归属、参数文件夹和 XY 关联 |
@@ -497,6 +497,19 @@ GUI 参数定义、文件夹位置和参数关键点可组合为一次共享提�
 | `channels` | 携带的内容：`geometry` 与 `copy` 的通道名；缺省只镜像几何 |
 
 镜像的是对象自身的形变：两对象的点以默认姿势的父级映射到画布，来源各点相对默认形状的位移取 x 反向后，按目标点的镜像位置在来源三角形（Warp 为格子对角分割）上插值，再映射回目标的父级空间；旋转变形器镜像原点位移并把角度变化取反。对称对象或成对对象点对点对应。不支持融合变形键。
+
+`keyform_apply op=reset / interpolate / paste` 写一个键的整个几何形状（或只写 `vertices` 给出的点），提交时同样展开为一条普通 `set`，重放不再读取其他键；作用在生成器拥有的关键形上时记为生成结果覆盖：
+
+| 字段 | 含义 |
+| --- | --- |
+| `target` | 网格、Warp 或旋转变形器；`paste` 时为来源 |
+| `key` | 写入的键，须包含目标的全部直接绑定轴 |
+| `vertices` | 只改这些点（网格顶点或 Warp 控制点的序号），其余点保持该键现有形状；旋转变形器不适用 |
+| `to`（reset） | `default`（缺省）：`along` 中的参数取默认值时的形状；`rest`：仅网格，未变形的网格 |
+| `along`（reset） | 与 `to: default` 合用：取默认值的参数，缺省为键的全部参数 |
+| `parameter`（interpolate） | 沿哪条轴补间；缺省为键恰好夹在两个键之间的那条轴，有多条时必须给出。按位置在两侧相邻键的形状之间线性插值 |
+| `from`（paste） | 来源键；来源缺少的轴取默认值，形状按该处插值读取 |
+| `destination`（paste） | 同类且点数相同的目标，缺省为 `target`；网格粘贴各点相对原形的位移，Warp 与旋转变形器粘贴形状本身 |
 
 `path_get / path_list / path_preview / path_put / path_delete / path_deform` 点使用 Mesh 局部坐标，支持只读查询、预览、绑定和烘焙关键形。路径是编辑辅助，兼容性见[变形路径](../guide/DEFORM_PATHS.md)。
 

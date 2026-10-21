@@ -1283,6 +1283,8 @@ All keyforms are made in Deform mode: set a parameter to a key, then change the 
 - A warp deformer can switch between the **Vertices** and **Bezier** edit levels; for a rotation deformer, drag the origin and the endpoint.
 - **Precise Transform** in **Tool Details** moves, scales and rotates the selected points by numeric values; see [[edit-vertices]].
 - The canvas right-click menu **Mirror keyform** mirrors a finished side to the other; see [[motion-mirroring]].
+- The canvas right-click menu **Keyform** copies, pastes, resets or interpolates the shape at the current key; see [[copy-and-blend-shape]].
+- With **Soft selection** on ({key:SOFT_SELECTION_TOGGLE}), dragging or transforming selected points also moves the points around them, less the further away they are; set the reach in the tool options bar or with {key:BRUSH_RADIUS_DOWN} / {key:BRUSH_RADIUS_UP}. The falloff curve is shared with the deform brush, and the affected points are ringed in red.
 *> Changing the mesh structure (adding points, cutting) happens in Edit mode, separate from changing shapes; for everyday shape correction stay in Deform mode. When you edit a keyform owned by a generator, the change is recorded as a generated override and survives regeneration; see [[generated-overrides]].
 
 @@ keyform-parent-chilid-relation | Keyforms (Parent-Child Hierarchy Movement)
@@ -1304,6 +1306,22 @@ When an object is bound to two parameters at once (such as Angle X and Angle Y),
 *> The shapes of the four diagonals have to be made one by one; PSD2Live does not synthesize them automatically as Cubism does.
 
 @@ copy-and-blend-shape | Edit Form
+The **Keyform** submenu of the Deform mode canvas right-click menu copies the shape at one key to another key or to another object of the same kind, resets a key to its default shape, or interpolates a middle key from the keys on either side. The result is written as ordinary keyforms and can be undone.
+## How to use
+1. Select the object in Deform mode and set the parameters onto one of its keys.
+2. Choose an operation in the canvas right-click menu **Keyform**, or use the shortcuts below.
+| Action | Shortcut | What it does |
+|---|---|---|
+| Copy keyform | {key:KEYFORM_COPY} | Remembers the shape the object shows at the current parameters |
+| Paste keyform | {key:KEYFORM_PASTE} | Writes the copied shape onto the current key; it can also go to an object of the same kind with the same number of points, meshes taking each point's move from its rest |
+| Reset to the default-key shape | {key:KEYFORM_RESET} | Puts the current key back to the shape at the parameters' defaults |
+| Reset to the mesh rest shape | — | Meshes only: puts the current key back to the undeformed mesh |
+| Interpolate from neighbouring keys of (parameter) | {key:KEYFORM_INTERPOLATE} | Remakes the current key from the keys on either side along that parameter; with several such parameters the menu lists each |
+- With points selected, paste, reset and interpolate change only those points, and the menu rows show how many; a Warp at the Bezier level and a rotation deformer are always handled whole.
+- Paste reads the source key's shape as it is when pasting.
+- On keyforms a generator owns the result is recorded as a generated override like any edit; see [[generated-overrides]].
+*> Unlike Cubism there is no blended paste by ratio and no paste special; flip left and right with [[motion-mirroring]].
+
 @@ paste-form-special | Paste Form Special
 @@ confirm-target-for-pasting-multiple-forms | Where to apply form pasting
 @@ synthesize-corners | Automatic Generation of Four Corner Forms
