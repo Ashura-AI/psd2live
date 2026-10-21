@@ -21,10 +21,21 @@ interface WorkspaceStatePort {
     fun hasUnsavedChanges(): Boolean
 }
 
+/**
+ * An editor draft as submitted: the [document] the editor shows, the runtime document [origin] its untouched fields
+ * mirror (the last commit it was shown, null when unknown), and the settings it yielded to another author's commit
+ * during its session ([yieldedSettings]), which keep the runtime's value when its settings switches replay.
+ */
+data class WorkspaceEditorDraft(
+    val document: WorkspaceDocument,
+    val origin: WorkspaceDocument? = null,
+    val yieldedSettings: Set<String> = emptySet(),
+)
+
 interface WorkspaceEditorDraftPort {
     suspend fun previewEditorSettingsDraft(projectId: String, state: String, changes: List<JsonObject>): RigPreviewModel
-    /** [document] is the editor's draft as it shows it; only [changes] are committed, the rest carries later drafts. */
-    fun submitEditorSettingsDraft(projectId: String, state: String, document: WorkspaceDocument, changes: List<JsonObject>,
+    /** [draft] is the editor's draft as it shows it; only [changes] are committed, the rest carries later drafts. */
+    fun submitEditorSettingsDraft(projectId: String, state: String, draft: WorkspaceEditorDraft, changes: List<JsonObject>,
                                   summary: String, author: MutationAuthor): Deferred<WorkspaceMutationResult>
     /** Build a transient field preview from the captured committed rig, using the same preparation as submission. */
     suspend fun previewEditorDraft(projectId: String, state: String, document: WorkspaceDocument,
@@ -33,7 +44,7 @@ interface WorkspaceEditorDraftPort {
      * [settingsIntents] are the settings switches made during the field session, in order. They replay through the
      * same intent as settings_update, so their links and authored-pose releases land with the draft in one commit.
      */
-    fun submitEditorDraft(projectId: String, state: String, document: WorkspaceDocument, settingsIntents: List<JsonObject>,
+    fun submitEditorDraft(projectId: String, state: String, draft: WorkspaceEditorDraft, settingsIntents: List<JsonObject>,
                           summary: String, author: MutationAuthor): Deferred<WorkspaceMutationResult>
     suspend fun awaitEditorDrafts()
     /** Advance an action only through this editor queue's own successful commits. */

@@ -54,7 +54,7 @@ class EditorDraftRebaseTest {
         assertEquals(listOf("rigEdits"), WorkspaceDraftRebase.rebase(start, rewritten, start.journal("agent")).conflicts)
     }
 
-    @Test fun aQueuedDraftFollowsAnotherAuthorsCommitAndConflictsOnlyOnTheSameField() = runBlocking {
+    @Test fun aQueuedDraftFollowsAnotherAuthorsCommitAndYieldsOnlyTheFieldBothChanged() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         try {
             val runtime = WorkspaceRuntime<String>({ it.settings.toString() })
@@ -79,10 +79,43 @@ class EditorDraftRebaseTest {
             assertEquals(base.setting("texturePadding", 5).setting("alphaThreshold", 30), runtime.capture().document)
             assertEquals(listOf("Agent edit", "Editor edit"), runtime.history().selections.drop(1).map { it.node.summary })
 
-            val refused = draftAround({ it.setting("texturePadding", 9) }, { it.setting("texturePadding", 11) })
-            assertFailsWith<WorkspaceConflict> { refused.await() }
+            // Both changed texturePadding: the agent's value stays, the draft's other field still lands.
+            val yielded = mutableListOf<String>()
+            val before = runtime.capture()
+            val gate = CompletableDeferred<Unit>()
+            val partial = queue.submit("project", before.state, before.document.setting("texturePadding", 9).hidden(layers[0]),
+                "Editor edit", MutationAuthor.USER, yielded = { yielded += it },
+                beforeCommit = { _, _, _ -> }, prepare = { start, _, candidate -> gate.await(); start.copy(document = candidate) })
+            external(before.document.setting("texturePadding", 11))
+            gate.complete(Unit)
+            partial.await()
             assertEquals(11, runtime.capture().document.settings["texturePadding"]?.jsonPrimitive?.int)
+            assertEquals(false, runtime.capture().document.layerVisibility[layers[0]])
+            assertEquals(listOf("settings.texturePadding"), yielded)
+        } finally { scope.cancel() }
+    }
+
+    /**
+     * The editor shows a commit before the runtime publishes its state, so a draft can be submitted on the state
+     * before that commit while already mirroring it. Its origin, the commit it was shown, carries it.
+     */
+    @Test fun aDraftReadBeforeItsCommitsStateWasPublishedFollowsTheCommitItWasShown() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val runtime = WorkspaceRuntime<String>({ it.settings.toString() })
+            runtime.install(runtime.state.value.state, "project", base, "initial")
+            val queue = WorkspaceDraftQueue(runtime, scope)
+            val stale = runtime.capture().state
+            val shown = base.setting("alphaThreshold", 30)
+            runtime.execute("project", stale, "Agent edit", MutationAuthor.AGENT, listOf(WorkspaceDocumentEdit { _, _ -> shown }))
+            val draft = shown.setting("texturePadding", 5)
+            // Without its origin the draft cannot tell its own fields from the agent's and is refused.
+            assertFailsWith<WorkspaceConflict> {
+                queue.submit("project", stale, draft, "Editor edit", MutationAuthor.USER, beforeCommit = { _, _, _ -> }).await()
+            }
             queue.forgetRejected()
+            queue.submit("project", stale, draft, "Editor edit", MutationAuthor.USER, origin = shown, beforeCommit = { _, _, _ -> }).await()
+            assertEquals(draft, runtime.capture().document)
         } finally { scope.cancel() }
     }
 }

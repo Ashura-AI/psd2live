@@ -157,6 +157,8 @@ internal class DesktopPresentation(private val viewModel: PSD2LiveViewModel) : W
                       status: String, restoreCheckedOutPose: Boolean) =
         viewModel.showWorkspaceCommit(preview, base, next, status, view.projectId, view.projectOpenGeneration, restoreCheckedOutPose)
 
+    override fun draftYielded(view: PSD2LiveState, fields: List<String>) = viewModel.reportDraftYielded(view, fields)
+
     override fun historyChanged(history: WorkspaceHistorySnapshot) = viewModel.updateHistorySnapshot(history)
     override fun shownHistoryHead(): String? = viewModel.state.value.historySnapshot?.headNodeId
     override fun modelPublished(model: RigPreviewModel) { viewModel.refreshWorkspaceRenderer(model) }
@@ -179,7 +181,7 @@ internal class DesktopPresentation(private val viewModel: PSD2LiveViewModel) : W
         viewModel.installSavedProjectData(view, before, next)
     }
     override fun auxiliaryChanged() = viewModel.markProjectAuxiliaryChanged()
-    override fun discardDrafts() { viewModel.discardUncommittedTextureEdits() }
+    override fun discardDrafts() { viewModel.discardUncommittedTextureEdits(); viewModel.discardEditorSessionDrafts() }
 
     override fun sourceInstalled(view: PSD2LiveState, document: WorkspaceDocument, preview: RigPreviewModel, path: Path?, projectId: String) =
         viewModel.applySourceImport(view, document, preview, path, projectId)

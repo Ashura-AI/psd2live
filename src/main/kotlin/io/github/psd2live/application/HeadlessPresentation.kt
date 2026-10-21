@@ -59,6 +59,7 @@ internal class HeadlessPresentation(
     override fun show(view: View, preview: RigPreviewModel, base: WorkspaceDocument?, next: WorkspaceDocument, status: String,
                       restoreCheckedOutPose: Boolean) = Unit
 
+    override fun draftYielded(view: View, fields: List<String>) = Unit
     override fun historyChanged(history: WorkspaceHistorySnapshot) = Unit
     override fun shownHistoryHead(): String? = null
     override fun modelPublished(model: RigPreviewModel) = Unit

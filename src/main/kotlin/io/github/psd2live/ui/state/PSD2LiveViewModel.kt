@@ -2538,6 +2538,12 @@ class PSD2LiveViewModel : AutoCloseable {
     /** Settings switches made while a field session is open; the draft replays them through the settings intent. */
     private val editorSettingsIntents = mutableListOf<kotlinx.serialization.json.JsonObject>()
     private var editorDraftHasDocumentEdits = false
+    /** Settings the open session's draft gave up to another author's commit; they keep that value when it commits. */
+    private val editorYieldedSettings = mutableSetOf<String>()
+    /** Settings that commits changed while the open session held settings switches to replay. */
+    private val editorTouchedSettings = mutableSetOf<String>()
+    /** The last commit shown, by project load: the runtime document the editor's untouched fields mirror. */
+    private var shownDocument: Pair<Long, io.github.psd2live.project.WorkspaceDocument>? = null
     private val editorSettingsEffects = mutableListOf<suspend () -> Unit>()
 
     private fun beginEditorSession(token: String) {
@@ -2820,32 +2826,40 @@ class PSD2LiveViewModel : AutoCloseable {
     }
 
     private fun commitEditorChange(summary: String? = null): kotlinx.coroutines.Deferred<WorkspaceMutationResult>? {
-        val intents = synchronized(stateLock) { editorSettingsIntents.toList().also { editorSettingsIntents.clear() } }
+        val (intents, yieldedKeys) = synchronized(stateLock) {
+            (editorSettingsIntents.toList() to editorYieldedSettings.toSet()).also { editorSettingsIntents.clear(); editorYieldedSettings.clear() }
+        }
+        val touched = synchronized(stateLock) { editorTouchedSettings.toSet().also { editorTouchedSettings.clear() } }
         val settingsOnly = !editorDraftHasDocumentEdits && intents.isNotEmpty()
         editorDraftHasDocumentEdits = false
         val effects = synchronized(stateLock) { editorSettingsEffects.toList().also { editorSettingsEffects.clear() } }
         val backend = workspaceBackend ?: return null
         val workspace: io.github.psd2live.application.WorkspaceEditorDraftPort = backend
-        val (current, document, expected) = synchronized(stateLock) {
+        val (current, draft, expected) = synchronized(stateLock) {
             val captured = _state.value
             if (captured.analysis == null) return null
-            val draft = WorkspaceStateCodec.document(captured)
-            // Every commit is shown under this lock before the runtime publishes it, so the state read after the
-            // draft is the one the draft's untouched fields mirror, or an older one the queue rebases from.
+            val document = WorkspaceStateCodec.document(captured)
+            // The draft's untouched fields mirror the last commit shown here. The runtime publishes a commit's state
+            // only after showing it, so the state read now may be older than that commit; the queue then carries
+            // the draft from origin onto it.
+            val origin = shownDocument?.takeIf { it.first == captured.projectOpenGeneration }?.second
             val expected = backend.snapshot()
             if (!expected.loaded || expected.projectId == null) return null
             // A switch turned off and back on leaves the document as it was but still released poses.
-            if (intents.isEmpty() && !captured.editorDraftBusy &&
-                io.github.psd2live.project.WorkspaceRevisions.of(draft) == expected.revisionId) return null
+            if (intents.isEmpty() && !captured.editorDraftBusy && (document == origin ||
+                io.github.psd2live.project.WorkspaceRevisions.of(document) == expected.revisionId)) return null
             // The draft's commit checks the state still holds this document and installs its own model. A local
             // preview rebuild in flight would write rigEdits/atlasSize in between, so it is superseded here.
             previewRebuildToken++
             previewRebuildJob?.cancel()
-            Triple(captured, draft, expected)
+            // A setting another author's commit changed during the session, and the editor has not changed since,
+            // keeps that value even where a switch replayed with the draft would derive another.
+            val yielded = yieldedKeys + touched.filter { key -> origin != null && document.settings[key] == origin.settings[key] }
+            Triple(captured, io.github.psd2live.application.WorkspaceEditorDraft(document, origin, yielded), expected)
         }
-        val result = if (settingsOnly) workspace.submitEditorSettingsDraft(expected.projectId!!, expected.state!!, document, intents,
+        val result = if (settingsOnly) workspace.submitEditorSettingsDraft(expected.projectId!!, expected.state!!, draft, intents,
             summary ?: "Updated model presets", MutationAuthor.USER)
-        else workspace.submitEditorDraft(expected.projectId!!, expected.state!!, document, intents,
+        else workspace.submitEditorDraft(expected.projectId!!, expected.state!!, draft, intents,
             summary ?: "Workspace changed in the editor", MutationAuthor.USER)
         synchronized(stateLock) {
             editorDraftCount++
@@ -7325,12 +7339,20 @@ class PSD2LiveViewModel : AutoCloseable {
 	) {
 		var applied = false
 		var drafted = false
+		var discarded = false
 		updateState { current ->
 			applied = false
 			if (current.projectId != expectedProjectId || current.projectOpenGeneration != expectedProjectOpenGeneration) return@updateState current
-			val rebased = if (base == null || current.analysis == null) io.github.psd2live.application.WorkspaceDraftRebase.Result(next, emptyList())
-				else io.github.psd2live.application.WorkspaceDraftRebase.rebase(base, WorkspaceStateCodec.document(current), next)
+			val draft = current.analysis?.let { WorkspaceStateCodec.document(current) }
+			val rebased = if (base == null || draft == null) io.github.psd2live.application.WorkspaceDraftRebase.Result(next, emptyList())
+				else io.github.psd2live.application.WorkspaceDraftRebase.rebase(base, draft, next)
+			// Replacing the document (a history checkout) discards whatever the editor still drafted over it.
+			val mirrored = shownDocument?.takeIf { it.first == current.projectOpenGeneration }?.second
+			discarded = base == null && draft != null && mirrored != null && draft != mirrored
 			val shown = rebased.document
+			shownDocument = current.projectOpenGeneration to next
+			if (base != null && editorSettingsIntents.isNotEmpty())
+				(base.settings.keys + next.settings.keys).filterTo(editorTouchedSettings) { base.settings[it] != next.settings[it] }
 			applied = true
 			drafted = shown != next
 			dropSettingsIntents(rebased.conflicts.mapNotNullTo(HashSet()) { it.removePrefix("settings.").takeIf { key -> key != it } })
@@ -7383,8 +7405,12 @@ class PSD2LiveViewModel : AutoCloseable {
 				statusText = status,
 				errorMessage = null,
 			).let { shownState ->
-				if (rebased.clean) shownState else shownState.withLog(level = LogLevel.WARNING, tag = "Workspace",
-					message = tr("log.editorDraftConflict", rebased.conflicts.joinToString(", ")))
+				when {
+					discarded -> shownState.withLog(level = LogLevel.WARNING, tag = "Workspace", message = tr("log.editorDraftDiscarded"))
+					rebased.clean -> shownState
+					else -> shownState.withLog(level = LogLevel.WARNING, tag = "Workspace",
+						message = tr("log.editorDraftConflict", rebased.conflicts.joinToString(", ")))
+				}
 			}
 		}
 		if (applied) {
@@ -7395,13 +7421,30 @@ class PSD2LiveViewModel : AutoCloseable {
 		if (drafted) schedulePreviewRebuild()
 	}
 
-	/** The settings switches of an open session that a commit has overridden no longer replay with its draft. */
+	/**
+	 * The settings switches of an open session that a commit has overridden no longer replay with its draft, and the
+	 * keys keep the commit's value when the draft lands, also where a remaining switch would derive them.
+	 */
 	private fun dropSettingsIntents(keys: Set<String>) {
 		if (keys.isEmpty()) return
 		synchronized(stateLock) {
 			val kept = editorSettingsIntents.mapNotNull { intent -> kotlinx.serialization.json.JsonObject(intent - keys).takeIf { it.isNotEmpty() } }
 			editorSettingsIntents.clear(); editorSettingsIntents.addAll(kept)
+			editorYieldedSettings.addAll(keys)
 		}
+	}
+
+	/** A queued draft gave up [fields] to another author's commit; the editor shows that commit's values. */
+	internal fun reportDraftYielded(view: PSD2LiveState, fields: List<String>) = updateState { current ->
+		if (current.projectId != view.projectId || current.projectOpenGeneration != view.projectOpenGeneration) current
+		else current.withLog(level = LogLevel.WARNING, tag = "Workspace", message = tr("log.editorDraftConflict", fields.joinToString(", ")))
+	}
+
+	/** Ends what the open editor sessions still held: a replaced document (a checkout, a project load) discards it. */
+	internal fun discardEditorSessionDrafts() = synchronized(stateLock) {
+		editorSettingsIntents.clear(); editorSettingsEffects.clear(); editorYieldedSettings.clear(); editorTouchedSettings.clear()
+		editorDraftHasDocumentEdits = false
+		pendingRigEdits.clear()
 	}
 
 	internal fun refreshWorkspaceRenderer(preview: RigPreviewModel) = synchronized(stateLock) {

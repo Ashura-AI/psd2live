@@ -689,23 +689,26 @@ internal class WorkspaceHost<V>(
     }
 
     /** Completed GUI drafts use the same candidate/rebuild/CAS boundary as application commands. */
-    override fun submitEditorDraft(projectId: String, state: String, document: WorkspaceDocument,
+    override fun submitEditorDraft(projectId: String, state: String, draft: WorkspaceEditorDraft,
                                    settingsIntents: List<kotlinx.serialization.json.JsonObject>,
                                    summary: String, author: MutationAuthor): kotlinx.coroutines.Deferred<WorkspaceMutationResult> =
-        submitDraft(projectId, state, document, summary, author) { before, model, draft ->
+        submitDraft(projectId, state, draft, summary, author) { before, model, draft ->
             generationCommands.prepareEditorDraft(before, model, draft, settingsIntents)
         }
 
-    override fun submitEditorSettingsDraft(projectId: String, state: String, document: WorkspaceDocument, changes: List<JsonObject>,
+    override fun submitEditorSettingsDraft(projectId: String, state: String, draft: WorkspaceEditorDraft, changes: List<JsonObject>,
                                             summary: String, author: MutationAuthor): kotlinx.coroutines.Deferred<WorkspaceMutationResult> =
-        submitDraft(projectId, state, document, summary, author) { before, model, _ ->
+        submitDraft(projectId, state, draft, summary, author) { before, model, _ ->
             generationCommands.prepareSettingsDraft(before, model, changes)
         }
 
-    private fun submitDraft(projectId: String, state: String, document: WorkspaceDocument, summary: String, author: MutationAuthor,
+    private fun submitDraft(projectId: String, state: String, editorDraft: WorkspaceEditorDraft, summary: String, author: MutationAuthor,
                             prepare: suspend (WorkspaceDraft, io.github.psd2live.core.RigPreviewModel, WorkspaceDocument) -> WorkspaceDraft): kotlinx.coroutines.Deferred<WorkspaceMutationResult> {
         val expectedUi = presentation.current()
+        val document = editorDraft.document
         val submitted = draftQueue.submit(projectId, state, document, summary, author,
+            origin = editorDraft.origin, yieldedSettings = editorDraft.yieldedSettings,
+            yielded = { fields -> presentation.draftYielded(expectedUi, fields) },
             beforeCommit = { _, next, model ->
                 val current = presentation.current()
                 check(current.facts().projectId == expectedUi.facts().projectId &&

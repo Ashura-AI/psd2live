@@ -556,6 +556,47 @@ class SaveAndCloseTest {
         repeat(2) { vm.saveProjectNow(archive); assertFalse(vm.state.value.projectDirty) }
     }
 
+    /** Whether the editor shows exactly the runtime's document, with no field drafted over it. */
+    private fun showsTheRuntime(vm: PSD2LiveViewModel, workspace: DesktopWorkspace) =
+        WorkspaceRevisions.of(WorkspaceStateCodec.document(vm.state.value)) == workspace.snapshot().revisionId
+
+    private suspend fun idle(vm: PSD2LiveViewModel, workspace: DesktopWorkspace) {
+        workspace.awaitEditorDrafts()
+        withTimeout(20_000) { vm.state.first { !it.editorDraftBusy && !it.workspaceEditBusy && !it.canvasEditBusy } }
+    }
+
+    @Test fun aSettingYieldedInAFieldKeepsTheAgentsValueWhereASwitchWouldDeriveIt() = editor { vm, workspace ->
+        fun setting(key: String) = workspace.captureQueries().projectSettings().getValue(key).jsonPrimitive.boolean
+        assertTrue(setting("generateDeformers"))
+        vm.beginEditorField("probe-mesh-only")
+        // Mesh-only derives generateDeformers=false; the agent sets that key itself meanwhile.
+        vm.setMeshOnly(true)
+        workspace.updateProjectSettings(workspace.stateToken()!!, buildJsonObject { put("generateDeformers", false) })
+        workspace.updateProjectSettings(workspace.stateToken()!!, buildJsonObject { put("generateDeformers", true) })
+        vm.endEditorField("probe-mesh-only")
+        idle(vm, workspace)
+        assertTrue(setting("meshOnly"), "the switch made in the field was lost")
+        assertTrue(setting("generateDeformers"), "replaying the switch overwrote the agent's value")
+        assertTrue(showsTheRuntime(vm, workspace))
+    }
+
+    @Test fun aCheckoutDiscardingAFieldWarnsAndForgetsItsSwitches() = editor { vm, workspace ->
+        val root = workspace.snapshot().historyHeadNodeId!!
+        workspace.updateParameter(WorkspaceUpdateParameterRequest("ParamAngleX", workspace.stateToken()!!, name = "Renamed axis"))
+        val thickness = vm.state.value.mouthThickness
+        vm.beginEditorField("probe-thickness")
+        vm.setMouthThickness(thickness + 2f)
+        workspace.checkoutHistory(root, MutationAuthor.AGENT)
+        assertEquals(thickness, vm.state.value.mouthThickness)
+        assertTrue(vm.state.value.logEntries.any { it.message == io.github.psd2live.i18n.tr("log.editorDraftDiscarded") },
+            "discarding the field's draft was not reported")
+        val head = workspace.snapshot().historyHeadNodeId
+        vm.endEditorField("probe-thickness")
+        idle(vm, workspace)
+        assertEquals(head, workspace.snapshot().historyHeadNodeId, "the discarded switch replayed onto the checked-out version")
+        assertTrue(showsTheRuntime(vm, workspace))
+    }
+
     @Test fun failuresBeforeArchiveCaptureAreReportedAndRetryCanSucceed() = editor { vm, workspace ->
         val fail = AtomicBoolean(true)
         vm.attachWorkspace(object : WorkspaceBackend by workspace {

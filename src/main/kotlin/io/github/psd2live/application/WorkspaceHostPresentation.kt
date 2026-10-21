@@ -55,6 +55,9 @@ internal interface WorkspaceHostPresentation<V> {
     fun show(view: V, preview: RigPreviewModel, base: WorkspaceDocument?, next: WorkspaceDocument, status: String,
              restoreCheckedOutPose: Boolean = false)
 
+    /** A draft of [view]'s editor gave up [fields] to another author's commit that changed them too. */
+    fun draftYielded(view: V, fields: List<String>)
+
     fun historyChanged(history: WorkspaceHistorySnapshot)
 
     /** The history head the presentation shows, to repair one left behind by a failed notification. */
