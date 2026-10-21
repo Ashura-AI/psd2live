@@ -91,6 +91,7 @@ import io.github.psd2live.ui.tutorial.tutorialTarget
 import io.github.psd2live.ui.views.BrushShapeIcon
 import io.github.psd2live.ui.views.GlueSubToolIcon
 import io.github.psd2live.ui.views.PaintShapeIcon
+import io.github.psd2live.ui.views.PaintSelectShapeIcon
 import io.github.psd2live.ui.views.SkeletonEditSubToolIcon
 import io.github.psd2live.ui.views.SkeletonPoseSubToolIcon
 import io.github.psd2live.ui.views.VertexGroupKindIcon
@@ -458,6 +459,7 @@ private fun <T> MenuChoiceRadios(editor: CanvasEditor, option: ChoiceOption<T>) 
 
 /** Whether [choice] has a drawing of its own: the variants of the tools, and the falloff curves. */
 private fun choiceHasIcon(choice: Any?): Boolean = choice is BrushShape || choice is PaintShape || choice is GlueSubTool ||
+    choice is io.github.psd2live.ui.PaintSelectShape ||
     choice is SkeletonEditSubTool || choice is SkeletonPoseSubTool || choice is VertexGroupKind || choice is BrushFalloff
 
 @Composable
@@ -465,6 +467,7 @@ private fun ChoiceIcon(choice: Any?, tint: Color) {
     when (choice) {
         is BrushShape -> BrushShapeIcon(choice, tint)
         is PaintShape -> PaintShapeIcon(choice, tint)
+        is io.github.psd2live.ui.PaintSelectShape -> PaintSelectShapeIcon(choice, tint)
         is GlueSubTool -> GlueSubToolIcon(choice, tint)
         is SkeletonEditSubTool -> SkeletonEditSubToolIcon(choice, tint)
         is SkeletonPoseSubTool -> SkeletonPoseSubToolIcon(choice, tint)

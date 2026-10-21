@@ -2057,6 +2057,7 @@ internal fun BoxScope.CanvasToolBar(
                             brushShape = if (tool == CanvasTool.BRUSH || tool == CanvasTool.WEIGHT_PAINT) editor.brushShape else null,
                             paintShape = if (tool == CanvasTool.PAINT_SHAPE) editor.paintShape else null,
                             skeletonEditSubTool = if (tool == CanvasTool.SKELETON_EDIT) editor.skeletonEditSubTool else null,
+                            paintSelectShape = if (tool == CanvasTool.PAINT_SELECT) editor.paintSelectShape else null,
                         )
                     },
                     onClick = {
@@ -2093,6 +2094,10 @@ internal fun BoxScope.CanvasToolBar(
         RailVariants(editor.hierarchyMode == EditHierarchyMode.PAINT && editor.tool == CanvasTool.PAINT_SHAPE, PaintShape.entries,
             { editor.paintShape == it }, { tr(it.labelKey) }, { color, shape -> PaintShapeIcon(shape = shape, color = color) },
             keys = { keymap.labelFor(PaintShape.entries[it].action).orEmpty() }) { shape -> editor.selectPaintShape(shape); focus() }
+        // The selection tool's faces, under it the same way, on the number keys.
+        RailVariants(editor.hierarchyMode == EditHierarchyMode.PAINT && editor.tool == CanvasTool.PAINT_SELECT, PaintSelectShape.entries,
+            { editor.paintSelectShape == it }, { tr(it.labelKey) }, { color, shape -> PaintSelectShapeIcon(shape = shape, color = color) },
+            keys = { pickKey(keymap, it) }) { shape -> editor.paintSelectShape = shape; focus() }
         // Picking a group kind is picking which group of the mesh the weight strokes write.
         RailVariants(editor.hierarchyMode == EditHierarchyMode.SIMULATE, PAINTED_GROUP_KINDS, { editor.weightGroupKind == it },
             { tr("sim.group.${it.jsonName}") }, { _, kind -> VertexGroupKindIcon(kind = kind, color = vertexGroupKindColor(kind)) },
@@ -2854,6 +2859,91 @@ private fun SkeletonPoseLayer(editor: CanvasEditor, viewport: CanvasViewport, pa
     }
 }
 
+/** Each selection outline as one path in canvas units, traced while that outline is the session's. */
+private val selectionPathCache = java.util.WeakHashMap<FloatArray, Pair<io.github.psd2live.project.LayerTransform, androidx.compose.ui.graphics.Path>>()
+
+/**
+ * The paint selection and the drafts of the tools that make one: the marching ants around what is selected, the
+ * box, ellipse or lasso being drawn, the gradient being dragged and the axes a mirrored stroke is painted across.
+ */
+private fun DrawScope.drawPaintSelectionOverlays(editor: CanvasEditor, viewport: CanvasViewport, colors: ToolColors) {
+    val session = editor.paintSession
+    val scale = viewport.scale.toFloat()
+    fun screen(p: Offset) = Offset(viewport.x(p.x).toFloat(), (viewport.offsetY + p.y * viewport.scale).toFloat())
+    val dash = PathEffect.dashPathEffect(floatArrayOf(4f, 4f))
+    val offset = PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 4f)
+    // Two dashes out of step, black and white, read on any artwork.
+    fun ants(path: androidx.compose.ui.graphics.Path) {
+        drawPath(path, Color.Black.copy(alpha = 0.8f), style = Stroke(1f, pathEffect = dash))
+        drawPath(path, Color.White.copy(alpha = 0.9f), style = Stroke(1f, pathEffect = offset))
+    }
+    if (session != null) {
+        val outline = session.selectionOutline
+        if (outline.isNotEmpty()) {
+            val frame = session.frame
+            val cached = selectionPathCache[outline]?.takeIf { it.first == frame }?.second ?: androidx.compose.ui.graphics.Path().also { path ->
+                // Raster pixels to canvas units, through the layer's own transform: the outline as the canvas shows it.
+                for (i in outline.indices step 4) {
+                    val x0 = session.originX + outline[i] / session.scaleX; val y0 = session.originY + outline[i + 1] / session.scaleY
+                    val x1 = session.originX + outline[i + 2] / session.scaleX; val y1 = session.originY + outline[i + 3] / session.scaleY
+                    path.moveTo(frame.x(x0, y0), frame.y(x0, y0))
+                    path.lineTo(frame.x(x1, y1), frame.y(x1, y1))
+                }
+                selectionPathCache[outline] = frame to path
+            }
+            val shown = androidx.compose.ui.graphics.Path().apply {
+                addPath(cached)
+                transform(androidx.compose.ui.graphics.Matrix().apply {
+                    this[0, 0] = scale; this[1, 1] = scale
+                    this[3, 0] = viewport.offsetX.toFloat(); this[3, 1] = viewport.offsetY.toFloat()
+                })
+            }
+            ants(shown)
+        }
+        // The mirror axes run through the middle of the canvas.
+        val symmetry = editor.paintSymmetry
+        if (editor.paintBrushActive && symmetry != io.github.psd2live.core.PaintSymmetry.OFF) {
+            val guide = colors.accent.copy(alpha = 0.55f)
+            val w = session.canvasWidth.toFloat(); val h = session.canvasHeight.toFloat()
+            if (symmetry.vertical) drawLine(guide, screen(Offset(w / 2f, 0f)), screen(Offset(w / 2f, h)), 1f, pathEffect = dash)
+            if (symmetry.horizontal) drawLine(guide, screen(Offset(0f, h / 2f)), screen(Offset(w, h / 2f)), 1f, pathEffect = dash)
+        }
+    }
+    // The lasso or polygon being drawn; the polygon's last side follows the pointer until the next click.
+    val draft = editor.paintSelectDraft
+    if (draft.isNotEmpty()) {
+        val path = androidx.compose.ui.graphics.Path().apply {
+            val first = screen(draft.first())
+            moveTo(first.x, first.y)
+            draft.drop(1).forEach { val p = screen(it); lineTo(p.x, p.y) }
+            if (editor.paintSelectShape == PaintSelectShape.POLYGON) editor.cursor?.let { lineTo(it.x, it.y) }
+        }
+        ants(path)
+        if (editor.paintSelectShape == PaintSelectShape.POLYGON) drawCircle(colors.accent, 3f, screen(draft.first()))
+    }
+    val s = editor.paintStrokeStart
+    val c = editor.paintStrokeCurrent
+    if (editor.isPainting && s != null && c != null) when (editor.tool) {
+        CanvasTool.PAINT_SELECT -> if (editor.paintSelectShape == PaintSelectShape.RECTANGLE || editor.paintSelectShape == PaintSelectShape.ELLIPSE) {
+            val topLeft = Offset(minOf(s.x, c.x), minOf(s.y, c.y))
+            val size = Size(kotlin.math.abs(c.x - s.x), kotlin.math.abs(c.y - s.y))
+            val path = androidx.compose.ui.graphics.Path().apply {
+                if (editor.paintSelectShape == PaintSelectShape.RECTANGLE) addRect(androidx.compose.ui.geometry.Rect(topLeft, size))
+                else addOval(androidx.compose.ui.geometry.Rect(topLeft, size))
+            }
+            ants(path)
+        }
+        CanvasTool.PAINT_GRADIENT -> {
+            drawLine(Color.Black.copy(alpha = 0.7f), s, c, 3f, cap = StrokeCap.Round)
+            drawLine(Color.White.copy(alpha = 0.9f), s, c, 1.2f, cap = StrokeCap.Round)
+            drawCircle(editor.paintColor, 4f, s)
+            drawCircle(Color.Black.copy(alpha = 0.7f), 4f, s, style = Stroke(1f))
+            drawCircle(Color.Black.copy(alpha = 0.7f), 4f, c, style = Stroke(1f))
+        }
+        else -> Unit
+    }
+}
+
 /** [MeshTopology.uniqueEdges] of each index array the overlay draws, kept while that array is alive. */
 private val uniqueEdgeCache = java.util.WeakHashMap<IntArray, List<org.umamo.edit.MeshElement.Edge>>()
 
@@ -2874,6 +2964,7 @@ private val BezierHandleColor = Color(0xFFF2B84B)
  */
 internal fun DrawScope.drawPaintOverlays(editor: CanvasEditor, viewport: CanvasViewport, colors: ToolColors,
                                          textMeasurer: androidx.compose.ui.text.TextMeasurer) {
+    if (editor.hierarchyMode == EditHierarchyMode.PAINT) drawPaintSelectionOverlays(editor, viewport, colors)
     // 3c. Paint mode: live stroke & shape preview while dragging
     if (editor.hierarchyMode == EditHierarchyMode.PAINT && editor.isPainting) {
         val col = editor.paintColor.copy(alpha = editor.paintOpacity)

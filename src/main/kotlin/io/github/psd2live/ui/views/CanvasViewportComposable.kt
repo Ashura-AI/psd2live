@@ -811,6 +811,7 @@ fun CanvasViewportComposable(
 			ShortcutAction.FINISH_PATH -> {
 				when {
 					viewModel.swingSession != null -> { viewModel.commitSwing(); true }
+					editor.hierarchyMode == EditHierarchyMode.PAINT && editor.paintSelectDraft.isNotEmpty() -> editor.finishPaintPolygon()
 					editor.tool == CanvasTool.KNIFE -> { editor.finishKnife(); true }
 					editor.tool == CanvasTool.INTERIOR -> editor.interiorTool.finish()
 					editor.placement != null && editor.placement?.kind != CreatePlacementKind.PATH -> {
@@ -831,6 +832,7 @@ fun CanvasViewportComposable(
 				else if (editor.tool == CanvasTool.INTERIOR) editor.interiorTool.deleteSelection()
                         else if (editor.tool == CanvasTool.CREATE_DEFORM_PATH || editor.activePath != null) editor.deletePathPoint()
 				else if (editor.hierarchyMode == EditHierarchyMode.EDIT) editor.deleteMeshSelection()
+				else if (editor.hierarchyMode == EditHierarchyMode.PAINT) editor.deletePaintSelection()
 				true
 			}
 			ShortcutAction.TOOL_PAINT_BRUSH -> {
@@ -867,6 +869,12 @@ fun CanvasViewportComposable(
 				if (editor.hierarchyMode != EditHierarchyMode.PAINT) editor.setHierarchyMode(EditHierarchyMode.PAINT)
 				editor.selectPaintShape(PaintShape.ELLIPSE); true
 			}
+			ShortcutAction.TOOL_PAINT_SELECT, ShortcutAction.TOOL_PAINT_GRADIENT, ShortcutAction.TOOL_PAINT_BLUR -> {
+				if (editor.hierarchyMode != EditHierarchyMode.PAINT) editor.setHierarchyMode(EditHierarchyMode.PAINT)
+				editor.paintShortcut(action)
+			}
+			ShortcutAction.PAINT_DESELECT, ShortcutAction.PAINT_FILL_SELECTION, ShortcutAction.PAINT_RESET_COLORS,
+			ShortcutAction.PAINT_LOCK_ALPHA -> editor.hierarchyMode == EditHierarchyMode.PAINT && editor.paintShortcut(action)
 			ShortcutAction.PAINT_SHAPE_CYCLE -> {
 				if (editor.hierarchyMode != EditHierarchyMode.PAINT) editor.setHierarchyMode(EditHierarchyMode.PAINT)
 				editor.cyclePaintShape(); true

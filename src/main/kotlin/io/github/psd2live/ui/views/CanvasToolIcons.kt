@@ -19,6 +19,7 @@ import io.github.psd2live.ui.BrushShape
 import io.github.psd2live.ui.CanvasTool
 import io.github.psd2live.ui.EditHierarchyMode
 import io.github.psd2live.ui.GlueSubTool
+import io.github.psd2live.ui.PaintSelectShape
 import io.github.psd2live.ui.PaintShape
 import io.github.psd2live.ui.SkeletonEditSubTool
 import io.github.psd2live.ui.SkeletonPoseSubTool
@@ -51,8 +52,9 @@ internal fun ToolIcon(
     brushShape: BrushShape? = null,
     paintShape: PaintShape? = null,
     skeletonEditSubTool: SkeletonEditSubTool? = null,
+    paintSelectShape: PaintSelectShape? = null,
 ) {
-    Canvas(Modifier.size(18.dp)) { drawToolIcon(tool, color, brushShape, paintShape, skeletonEditSubTool) }
+    Canvas(Modifier.size(18.dp)) { drawToolIcon(tool, color, brushShape, paintShape, skeletonEditSubTool, paintSelectShape) }
 }
 
 /** The hierarchy mode bar's icons, one per mode, on the same grid as the tools. */
@@ -69,6 +71,11 @@ internal fun BrushShapeIcon(shape: BrushShape, color: Color, size: Dp = 14.dp) {
 @Composable
 internal fun PaintShapeIcon(shape: PaintShape, color: Color, size: Dp = 14.dp) {
     Canvas(Modifier.size(size)) { drawPaintShapeIcon(shape, color) }
+}
+
+@Composable
+internal fun PaintSelectShapeIcon(shape: PaintSelectShape, color: Color, size: Dp = 14.dp) {
+    Canvas(Modifier.size(size)) { IconPen(this, color).paintSelect(shape) }
 }
 
 @Composable
@@ -97,6 +104,7 @@ internal fun DrawScope.drawToolIcon(
     brushShape: BrushShape? = null,
     paintShape: PaintShape? = null,
     skeletonEditSubTool: SkeletonEditSubTool? = null,
+    paintSelectShape: PaintSelectShape? = null,
 ) {
     val pen = IconPen(this, color)
     when (tool) {
@@ -130,6 +138,9 @@ internal fun DrawScope.drawToolIcon(
         // The row carries the face in hand, the way the deform brush's row carries its footprint.
         CanvasTool.PAINT_SHAPE -> pen.paintShape(paintShape ?: PaintShape.LINE)
         CanvasTool.INTERIOR -> pen.interiorHandles()
+        CanvasTool.PAINT_SELECT -> pen.paintSelect(paintSelectShape ?: PaintSelectShape.RECTANGLE)
+        CanvasTool.PAINT_GRADIENT -> pen.paintGradient()
+        CanvasTool.PAINT_BLUR -> pen.blurDrop()
     }
 }
 
@@ -537,6 +548,46 @@ private fun IconPen.paintShape(shape: PaintShape) {
             scope.drawOval(color, p(2.2f, 4f), Size(13.6f * s, 10f * s), style = stroke())
     }
 }
+
+/** The selection tool's faces: marching-ant outlines, and the wand with its sparkle. */
+private fun IconPen.paintSelect(shape: PaintSelectShape) {
+    val ants = floatArrayOf(1.6f, 1.6f)
+    when (shape) {
+        PaintSelectShape.RECTANGLE -> box(2.6f, 3.6f, 12.8f, 10.8f, 0.4f, dash = ants)
+        PaintSelectShape.ELLIPSE -> ring(9f, 9f, 6.4f, dash = ants)
+        PaintSelectShape.LASSO -> lasso()
+        PaintSelectShape.POLYGON -> {
+            outline(path { m(3f, 13.8f); l(5.2f, 3.4f); l(14.6f, 5.6f); l(12.4f, 14.4f); z() }, dash = ants)
+            for ((x, y) in listOf(3f to 13.8f, 5.2f to 3.4f, 14.6f to 5.6f, 12.4f to 14.4f)) fillBox(x - 1.2f, y - 1.2f, 2.4f, 2.4f, 0.4f)
+        }
+        PaintSelectShape.WAND -> {
+            line(3f, 15f, 11f, 7f, width = 1.8f)
+            line(13f, 1.6f, 13f, 6.4f, width = 1.1f)
+            line(10.6f, 4f, 15.4f, 4f, width = 1.1f)
+            dot(16f, 9.6f, 0.9f)
+            dot(7.6f, 2.6f, 0.9f)
+        }
+    }
+}
+
+/** Gradient: a box whose fill fades from full to nothing across it. */
+private fun IconPen.paintGradient() {
+    val steps = 6
+    for (i in 0 until steps) {
+        fillBox(3f + i * 12f / steps, 4f, 12f / steps + 0.05f, 10f, 0f, tint = color.copy(alpha = color.alpha * (1f - (i + 0.5f) / steps)))
+    }
+    box(3f, 4f, 12f, 10f, 1f)
+}
+
+/** Blur: a drop of water. */
+private fun IconPen.blurDrop() = shape(path {
+    m(9f, 2f)
+    c(11.6f, 5.6f, 14.4f, 8.6f, 14.4f, 11.2f)
+    c(14.4f, 14.2f, 12f, 16.2f, 9f, 16.2f)
+    c(6f, 16.2f, 3.6f, 14.2f, 3.6f, 11.2f)
+    c(3.6f, 8.6f, 6.4f, 5.6f, 9f, 2f)
+    z()
+})
 
 /** What each kind of vertex group does to a simulated mesh, drawn on the tool grid. */
 @Composable

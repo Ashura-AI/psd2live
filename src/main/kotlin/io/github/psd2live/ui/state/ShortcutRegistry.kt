@@ -135,6 +135,9 @@ enum class ShortcutAction(
     TOOL_PAINT_RECT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_rect"),
     TOOL_PAINT_ELLIPSE(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_ellipse"),
     TOOL_INTERIOR(ShortcutCategory.CANVAS_TOOLS, "editor.tool.interior"),
+    TOOL_PAINT_SELECT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_select"),
+    TOOL_PAINT_GRADIENT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_gradient"),
+    TOOL_PAINT_BLUR(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_blur"),
     // The numbered choices of the mode or tool in hand: Deform's levels, otherwise the variants the toolbar
     // lists under the tool (brush tips, glue and skeleton sub-tools, the vertex group kinds, paint shapes).
     PICK_OPTION_1(ShortcutCategory.CANVAS_TOOLS, "shortcut.pickOption"),
@@ -169,6 +172,10 @@ enum class ShortcutAction(
     PAINT_SHAPE_CYCLE(ShortcutCategory.CANVAS_EDIT, "shortcut.paintShapeCycle"),
     PAINT_OPACITY_DOWN(ShortcutCategory.CANVAS_EDIT, "shortcut.paintOpacityDown"),
     PAINT_OPACITY_UP(ShortcutCategory.CANVAS_EDIT, "shortcut.paintOpacityUp"),
+    PAINT_DESELECT(ShortcutCategory.CANVAS_EDIT, "shortcut.paintDeselect"),
+    PAINT_FILL_SELECTION(ShortcutCategory.CANVAS_EDIT, "shortcut.paintFillSelection"),
+    PAINT_RESET_COLORS(ShortcutCategory.CANVAS_EDIT, "shortcut.paintResetColors"),
+    PAINT_LOCK_ALPHA(ShortcutCategory.CANVAS_EDIT, "shortcut.paintLockAlpha"),
     AXIS_CONSTRAIN_X(ShortcutCategory.CANVAS_EDIT, "shortcut.axisX"),
     AXIS_CONSTRAIN_Y(ShortcutCategory.CANVAS_EDIT, "shortcut.axisY"),
     FRAME_VIEW(ShortcutCategory.CANVAS_EDIT, "shortcut.frameView"),
@@ -320,6 +327,10 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.TOOL_PAINT_RECT to keys("Shift+R"),
     ShortcutAction.TOOL_PAINT_ELLIPSE to keys("Shift+O"),
     ShortcutAction.TOOL_INTERIOR to keys("Shift+I"),
+    // Photoshop's M, G and R belong to tools of the other modes here, so the paint tools take them with Alt.
+    ShortcutAction.TOOL_PAINT_SELECT to keys("Alt+M"),
+    ShortcutAction.TOOL_PAINT_GRADIENT to keys("Alt+G"),
+    ShortcutAction.TOOL_PAINT_BLUR to keys("Alt+J"),
     ShortcutAction.PICK_OPTION_1 to keys("1", "NumPad1"),
     ShortcutAction.PICK_OPTION_2 to keys("2", "NumPad2"),
     ShortcutAction.PICK_OPTION_3 to keys("3", "NumPad3"),
@@ -327,7 +338,7 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.PICK_OPTION_5 to keys("5", "NumPad5"),
 
     ShortcutAction.SELECT_ALL to keys("Ctrl+A"),
-    ShortcutAction.INVERT_SELECTION to keys("Ctrl+I"),
+    ShortcutAction.INVERT_SELECTION to keys("Ctrl+I", "Ctrl+Shift+I"),
     ShortcutAction.SELECTION_STYLE_BOX to keys("Q"),
     ShortcutAction.SELECTION_STYLE_LASSO to keys("Shift+Q"),
     ShortcutAction.SELECT_LINKED to keys("Shift+L"),
@@ -355,6 +366,11 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     // The paint tip's third parameter, on the same Shift pairing the Alt + drag gesture uses.
     ShortcutAction.PAINT_OPACITY_DOWN to keys("Alt+Shift+["),
     ShortcutAction.PAINT_OPACITY_UP to keys("Alt+Shift+]"),
+    // Photoshop's selection and fill keys; D is the deform path's, so the default colours take Alt+D.
+    ShortcutAction.PAINT_DESELECT to keys("Ctrl+D"),
+    ShortcutAction.PAINT_FILL_SELECTION to keys("Alt+Backspace", "Alt+Del"),
+    ShortcutAction.PAINT_RESET_COLORS to keys("Alt+D"),
+    ShortcutAction.PAINT_LOCK_ALPHA to keys("/"),
     ShortcutAction.AXIS_CONSTRAIN_X to keys("X"),
     ShortcutAction.AXIS_CONSTRAIN_Y to keys("Y"),
     ShortcutAction.FRAME_VIEW to keys("F"),

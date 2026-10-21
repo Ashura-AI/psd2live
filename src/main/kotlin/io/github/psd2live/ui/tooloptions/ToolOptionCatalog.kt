@@ -123,6 +123,40 @@ internal val PAINT_TOLERANCE = SliderOption("paint.tolerance", "editor.tolerance
 internal val PAINT_FILL = ChoiceOption("paint.fill", "editor.tool.paint_shape", { listOf(false, true) },
     { _, filled -> tr(if (filled) "editor.filled" else "editor.outline") }, { it.paintShapeFilled }, { e, f -> e.paintShapeFilled = f })
 
+// Painting assists, the selection, the gradient and the blur tip.
+
+internal val PAINT_STABILIZER = SliderOption("paint.stabilizer", "editor.paint.stabilizer", OptionUnit.COUNT,
+    { 0f..io.github.psd2live.core.PaintStabilizer.MAX_LEVEL.toFloat() }, { it.paintStabilizer.toFloat() },
+    { e, v -> e.paintStabilizer = v.toInt() }, step = 1f, integer = true)
+
+internal val PAINT_SYMMETRY = ChoiceOption("paint.symmetry", "editor.paint.symmetry", { io.github.psd2live.ui.PAINT_SYMMETRY_LABELS.map { it.first } },
+    { _, m -> tr(io.github.psd2live.ui.PAINT_SYMMETRY_LABELS.first { it.first == m }.second) }, { it.paintSymmetry },
+    { e, m -> e.paintSymmetry = m }, inline = false)
+
+internal val PAINT_LOCK_ALPHA = ToggleOption("paint.lockAlpha", "editor.paint.lockAlpha", { it.paintLockAlpha }, { e, on -> e.paintLockAlpha = on })
+
+internal val PAINT_CONTIGUOUS = ToggleOption("paint.contiguous", "editor.paint.contiguous", { it.paintContiguous }, { e, on -> e.paintContiguous = on })
+
+internal val PAINT_SELECT_KIND = ChoiceOption("variant.paintSelect", "editor.tool.paint_select", { io.github.psd2live.ui.PaintSelectShape.entries },
+    { _, s -> tr(s.labelKey) }, { it.paintSelectShape }, { e, s -> e.paintSelectShape = s }, variant = true, place = OptionPlace.MENU)
+
+internal val PAINT_SELECT_OP = ChoiceOption("paint.selectOp", "editor.paintSelect.op", { io.github.psd2live.ui.PAINT_SELECT_OP_LABELS.map { it.first } },
+    { _, op -> tr(io.github.psd2live.ui.PAINT_SELECT_OP_LABELS.first { it.first == op }.second) }, { it.paintSelectOp },
+    { e, op -> e.paintSelectOp = op }, inline = false)
+
+internal val PAINT_FEATHER = SliderOption("paint.feather", "editor.paintSelect.feather", OptionUnit.PX, { 1f..256f },
+    { it.paintFeather }, { e, v -> e.paintFeather = v }, logarithmic = true)
+
+internal val PAINT_GRADIENT_KIND = ChoiceOption("paint.gradientKind", "editor.paintGradient.kind", { listOf(false, true) },
+    { _, radial -> tr(if (radial) "editor.paintGradient.radial" else "editor.paintGradient.linear") }, { it.paintGradientRadial },
+    { e, radial -> e.paintGradientRadial = radial })
+
+internal val PAINT_GRADIENT_END = ChoiceOption("paint.gradientEnd", "editor.paintGradient.end", { io.github.psd2live.ui.PaintGradientEnd.entries },
+    { _, end -> tr(end.labelKey) }, { it.paintGradientEnd }, { e, end -> e.paintGradientEnd = end })
+
+internal val PAINT_BLUR_STRENGTH = SliderOption("paint.blurStrength", "editor.strength", OptionUnit.PERCENT, { 0.05f..1f },
+    { it.paintBlurStrength }, { e, v -> e.paintBlurStrength = v }, role = OptionRole.OPACITY)
+
 // ─── The catalog ────────────────────────────────────────────────────────────
 
 /** The options of the tool in hand on [editor], in bar order. Empty when the tool has nothing to set or do. */
@@ -249,6 +283,7 @@ internal fun CanvasEditor.pickVariant(n: Int): Boolean {
         tool == CanvasTool.SKELETON_EDIT -> pick(SkeletonEditSubTool.entries) { skeletonEditSubTool = it }
         tool == CanvasTool.SKELETON_POSE -> pick(SkeletonPoseSubTool.entries) { skeletonPoseSubTool = it }
         tool == CanvasTool.PAINT_SHAPE -> pick(io.github.psd2live.ui.PaintShape.entries) { selectPaintShape(it) }
+        tool == CanvasTool.PAINT_SELECT -> pick(io.github.psd2live.ui.PaintSelectShape.entries) { paintSelectShape = it }
         else -> false
     }
 }
@@ -536,6 +571,13 @@ private fun MutableList<ToolOption>.addSkeleton(editor: CanvasEditor) {
     }
 }
 
+/** What every stroke tool offers past its tip: the stabilizer, the mirror and - for the colour tips - lock transparency. */
+private fun MutableList<ToolOption>.addStrokeAssists(lockAlpha: Boolean) {
+    add(PAINT_STABILIZER)
+    add(PAINT_SYMMETRY)
+    if (lockAlpha) add(PAINT_LOCK_ALPHA)
+}
+
 private fun MutableList<ToolOption>.addPaint(editor: CanvasEditor) {
     // Paint mode cannot start without a layer, so until one is picked that is all the bar has to say.
     add(NoteOption("paint.layer", { if (it.paintSession == null) tr("editor.paintSelectLayerHint") else null }, warning = { true }))
@@ -544,20 +586,60 @@ private fun MutableList<ToolOption>.addPaint(editor: CanvasEditor) {
             add(PAINT_BRUSH_SIZE)
             add(PAINT_HARDNESS)
             add(PAINT_OPACITY)
+            addStrokeAssists(lockAlpha = true)
         }
         CanvasTool.PAINT_PENCIL -> {
             add(PAINT_BRUSH_SIZE)
             add(PAINT_OPACITY)
+            addStrokeAssists(lockAlpha = true)
         }
-        CanvasTool.PAINT_BUCKET -> add(PAINT_TOLERANCE)
+        CanvasTool.PAINT_BLUR -> {
+            add(PAINT_BRUSH_SIZE)
+            add(PAINT_HARDNESS)
+            add(PAINT_BLUR_STRENGTH)
+            addStrokeAssists(lockAlpha = false)
+        }
+        CanvasTool.PAINT_BUCKET -> {
+            add(PAINT_TOLERANCE)
+            add(PAINT_CONTIGUOUS)
+            add(PAINT_LOCK_ALPHA)
+        }
+        CanvasTool.PAINT_GRADIENT -> {
+            add(PAINT_GRADIENT_KIND)
+            add(PAINT_GRADIENT_END)
+            add(PAINT_OPACITY)
+            add(PAINT_LOCK_ALPHA)
+        }
         CanvasTool.PAINT_SHAPE -> {
             add(PAINT_SHAPE_KIND)
             add(PAINT_SHAPE_SIZE)
             add(PAINT_OPACITY)
             if (editor.paintShape.canFill) add(PAINT_FILL)
+            add(PAINT_LOCK_ALPHA)
+        }
+        CanvasTool.PAINT_SELECT -> {
+            add(PAINT_SELECT_KIND)
+            add(PAINT_SELECT_OP)
+            if (editor.paintSelectShape == io.github.psd2live.ui.PaintSelectShape.WAND) {
+                add(PAINT_TOLERANCE)
+                add(PAINT_CONTIGUOUS)
+            }
+            add(PAINT_FEATHER)
         }
         else -> Unit
     }
+    // The selection's commands, as Photoshop's Select menu has them; every tool lands through the selection.
+    add(SectionOption("paint.selection", "editor.paintSelect.section", OptionPlace.MENU))
+    val session: (CanvasEditor) -> Boolean = { it.paintSession != null }
+    add(ActionOption("paint.selectAll", "shortcut.selectAll", session, { it.selectAllPaint() }, OptionIcon.SELECT_ALL, place = OptionPlace.MENU))
+    add(ActionOption("paint.deselect", "editor.paintSelect.deselect", { it.paintHasSelection }, { it.deselectPaint() }, OptionIcon.DESELECT,
+        place = OptionPlace.MENU))
+    add(ActionOption("paint.invert", "editor.paintSelect.invert", session, { it.invertPaintSelection() }, OptionIcon.INVERT, place = OptionPlace.MENU))
+    add(ActionOption("paint.featherSelection", "editor.paintSelect.featherAction", { it.paintHasSelection }, { it.featherPaintSelection() },
+        labelArgs = { listOf(it.paintFeather.toInt()) }, place = OptionPlace.MENU))
+    add(ActionOption("paint.fillSelection", "editor.paintSelect.fill", session, { it.fillPaintSelection() }, OptionIcon.FILL, place = OptionPlace.MENU))
+    add(ActionOption("paint.deleteSelection", "editor.paintSelect.delete", { it.paintHasSelection }, { it.deletePaintSelection() },
+        OptionIcon.ERASE, danger = true, place = OptionPlace.MENU))
     add(SectionOption("paint.layerActions", "editor.paintTargetLayer", OptionPlace.MENU))
     add(ActionOption("paint.clear", "editor.paintClear", { it.paintSession != null }, { it.clearCurrentLayerPaint() }, OptionIcon.CLEAR,
         danger = true, place = OptionPlace.MENU))

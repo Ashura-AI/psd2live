@@ -133,6 +133,12 @@ internal enum class CanvasTool(val action: ShortcutAction) {
     PAINT_SHAPE(ShortcutAction.TOOL_PAINT_LINE),
     /** Edit-mode handles of the selected mesh's interior effect: its surface, propagation and guides ([InteriorCanvasTool]). */
     INTERIOR(ShortcutAction.TOOL_INTERIOR),
+    /** Marquee, lasso, polygon lasso and magic wand: one tool with a [paintSelectShape]. */
+    PAINT_SELECT(ShortcutAction.TOOL_PAINT_SELECT),
+    /** Drags a linear or radial gradient over the selection, or the whole layer. */
+    PAINT_GRADIENT(ShortcutAction.TOOL_PAINT_GRADIENT),
+    /** A tip that blurs what it passes over instead of painting. */
+    PAINT_BLUR(ShortcutAction.TOOL_PAINT_BLUR),
 }
 
 internal enum class SelectionStyle { BOX, LASSO }
@@ -283,11 +289,12 @@ internal val PAINT_TOOLS = setOf(
     CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER,
     CanvasTool.PAINT_BUCKET, CanvasTool.PAINT_EYEDROPPER,
     CanvasTool.PAINT_SHAPE,
+    CanvasTool.PAINT_SELECT, CanvasTool.PAINT_GRADIENT, CanvasTool.PAINT_BLUR,
 )
 
 /** The paint tools that stamp a tip: they are the ones with a size, a hardness and an opacity. */
 internal val PAINT_BRUSH_TOOLS = setOf(
-    CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER,
+    CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER, CanvasTool.PAINT_BLUR,
 )
 
 /** The topology actions the editor builds before sending, so a refusal reads as the op's own notice. */
@@ -315,9 +322,9 @@ internal val TOOLBAR_TOOL_ORDER = listOf(
     CanvasTool.MESH_POINT, CanvasTool.SUBDIVIDE, CanvasTool.KNIFE, CanvasTool.GLUE,
     CanvasTool.INTERIOR,
     CanvasTool.WEIGHT_PAINT, CanvasTool.WEIGHT_GRADIENT,
-    CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER,
-    CanvasTool.PAINT_BUCKET, CanvasTool.PAINT_EYEDROPPER,
-    CanvasTool.PAINT_SHAPE,
+    CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER, CanvasTool.PAINT_BLUR,
+    CanvasTool.PAINT_BUCKET, CanvasTool.PAINT_GRADIENT, CanvasTool.PAINT_EYEDROPPER,
+    CanvasTool.PAINT_SHAPE, CanvasTool.PAINT_SELECT,
     CanvasTool.CREATE_WARP, CanvasTool.CREATE_ROTATION, CanvasTool.CREATE_DEFORM_PATH,
 )
 
@@ -354,9 +361,9 @@ internal fun toolbarGroups(mode: EditHierarchyMode): List<List<CanvasTool>> = wh
         listOf(CanvasTool.SKELETON_POSE, CanvasTool.SKELETON_EDIT),
     )
     EditHierarchyMode.PAINT -> listOf(
-        listOf(CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER),
-        listOf(CanvasTool.PAINT_BUCKET, CanvasTool.PAINT_EYEDROPPER),
-        listOf(CanvasTool.PAINT_SHAPE),
+        listOf(CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER, CanvasTool.PAINT_BLUR),
+        listOf(CanvasTool.PAINT_BUCKET, CanvasTool.PAINT_GRADIENT, CanvasTool.PAINT_EYEDROPPER),
+        listOf(CanvasTool.PAINT_SHAPE, CanvasTool.PAINT_SELECT),
     )
 }
 
@@ -1121,6 +1128,7 @@ internal class CanvasEditor(
     var paintEraserSize by mutableStateOf(24f)
     /** The line width of the shape tool; its own, so drawing a thin outline leaves the brush tip as it was. */
     var paintShapeSize by mutableStateOf(16f)
+    var paintBlurSize by mutableStateOf(32f)
 
     /** The open document's longest side in pixels; 0 with nothing open. */
     val documentLongSide: Int
@@ -1158,6 +1166,7 @@ internal class CanvasEditor(
         paintPencilSize = (paintPencilSize * k).coerceIn(1f, limit)
         paintEraserSize = (paintEraserSize * k).coerceIn(1f, limit)
         paintShapeSize = (paintShapeSize * k).coerceIn(1f, limit)
+        paintBlurSize = (paintBlurSize * k).coerceIn(1f, limit)
         radius = (radius * k).coerceIn(1f, limit)
         skeletonWeightRadius = (skeletonWeightRadius * k).coerceIn(1f, limit)
         brushScaleApplied = scale
@@ -1172,6 +1181,7 @@ internal class CanvasEditor(
             CanvasTool.PAINT_PENCIL -> paintPencilSize
             CanvasTool.PAINT_ERASER -> paintEraserSize
             CanvasTool.PAINT_SHAPE -> paintShapeSize
+            CanvasTool.PAINT_BLUR -> paintBlurSize
             else -> paintBrushSize
         }
         set(value) {
@@ -1179,6 +1189,7 @@ internal class CanvasEditor(
                 CanvasTool.PAINT_PENCIL -> paintPencilSize = value
                 CanvasTool.PAINT_ERASER -> paintEraserSize = value
                 CanvasTool.PAINT_SHAPE -> paintShapeSize = value
+                CanvasTool.PAINT_BLUR -> paintBlurSize = value
                 else -> paintBrushSize = value
             }
         }
@@ -1218,6 +1229,7 @@ internal class CanvasEditor(
         paintPencilSize = (paintPencilSize * k).coerceIn(1f, limit)
         paintEraserSize = (paintEraserSize * k).coerceIn(1f, limit)
         paintShapeSize = (paintShapeSize * k).coerceIn(1f, limit)
+        paintBlurSize = (paintBlurSize * k).coerceIn(1f, limit)
         paintSizeDensity = density
     }
 
@@ -1228,7 +1240,8 @@ internal class CanvasEditor(
     /** Whether the active tool has a size at all: the shapes are drawn with one, the fills are not. */
     val paintSizeActive: Boolean
         get() = hierarchyMode == EditHierarchyMode.PAINT && tool in PAINT_TOOLS &&
-            tool != CanvasTool.PAINT_BUCKET && tool != CanvasTool.PAINT_EYEDROPPER
+            tool != CanvasTool.PAINT_BUCKET && tool != CanvasTool.PAINT_EYEDROPPER &&
+            tool != CanvasTool.PAINT_SELECT && tool != CanvasTool.PAINT_GRADIENT
 
     /**
      * The tip the active paint tool draws with: the tool's own size, the shared hardness - and, for the
@@ -1246,6 +1259,30 @@ internal class CanvasEditor(
     var paintOpacity by mutableStateOf(1f)
     var paintTolerance by mutableStateOf(32)
     var paintShapeFilled by mutableStateOf(false)
+
+    // Painting assists and the tools after the shape (selection, gradient, blur).
+    /** The stroke stabilizer's level, 0 off ([io.github.psd2live.core.PaintStabilizer]). */
+    var paintStabilizer by mutableStateOf(0)
+    /** Lock transparency: the tools colour only what is already painted, and the eraser paints the background colour. */
+    var paintLockAlpha by mutableStateOf(false)
+    /** The axes the brush tools mirror their strokes across, through the middle of the canvas. */
+    var paintSymmetry by mutableStateOf(io.github.psd2live.core.PaintSymmetry.OFF)
+    /** Off makes the bucket and the wand take every pixel of the colour, joined to the click or not. */
+    var paintContiguous by mutableStateOf(true)
+    var paintSelectShape by mutableStateOf(PaintSelectShape.RECTANGLE)
+    var paintSelectOp by mutableStateOf(io.github.psd2live.core.PaintSelectionOp.REPLACE)
+    /** The radius the Feather action softens the selection's edge over, in the layer's pixels. */
+    var paintFeather by mutableStateOf(4f)
+    var paintGradientRadial by mutableStateOf(false)
+    var paintGradientEnd by mutableStateOf(PaintGradientEnd.BACKGROUND)
+    /** How far the blur tip moves a pixel towards the blur under it, 0..1. */
+    var paintBlurStrength by mutableStateOf(0.5f)
+    /** The lasso or polygon outline being drawn, in canvas units; empty when none is. */
+    var paintSelectDraft by mutableStateOf<List<Offset>>(emptyList())
+        private set
+    /** Where the last brush stroke ended, in canvas units: a Shift + click draws a straight line on from there. */
+    private var paintLastEnd: Offset? = null
+    private var paintStabilizerInHand: io.github.psd2live.core.PaintStabilizer? = null
 
     /** Which of the shape tool's three faces is in hand. Its keys arm both the shape and the tool. */
     var paintShape by mutableStateOf(PaintShape.LINE)
@@ -1977,6 +2014,8 @@ internal class CanvasEditor(
         isPainting = false
         paintStrokeStart = null
         paintStrokeCurrent = null
+        paintLastEnd = null
+        paintSelectDraft = emptyList()
     }
 
     /** Drops the session's strokes and paints on: a fresh session on the same target - a layer, or a material. */
@@ -1994,6 +2033,8 @@ internal class CanvasEditor(
         isPainting = false
         paintStrokeStart = null
         paintStrokeCurrent = null
+        paintLastEnd = null
+        paintSelectDraft = emptyList()
     }
 
     fun clearCurrentLayerPaint() {
@@ -2050,7 +2091,7 @@ internal class CanvasEditor(
      */
     val eyedropperArmed: Boolean
         get() = hierarchyMode == EditHierarchyMode.PAINT && tool in PAINT_TOOLS && !adjustingBrush &&
-            (tool == CanvasTool.PAINT_EYEDROPPER || isSampling || (altHeld && !dragging))
+            (tool == CanvasTool.PAINT_EYEDROPPER || isSampling || (altHeld && !dragging && tool != CanvasTool.PAINT_SELECT))
 
     /**
      * Where the sampling ring belongs, or null when no pick is under way. The ring is the pick in
@@ -2088,13 +2129,189 @@ internal class CanvasEditor(
      * the stroke drawn so far.
      */
     private fun applyLiveSegment(from: Offset, to: Offset, erase: Boolean) {
-        val session = paintSession ?: return
         val vp = viewport ?: return
-        val start = screenToCanvasPoint(from, vp) ?: return
-        val end = screenToCanvasPoint(to, vp) ?: return
-        // Nothing new under the segment - a stroke doubling back over itself - is nothing to redraw.
-        session.segment(start.first, start.second, end.first, end.second, paintTip(), paintColor, paintOpacity, erase)
+        paintCanvasSegment(canvasPoint(from, vp), canvasPoint(to, vp), erase)
+    }
+
+    /** [pos] on the canvas as shown, in canvas units: before the painted layer's own transform. */
+    private fun canvasPoint(pos: Offset, viewport: CanvasViewport) = Offset(viewport.canvasX(pos.x), viewport.canvasY(pos.y))
+
+    /** A canvas point on screen. */
+    private fun screenPoint(p: Offset, viewport: CanvasViewport) =
+        Offset(viewport.x(p.x).toFloat(), (viewport.offsetY + p.y * viewport.scale).toFloat())
+
+    /**
+     * One segment of the live stroke between two canvas points, and its mirror images when [paintSymmetry] is on:
+     * the images share the stroke's coverage, so where they overlap they land once, like a stroke crossing itself.
+     * The axes run through the middle of the canvas, where a character's face usually is.
+     */
+    private fun paintCanvasSegment(from: Offset, to: Offset, erase: Boolean) {
+        val session = paintSession ?: return
+        val tip = paintTip()
+        val ax = session.canvasWidth / 2f
+        val ay = session.canvasHeight / 2f
+        val starts = paintSymmetry.images(from.x, from.y, ax, ay)
+        val ends = paintSymmetry.images(to.x, to.y, ax, ay)
+        // Lock transparency turns the eraser into the background colour, as in Photoshop.
+        val color = if (erase && paintLockAlpha) paintSecondaryColor else paintColor
+        val erasing = erase && !paintLockAlpha
+        for (i in starts.indices) {
+            val (x0, y0) = session.toFrame(starts[i].first, starts[i].second)
+            val (x1, y1) = session.toFrame(ends[i].first, ends[i].second)
+            // Nothing new under the segment - a stroke doubling back over itself - is nothing to redraw.
+            if (tool == CanvasTool.PAINT_BLUR) session.blurSegment(x0, y0, x1, y1, tip, paintBlurStrength)
+            else session.segment(x0, y0, x1, y1, tip, color, paintOpacity, erasing, paintLockAlpha)
+        }
+        paintLastEnd = to
         refreshPaintPreview()
+    }
+
+    /** The operation a selection gesture takes: Photoshop's Shift adds, Alt subtracts, both intersect. */
+    private fun paintSelectOpFor(shift: Boolean, alt: Boolean) = when {
+        shift && alt -> io.github.psd2live.core.PaintSelectionOp.INTERSECT
+        shift -> io.github.psd2live.core.PaintSelectionOp.ADD
+        alt -> io.github.psd2live.core.PaintSelectionOp.SUBTRACT
+        else -> paintSelectOp
+    }
+    private var paintSelectOpInHand = io.github.psd2live.core.PaintSelectionOp.REPLACE
+
+    /** Changes the paint session's selection; [mode] and the fields [build] adds are one selection request. */
+    private fun paintSelect(mode: String, op: io.github.psd2live.core.PaintSelectionOp? = null, build: JsonObjectBuilder.() -> Unit = {}) {
+        val session = paintSession ?: ensurePaintSession() ?: return
+        if (isPainting && tool != CanvasTool.PAINT_SELECT) return
+        session.select(buildJsonObject {
+            put("mode", mode)
+            op?.let { put("op", it.name.lowercase()) }
+            build()
+        })
+    }
+
+    /** A canvas point in the painted layer's frame, as a JSON point of a session request. */
+    private fun framePoint(session: PaintSession, p: Offset): JsonArray =
+        session.toFrame(p.x, p.y).let { (x, y) -> JsonArray(listOf(JsonPrimitive(x), JsonPrimitive(y))) }
+
+    fun selectAllPaint() = paintSelect("all")
+    fun deselectPaint() = paintSelect("none")
+    fun invertPaintSelection() = paintSelect("invert")
+    fun featherPaintSelection() = paintSelect("feather") { put("radius", (paintFeather / paintPixelsPerUnit).coerceIn(0.5f, 256f)) }
+    val paintHasSelection: Boolean get() = paintSession?.hasSelection == true
+
+    /** Fills the selection, or the whole layer without one, with the foreground colour - the background one for [secondary]. */
+    fun fillPaintSelection(secondary: Boolean = false) {
+        val session = paintSession ?: ensurePaintSession() ?: return
+        if (isPainting) return
+        session.fill(if (secondary) paintSecondaryColor else paintColor, paintOpacity, tr("editor.paint.strokeFillSelection"), paintLockAlpha)
+    }
+
+    /** Clears what the selection holds, the way Delete does in Photoshop; without a selection there is nothing to clear. */
+    fun deletePaintSelection() {
+        val session = paintSession ?: return
+        if (isPainting || !session.hasSelection) return
+        session.clear(tr("editor.paint.strokeDeleteSelection"))
+    }
+
+    /** Lock transparency on or off, the "/" key of Photoshop. */
+    fun togglePaintLockAlpha() { paintLockAlpha = !paintLockAlpha }
+
+    /** Runs the paint-only keys the canvas and the material window share; false for any other action. */
+    fun paintShortcut(action: ShortcutAction): Boolean {
+        when (action) {
+            ShortcutAction.TOOL_PAINT_SELECT -> activateTool(CanvasTool.PAINT_SELECT)
+            ShortcutAction.TOOL_PAINT_GRADIENT -> activateTool(CanvasTool.PAINT_GRADIENT)
+            ShortcutAction.TOOL_PAINT_BLUR -> activateTool(CanvasTool.PAINT_BLUR)
+            ShortcutAction.PAINT_DESELECT -> deselectPaint()
+            ShortcutAction.PAINT_FILL_SELECTION -> fillPaintSelection()
+            ShortcutAction.PAINT_RESET_COLORS -> resetPaintColors()
+            ShortcutAction.PAINT_LOCK_ALPHA -> togglePaintLockAlpha()
+            else -> return false
+        }
+        return true
+    }
+
+    /** A press of the selection tool: the wand selects at once, the polygon takes a point, the rest start a drag. */
+    private fun pressPaintSelect(pos: Offset, viewport: CanvasViewport, shift: Boolean, alt: Boolean) {
+        val session = paintSession ?: return
+        val here = canvasPoint(pos, viewport)
+        when (paintSelectShape) {
+            PaintSelectShape.WAND -> {
+                paintSelect("wand", paintSelectOpFor(shift, alt)) {
+                    put("point", framePoint(session, here)); put("tolerance", paintTolerance); put("contiguous", paintContiguous)
+                }
+                isPainting = false
+                dragging = false
+            }
+            PaintSelectShape.POLYGON -> {
+                val draft = paintSelectDraft
+                val first = draft.firstOrNull()
+                if (draft.isEmpty()) paintSelectOpInHand = paintSelectOpFor(shift, alt)
+                // A click back on the first point closes the outline.
+                if (first != null && draft.size >= 3 && (screenPoint(first, viewport) - pos).getDistance() <= POLYGON_CLOSE_PX) finishPaintPolygon()
+                else paintSelectDraft = draft + here
+                isPainting = false
+                dragging = false
+            }
+            PaintSelectShape.LASSO -> {
+                paintSelectOpInHand = paintSelectOpFor(shift, alt)
+                paintSelectDraft = listOf(here)
+            }
+            PaintSelectShape.RECTANGLE, PaintSelectShape.ELLIPSE -> paintSelectOpInHand = paintSelectOpFor(shift, alt)
+        }
+    }
+
+    /** The lasso follows the drag, a point every couple of screen pixels. */
+    private fun movePaintSelect(pos: Offset, viewport: CanvasViewport) {
+        if (paintSelectShape != PaintSelectShape.LASSO) return
+        val draft = paintSelectDraft
+        val last = draft.lastOrNull()
+        if (last == null || (screenPoint(last, viewport) - pos).getDistance() >= 2f) paintSelectDraft = draft + canvasPoint(pos, viewport)
+    }
+
+    /** Closes the polygon being clicked out into a selection; fewer than three points select nothing. */
+    fun finishPaintPolygon(): Boolean {
+        val draft = paintSelectDraft
+        if (draft.isEmpty()) return false
+        paintSelectDraft = emptyList()
+        val session = paintSession ?: return true
+        if (draft.size >= 3) paintSelect("lasso", paintSelectOpInHand) { put("points", JsonArray(draft.map { framePoint(session, it) })) }
+        return true
+    }
+
+    /** Ends a selection drag: the box, the ellipse or the lasso becomes the selection; a bare click drops it. */
+    private fun releasePaintSelect(viewport: CanvasViewport) {
+        val session = paintSession ?: return
+        val s = paintStrokeStart
+        val c = paintStrokeCurrent
+        val replacing = paintSelectOpInHand == io.github.psd2live.core.PaintSelectionOp.REPLACE
+        when (paintSelectShape) {
+            PaintSelectShape.RECTANGLE, PaintSelectShape.ELLIPSE -> if (s != null && c != null) {
+                // A click without a drag deselects, as in Photoshop - unless it was meant to add or take away.
+                if ((c - s).getDistance() < 2f) { if (replacing) deselectPaint() }
+                else paintSelect(if (paintSelectShape == PaintSelectShape.RECTANGLE) "rectangle" else "ellipse", paintSelectOpInHand) {
+                    put("from", framePoint(session, canvasPoint(s, viewport))); put("to", framePoint(session, canvasPoint(c, viewport)))
+                }
+            }
+            PaintSelectShape.LASSO -> {
+                val draft = paintSelectDraft
+                paintSelectDraft = emptyList()
+                if (draft.size >= 3) paintSelect("lasso", paintSelectOpInHand) { put("points", JsonArray(draft.map { framePoint(session, it) })) }
+                else if (replacing) deselectPaint()
+            }
+            else -> Unit
+        }
+    }
+
+    /** Lands the gradient dragged from [paintStrokeStart] to [paintStrokeCurrent]. */
+    private fun releasePaintGradient(viewport: CanvasViewport) {
+        val session = paintSession ?: return
+        val s = paintStrokeStart ?: return
+        val c = paintStrokeCurrent ?: return
+        if ((c - s).getDistance() < 2f) return
+        val from = canvasPoint(s, viewport)
+        val to = canvasPoint(c, viewport)
+        val (x0, y0) = session.toFrame(from.x, from.y)
+        val (x1, y1) = session.toFrame(to.x, to.y)
+        val end = if (paintGradientEnd == PaintGradientEnd.TRANSPARENT) paintColor.copy(alpha = 0f) else paintSecondaryColor
+        session.gradient(x0, y0, x1, y1, paintColor, end, paintGradientRadial, paintOpacity, tr("editor.paint.strokeGradient"), paintLockAlpha)
     }
 
     /** Repaints the preview at most every ~40 ms: a gesture fires far more moves than frames. */
@@ -2147,6 +2364,7 @@ internal class CanvasEditor(
         endTransformBox()
         anchorDragging = false
         isPainting = false; isSampling = false; paintStrokeStart = null; paintStrokeCurrent = null
+        paintSelectDraft = emptyList(); paintStabilizerInHand = null
         // The frame belongs to the tool session, so cancelling is the only thing that drops it, anchor and all.
         frameAngle = 0f
         transformAnchor = null
@@ -3595,6 +3813,8 @@ internal class CanvasEditor(
         if (viewModel.swingSession != null) return if (swingHandle != null || swingHover != null) hand else arrow
         if (tool == CanvasTool.INTERIOR) return if (interiorTool.cursorHand()) hand else cross
         if (eyedropperArmed) return CanvasCursors.eyedropper
+        // The selection and the gradient are drawn point to point, so they aim with a cross.
+        if (hierarchyMode == EditHierarchyMode.PAINT && (tool == CanvasTool.PAINT_SELECT || tool == CanvasTool.PAINT_GRADIENT)) return cross
         if (dragging) {
             if (placementHandle == PlacementHandle.BOX) return CanvasCursors.transform(placementBoxHandle, 0f)
             if (marquee.isNotEmpty()) return cross
@@ -4199,6 +4419,11 @@ internal class CanvasEditor(
     }
 
     fun selectAll(invert: Boolean = false) {
+        // Paint selects pixels: Ctrl+A takes the whole layer, Ctrl+I turns the selection inside out.
+        if (hierarchyMode == EditHierarchyMode.PAINT) {
+            if (invert) invertPaintSelection() else selectAllPaint()
+            return
+        }
         if (objectMode) {
             objects = state.effectiveVisibleLayerIds.filter { (!invert || it !in objects) && target(model, it, null) != null }.toSet()
             selectLayer(objects.lastOrNull())
@@ -5218,7 +5443,7 @@ internal class CanvasEditor(
                 // Picking a colour rather than drawing one: the eyedropper's own gesture, and what Alt
                 // does to every paint tool. The pick follows the pointer for as long as the button is
                 // down, so a colour can be scrubbed for instead of guessed at in one click.
-                tool == CanvasTool.PAINT_EYEDROPPER || alt -> {
+                tool == CanvasTool.PAINT_EYEDROPPER || (alt && tool != CanvasTool.PAINT_SELECT) -> {
                     isSampling = true
                     // Alt means two different things here, as it does in Photoshop: on the eyedropper it
                     // fills in the secondary colour, while Alt over any other tool is the eyedropper
@@ -5229,7 +5454,7 @@ internal class CanvasEditor(
                 tool == CanvasTool.PAINT_BUCKET -> {
                     if (canvasPos != null) {
                         session.bucket(canvasPos.first, canvasPos.second, paintColor, paintTolerance,
-                            tr("editor.paint.strokeFill"))
+                            tr("editor.paint.strokeFill"), paintContiguous, paintLockAlpha)
                     }
                     isPainting = false
                     dragging = false
@@ -5241,8 +5466,13 @@ internal class CanvasEditor(
                     // is the one the user is watching for.
                     session.beginStroke()
                     lastPaintBitmapAt = 0L
-                    applyLiveSegment(pos, pos, erase = tool == CanvasTool.PAINT_ERASER)
+                    paintStabilizerInHand = io.github.psd2live.core.PaintStabilizer(paintStabilizer).also { it.add(pos.x, pos.y) }
+                    // Shift + click goes on in a straight line from where the last stroke ended, as in Photoshop.
+                    val lineFrom = paintLastEnd.takeIf { shift }
+                    if (lineFrom != null) paintCanvasSegment(lineFrom, canvasPoint(pos, viewport), erase = tool == CanvasTool.PAINT_ERASER)
+                    else applyLiveSegment(pos, pos, erase = tool == CanvasTool.PAINT_ERASER)
                 }
+                tool == CanvasTool.PAINT_SELECT -> pressPaintSelect(pos, viewport, shift, alt)
                 else -> {
                     // The shape tool: the live gesture is previewed on the overlay and lands on release,
                     // because a shape is committed when its second corner is.
@@ -5646,8 +5876,12 @@ internal class CanvasEditor(
             if (isSampling) {
                 pickColorAt(pos, viewport, secondary = samplingSecondary)
             } else if (tool in PAINT_BRUSH_TOOLS) {
-                applyLiveSegment(lastPaintPoint ?: pos, pos, erase = tool == CanvasTool.PAINT_ERASER)
-                lastPaintPoint = pos
+                // The stabilizer's tip trails the pointer; with it off the tip is the pointer.
+                val tipAt = paintStabilizerInHand?.add(pos.x, pos.y)?.let { Offset(it.first, it.second) } ?: pos
+                applyLiveSegment(lastPaintPoint ?: tipAt, tipAt, erase = tool == CanvasTool.PAINT_ERASER)
+                lastPaintPoint = tipAt
+            } else if (tool == CanvasTool.PAINT_SELECT) {
+                movePaintSelect(pos, viewport)
             }
             return
         }
@@ -5924,10 +6158,20 @@ internal class CanvasEditor(
                         val toolName = when (tool) {
                             CanvasTool.PAINT_ERASER -> tr("editor.paint.strokeEraser")
                             CanvasTool.PAINT_PENCIL -> tr("editor.paint.strokePencil")
+                            CanvasTool.PAINT_BLUR -> tr("editor.paint.strokeBlur")
                             else -> tr("editor.paint.strokeBrush")
                         }
+                        // The stabilized tip catches up with where the pointer came up.
+                        paintStabilizerInHand?.finish()?.forEach { (x, y) ->
+                            val tipAt = Offset(x, y)
+                            applyLiveSegment(lastPaintPoint ?: tipAt, tipAt, erase = tool == CanvasTool.PAINT_ERASER)
+                            lastPaintPoint = tipAt
+                        }
+                        paintStabilizerInHand = null
                         session.recordStroke(toolName)
                     }
+                    tool == CanvasTool.PAINT_SELECT -> releasePaintSelect(vp)
+                    tool == CanvasTool.PAINT_GRADIENT -> releasePaintGradient(vp)
                     tool == CanvasTool.PAINT_SHAPE -> {
                         val s = paintStrokeStart
                         val c = paintStrokeCurrent
@@ -5943,7 +6187,7 @@ internal class CanvasEditor(
                             val y1 = floor(p1.second).toInt()
                             val shapeStrokeWidth = (paintSize / paintPixelsPerUnit).coerceIn(1f, 512f)
                             session.shape(x0, y0, x1, y1, shape, paintColor, paintOpacity,
-                                shapeStrokeWidth, paintShapeFilled && shape.canFill, tr(shape.strokeLabelKey))
+                                shapeStrokeWidth, paintShapeFilled && shape.canFill, tr(shape.strokeLabelKey), paintLockAlpha)
                         }
                     }
                     else -> {}
@@ -6147,6 +6391,9 @@ internal fun brushWeight(distance: Float, radius: Float, hardness: Float, fallof
 
 /** Travel in raw px that equals one `]` press (one 1.2x step) in the Alt + right-drag radius gesture. */
 private const val BRUSH_RADIUS_STEP_PX = 12f
+
+/** How near the first point, in screen pixels, a click closes the polygon lasso. */
+private const val POLYGON_CLOSE_PX = 8f
 
 /** The brush size limit on documents smaller than this. */
 private const val MIN_BRUSH_SIZE_LIMIT = 512f

@@ -203,7 +203,10 @@ internal fun MaterialEditor(item: MaterialItem, state: PSD2LiveState, vm: PSD2Li
 			ShortcutAction.FRAME_VIEW -> fit()
 			ShortcutAction.RESET_CAMERA -> actual()
 			ShortcutAction.CANCEL -> if (menuAt != null) menuAt = null else editor.cancel()
-			ShortcutAction.FINISH_PATH -> editor.promptCommitPaintSession()
+			ShortcutAction.FINISH_PATH -> if (!editor.finishPaintPolygon()) editor.promptCommitPaintSession()
+			ShortcutAction.SELECT_ALL -> editor.selectAllPaint()
+			ShortcutAction.INVERT_SELECTION -> editor.invertPaintSelection()
+			ShortcutAction.DELETE_SELECTION -> editor.deletePaintSelection()
 			ShortcutAction.TOOL_PAINT_BRUSH -> editor.activateTool(CanvasTool.PAINT_BRUSH)
 			ShortcutAction.TOOL_PAINT_PENCIL -> editor.activateTool(CanvasTool.PAINT_PENCIL)
 			ShortcutAction.TOOL_PAINT_ERASER -> editor.activateTool(CanvasTool.PAINT_ERASER)
@@ -223,7 +226,7 @@ internal fun MaterialEditor(item: MaterialItem, state: PSD2LiveState, vm: PSD2Li
 			ShortcutAction.AXIS_CONSTRAIN_X -> editor.swapPaintColors()
 			ShortcutAction.PICK_OPTION_1, ShortcutAction.PICK_OPTION_2, ShortcutAction.PICK_OPTION_3,
 			ShortcutAction.PICK_OPTION_4, ShortcutAction.PICK_OPTION_5 -> editor.pickVariant(action.pickIndex!!)
-			else -> return false
+			else -> if (!editor.paintShortcut(action)) return false
 		}
 		return true
 	}
