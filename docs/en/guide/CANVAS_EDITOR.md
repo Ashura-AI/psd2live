@@ -15,7 +15,7 @@ The mode menu at the top left of the canvas (like Blender's mode drop-down) list
 | Edit | Mesh topology and path binding | Vertex / edge / face select, mesh points, connect, merge, subdivide, knife, delete edges, re-triangulate, delete, Glue (when two meshes are selected), interior handles |
 | Simulate | Vertex weight groups read by the simulation (this app only) | Weight brush, weight gradient, with the group to paint (pinned, stiffness and so on) switched by kind beneath them; the mode bar creates cloth / hair and switches the reference simulation (not exported) |
 | Skeleton | Skeleton | Pose, bone edit; bone edits are saved when switching to pose or leaving the mode |
-| Paint | Layer pixels | Brush, pencil, eraser, fill, eyedropper, shapes |
+| Paint | Layer pixels | Brush, pencil, eraser, blur, fill, gradient, eyedropper, shapes, selection |
 | Preview | Nothing | Playback, mouse follow, physics, frame rate |
 
 Like Edit mode, Simulate mode acts on every selected mesh at once, and always shows the current weight group in Blender's weight colours (blue 0 → green → yellow → red 1). The weight brush ring is coloured by mode (add white, subtract red, set accent, smooth cyan); on hover it marks the vertices a press would affect, and the number next to the pointer is the nearest vertex's weight; Alt + right-drag adjusts radius / hardness and previews the falloff. The weight gradient drags from the full value to where it fades out. The simulation itself runs only inside the editor; to export it, bake it in the Simulation panel, see [Simulation and baking](SIMULATION.md).
@@ -24,7 +24,7 @@ The current tool's settings are split across several places, each with its own j
 
 | Place | Contents |
 | --- | --- |
-| Left toolbar | The current mode's tools, one per row, grouped by category with dividers; in Object mode the last group creates Warp, Rotation and deform paths. The selected tool's variants (brush shape, paint shape, Glue and skeleton sub-tools, weight group kind) unfold beneath it; `1`–`5` also pick them |
+| Left toolbar | The current mode's tools, one per row, grouped by category with dividers; in Object mode the last group creates Warp, Rotation and deform paths. The selected tool's variants (brush shape, paint shape, selection kind, Glue and skeleton sub-tools, weight group kind) unfold beneath it; `1`–`5` also pick them |
 | Mode bar (top of the canvas) | After the mode menu come the items that decide how the canvas behaves: vertex / edge / face for selection tools in Deform / Edit mode (`1`–`3`), and confirm and cancel for the current step (placement, knife, path, Glue and so on) |
 | Tool options bar (bottom left of the canvas) | The current tool's values: radius, strength, hardness, opacity, mode and so on; drag a value left or right to adjust it, click it to pop up a slider. In Paint mode the foreground / background colours come first |
 | Canvas context menu | The same settings as the mode bar and options bar (one per row), plus the tool's actions, each with an icon; it opens and highlights on hover with the same animation as the mode menu. In Object mode, creating Warp, Rotation, deform paths, bones and swings is gathered in the **Create** submenu. In Object, Edit and Paint modes, actions on the whole layer have submenus too: **Mesh** holds rebuilding the mesh from the current pixels, splitting disconnected meshes and, when available, front/back layers; a layer linked to a material also gets **Material**, which opens it in the material window or unlinks it. When the rest fits in 10 rows it is all shown directly; only beyond that are the largest groups (such as topology, falloff) folded into one row that unfolds to the right on hover. The context menus of the panels (hierarchy, materials, texture atlas, motions, physics and so on) look and open like the canvas menu: they unfold from where you pressed and flip to the other side near the window edge |
@@ -191,6 +191,24 @@ As in Cubism, gluing happens on the meshes' rest shape (all parameters at their 
 Select a layer before entering Paint. Strokes are kept in a separate paint session with undo and redo inside the session. After the first stroke, a session bar slides in at the top centre of the canvas (the same as the texture atlas adjustment session bar), showing the layer being painted and the stroke count, with Undo, Redo, **Discard** and **Apply**; on a narrow canvas the buttons show icons only, named on hover. The **Tool Details** panel also has **Discard** and **Apply**.
 
 The palette works the Photoshop way: the overlapping foreground / background swatches come first in the tool options bar at the bottom left, with swap (X) at the top right and the default black / white at the bottom left; clicking a swatch opens the colour picker - a saturation / brightness field on the left, a vertical hue strip on the right, **New / Current** comparison swatches (click **Current** to restore), H S B and R G B values and the hex code, and swatches and recent colours below. The **Tool Details** panel embeds the foreground colour's field and hue strip directly, along with the swatches and recent colours. The brush, pencil, eraser and shape sizes are independent of each other; a shape's line width does not change the brush size.
+
+The toolbar has three groups: brush, pencil, eraser, **blur**; bucket, **gradient**, eyedropper; shape, **selection**. Each tool's options are in the options bar at the bottom left, and the selection commands are in the **Selection** group of the canvas context menu:
+
+| Feature | How |
+| --- | --- |
+| Selection tool (`Alt+M`) | Five variants - rectangle, ellipse, lasso, polygonal lasso, magic wand - picked with `1`–`5`. Drag a box; hold and drag the lasso's outline; click the polygon point by point and close it by clicking its first point or pressing `Enter` (`Esc` drops it); the wand takes the clicked colour within the tolerance, across the whole layer when **Contiguous** is off. Hold `Shift` to add, `Alt` to subtract, `Shift+Alt` to intersect, or fix the combination in the options bar; a click without a drag deselects. The selection shows as marching ants |
+| Selection commands | `Ctrl+A` select all, `Ctrl+D` deselect, `Ctrl+I` (or `Ctrl+Shift+I`) invert, `Alt+Backspace` fill the selection with the foreground colour (the whole layer without one), `Del` clear what the selection holds; the context menu also has **Feather Selection**, by the options bar's **Feather** radius |
+| What a selection does | While there is one, every tool (brush, eraser, blur, fill, gradient, shapes, clear) changes only the inside, with soft edges blending in proportion. The selection is not part of the stroke history: undoing a stroke leaves it as it is; applying, discarding or switching layers clears it |
+| Gradient (`Alt+G`) | Drag from the start to the end; linear or radial, from the foreground colour to the background colour or to transparent; kept to the selection and lock transparency |
+| Blur (`Alt+J`) | Softens what it passes over; **Strength** sets how much, and going back and forth in one stroke does not keep blurring further |
+| Stabilizer | **Stabilizer** 0–30 in the options bar of the brush, pencil, eraser and blur: higher steadies the line and lags more; the line catches up to where you lift the pointer |
+| Symmetry | The same four tools mirror left / right, top / bottom or four ways about the middle of the canvas, marked with dashed axes |
+| Lock transparency (`/`) | Colours only pixels already painted and keeps their transparency; the eraser then paints the background colour |
+| Bucket | With **Contiguous** off it fills every pixel of the colour |
+| Straight lines | `Shift` + click draws a straight line on from where the last stroke ended |
+| Default colours | `Alt+D` restores black / white (`X` swaps foreground and background) |
+
+Pen pressure, rotating / flipping the view, and smudge or watercolour blending are not supported yet; for the full comparison with Photoshop / SAI see [paint system](../../zh/spec/PAINT_SYSTEM_ARCHITECTURE_AND_PRD.md#工具对照与差距) (Chinese).
 
 Painting is not limited to the layer's rectangle; the whole canvas can be painted. Applying cuts the paint by the layer's mesh:
 
