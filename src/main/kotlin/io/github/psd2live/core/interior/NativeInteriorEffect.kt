@@ -512,6 +512,53 @@ internal object NativeInteriorAuthoring {
 			o.getValue("contour").jsonPrimitive.float,
 		)
 
+	fun guideJson(g: InteriorGuide) = buildJsonObject {
+		put("id", g.id)
+		put("purpose", g.purpose.name)
+		put("radius", g.radius)
+		put("amount", g.amount)
+		put("pitchOnly", g.pitchOnly)
+		g.detected?.let { put("detected", it.name) }
+		put("points", JsonArray(g.points.map { JsonArray(listOf(JsonPrimitive(it.x), JsonPrimitive(it.y))) }))
+	}
+
+	/** The `guides` of an `interior_put` request; omitted fields take the documented defaults. */
+	fun guides(array: JsonArray): List<InteriorGuide> =
+		array.mapIndexed { i, e ->
+			val g = e.jsonObject
+			InteriorGuide(
+				g["id"]?.jsonPrimitive?.content ?: "fold$i",
+				g.getValue("points").jsonArray.map { p ->
+					p.jsonArray.let { InteriorPoint(it[0].jsonPrimitive.float, it[1].jsonPrimitive.float) }
+				},
+				InteriorGuidePurpose.valueOf(g["purpose"]?.jsonPrimitive?.content ?: "FOLD"),
+				g["radius"]?.jsonPrimitive?.float ?: 16f,
+				g["amount"]?.jsonPrimitive?.float ?: 1f,
+				g["pitchOnly"]?.jsonPrimitive?.boolean ?: false,
+				g["detected"]?.jsonPrimitive?.content?.let(StructureKind::valueOf),
+			)
+		}
+
+	/**
+	 * The full `interior_put` request for one effect's values: what the panel and the canvas handles commit, and what a
+	 * drag previews before it is committed. Every field is written, so the result does not depend on the saved recipe.
+	 */
+	fun request(
+		target: String,
+		enabled: Boolean,
+		settings: InteriorSurfaceSettings,
+		motion: InteriorMotionSettings,
+		sources: List<String>,
+		guides: List<InteriorGuide>,
+	) = buildJsonObject {
+		put("target", target)
+		put("enabled", enabled)
+		put("settings", settingsJson(settings))
+		put("motion", motion.toJson())
+		put("parameters", JsonArray(sources.map(::JsonPrimitive)))
+		put("guides", JsonArray(guides.map(::guideJson)))
+	}
+
 	/**
 	 * UI and MCP share this authoring command; no runtime or image-space formulas live in the UI.
 	 * [authoredModel] supplies a candidate's updated topology when it has not been published as a preview yet.
@@ -620,23 +667,7 @@ internal object NativeInteriorAuthoring {
 			bindings
 				.filter { authored.parameters.none { p -> p.id == it.id } }
 				.mapTo(linkedSetOf()) { it.id.raw }
-		val guides =
-			o["guides"]?.jsonArray?.mapIndexed { i, e ->
-				val g = e.jsonObject
-				InteriorGuide(
-					g["id"]?.jsonPrimitive?.content ?: "fold$i",
-					g.getValue("points").jsonArray.map { p ->
-						p.jsonArray.let {
-							InteriorPoint(it[0].jsonPrimitive.float, it[1].jsonPrimitive.float)
-						}
-					},
-					InteriorGuidePurpose.valueOf(g["purpose"]?.jsonPrimitive?.content ?: "FOLD"),
-					g["radius"]?.jsonPrimitive?.float ?: 16f,
-					g["amount"]?.jsonPrimitive?.float ?: 1f,
-					g["pitchOnly"]?.jsonPrimitive?.boolean ?: false,
-					g["detected"]?.jsonPrimitive?.content?.let(StructureKind::valueOf),
-				)
-			} ?: old?.guides.orEmpty()
+		val guides = o["guides"]?.jsonArray?.let(::guides) ?: old?.guides.orEmpty()
 		val bake =
 			InteriorBasisKeyforms.bake(
 				source,

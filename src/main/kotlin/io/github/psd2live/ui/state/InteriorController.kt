@@ -54,6 +54,7 @@ internal class InteriorController(
 
 	override fun close() {
 		editJob?.cancel()
+		previewJob?.cancel()
 		stopTrial()
 		drafts.clear()
 		soloViews.clear()
@@ -116,6 +117,28 @@ internal class InteriorController(
 			return
 		draftProjection = Projection(preview.rig.puppet, effect, puppet, address)
 		startTrial(effect)
+	}
+
+	private var previewJob: Job? = null
+
+	/**
+	 * Shows [draft] on the audition while the panel or a canvas handle edits it, before it is committed: the same
+	 * `interior_put` on a candidate ([previewDraft]). Nothing to show at rest, where the effect moves no vertex.
+	 */
+	internal fun previewLater(target: String, enabled: Boolean, draft: InteriorDraft) {
+		if (!enabled || !draft.dirty || poseTarget == null) return
+		val version = draft.version
+		previewJob?.cancel()
+		previewJob = scope.launch {
+			delay(90)
+			try {
+				previewDraft(draft.request(target, enabled), draft, version)
+			} catch (e: kotlinx.coroutines.CancellationException) {
+				throw e
+			} catch (e: Exception) {
+				fail(e.message ?: e.toString())
+			}
+		}
 	}
 
 	private val drafts = mutableMapOf<String, InteriorDraft>()

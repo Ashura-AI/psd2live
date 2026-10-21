@@ -45,6 +45,21 @@ internal class InteriorDraft(effect: NativeInteriorEffect?) {
 		version++
 	}
 
+	/** The `interior_put` request for these values on [target]: what the panel and the canvas handles commit. */
+	fun request(target: String, enabled: Boolean) =
+		NativeInteriorAuthoring.request(target, enabled, shape, motion, sources, guides)
+
+	/** Back to the saved recipe: a canvas drag cancelled before release leaves nothing to commit. */
+	fun revert() {
+		val effect = recipe
+		shapeValue = effect?.settings ?: InteriorSurfaceSettings()
+		motionValue = effect?.motion ?: InteriorMotionSettings()
+		guideValue = effect?.guides.orEmpty()
+		sourceValue = effect?.sources?.map { it.id.raw } ?: listOf("", "")
+		dirty = false
+		version++
+	}
+
 	fun sync(effect: NativeInteriorEffect?) {
 		if (dirty || recipe === effect) return
 		recipe = effect
