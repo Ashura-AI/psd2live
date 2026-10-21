@@ -237,7 +237,7 @@ internal object GeneratedOverrides {
 					// Each channel of a generated cell becomes its own override; the user's other channels stay in the entry.
 					(command["channels"] as? JsonObject)?.let { channels ->
 						val owned = channels.keys.filter { field ->
-							val channel = OVERRIDE_CHANNELS[field] ?: return@filter false
+							val channel = SET_FIELDS[field] ?: return@filter false
 							val generator = channelOwner(kind, id, channel, key) ?: return@filter false
 							val base = components(channelCell(shown, kind, id, channel, key)!!.form)
 							overrides += channelOverride(generator, kind, id, key, channel, base, requested(channel, channels.getValue(field)))
@@ -256,8 +256,9 @@ internal object GeneratedOverrides {
 					for ((target, field) in listOf(source to "from", destination to "key")) {
 						val kind = targetKind(target) ?: continue
 						val id = target.substringAfter(':')
-						val generator = (if (listed == null) owner(graph, shown, kind, id, key(command, field), skins) else null)
-							?: (listed?.mapNotNull { OVERRIDE_CHANNELS[it] } ?: OVERRIDE_CHANNELS.values.distinct())
+						val geometry = listed == null || listed.any { it.equals("geometry", ignoreCase = true) }
+						val generator = (if (geometry) owner(graph, shown, kind, id, key(command, field), skins) else null)
+							?: (listed?.mapNotNull(::overridable) ?: OVERRIDABLE)
 								.firstNotNullOfOrNull { channelOwner(kind, id, it, key(command, field)) }
 						require(generator == null) { "Keyforms $generator generates cannot be copied to or from; edit them on the canvas" }
 					}
@@ -267,11 +268,13 @@ internal object GeneratedOverrides {
 					val target = command["target"]?.jsonPrimitive?.contentOrNull ?: return@flatMap listOf(command)
 					val kind = targetKind(target) ?: return@flatMap listOf(command)
 					val parameter = command["parameter"]?.jsonPrimitive?.contentOrNull ?: return@flatMap listOf(command)
-					val geometry = (command["channel"]?.jsonPrimitive?.contentOrNull?.equals("geometry", ignoreCase = true) ?: true) &&
-						(command["track"]?.jsonPrimitive?.contentOrNull?.let { it == "geometry" } ?: true)
+					// A delete without a channel removes the key from geometry and every channel track; one naming a track only that.
 					val named = command["channel"]?.jsonPrimitive?.contentOrNull ?: command["track"]?.jsonPrimitive?.contentOrNull
-					val generator = if (geometry) axisOwner(kind, target.substringAfter(':'), parameter)
-						else named?.let { OVERRIDE_CHANNELS[it] }?.let { channelAxisOwner(kind, target.substringAfter(':'), it, parameter) }
+					val id = target.substringAfter(':')
+					val geometry = named == null || named.equals("geometry", ignoreCase = true)
+					val channels = if (named == null) OVERRIDABLE else listOfNotNull(overridable(named))
+					val generator = (if (geometry) axisOwner(kind, id, parameter) else null)
+						?: channels.firstNotNullOfOrNull { channelAxisOwner(kind, id, it, parameter) }
 					require(generator == null) { "$generator makes the keys of $parameter on ${target.substringAfter(':')}; change it there instead" }
 					listOf(command)
 				}
@@ -305,13 +308,18 @@ internal object GeneratedOverrides {
 		return grid.cells.firstOrNull { it.coordinate.contentEquals(coordinate) }
 	}
 
-	/** The channels an override can carry, under both names journal entries give them (`multiply_color`, `multiplyColor`). */
-	private val OVERRIDE_CHANNELS: Map<String, FormChannel> = listOf(FormChannel.OPACITY, FormChannel.DRAW_ORDER, FormChannel.MULTIPLY_COLOR, FormChannel.SCREEN_COLOR)
-		.flatMap { channel ->
-			val wire = wire(channel)
-			val camel = wire.split('_').let { words -> words.first() + words.drop(1).joinToString("") { it.replaceFirstChar(Char::uppercaseChar) } }
-			listOf(wire to channel, camel to channel)
-		}.toMap()
+	/** The channels an override can carry. */
+	private val OVERRIDABLE = listOf(FormChannel.OPACITY, FormChannel.DRAW_ORDER, FormChannel.MULTIPLY_COLOR, FormChannel.SCREEN_COLOR)
+
+	/** The fields of a `set` entry's `channels` that write them; the set reads exactly these names. */
+	private val SET_FIELDS = mapOf("opacity" to FormChannel.OPACITY, "drawOrder" to FormChannel.DRAW_ORDER,
+		"multiplyColor" to FormChannel.MULTIPLY_COLOR, "screenColor" to FormChannel.SCREEN_COLOR)
+
+	/**
+	 * The overridable channel [name] names as the edits read it ([keyformChannelOf]: any case, camel or snake), or null
+	 * for geometry, a channel an override cannot carry or an unknown name (the edit itself rejects that).
+	 */
+	private fun overridable(name: String): FormChannel? = runCatching { keyformChannelOf(name) }.getOrNull()?.takeIf { it in OVERRIDABLE }
 
 	/** The record's name of [channel]: `opacity`, `draw_order`, `multiply_color` or `screen_color`. */
 	fun wire(channel: FormChannel): String = channel.name.lowercase()
@@ -397,7 +405,7 @@ internal object GeneratedOverrides {
 		val points = command.getValue("points").jsonArray.map { it.jsonPrimitive.float }
 		require(kind == "warp" || kind == "mesh") { "Unknown override target: $target" }
 		command["channel"]?.jsonPrimitive?.content?.let { name ->
-			val channel = requireNotNull(OVERRIDE_CHANNELS[name]) { "Unknown override channel: $name" }
+			val channel = requireNotNull(overridable(name)) { "Unknown override channel: $name" }
 			return applyChannel(model, kind, id, generator, target, key, channel, base, points)
 		}
 		require(base.size == points.size && points.size % 2 == 0 && points.all(Float::isFinite) && base.all(Float::isFinite)) { "Invalid override form" }

@@ -1,8 +1,10 @@
 package io.github.psd2live.targets.cubism
 
 import io.github.psd2live.format.compile.*
+import io.github.psd2live.format.model.AlphaBlend
 import io.github.psd2live.format.model.Clip
 import io.github.psd2live.format.model.ColorBlend
+import io.github.psd2live.format.model.GroupMode
 import io.github.psd2live.format.model.Physics
 import io.github.psd2live.format.model.RigIR
 import org.umamo.format.moc3.Moc3
@@ -112,20 +114,41 @@ public object Moc3Target : ExportTarget {
 
 	override fun plan(ir: RigIR, options: ExportOptions): LoweredExport {
 		val bundle = bundle(ir, options)
-		val losses = CapabilityScan.scan(ir, capabilities, options) + bundle.report.notices.map(::loss)
+		val losses = CapabilityScan.scan(ir, capabilities, options) + losses(ir, options, bundle.report.notices)
 		return object : LoweredExport {
 			override val losses: List<LossEntry> = losses
 			override fun write(sink: OutputSink) = bundle.files.forEach { sink.write(it.name, it.bytes) }
 		}
 	}
 
+	/**
+	 * The lowering's [notices] as loss entries. Stripped Cubism 5.3 blend modes are not dropped - the strip rewrites
+	 * each to the nearest mode the runtime has - so they become one approximated entry per mesh or isolated part of
+	 * [ir], by ID, naming the mode it becomes; [options] may hand the feature another handling, as for every scan.
+	 */
+	public fun losses(ir: RigIR, options: ExportOptions, notices: List<ExportNotice>): List<LossEntry> = notices.flatMap { notice ->
+		if (notice !is ExportNotice.FeatureStripped || notice.feature != RuntimeFeature.ExtendedBlendModes) return@flatMap listOf(loss(notice))
+		val handling = options.handling[Feature.BLEND_MODE] ?: Handling.APPROXIMATED
+		fun entry(id: String, blend: ColorBlend, alpha: AlphaBlend): LossEntry? {
+			val legacy = blend == ColorBlend.NORMAL || blend == ColorBlend.ADD_PREMULTIPLIED || blend == ColorBlend.MULTIPLY_PREMULTIPLIED
+			if (legacy && alpha == AlphaBlend.OVER) return null
+			val nearest = when (blend) {
+				ColorBlend.ADD_PREMULTIPLIED, ColorBlend.ADD, ColorBlend.ADD_GLOW, ColorBlend.SCREEN -> "add"
+				ColorBlend.MULTIPLY_PREMULTIPLIED, ColorBlend.MULTIPLY -> "multiply"
+				else -> "normal"
+			}
+			val color = if (legacy) "" else "${blend.name.lowercase()} becomes $nearest"
+			val alphaNote = if (alpha == AlphaBlend.OVER) "" else "${alpha.name.lowercase()} alpha becomes over"
+			return LossEntry(id, Feature.BLEND_MODE, handling,
+				note = "Before Cubism 5.3: " + listOf(color, alphaNote).filter { it.isNotEmpty() }.joinToString("; "))
+		}
+		ir.meshes.mapNotNull { entry(it.id, it.blend, it.alphaBlend) } +
+			ir.parts.filter { it.groupMode == GroupMode.ISOLATED }.mapNotNull { entry(it.id, it.composite.blend, it.composite.alphaBlend) }
+	}
+
 	/** An engine lowering notice as a loss entry. */
 	public fun loss(notice: ExportNotice): LossEntry = when (notice) {
-		// A blend mode is not dropped: the strip rewrites it to the nearest mode the runtime has.
-		is ExportNotice.FeatureStripped -> if (notice.feature == RuntimeFeature.ExtendedBlendModes)
-			LossEntry(notice.subjects.joinToString(",").ifEmpty { "*" }, Feature.BLEND_MODE, Handling.APPROXIMATED,
-				note = "Blend modes before Cubism 5.3 are normal, add and multiply: screen and the add family become add, the multiply family multiply, the rest normal; alpha blending becomes over")
-		else LossEntry(notice.subjects.joinToString(",").ifEmpty { "*" }, Feature.STRUCTURE, Handling.DROPPED,
+		is ExportNotice.FeatureStripped -> LossEntry(notice.subjects.joinToString(",").ifEmpty { "*" }, Feature.STRUCTURE, Handling.DROPPED,
 			note = "${notice.feature} is not supported by the target runtime version")
 		is ExportNotice.UnsupportedChange -> LossEntry(notice.subject ?: "*", Feature.STRUCTURE, Handling.DROPPED,
 			note = "${notice.category} change not representable: ${notice.reason}")

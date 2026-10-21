@@ -1982,14 +1982,14 @@ class PuppetRenderer(
 			// Scene draws never reach here with a 5.3 mode (renderPlanNodes routes extended blends
 			// through the destination-sampling composite pass); these branches are a safe fallback
 			// approximating with the legacy fixed-function analog where one exists - the same
-			// approximation the MOC3 constant-flags 2-bit field encodes for old runtimes.
-			BlendMode.Additive, BlendMode.AdditiveGlow -> PipelineBlend.Additive
+			// approximation the MOC3 constant-flags 2-bit field encodes for old runtimes (nearestLegacyBlendMode,
+			// which reads Screen as Add).
+			BlendMode.Additive, BlendMode.AdditiveGlow, BlendMode.Screen -> PipelineBlend.Additive
 			BlendMode.Multiply -> PipelineBlend.Multiply
 			BlendMode.Darken,
 			BlendMode.ColorBurn,
 			BlendMode.LinearBurn,
 			BlendMode.Lighten,
-			BlendMode.Screen,
 			BlendMode.ColorDodge,
 			BlendMode.Overlay,
 			BlendMode.SoftLight,

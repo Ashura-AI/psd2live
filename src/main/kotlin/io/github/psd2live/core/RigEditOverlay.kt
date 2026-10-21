@@ -648,20 +648,27 @@ internal fun AuthoredRig.finished(overlay: RigEditOverlay, layerVisibility: Map<
 		.withDrawOrderOverrides(drawOrderOverrides)
 }
 
-internal fun applyKeyformDelete(model: PuppetModel, delete: RigKeyformDeleteEdit): PuppetModel {
-    val requestedChannel = delete.channel?.takeUnless { it.equals("geometry", ignoreCase = true) }?.let { name ->
-        val canonical = when (name.lowercase()) {
-            "draworder" -> "DRAW_ORDER"
-            "multiplycolor" -> "MULTIPLY_COLOR"
-            "screencolor" -> "SCREEN_COLOR"
-            "glueintensity" -> "GLUE_INTENSITY"
-            "flipx" -> "FLIP_X"
-            "flipy" -> "FLIP_Y"
-            else -> name.uppercase()
-        }
-        FormChannel.entries.firstOrNull { it.name == canonical }
-            ?: throw IllegalArgumentException("Unknown keyform channel: $name")
+/**
+ * The channel a journal entry names, in any case, camel or snake (`drawOrder`, `draw_order`, `DRAW_ORDER`); null for
+ * `geometry`. Every reader of a channel name goes through this, so a check and the edit it guards agree on the name.
+ */
+internal fun keyformChannelOf(name: String): FormChannel? {
+    if (name.equals("geometry", ignoreCase = true)) return null
+    val canonical = when (name.lowercase()) {
+        "draworder" -> "DRAW_ORDER"
+        "multiplycolor" -> "MULTIPLY_COLOR"
+        "screencolor" -> "SCREEN_COLOR"
+        "glueintensity" -> "GLUE_INTENSITY"
+        "flipx" -> "FLIP_X"
+        "flipy" -> "FLIP_Y"
+        else -> name.uppercase()
     }
+    return FormChannel.entries.firstOrNull { it.name == canonical }
+        ?: throw IllegalArgumentException("Unknown keyform channel: $name")
+}
+
+internal fun applyKeyformDelete(model: PuppetModel, delete: RigKeyformDeleteEdit): PuppetModel {
+    val requestedChannel = delete.channel?.let(::keyformChannelOf)
 	val paramId = ParameterId(delete.parameterId)
 	val param = model.parameters.firstOrNull { it.id == paramId } ?: return model
 	val owner = delete.target.asKeyformOwner()

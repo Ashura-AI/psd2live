@@ -102,7 +102,7 @@ public class Cmo3Target(
 	override fun plan(ir: RigIR, options: ExportOptions): LoweredExport {
 		val converted = convert(ir, options)
 		val can3 = can3(ir, options, converted)
-		val losses = CapabilityScan.scan(ir, capabilities, options) + converted.report.notices.map(Moc3Target::loss) +
+		val losses = CapabilityScan.scan(ir, capabilities, options) + Moc3Target.losses(ir, options, converted.report.notices) +
 			textureLosses(ir, options) + can3Losses(ir, options)
 		return object : LoweredExport {
 			override val losses: List<LossEntry> = losses

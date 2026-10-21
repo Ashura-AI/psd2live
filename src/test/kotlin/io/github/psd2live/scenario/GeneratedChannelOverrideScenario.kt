@@ -72,6 +72,15 @@ class GeneratedChannelOverrideScenario {
 			put("op", "delete"); put("target", "warp:$WARP"); put("parameter", parameter.id.raw); put("value", parameter.max); put("channel", "multiplyColor")
 		}
 		expect("refused", runCatching { GeneratedOverrides.ownedWrites(shown, overlay, listOf(delete), authored = authored) }.isFailure) { "deleting a generated channel key was recorded" }
+		// The checks read channel names as the edits do: any case, camel or snake; geometry named among channels still counts.
+		for (name in listOf("OPACITY", "multiply_color", "MULTIPLY_COLOR", "MultiplyColor")) {
+			val renamed = JsonObject(delete + ("channel" to JsonPrimitive(name)))
+			expect("refused", runCatching { GeneratedOverrides.ownedWrites(shown, overlay, listOf(renamed), authored = authored) }.isFailure) { "deleting with channel $name was recorded" }
+		}
+		val upper = JsonObject(copy + ("channels" to buildJsonArray { add("OPACITY") }))
+		expect("refused", runCatching { GeneratedOverrides.ownedWrites(shown, overlay, listOf(upper), authored = authored) }.isFailure) { "a copy naming OPACITY was recorded" }
+		val withGeometry = JsonObject(copy + ("channels" to buildJsonArray { add("geometry"); add("screenColor") }))
+		expect("refused", runCatching { GeneratedOverrides.ownedWrites(shown, overlay, listOf(withGeometry), authored = authored) }.isFailure) { "a copy of the generated lattice was recorded" }
 
 		// Merge after the generator changes: opacity changed on both sides keeps the user's and reports it; green, which
 		// only the generator changed, follows it; red keeps the user's.
