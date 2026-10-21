@@ -344,6 +344,26 @@ class EditorAndAgentScenario {
 		consistent("restored the warp")
 		val rest = shape(0f)
 		for (value in listOf(range.min, range.max)) assertTrue(differs(rest, shape(value)) < 1e-4f, "key $value was not restored")
+
+		// Temporary deform tool: drag the lattice's last corner; the warp's matching corner follows it, one step per drag.
+		val beforeLattice = shape(range.min)
+		withContext(Dispatchers.Main) {
+			canvas.temporaryWarpDivisions = 1
+			canvas.beginTemporaryWarp()
+			val puppet = vm.state.value.previewModel!!.rig.puppet
+			val viewport = io.github.psd2live.core.CanvasViewport(1.0, 0.0, 0.0, puppet.canvasWidth, puppet.canvasHeight)
+			val corner = canvas.temporaryWarpScreen(viewport).last()
+			canvas.press(corner, viewport, shift = false, alt = false)
+			canvas.move(corner + androidx.compose.ui.geometry.Offset(10f, 10f), viewport, shift = false)
+			canvas.release()
+		}
+		consistent("temporary warp drag")
+		val afterLattice = shape(range.min)
+		// The lattice is padded around the shape, so every point follows a little; the one nearest the dragged corner most.
+		val moves = (0 until beforeLattice.size / 2).map { kotlin.math.hypot(afterLattice[it * 2] - beforeLattice[it * 2], afterLattice[it * 2 + 1] - beforeLattice[it * 2 + 1]) }
+		assertTrue(moves.max() > 1f, "the lattice drag moved nothing: ${moves.max()}")
+		assertTrue(moves.min() < moves.max() * 0.2f, "the far points must barely follow: ${moves.min()} of ${moves.max()}")
+		withContext(Dispatchers.Main) { canvas.endTemporaryWarp(); assertNull(canvas.temporaryWarp) }
 	}
 
 	@Test fun mouthPresetAndThicknessChangePreviewAndSurviveReopening() = editor {

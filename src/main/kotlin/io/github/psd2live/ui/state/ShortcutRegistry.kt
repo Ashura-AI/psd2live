@@ -159,6 +159,7 @@ enum class ShortcutAction(
     KEYFORM_RESET(ShortcutCategory.CANVAS_EDIT, "shortcut.keyformReset"),
     KEYFORM_INTERPOLATE(ShortcutCategory.CANVAS_EDIT, "shortcut.keyformInterpolate"),
     SOFT_SELECTION_TOGGLE(ShortcutCategory.CANVAS_EDIT, "shortcut.softSelection"),
+    TEMPORARY_DEFORM(ShortcutCategory.CANVAS_EDIT, "shortcut.temporaryDeform"),
     CANCEL(ShortcutCategory.CANVAS_EDIT, "shortcut.cancel"),
     FINISH_PATH(ShortcutCategory.CANVAS_EDIT, "shortcut.finishPath"),
     DELETE_SELECTION(ShortcutCategory.CANVAS_EDIT, "editor.delete"),
@@ -373,6 +374,7 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.KEYFORM_INTERPOLATE to keys("Ctrl+Alt+I"),
     // Blender's proportional editing key.
     ShortcutAction.SOFT_SELECTION_TOGGLE to keys("O"),
+    ShortcutAction.TEMPORARY_DEFORM to keys("Shift+T"),
     ShortcutAction.CANCEL to keys("Esc"),
     ShortcutAction.FINISH_PATH to keys("Enter", "NumPadEnter"),
     ShortcutAction.DELETE_SELECTION to keys("Del", "Backspace"),

@@ -2471,6 +2471,7 @@ internal class CanvasEditor(
     fun cancel() {
         skeletonEntrySerial++
         if (busy) return
+        endTemporaryWarp()
         if (poseDrag != null) {
             poseDrag = null; draggingIkTargetId = null; ikTargetDragOrigin = null; ikTargetDragValues = null; ikTargetPoseDraft = null
             viewModel.cancelParameterScrub()
@@ -4384,6 +4385,115 @@ internal class CanvasEditor(
         }
     }
 
+
+    /**
+     * Deform's temporary deform tool: a disposable lattice over the picked points (or the whole object) whose control
+     * points carry those points by bilinear interpolation, as a temporary warp does in Live2D editors. Nothing of the
+     * lattice is kept: each drag of one of its points commits the ordinary geometry edit it makes, one history step,
+     * and Enter, Esc or another target ends it. [startWorld] is the target's canvas points when it began and [uv] each
+     * carried point's place in the box the lattice started as.
+     */
+    internal data class TemporaryWarp(
+        val targetId: String,
+        val rows: Int,
+        val columns: Int,
+        val lattice: FloatArray,
+        val startWorld: FloatArray,
+        val uv: Map<Int, Pair<Float, Float>>,
+    )
+
+    var temporaryWarp by mutableStateOf<TemporaryWarp?>(null)
+
+    /** The lattice's rows and columns when a temporary warp begins. */
+    var temporaryWarpDivisions by mutableStateOf(2)
+    private var temporaryWarpHandle = -1
+
+    fun canBeginTemporaryWarp(): Boolean = hierarchyMode == EditHierarchyMode.DEFORM &&
+        target()?.let { it.kind == "mesh" || (it.kind == "warp" && editLevel == 1) } == true
+
+    /** Lays a [temporaryWarpDivisions] lattice over the picked points of the target in hand, or all of them. */
+    fun beginTemporaryWarp() {
+        if (!canBeginTemporaryWarp()) return
+        val t = target() ?: return
+        val world = t.mapping.localToWorld(t.geometry.points)
+        val carried = vertices.filter { it < t.count }.ifEmpty { (0 until t.count).toList() }
+        val xs = carried.map { world[it * 2] }; val ys = carried.map { world[it * 2 + 1] }
+        val padX = max((xs.max() - xs.min()) * 0.05f, 1f); val padY = max((ys.max() - ys.min()) * 0.05f, 1f)
+        val x0 = xs.min() - padX; val x1 = xs.max() + padX; val y0 = ys.min() - padY; val y1 = ys.max() + padY
+        val n = temporaryWarpDivisions.coerceIn(1, 8)
+        val lattice = FloatArray((n + 1) * (n + 1) * 2)
+        for (r in 0..n) for (c in 0..n) {
+            val i = (r * (n + 1) + c) * 2
+            lattice[i] = x0 + (x1 - x0) * c / n; lattice[i + 1] = y0 + (y1 - y0) * r / n
+        }
+        temporaryWarp = TemporaryWarp(t.id, n, n, lattice, world,
+            carried.associateWith { ((world[it * 2] - x0) / (x1 - x0)) to ((world[it * 2 + 1] - y0) / (y1 - y0)) })
+    }
+
+    fun endTemporaryWarp() { temporaryWarp = null; temporaryWarpHandle = -1 }
+
+    /** A new lattice size: an active temporary warp starts again over what the canvas now shows. */
+    fun changeTemporaryWarpDivisions(n: Int) {
+        temporaryWarpDivisions = n
+        if (temporaryWarp != null) { endTemporaryWarp(); beginTemporaryWarp() }
+    }
+
+    /** The lattice's points on screen, row by row. */
+    fun temporaryWarpScreen(viewport: CanvasViewport): List<Offset> = temporaryWarp?.lattice?.let { lattice ->
+        List(lattice.size / 2) { Offset((viewport.offsetX + lattice[it * 2] * viewport.scale).toFloat(), (viewport.offsetY - lattice[it * 2 + 1] * viewport.scale).toFloat()) }
+    }.orEmpty()
+
+    /** [warp]'s carried points where its lattice now puts them, the rest where they started, in canvas units. */
+    private fun temporaryWarpWorld(warp: TemporaryWarp): FloatArray {
+        val world = warp.startWorld.copyOf()
+        val columns = warp.columns + 1
+        for ((i, place) in warp.uv) {
+            val fu = (place.first * warp.columns).coerceIn(0f, warp.columns.toFloat()); val fv = (place.second * warp.rows).coerceIn(0f, warp.rows.toFloat())
+            val c = min(fu.toInt(), warp.columns - 1); val r = min(fv.toInt(), warp.rows - 1)
+            val s = fu - c; val u = fv - r
+            for (axis in 0..1) {
+                fun at(rr: Int, cc: Int) = warp.lattice[(rr * columns + cc) * 2 + axis]
+                world[i * 2 + axis] = (at(r, c) * (1 - s) + at(r, c + 1) * s) * (1 - u) + (at(r + 1, c) * (1 - s) + at(r + 1, c + 1) * s) * u
+            }
+        }
+        return world
+    }
+
+    /** Takes the press when it lands on a lattice point of the temporary warp in hand; true when one is active. */
+    private fun pressTemporaryWarp(pos: Offset, viewport: CanvasViewport): Boolean {
+        val warp = temporaryWarp ?: return false
+        val t = target()
+        if (t == null || t.id != warp.targetId || hierarchyMode != EditHierarchyMode.DEFORM) { endTemporaryWarp(); return false }
+        val points = temporaryWarpScreen(viewport)
+        val hit = points.indices.minByOrNull { (points[it] - pos).getDistance() }?.takeIf { (points[it] - pos).getDistance() <= 10f } ?: return true
+        temporaryWarpHandle = hit
+        targetAtPress = t
+        original = state.previewModel?.rig?.puppet
+        dragging = true
+        return true
+    }
+
+    private fun moveTemporaryWarp(pos: Offset, viewport: CanvasViewport) {
+        val warp = temporaryWarp ?: return
+        val t = targetAtPress ?: return; val source = original ?: return
+        val lattice = warp.lattice.copyOf()
+        lattice[temporaryWarpHandle * 2] = ((pos.x - viewport.offsetX) / viewport.scale).toFloat()
+        lattice[temporaryWarpHandle * 2 + 1] = -((pos.y - viewport.offsetY) / viewport.scale).toFloat()
+        val moved = warp.copy(lattice = lattice)
+        temporaryWarp = moved
+        val cmd = geometryCommand(t, t.mapping.worldToLocal(temporaryWarpWorld(moved), t.geometry.points, moved.uv.keys))
+        preview = RigAuthoringJournal.apply(source, cmd); pending = cmd
+    }
+
+    private fun releaseTemporaryWarp() {
+        temporaryWarpHandle = -1
+        dragging = false
+        targetAtPress = null; original = null
+        val cmd = pending
+        if (cmd == null) { preview = null; return }
+        if (!commitBatch(listOf(cmd))) preview = null
+    }
+
     /** Whether a drag of picked points carries the points around them: Deform's point tools with [softSelection] on. */
     fun softSelectionActive(): Boolean = softSelection && hierarchyMode == EditHierarchyMode.DEFORM &&
         (tool in SELECTION_TOOLS || tool == CanvasTool.TRANSFORM)
@@ -5774,6 +5884,8 @@ internal class CanvasEditor(
             dragging = interiorTool.dragging
             return true
         }
+        // A temporary warp owns the canvas until it ends: a press off its lattice does nothing.
+        if (pressTemporaryWarp(pos, viewport)) return true
 
         // 0. The pose tool turns bones; a press off every bone does nothing, so a stray click cannot
         //    select or move points while the tool is armed.
@@ -6196,6 +6308,12 @@ internal class CanvasEditor(
         moved = moved || (pos - start).getDistance() > 2f
         if (!moved) return
 
+        if (temporaryWarpHandle >= 0) {
+            moveTemporaryWarp(pos, viewport)
+            previous = pos
+            return
+        }
+
         if (poseDrag != null) {
             dragPose(pos, viewport, ik = shift)
             previous = pos
@@ -6460,6 +6578,10 @@ internal class CanvasEditor(
             anchorDragging = false
             dragging = false
             activeHandle = BoundingHandle.NONE
+            return
+        }
+        if (temporaryWarpHandle >= 0) {
+            releaseTemporaryWarp()
             return
         }
         if (swingHandle != null) {

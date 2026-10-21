@@ -46,6 +46,9 @@ internal val BRUSH_FALLOFF = ChoiceOption("brush.falloff", "editor.falloff", { B
 
 internal val BRUSH_CONNECTED = ToggleOption("brush.connected", "editor.connectedOnly", { it.connectedOnly }, { e, on -> e.connectedOnly = on })
 
+internal val TEMPORARY_WARP_DIVISIONS = ChoiceOption("tempWarp.divisions", "editor.tempWarp.divisions", { (1..4).toList() },
+    { _, n -> "$n×$n" }, { it.temporaryWarpDivisions }, { e, n -> e.changeTemporaryWarpDivisions(n) })
+
 internal val SOFT_SELECTION = ToggleOption("soft.selection", "editor.softSelection", { it.softSelection }, { e, on -> e.softSelection = on })
 
 internal val SOFT_RADIUS = SliderOption("soft.radius", "editor.softRadius", OptionUnit.PX, { 1f..it },
@@ -500,6 +503,12 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
             OptionIcon.TOPOLOGY, place = OptionPlace.MENU))
         // The whole mesh, made again from the layer's pixels, beside the edits to its points.
         addLayerActions(editor, editor.targetLayerId(target), target?.id)
+    }
+    if (!editing && editor.temporaryWarp != null) {
+        add(TEMPORARY_WARP_DIVISIONS)
+        add(ActionOption("tempWarp.end", "editor.tempWarp.end", { true }, { it.endTemporaryWarp() }, OptionIcon.CONFIRM, primary = true, place = OptionPlace.TOP))
+    } else if (!editing && editor.canBeginTemporaryWarp()) {
+        add(ActionOption("tempWarp.begin", "editor.tempWarp.begin", { it.editable }, { it.beginTemporaryWarp() }, OptionIcon.WARP, place = OptionPlace.MENU))
     }
     if (!editing && target != null) {
         addKeyformTools(editor)
