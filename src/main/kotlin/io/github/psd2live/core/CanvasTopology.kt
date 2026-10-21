@@ -3,6 +3,9 @@ package io.github.psd2live.core
 import org.umamo.edit.MergeTarget
 import org.umamo.edit.MeshElement
 import org.umamo.edit.MeshManualOps
+import org.umamo.edit.MeshShapes
+import org.umamo.runtime.model.DrawableId
+import org.umamo.runtime.model.PuppetModel
 import kotlinx.serialization.json.*
 import org.umamo.edit.MeshRefinementOps
 import org.umamo.edit.MeshTopology
@@ -41,6 +44,7 @@ internal object CanvasTopology {
         selected: Set<Int>,
         anchors: List<MeshRefinementOps.KnifeAnchor> = emptyList(),
         edges: Set<MeshElement.Edge> = emptySet(),
+        shapes: () -> MeshShapes = { MeshShapes() },
     ): TopologyOpResult? = when (action) {
         "merge" -> MeshTopologyOps.mergeVertices(mesh, selected.sorted(), MergeTarget.AtCenter)
         "duplicate" -> MeshTopologyOps.duplicateElements(mesh, selected)
@@ -49,10 +53,27 @@ internal object CanvasTopology {
         "subdivide", "split" -> MeshRefinementOps.subdivideEdges(mesh, edges.ifEmpty { subdivisionEdges(mesh, selected) })
         "knife" -> MeshRefinementOps.knifeCut(mesh, anchors)
         // Hand placement: free points only - an anchor on an existing vertex has nothing to add.
-        "add_points" -> MeshManualOps.addPoints(mesh, anchors.filterIsInstance<MeshRefinementOps.KnifeAnchor.AtPoint>().map { it.x to it.y })
-        "delete_edges" -> MeshManualOps.deleteEdges(mesh, edges.ifEmpty { MeshTopology.edgesWithBothEndpointsSelected(mesh.indices, selected) })
-        "retriangulate" -> MeshManualOps.retriangulate(mesh, selected)
+        "add_points" -> MeshManualOps.addPoints(mesh, anchors.filterIsInstance<MeshRefinementOps.KnifeAnchor.AtPoint>().map { it.x to it.y }, shapes())
+        // Only the edges named: deleting every edge a vertex or face selection spans is never what was meant.
+        "delete_edges" -> MeshManualOps.deleteEdges(mesh, edges, shapes())
+        "retriangulate" -> MeshManualOps.retriangulate(mesh, selected, shapes())
         else -> error("Unknown topology operation")
+    }
+
+    /**
+     * The shapes the hand-placement flips must stay valid in ([MeshShapes]): the drawable as it shows at the default
+     * pose, to judge triangle quality in canvas space, and its rest mesh plus every keyform cell and blend form, which
+     * must all stay convex. The reducer and the editor's pre-check both read it from the model, so they agree.
+     */
+    fun shapes(model: PuppetModel, id: DrawableId): MeshShapes {
+        val drawable = model.drawables.firstOrNull { it.id == id } ?: return MeshShapes()
+        val rest = drawable.mesh?.positions ?: return MeshShapes()
+        fun shifted(deltas: FloatArray) = if (deltas.size != rest.size) null else FloatArray(rest.size) { rest[it] + deltas[it] }
+        val forms = drawable.geometryGrid?.cells.orEmpty().mapNotNull { shifted(it.form.positionDeltas) } +
+            drawable.blendShapes.flatMap { binding -> binding.forms.mapNotNull { form -> form?.let { shifted(it.positionDeltas) } } }
+        val defaults = model.parameters.associate { it.id to it.default }
+        val shown = org.umamo.render.eval.CpuDeformationEvaluator().evaluate(model, defaults).worldPositions[id]
+        return MeshShapes(shown?.takeIf { it.size == rest.size && it.all(Float::isFinite) }, forms)
     }
 
     /** Every action [build] knows, in the order the public schema lists them. */

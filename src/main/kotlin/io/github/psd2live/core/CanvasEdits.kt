@@ -446,7 +446,7 @@ internal object CanvasEdits {
                     val values = pair.jsonArray
                     MeshElement.Edge.of(values[0].jsonPrimitive.int, values[1].jsonPrimitive.int)
                 }?.toSet().orEmpty()
-                val result = requireNotNull(CanvasTopology.build(mesh, action, selected, anchors, edges)) {
+                val result = requireNotNull(CanvasTopology.build(mesh, action, selected, anchors, edges) { CanvasTopology.shapes(model, drawable.id) }) {
                     "The $action operation does not apply to this selection"
                 }.edit
                 var next = model.withMeshTopologyEdit(drawable.id, result)

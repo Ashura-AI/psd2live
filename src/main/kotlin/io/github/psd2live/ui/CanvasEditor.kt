@@ -20,6 +20,7 @@ import io.github.psd2live.ui.state.*
 import kotlinx.serialization.json.*
 import org.umamo.edit.MeshElement
 import org.umamo.edit.MeshManualOps
+import org.umamo.edit.MeshShapes
 import org.umamo.edit.MeshTopology
 import org.umamo.edit.MeshRefinementOps
 import org.umamo.format.art.SourceLayer
@@ -291,6 +292,9 @@ internal val PAINT_BRUSH_TOOLS = setOf(
 
 /** The topology actions the editor builds before sending, so a refusal reads as the op's own notice. */
 private val MANUAL_TOPOLOGY = setOf("add_points", "delete_edges", "retriangulate", "connect", "delete")
+
+/** Above this many triangles the editor leaves the hand-placement pre-check to the reducer, off the UI thread. */
+private const val PREJUDGE_TRIANGLES = 3000
 
 /**
  * Tools that edit points rather than whole objects.
@@ -1504,7 +1508,7 @@ internal class CanvasEditor(
     /** Canvas pixels between the vertices one point-tool stroke lays; a click lays one. */
     var pointSpacing by mutableStateOf(24f)
 
-    /** Whether the point tool repeats each add, delete and connect at its mirror image across the mesh's vertical centre. */
+    /** Whether the point tool repeats each add, vertex delete and edge delete at its mirror image across the mesh's vertical centre. */
     var pointMirror by mutableStateOf(false)
 
     /** The vertices the subdivide brush is currently covering; the stroke's union, not the last radius. */
@@ -3859,7 +3863,10 @@ internal class CanvasEditor(
             }
         }
         val selected = picked ?: vertices
-        val chosenEdges = if (edges.isNotEmpty()) edges else if (action in setOf("subdivide", "split", "delete_edges")) {
+        val chosenEdges = if (edges.isNotEmpty()) edges else if (action == "delete_edges") {
+            // Only edges picked as edges: a vertex or face selection does not name the edges to delete.
+            if (elementMode == 1) selectedEdges else emptySet()
+        } else if (action in setOf("subdivide", "split")) {
             when (elementMode) {
                 1 -> selectedEdges
                 2 -> selectedFaces.flatMapTo(LinkedHashSet()) { face ->
@@ -3871,9 +3878,15 @@ internal class CanvasEditor(
         // Against state.previewModel, which is what commitBatch compiles against - not `model`, which
         // prefers the in-flight `preview` and would disagree with the reducer mid-drag.
         val mesh = state.previewModel?.rig?.puppet?.drawables?.firstOrNull { it.id.raw == t.id }?.mesh
-        val outcome = mesh?.let { runCatching { CanvasTopology.build(it, action, selected, anchors, chosenEdges) }.getOrNull() }
+        // The pre-check runs here, on the UI thread, so a mesh too large to answer at once skips it: the reducer still
+        // refuses what does not apply, and the selection afterwards is simply empty.
+        val source = state.previewModel?.rig?.puppet
+        val prejudged = mesh != null && (action !in MANUAL_TOPOLOGY || mesh.triangleCount <= PREJUDGE_TRIANGLES)
+        val outcome = if (!prejudged || mesh == null) null else runCatching {
+            CanvasTopology.build(mesh, action, selected, anchors, chosenEdges) { source?.let { CanvasTopology.shapes(it, DrawableId(t.id)) } ?: MeshShapes() }
+        }.getOrNull()
         // Refused before it is sent, so the notice names the op instead of the reducer's failure.
-        if (mesh != null && outcome == null && action in MANUAL_TOPOLOGY) {
+        if (prejudged && outcome == null && action in MANUAL_TOPOLOGY) {
             error = tr("editor.topologyRefused.$action")
             return
         }

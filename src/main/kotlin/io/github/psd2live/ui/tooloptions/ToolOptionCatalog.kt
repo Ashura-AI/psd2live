@@ -445,7 +445,7 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
             add(ActionOption("topology.${action.first}", "editor.${action.first}", { it.editable && it.vertices.isNotEmpty() },
                 { it.topology(action.first) }, action.second, danger = action.first == "delete", place = OptionPlace.MENU))
         }
-        add(ActionOption("topology.delete_edges", "editor.delete_edges", { it.editable && (it.selectedEdges.isNotEmpty() || it.vertices.size >= 2) },
+        add(ActionOption("topology.delete_edges", "editor.delete_edges", { it.editable && it.elementMode == 1 && it.selectedEdges.isNotEmpty() },
             { it.topology("delete_edges") }, OptionIcon.DELETE, danger = true, place = OptionPlace.MENU))
         // No selection re-triangulates the whole mesh, so this one is on whenever the mesh can be edited.
         add(ActionOption("topology.retriangulate", "editor.retriangulate", { it.editable }, { it.topology("retriangulate") },

@@ -107,6 +107,41 @@ class MeshManualOpsTest {
 		assertNull(MeshManualOps.retriangulate(tidy, emptySet()))
 	}
 
+	@Test fun aFlipThatAKeyformWouldFoldIsNotTaken() {
+		// In this keyform vertex 1 swings inside the triangle (0, 4, 3): the quad 0-1-4-3 is concave there.
+		val folded = grid().positions.copyOf().also { it[2] = 3f; it[3] = 5f }
+		val edge = setOf(MeshElement.Edge.of(0, 4))
+		assertNotNull(MeshManualOps.deleteEdges(grid(), edge))
+		assertNull(MeshManualOps.deleteEdges(grid(), edge, MeshShapes(forms = listOf(folded))))
+		val positions = floatArrayOf(0f, 0f, 10f, -2f, 20f, 0f, 10f, 2f)
+		val rhombus = DrawableMesh(positions, FloatArray(8) { positions[it] / 20f }, intArrayOf(0, 1, 2, 0, 2, 3))
+		// Vertex 3 drops below the long diagonal in a blend form, so turning it would overlap there.
+		val dropped = positions.copyOf().also { it[7] = -1f }
+		assertNull(MeshManualOps.retriangulate(rhombus, emptySet(), MeshShapes(forms = listOf(dropped))))
+	}
+
+	@Test fun qualityIsJudgedWhereTheMeshShows() {
+		val positions = floatArrayOf(0f, 0f, 10f, -2f, 20f, 0f, 10f, 2f)
+		val rhombus = DrawableMesh(positions, FloatArray(8) { positions[it] / 20f }, intArrayOf(0, 1, 2, 0, 2, 3))
+		// Shown stretched twentyfold vertically (a warp's uneven lattice), the 0-2 diagonal is already the short one.
+		val shown = FloatArray(8) { if (it % 2 == 0) positions[it] else positions[it] * 20f }
+		assertNull(MeshManualOps.retriangulate(rhombus, emptySet(), MeshShapes(judge = shown)))
+		assertNotNull(MeshManualOps.retriangulate(rhombus, emptySet()))
+	}
+
+	@Test fun aMeshWoundBothWaysStillFlipsAndKeepsEachWinding() {
+		val mixed = grid().let { DrawableMesh(it.positions, it.uvs, it.indices.copyOf().also { indices -> indices[1] = 4; indices[2] = 1 }) }
+		val result = assertNotNull(MeshManualOps.deleteEdges(mixed, setOf(MeshElement.Edge.of(0, 4)))).edit.newMesh
+		assertTrue(MeshElement.Edge.of(1, 3) in edges(result))
+		fun signs(mesh: DrawableMesh) = (0 until mesh.triangleCount).map { t ->
+			val (a, b, c) = (0..2).map { mesh.indices[t * 3 + it] }
+			val p = mesh.positions
+			(p[b * 2] - p[a * 2]) * (p[c * 2 + 1] - p[a * 2 + 1]) - (p[b * 2 + 1] - p[a * 2 + 1]) * (p[c * 2] - p[a * 2]) > 0f
+		}
+		// The two triangles of the flipped quad keep the windings of the two they replace, wherever they land.
+		assertEquals(signs(mixed).sorted(), signs(result).sorted())
+	}
+
 	@Test fun legalityAndTheOutline() {
 		assertTrue(MeshManualOps.isLegal(grid()))
 		assertEquals((0 until 9).toSet() - 4, MeshManualOps.outlineVertices(grid().indices))
