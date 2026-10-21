@@ -101,7 +101,7 @@ The tip shape is picked under the brush in the left toolbar (the same for the we
 | Connect / merge | Connects the selected points, or merges the selected vertices into one |
 | **Duplicate** | Copies the selected vertices and the faces they fully cover; the copy becomes the selection |
 | **Delete** | Deletes the selection and tries to rebuild the gap; refused when no valid topology can be formed |
-| Delete edges | Deletes the selected edges (`Del` in edge mode, or **Delete edges** in the topology menu): an inner edge is replaced by the other diagonal of the quad its two triangles form, refused for a concave quad; an outline edge removes its triangle, together with any vertex no longer used; refused when a vertex would be left joined by a single point or no triangle would remain |
+| Delete edges | Deletes the selected edges (`Del` in edge mode, or **Delete edges** in the topology menu): an inner edge is replaced by the other diagonal of the quad its two triangles form, refused when the quad is not convex at rest or in any keyform or blend form (it would turn over in that pose); an outline edge removes its triangle, together with any vertex no longer used; refused when a vertex would be left joined by a single point or no triangle would remain |
 | Re-triangulate | Topology menu: around the selected vertices (the whole mesh when nothing is selected), turns slivers into more even triangles; vertices, outline and texture stay put, and a notice says when there is nothing to improve |
 | Knife | Places a polyline point by point; snaps near points or edges, Shift turns snapping off temporarily; Enter finishes, Esc cancels |
 | Mesh points | Point-by-point corrections to the automatic layout, see below |
