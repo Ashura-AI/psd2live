@@ -1,6 +1,8 @@
 package io.github.psd2live.targets.psd
 
 import io.github.psd2live.format.compile.*
+import io.github.psd2live.format.model.AlphaBlend
+import io.github.psd2live.format.model.ColorBlend
 import io.github.psd2live.format.model.RigIR
 import org.umamo.format.art.ChannelMask
 import org.umamo.format.art.LayerBlend
@@ -12,7 +14,9 @@ import org.umamo.format.psd.PsdWriter
 
 /**
  * A layered PSD of the rig at one pose: every visible mesh rendered deformed onto its own layer, bottom to
- * top in rest draw order, so a pose can go back to the art workflow.
+ * top in rest draw order, so a pose can go back to the art workflow. Each mesh is rendered on its own, so a mesh
+ * whose color blend composites by the W3C formulas (screen and the other Cubism 5.3 modes, with over alpha) keeps
+ * that blend as its layer's: the PSD composites it as the rig does.
  *
  * Settings: `clip` and `time` (seconds) pose the rig from a clip, or `pose` sets parameters directly
  * (`ParamAngleX=20,ParamEyeLOpen=0`; it overrides the clip); `scale` (0.25..2, default 1) sets the resolution
@@ -42,7 +46,8 @@ public class PosedPsdTarget(private val renderer: FrameRenderer) : ExportTarget 
 		val meshes = ir.meshes.filter { it.visible && it.geometry != null }.sortedBy { it.drawOrder }
 		val layers = renderer.open(ir, physics = false).use { session ->
 			session.renderEach(pose, frame, meshes.map { it.id }).mapIndexedNotNull { index, placed ->
-				placed?.let { PosedLayer(meshes[index].id, meshes[index].name, meshes.size - index, LayerBounds(it.left, it.top, it.image.width, it.image.height), rgba(it.image)) }
+				placed?.let { PosedLayer(meshes[index].id, meshes[index].name, meshes.size - index, LayerBounds(it.left, it.top, it.image.width, it.image.height), rgba(it.image),
+					layerBlend(meshes[index].blend, meshes[index].alphaBlend) ?: LayerBlend.Normal) }
 			}
 		}
 		val losses = buildList {
@@ -53,6 +58,10 @@ public class PosedPsdTarget(private val renderer: FrameRenderer) : ExportTarget 
 			ir.meshes.filter { it.maskedBy.isNotEmpty() }.forEach {
 				add(LossEntry(it.id, Feature.MASK, Handling.BAKED, note = "The mask is applied to the layer's pixels"))
 			}
+			meshes.filter { layerBlend(it.blend, it.alphaBlend) == null }.forEach {
+				add(LossEntry(it.id, Feature.BLEND_MODE, Handling.APPROXIMATED,
+					note = "Blend mode ${it.blend.name.lowercase()} with ${it.alphaBlend.name.lowercase()} alpha has no PSD layer blend; the layer is normal"))
+			}
 		}
 		return object : LoweredExport {
 			override val losses: List<LossEntry> = losses
@@ -60,13 +69,37 @@ public class PosedPsdTarget(private val renderer: FrameRenderer) : ExportTarget 
 		}
 	}
 
+	/**
+	 * The PSD layer blend that composites a mesh rendered on its own as [blend] and [alpha] would, or null. Only the
+	 * W3C modes with over alpha qualify: Cubism's premultiplied add and multiply keep the backdrop's alpha, and the
+	 * other alpha modes have no PSD counterpart.
+	 */
+	private fun layerBlend(blend: ColorBlend, alpha: AlphaBlend): LayerBlend? = if (alpha != AlphaBlend.OVER) null else when (blend) {
+		ColorBlend.NORMAL -> LayerBlend.Normal
+		ColorBlend.ADD -> LayerBlend.Add
+		ColorBlend.ADD_GLOW -> LayerBlend.AddGlow
+		ColorBlend.DARKEN -> LayerBlend.Darken
+		ColorBlend.MULTIPLY -> LayerBlend.Multiply
+		ColorBlend.COLOR_BURN -> LayerBlend.ColorBurn
+		ColorBlend.LINEAR_BURN -> LayerBlend.LinearBurn
+		ColorBlend.LIGHTEN -> LayerBlend.Lighten
+		ColorBlend.SCREEN -> LayerBlend.Screen
+		ColorBlend.COLOR_DODGE -> LayerBlend.ColorDodge
+		ColorBlend.OVERLAY -> LayerBlend.Overlay
+		ColorBlend.SOFT_LIGHT -> LayerBlend.SoftLight
+		ColorBlend.HARD_LIGHT -> LayerBlend.HardLight
+		ColorBlend.LINEAR_LIGHT -> LayerBlend.LinearLight
+		ColorBlend.HUE -> LayerBlend.Hue
+		ColorBlend.COLOR -> LayerBlend.Color
+		ColorBlend.ADD_PREMULTIPLIED, ColorBlend.MULTIPLY_PREMULTIPLIED -> null
+	}
+
 	private class PosedLayer(id: String, override val name: String, override val order: Int,
-	                         override val bounds: LayerBounds, override val raster: LayerRaster) : SourceLayer {
+	                         override val bounds: LayerBounds, override val raster: LayerRaster, override val blend: LayerBlend) : SourceLayer {
 		override val id: LayerId = LayerId(id)
 		override val groupPath: String = ""
 		override val opacity: Float = 1f
 		override val clipped: Boolean = false
-		override val blend: LayerBlend = LayerBlend.Normal
 		override val channelMask: ChannelMask = ChannelMask.ALL
 	}
 

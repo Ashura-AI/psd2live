@@ -16,6 +16,7 @@ import org.umamo.interop.moc3.Moc3Sidecars
 import org.umamo.render.canvasToParentSpaceFor
 import org.umamo.render.restMeshesToCanvasSpace
 import org.umamo.runtime.model.ParameterId
+import org.umamo.runtime.model.RuntimeFeature
 
 /**
  * The Cubism runtime family: `.moc3` with its model3, physics3, motion3, cdi3 and texture files.
@@ -120,7 +121,11 @@ public object Moc3Target : ExportTarget {
 
 	/** An engine lowering notice as a loss entry. */
 	public fun loss(notice: ExportNotice): LossEntry = when (notice) {
-		is ExportNotice.FeatureStripped -> LossEntry(notice.subjects.joinToString(",").ifEmpty { "*" }, Feature.STRUCTURE, Handling.DROPPED,
+		// A blend mode is not dropped: the strip rewrites it to the nearest mode the runtime has.
+		is ExportNotice.FeatureStripped -> if (notice.feature == RuntimeFeature.ExtendedBlendModes)
+			LossEntry(notice.subjects.joinToString(",").ifEmpty { "*" }, Feature.BLEND_MODE, Handling.APPROXIMATED,
+				note = "Blend modes before Cubism 5.3 are normal, add and multiply: screen and the add family become add, the multiply family multiply, the rest normal; alpha blending becomes over")
+		else LossEntry(notice.subjects.joinToString(",").ifEmpty { "*" }, Feature.STRUCTURE, Handling.DROPPED,
 			note = "${notice.feature} is not supported by the target runtime version")
 		is ExportNotice.UnsupportedChange -> LossEntry(notice.subject ?: "*", Feature.STRUCTURE, Handling.DROPPED,
 			note = "${notice.category} change not representable: ${notice.reason}")

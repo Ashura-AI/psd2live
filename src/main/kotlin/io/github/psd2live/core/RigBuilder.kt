@@ -3435,9 +3435,14 @@ object RigBuilder {
 		return DrawableId(candidate)
 	}
 
+	/**
+	 * The drawable blend of a source layer. Screen keeps its own (Cubism 5.3) mode; a target runtime older than 5.3
+	 * degrades it to Add on export and reports it (`Moc3VersionDowngrade`), so it is never silently drawn as Normal.
+	 */
 	private fun blendMode(blend: LayerBlend): BlendMode = when (blend) {
 		LayerBlend.Add, LayerBlend.AddGlow, LayerBlend.LinearLight -> BlendMode.AdditivePremultiplied
 		LayerBlend.Multiply, LayerBlend.LinearBurn, LayerBlend.ColorBurn -> BlendMode.MultiplyPremultiplied
+		LayerBlend.Screen -> BlendMode.Screen
 		else -> BlendMode.Normal
 	}
 

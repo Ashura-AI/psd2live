@@ -123,6 +123,14 @@ internal class Studio(private val temp: Path, private val checks: Set<Check> = C
 		return commit.capture
 	}
 
+	/** Project settings [changes] committed as the settings panel commits them. */
+	fun settings(name: String, changes: JsonObject): WorkspaceCapture<RigPreviewModel> {
+		val before = now
+		val commit = step(name) { commands.executeSettings(before.projectId, before.state, name, MutationAuthor.USER, changes) }
+		verify(name, before, commit.applied)
+		return commit.capture
+	}
+
 	/** Update Generated Rig; whether it changed anything. */
 	fun updateGenerated(name: String = "update generated rig"): Boolean {
 		val before = now
@@ -225,10 +233,15 @@ internal class Studio(private val temp: Path, private val checks: Set<Check> = C
 
 	// ---- Export -------------------------------------------------------------------------------------------------
 
+	/** The loss report of the last [export]: `object`, `feature`, `handling` and `note` of each entry. */
+	var losses: List<JsonObject> = emptyList()
+		private set
+
 	/** Exports [target] into a fresh directory; the files written. */
 	fun export(target: String, settings: Map<String, String> = emptyMap(), name: String = "export $target"): List<Path> = timed("export") { step(name) {
 		val directory = Files.createTempDirectory(temp, target)
 		val result = WorkspaceExportSession(now, "Figure.psd").target(target, directory.toAbsolutePath(), settings)
+		losses = result.getValue("losses").jsonArray.map { it.jsonObject }
 		result.getValue("files").jsonArray.map { directory.resolve(it.jsonPrimitive.content) }
 	} }
 

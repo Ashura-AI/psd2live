@@ -8,6 +8,8 @@ This page covers source preparation. Automatic classification is a starting poin
 
 Use a layered RGB, 8-bit PSD with transparency. Rasterize text, vectors and layer effects you need, and merge adjustment effects into the relevant pixels. Keep the body approximately upright. A small initial head tilt is supported by estimation, but inspect the result.
 
+Layer blend modes: Linear Dodge (Add), Add Glow and Linear Light become Cubism's Add; Multiply, Linear Burn and Color Burn become Multiply; Screen stays Screen (a Cubism 5.3 blend mode: exporting for an earlier runtime version draws it as Add and says so in the loss report). Other modes are drawn as Normal. A group's blend mode has no effect; merge the group into one layer if it matters.
+
 ## Without a PSD: layout manifests
 
 Parts split by a program, such as AI layer decomposition, can reach PSD2Live without a PSD, as a [layout manifest](LAYOUT_MANIFEST.md): a JSON file, or a zip holding it at its root, that lists each layer's image, canvas rectangle, stacking order, group, tags and variant, and whether it is only a reference (such as the picture the parts were split from: shown on the canvas, never generated or exported). Small parts may carry more pixels than the canvas gives them; opening the manifest gives a laid-out project that is not generated yet. Layers without tags are recognised by the naming rules on this page.

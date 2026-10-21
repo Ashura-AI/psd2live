@@ -160,8 +160,8 @@ internal fun alphaBlendOfPacked(packed: Int): AlphaBlendMode =
  * The LEGACY 2-bit constant-flag encoding of [mode] - the only blend a moc below v6 can express.
  *
  * The pre-5.3 fixed-function set is just Normal / Add / Multiply, so every 5.3+ mode has to fall back
- * to its nearest premultiplied ancestor: the 5.3 additive family reads as Add and the multiply family
- * as Multiply, and anything with no fixed-function equivalent reads as Normal.  A v6 export writes the
+ * to its nearest premultiplied ancestor: the 5.3 additive family and Screen read as Add, the multiply
+ * family as Multiply, and anything with no fixed-function equivalent reads as Normal.  A v6 export writes the
  * packed extended blend instead and leaves these bits at Normal, so this is only reached when the
  * target version genuinely cannot carry the authored mode.
  *
@@ -187,7 +187,9 @@ internal fun legacyBlendFlagOf(mode: BlendMode): Int =
  */
 internal fun nearestLegacyBlendMode(mode: BlendMode): BlendMode =
 	when (mode) {
-		BlendMode.AdditivePremultiplied, BlendMode.Additive, BlendMode.AdditiveGlow ->
+		// Screen (s + d - s*d) never darkens, as Add (s + d) does; the two agree on a dark backdrop and Add only
+		// overshoots, by s*d, on a bright one - where Normal would paint the layer opaque over what is beneath.
+		BlendMode.AdditivePremultiplied, BlendMode.Additive, BlendMode.AdditiveGlow, BlendMode.Screen ->
 			BlendMode.AdditivePremultiplied
 		BlendMode.MultiplyPremultiplied, BlendMode.Multiply -> BlendMode.MultiplyPremultiplied
 		else -> BlendMode.Normal
