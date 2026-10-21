@@ -19,6 +19,7 @@ import io.github.psd2live.ui.tutorial.expandShortcutMarkup
 import io.github.psd2live.ui.state.*
 import kotlinx.serialization.json.*
 import org.umamo.edit.MeshElement
+import org.umamo.edit.MeshManualOps
 import org.umamo.edit.MeshTopology
 import org.umamo.edit.MeshRefinementOps
 import org.umamo.format.art.SourceLayer
@@ -115,6 +116,8 @@ internal enum class CanvasTool(val action: ShortcutAction) {
     SUBDIVIDE(ShortcutAction.TOOL_SUBDIVIDE),
     /** The knife: click anchors along a cut, connect them, commit with Enter. */
     KNIFE(ShortcutAction.TOOL_KNIFE),
+    /** Hand placement: click or stroke to add vertices, drag them, Shift-click to connect, Alt-click to delete. */
+    MESH_POINT(ShortcutAction.TOOL_MESH_POINT),
     /** Paints a simulation vertex group (pin, stiffness, goal...) on the edited meshes. */
     WEIGHT_PAINT(ShortcutAction.TOOL_WEIGHT_PAINT),
     /** Drags a linear gradient into the same vertex group the weight brush paints. */
@@ -286,6 +289,9 @@ internal val PAINT_BRUSH_TOOLS = setOf(
     CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER,
 )
 
+/** The topology actions the editor builds before sending, so a refusal reads as the op's own notice. */
+private val MANUAL_TOPOLOGY = setOf("add_points", "delete_edges", "retriangulate", "connect", "delete")
+
 /**
  * Tools that edit points rather than whole objects.
  */
@@ -302,7 +308,7 @@ internal val TOOLBAR_TOOL_ORDER = listOf(
     CanvasTool.SELECT, CanvasTool.TRANSFORM, CanvasTool.LASSO_SELECT, CanvasTool.BRUSH_SELECT,
     CanvasTool.BRUSH, CanvasTool.SMOOTH, CanvasTool.INFLATE,
     CanvasTool.SKELETON_POSE, CanvasTool.SKELETON_EDIT,
-    CanvasTool.SUBDIVIDE, CanvasTool.KNIFE, CanvasTool.GLUE,
+    CanvasTool.MESH_POINT, CanvasTool.SUBDIVIDE, CanvasTool.KNIFE, CanvasTool.GLUE,
     CanvasTool.INTERIOR,
     CanvasTool.WEIGHT_PAINT, CanvasTool.WEIGHT_GRADIENT,
     CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER,
@@ -334,7 +340,7 @@ internal fun toolbarGroups(mode: EditHierarchyMode): List<List<CanvasTool>> = wh
     EditHierarchyMode.EDIT -> listOf(
         listOf(CanvasTool.SELECT, CanvasTool.TRANSFORM, CanvasTool.LASSO_SELECT, CanvasTool.BRUSH_SELECT),
         listOf(CanvasTool.BRUSH, CanvasTool.SMOOTH, CanvasTool.INFLATE),
-        listOf(CanvasTool.SUBDIVIDE, CanvasTool.KNIFE, CanvasTool.GLUE),
+        listOf(CanvasTool.MESH_POINT, CanvasTool.SUBDIVIDE, CanvasTool.KNIFE, CanvasTool.GLUE),
         listOf(CanvasTool.INTERIOR),
     )
     EditHierarchyMode.SIMULATE -> listOf(
@@ -1073,6 +1079,7 @@ internal class CanvasEditor(
         val hintKey = when {
             tool == CanvasTool.KNIFE -> "editor.knifeGestureHint"
             tool == CanvasTool.SUBDIVIDE -> "editor.subdivideHint"
+            tool == CanvasTool.MESH_POINT -> "editor.meshPointHint"
             tool == CanvasTool.SELECT && target?.kind == "rotation" -> "editor.rotationGestureHint"
             tool == CanvasTool.CREATE_DEFORM_PATH -> "editor.pathHint"
             tool == CanvasTool.INFLATE -> "editor.inflateHint"
@@ -1489,6 +1496,16 @@ internal class CanvasEditor(
         }
         error = null
     }
+
+    /** The point tool's stroke over open canvas, in screen space: where its new vertices are laid. Empty between strokes. */
+    var pointStroke by mutableStateOf<List<Offset>>(emptyList())
+    private var pointStroking = false
+
+    /** Canvas pixels between the vertices one point-tool stroke lays; a click lays one. */
+    var pointSpacing by mutableStateOf(24f)
+
+    /** Whether the point tool repeats each add, delete and connect at its mirror image across the mesh's vertical centre. */
+    var pointMirror by mutableStateOf(false)
 
     /** The vertices the subdivide brush is currently covering; the stroke's union, not the last radius. */
     var subdivideEdges by mutableStateOf<Set<MeshElement.Edge>>(emptySet())
@@ -2103,6 +2120,7 @@ internal class CanvasEditor(
         interiorTool.cancel()
         knifeDraft = emptyList(); knifeDrawableId = null; subdividing = false; subdivideEdges = emptySet()
         knifeHover = null; knifeSnapKind = null
+        pointStroking = false; pointStroke = emptyList()
         placementInput = null; knifeInput = null; pathInput = null
         placement = null; placementHandle = PlacementHandle.NONE; placementDragStart = null; placementDragSnapshot = null
         glueStroking = false
@@ -2976,7 +2994,7 @@ internal class CanvasEditor(
         tool in SKELETON_TOOLS -> EditHierarchyMode.SKELETON
         tool in PAINT_TOOLS -> EditHierarchyMode.PAINT
         tool in WEIGHT_TOOLS -> EditHierarchyMode.SIMULATE
-        tool == CanvasTool.KNIFE || tool == CanvasTool.SUBDIVIDE -> EditHierarchyMode.EDIT
+        tool == CanvasTool.KNIFE || tool == CanvasTool.SUBDIVIDE || tool == CanvasTool.MESH_POINT -> EditHierarchyMode.EDIT
         tool == CanvasTool.INTERIOR -> EditHierarchyMode.EDIT
         else -> EditHierarchyMode.DEFORM
     }
@@ -3381,6 +3399,9 @@ internal class CanvasEditor(
         if (tool == CanvasTool.KNIFE) {
             target()?.takeIf { it.kind == "mesh" }?.let { knifeAnchor(pos, it, viewport, shift) }
         }
+        if (tool == CanvasTool.MESH_POINT && !dragging) {
+            target()?.takeIf { it.kind == "mesh" }?.let { pointSpot(pos, it, viewport, hover = true) }
+        }
         if (tool == CanvasTool.SUBDIVIDE && !dragging) {
             subdivideEdges = target()?.takeIf { it.kind == "mesh" }?.let { edgesWithin(pos, pos, it, viewport) }.orEmpty()
         }
@@ -3573,7 +3594,7 @@ internal class CanvasEditor(
         if (dragging) {
             if (placementHandle == PlacementHandle.BOX) return CanvasCursors.transform(placementBoxHandle, 0f)
             if (marquee.isNotEmpty()) return cross
-            if (tool in DEFORM_BRUSH_TOOLS || tool == CanvasTool.BRUSH_SELECT || tool == CanvasTool.SUBDIVIDE || tool == CanvasTool.KNIFE) return cross
+            if (tool in DEFORM_BRUSH_TOOLS || tool == CanvasTool.BRUSH_SELECT || tool == CanvasTool.SUBDIVIDE || tool == CanvasTool.KNIFE || pointStroking) return cross
             if (boxDrag || anchorDragging) return CanvasCursors.transform(activeHandle, frameAngle)
             if (activeBezierAnchor != null || activeBezierHandle != null || poseDrag != null) return hand
             return move
@@ -3583,6 +3604,8 @@ internal class CanvasEditor(
             return if (tool == CanvasTool.GLUE) hand else cross
         }
         if (tool == CanvasTool.BRUSH_SELECT || tool in DEFORM_BRUSH_TOOLS || tool == CanvasTool.SUBDIVIDE || tool == CanvasTool.KNIFE) return cross
+        // Over a vertex the point tool grabs, like the select tool; anywhere else it lays a new point.
+        if (tool == CanvasTool.MESH_POINT) return if (knifeSnapKind == "vertex") hand else cross
         if (tool == CanvasTool.LASSO_SELECT) return cross
         // Painting gets no crosshair: the cursor is exactly where the tip ring already is, and a cross
         // over the pixels being judged is worse than no mark at all.
@@ -3811,7 +3834,8 @@ internal class CanvasEditor(
      * and marks the provisional fill. It is a pure function, so the answer the reducer computes is the
      * same one; see CanvasTopology.
      */
-    fun topology(action: String, picked: Set<Int>? = null, edges: Set<MeshElement.Edge> = emptySet()) {
+    fun topology(action: String, picked: Set<Int>? = null, edges: Set<MeshElement.Edge> = emptySet(),
+                 anchors: List<MeshRefinementOps.KnifeAnchor> = emptyList(), select: Set<Int>? = null) {
         val t = target() ?: return
         if (t.kind != "mesh" || !editable) return
         gestureState = null
@@ -3835,7 +3859,7 @@ internal class CanvasEditor(
             }
         }
         val selected = picked ?: vertices
-        val chosenEdges = if (edges.isNotEmpty()) edges else if (action in setOf("subdivide", "split")) {
+        val chosenEdges = if (edges.isNotEmpty()) edges else if (action in setOf("subdivide", "split", "delete_edges")) {
             when (elementMode) {
                 1 -> selectedEdges
                 2 -> selectedFaces.flatMapTo(LinkedHashSet()) { face ->
@@ -3847,13 +3871,144 @@ internal class CanvasEditor(
         // Against state.previewModel, which is what commitBatch compiles against - not `model`, which
         // prefers the in-flight `preview` and would disagree with the reducer mid-drag.
         val mesh = state.previewModel?.rig?.puppet?.drawables?.firstOrNull { it.id.raw == t.id }?.mesh
-        val outcome = mesh?.let { runCatching { CanvasTopology.build(it, action, selected, edges = chosenEdges) }.getOrNull() }
+        val outcome = mesh?.let { runCatching { CanvasTopology.build(it, action, selected, anchors, chosenEdges) }.getOrNull() }
+        // Refused before it is sent, so the notice names the op instead of the reducer's failure.
+        if (mesh != null && outcome == null && action in MANUAL_TOPOLOGY) {
+            error = tr("editor.topologyRefused.$action")
+            return
+        }
         commitBatch(listOf(buildJsonObject { put("op", "canvas_topology"); put("id", t.id); put("action", action); put("vertices", JsonArray(selected.map(::JsonPrimitive)))
-            if (chosenEdges.isNotEmpty()) put("edges", JsonArray(chosenEdges.map { JsonArray(listOf(JsonPrimitive(it.endpointLow), JsonPrimitive(it.endpointHigh))) })) })) {
-            vertices = CanvasTopology.selectedVertices(outcome)
+            if (chosenEdges.isNotEmpty()) put("edges", JsonArray(chosenEdges.map { JsonArray(listOf(JsonPrimitive(it.endpointLow), JsonPrimitive(it.endpointHigh))) }))
+            if (anchors.isNotEmpty()) put("anchors", CanvasTopology.encodeAnchors(anchors)) })) {
+            vertices = select ?: CanvasTopology.selectedVertices(outcome)
             selectedEdges = emptySet(); selectedFaces = emptySet()
             topologyFills = CanvasTopology.createdFaces(outcome).takeIf { it.isNotEmpty() }?.let { TopologyFill(t.id, it) }
         }
+    }
+
+    /** Where a point-tool press lands: on a vertex, on an edge (with its rest-space point), or free in rest space. */
+    private sealed interface PointSpot {
+        data class Vertex(val index: Int) : PointSpot
+        data class Edge(val edge: MeshElement.Edge, val rest: MeshRefinementOps.KnifeAnchor.AtPoint) : PointSpot
+        data class Free(val rest: MeshRefinementOps.KnifeAnchor.AtPoint) : PointSpot
+    }
+
+    /**
+     * Resolves [pos] for the point tool through the knife's screen-space snap: a vertex within [knifeSnapRadius] wins,
+     * then an edge, else a free point. Points are journalled in the rest mesh's space, so a point placed while a pose
+     * is shown lands where it was clicked at that pose. [hover] also moves the snap marker.
+     */
+    private fun pointSpot(pos: Offset, t: CanvasTarget, viewport: CanvasViewport, hover: Boolean = false): PointSpot {
+        val points = screen(t.geometry.points, t, viewport)
+        val geometry = t.geometry.base
+        fun mark(at: Offset, kind: String?) { if (hover) { knifeHover = at; knifeSnapKind = kind } }
+        val nearest = points.indices.minByOrNull { (points[it] - pos).getDistance() }
+        if (nearest != null && (points[nearest] - pos).getDistance() <= knifeSnapRadius) {
+            mark(points[nearest], "vertex")
+            return PointSpot.Vertex(nearest)
+        }
+        val edge = MeshTopology.uniqueEdges(t.indices).map { edge ->
+            val a = points[edge.endpointLow]; val b = points[edge.endpointHigh]
+            val fraction = CanvasGestureGeometry.project(pos, a, b)
+            Triple(edge, fraction, a + (b - a) * fraction)
+        }.minByOrNull { (it.third - pos).getDistance() }
+        if (edge != null && (edge.third - pos).getDistance() <= knifeSnapRadius) {
+            mark(edge.third, "edge")
+            val a = edge.first.endpointLow * 2; val b = edge.first.endpointHigh * 2
+            return PointSpot.Edge(edge.first, MeshRefinementOps.KnifeAnchor.AtPoint(
+                geometry[a] + (geometry[b] - geometry[a]) * edge.second, geometry[a + 1] + (geometry[b + 1] - geometry[a + 1]) * edge.second))
+        }
+        mark(pos, null)
+        val (x, y) = local(pos, t, viewport)
+        val rest = runCatching { DeformPathTools.bind(t.geometry.points, t.indices, x, y).position(t.geometry.base) }.getOrElse { x to y }
+        return PointSpot.Free(MeshRefinementOps.KnifeAnchor.AtPoint(rest.first, rest.second))
+    }
+
+    /** [pos] reflected across the vertical centre line of the mesh as it is shown, for the point tool's mirror option. */
+    private fun mirrored(pos: Offset, t: CanvasTarget, viewport: CanvasViewport): Offset {
+        val points = screen(t.geometry.points, t, viewport)
+        val axis = ((points.minOfOrNull { it.x } ?: pos.x) + (points.maxOfOrNull { it.x } ?: pos.x)) / 2f
+        return Offset(2f * axis - pos.x, pos.y)
+    }
+
+    private fun pressMeshPoint(pos: Offset, t: CanvasTarget, viewport: CanvasViewport, shift: Boolean, alt: Boolean) {
+        val spot = pointSpot(pos, t, viewport)
+        val twin = if (pointMirror) pointSpot(mirrored(pos, t, viewport), t, viewport) else null
+        when {
+            alt && spot is PointSpot.Vertex -> {
+                val removed = setOf(spot.index) + setOfNotNull((twin as? PointSpot.Vertex)?.index)
+                topology("delete", picked = removed)
+            }
+            alt && spot is PointSpot.Edge -> {
+                val edges = setOf(spot.edge) + setOfNotNull((twin as? PointSpot.Edge)?.edge)
+                topology("delete_edges", picked = emptySet(), edges = edges)
+            }
+            alt -> Unit
+            shift && spot is PointSpot.Vertex && vertices.size == 1 && spot.index !in vertices -> {
+                // Connecting walks on from the vertex just reached, so Shift-clicks draw a chain of edges.
+                topology("connect", picked = setOf(vertices.single(), spot.index), select = setOf(spot.index))
+            }
+            spot is PointSpot.Vertex -> {
+                vertices = if (shift) vertices + spot.index else if (spot.index in vertices) vertices else setOf(spot.index)
+                selectedEdges = emptySet(); selectedFaces = emptySet()
+                if (shift) return
+                val source = state.previewModel?.rig?.puppet ?: return
+                // The select tool's grab: glued partners move with the point instead of tearing off.
+                beginTransformDrag(source, transformTargets(source), BoundingHandle.BODY,
+                    if (editsMeshes()) selectionFrame(viewport) else transformFrame(viewport), viewport)
+            }
+            else -> {
+                targetAtPress = t; original = model; dragging = true
+                pointStroking = true
+                pointStroke = listOf(pos)
+            }
+        }
+    }
+
+    /**
+     * Lays the point tool's vertices: one at a click, or one every [pointSpacing] canvas pixels along a stroke, plus
+     * their mirror images when [pointMirror] is on. Points that land on an existing vertex are dropped; the rest go
+     * in as one `add_points` command, so the whole stroke is one history step.
+     */
+    private fun commitPointStroke(stroke: List<Offset>) {
+        val t = target() ?: return
+        val viewport = viewport ?: return
+        if (stroke.isEmpty() || t.kind != "mesh" || !editable) return
+        val spacing = (pointSpacing * viewport.scale).toFloat().coerceAtLeast(4f)
+        val samples = ArrayList<Offset>().apply { add(stroke.first()) }
+        var carried = 0f
+        for (index in 1 until stroke.size) {
+            val a = stroke[index - 1]; val b = stroke[index]
+            val length = (b - a).getDistance()
+            var at = spacing - carried
+            while (at <= length) { samples += a + (b - a) * (at / length); at += spacing }
+            carried = (carried + length) % spacing
+        }
+        if (stroke.size > 1 && (stroke.last() - samples.last()).getDistance() >= spacing * 0.5f) samples += stroke.last()
+        val placed = samples + if (pointMirror) samples.map { mirrored(it, t, viewport) } else emptyList()
+        val anchors = placed.mapNotNull { at ->
+            when (val spot = pointSpot(at, t, viewport)) {
+                is PointSpot.Edge -> spot.rest
+                is PointSpot.Free -> spot.rest
+                is PointSpot.Vertex -> null
+            }
+        }
+        if (anchors.isEmpty()) return
+        topology("add_points", picked = emptySet(), anchors = anchors)
+    }
+
+    /** Deletes what the selection holds in Edit mode: the selected edges in edge mode, otherwise the selected vertices. */
+    fun deleteMeshSelection() {
+        if (elementMode == 1 && selectedEdges.isNotEmpty()) topology("delete_edges", picked = emptySet(), edges = selectedEdges)
+        else topology("delete")
+    }
+
+    /** Selects the target mesh's outline vertices, or with [inner] every vertex off the outline. */
+    fun selectOutline(inner: Boolean = false) {
+        val t = target()?.takeIf { it.kind == "mesh" } ?: return
+        val outline = MeshManualOps.outlineVertices(t.indices)
+        vertices = if (inner) (0 until t.geometry.base.size / 2).filterTo(LinkedHashSet()) { it !in outline } else outline
+        selectedEdges = emptySet(); selectedFaces = emptySet()
     }
 
     /** Commits the knife polyline. All or nothing - see [MeshRefinementOps.knifeCut]. */
@@ -5154,6 +5309,14 @@ internal class CanvasEditor(
             return true
         }
 
+        // 1c. Hand placement. A press on a vertex grabs it as the select tool does; anywhere else it starts a stroke
+        //     that lays new vertices on release. Shift connects, Alt deletes, both on the spot under the pointer.
+        if (tool == CanvasTool.MESH_POINT) {
+            val t = target()
+            if (t != null && t.kind == "mesh" && editable) pressMeshPoint(pos, t, viewport, shift, alt)
+            return true
+        }
+
         // 2. Level 2 Bezier Deformer in DEFORM mode
         if (hierarchyMode == EditHierarchyMode.DEFORM && editLevel == 2) {
             val t = target()
@@ -5439,6 +5602,12 @@ internal class CanvasEditor(
             return
         }
 
+        if (pointStroking) {
+            if ((pos - (pointStroke.lastOrNull() ?: pos)).getDistance() >= 2f) pointStroke = pointStroke + pos
+            previous = pos
+            return
+        }
+
         if (subdividing) {
             targetAtPress?.let { t -> subdivideEdges = subdivideEdges + edgesWithin(previous, pos, t, viewport) }
             previous = pos
@@ -5682,6 +5851,16 @@ internal class CanvasEditor(
             dragging = false
             return
         }
+        if (pointStroking) {
+            pointStroking = false
+            dragging = false
+            val stroke = pointStroke
+            pointStroke = emptyList()
+            targetAtPress = null; original = null
+            commitPointStroke(stroke)
+            return
+        }
+
         if (subdividing) {
             subdividing = false
             dragging = false

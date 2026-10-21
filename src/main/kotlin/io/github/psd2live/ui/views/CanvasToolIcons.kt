@@ -119,6 +119,7 @@ internal fun DrawScope.drawToolIcon(
         CanvasTool.GLUE -> pen.glue()
         CanvasTool.SUBDIVIDE -> pen.subdivide()
         CanvasTool.KNIFE -> pen.knife()
+        CanvasTool.MESH_POINT -> pen.meshPoint()
         CanvasTool.WEIGHT_PAINT -> pen.weightPaint()
         CanvasTool.WEIGHT_GRADIENT -> pen.weightGradient()
         CanvasTool.PAINT_BRUSH -> pen.paintBrush()
@@ -407,6 +408,14 @@ private fun IconPen.knife() = turned(-45f) {
     fill(blade, soft)
     outline(blade)
     fillBox(12f, 7.2f, 5.6f, 3.4f, 1.4f)
+}
+
+/** Mesh points: a mesh triangle on its corners, and the new point being joined to it. */
+private fun IconPen.meshPoint() {
+    shape(path { m(2.4f, 13f); l(7.6f, 2.8f); l(12.2f, 10.4f); z() }, width = ICON_FINE)
+    outline(path { m(12.2f, 10.4f); l(15f, 15f); l(2.4f, 13f) }, width = ICON_FINE, dash = floatArrayOf(1.4f, 1.1f))
+    for ((x, y) in listOf(2.4f to 13f, 7.6f to 2.8f, 12.2f to 10.4f)) dot(x, y, 1.4f)
+    ring(15f, 15f, 2.2f)
 }
 
 /** Weight paint: the paint brush pressed into the patch of falloff it lays its weight over. */

@@ -123,6 +123,7 @@ enum class ShortcutAction(
     TOOL_GLUE(ShortcutCategory.CANVAS_TOOLS, "editor.tool.glue"),
     TOOL_SUBDIVIDE(ShortcutCategory.CANVAS_TOOLS, "editor.tool.subdivide"),
     TOOL_KNIFE(ShortcutCategory.CANVAS_TOOLS, "editor.tool.knife"),
+    TOOL_MESH_POINT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.mesh_point"),
     TOOL_WEIGHT_PAINT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.weight_paint"),
     TOOL_WEIGHT_GRADIENT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.weight_gradient"),
     TOOL_PAINT_BRUSH(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_brush"),
@@ -306,6 +307,8 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     // losing its conventional key.
     ShortcutAction.TOOL_SUBDIVIDE to keys("M"),
     ShortcutAction.TOOL_KNIFE to keys("K"),
+    // Beside the subdivide brush's M: both add points to a mesh.
+    ShortcutAction.TOOL_MESH_POINT to keys("Alt+M"),
     ShortcutAction.TOOL_WEIGHT_PAINT to keys("Shift+V"),
     ShortcutAction.TOOL_WEIGHT_GRADIENT to keys("Alt+V"),
     ShortcutAction.TOOL_PAINT_BRUSH to keys("Shift+P", "J"),

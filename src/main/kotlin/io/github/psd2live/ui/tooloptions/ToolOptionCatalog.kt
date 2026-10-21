@@ -53,6 +53,15 @@ internal val INFLATE_DIRECTION = ChoiceOption("brush.inflate", "editor.tool.infl
 internal val KNIFE_SNAP = SliderOption("knife.snap", "editor.knifeSnapRadius", OptionUnit.PX, { 3f..30f },
     { it.knifeSnapRadius }, { e, v -> e.knifeSnapRadius = v }, step = 1f, integer = true)
 
+/** The point tool snaps through the knife's radius, so the two place points by one rule. */
+internal val POINT_SNAP = SliderOption("point.snap", "editor.knifeSnapRadius", OptionUnit.PX, { 3f..30f },
+    { it.knifeSnapRadius }, { e, v -> e.knifeSnapRadius = v }, step = 1f, integer = true)
+
+internal val POINT_SPACING = SliderOption("point.spacing", "editor.pointSpacing", OptionUnit.PX, { 4f..200f },
+    { it.pointSpacing }, { e, v -> e.pointSpacing = v }, logarithmic = true, role = OptionRole.SIZE)
+
+internal val POINT_MIRROR = ToggleOption("point.mirror", "editor.pointMirror", { it.pointMirror }, { e, on -> e.pointMirror = on })
+
 internal val GLUE_DISTANCE = SliderOption("glue.distance", "editor.glueDistance", OptionUnit.PX, { 0.5f..200f },
     { it.glueDistance }, { e, v -> e.glueDistance = v }, logarithmic = true, role = OptionRole.SIZE)
 
@@ -367,7 +376,7 @@ private fun createAction(id: String, labelKey: String, icon: OptionIcon, kind: C
         e.target()?.id?.let { meshId -> e.beginTreeCreate(kind, relation, false, meshId) }
     }, icon, place = OptionPlace.MENU)
 
-private fun MutableList<ToolOption>.addSelectionActions(objectMode: Boolean) {
+private fun MutableList<ToolOption>.addSelectionActions(objectMode: Boolean, mesh: Boolean = false) {
     add(SectionOption("selection", "editor.selectionMode", OptionPlace.MENU, submenu = true, icon = OptionIcon.SELECTION))
     add(ActionOption("selection.all", "shortcut.selectAll", { it.editable }, { it.selectAll(invert = false) }, OptionIcon.SELECT_ALL,
         place = OptionPlace.MENU))
@@ -376,6 +385,12 @@ private fun MutableList<ToolOption>.addSelectionActions(objectMode: Boolean) {
     if (!objectMode) {
         add(ActionOption("selection.linked", "shortcut.selectLinked", { it.editable && it.vertices.isNotEmpty() }, { it.selectLinked() },
             OptionIcon.LINKED, place = OptionPlace.MENU))
+    }
+    if (mesh) {
+        add(ActionOption("selection.outline", "editor.selectOutline", { it.editable }, { it.selectOutline() }, OptionIcon.SELECTION,
+            place = OptionPlace.MENU))
+        add(ActionOption("selection.inner", "editor.selectInner", { it.editable }, { it.selectOutline(inner = true) }, OptionIcon.SELECTION,
+            place = OptionPlace.MENU))
     }
     add(ActionOption("selection.none", "editor.deselect",
         { if (objectMode) it.objects.isNotEmpty() else it.vertices.isNotEmpty() },
@@ -408,6 +423,11 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
             add(ActionOption("subdivide.run", "editor.subdivide", { it.editable && it.vertices.isNotEmpty() }, { it.topology("subdivide") },
                 OptionIcon.SUBDIVIDE, primary = true))
         }
+        CanvasTool.MESH_POINT -> {
+            add(POINT_SPACING)
+            add(POINT_SNAP)
+            add(POINT_MIRROR)
+        }
         CanvasTool.KNIFE -> {
             add(KNIFE_SNAP)
             add(ActionOption("knife.finish", "editor.finishCut", { it.editable && it.knifeDraft.size >= 2 }, { it.finishKnife() },
@@ -425,11 +445,17 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
             add(ActionOption("topology.${action.first}", "editor.${action.first}", { it.editable && it.vertices.isNotEmpty() },
                 { it.topology(action.first) }, action.second, danger = action.first == "delete", place = OptionPlace.MENU))
         }
+        add(ActionOption("topology.delete_edges", "editor.delete_edges", { it.editable && (it.selectedEdges.isNotEmpty() || it.vertices.size >= 2) },
+            { it.topology("delete_edges") }, OptionIcon.DELETE, danger = true, place = OptionPlace.MENU))
+        // No selection re-triangulates the whole mesh, so this one is on whenever the mesh can be edited.
+        add(ActionOption("topology.retriangulate", "editor.retriangulate", { it.editable }, { it.topology("retriangulate") },
+            OptionIcon.TOPOLOGY, place = OptionPlace.MENU))
         // The whole mesh, made again from the layer's pixels, beside the edits to its points.
         addLayerActions(editor, editor.targetLayerId(target), target?.id)
     }
     if (!editing && target != null) addKeyformMirror()
-    if (editor.tool in SELECTION_TOOLS || editor.tool == CanvasTool.TRANSFORM) addSelectionActions(objectMode = false)
+    if (editor.tool in SELECTION_TOOLS || editor.tool == CanvasTool.TRANSFORM || editor.tool == CanvasTool.MESH_POINT)
+        addSelectionActions(objectMode = false, mesh = mesh)
 }
 
 /**

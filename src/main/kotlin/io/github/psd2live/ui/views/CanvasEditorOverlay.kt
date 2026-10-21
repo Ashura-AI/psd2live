@@ -827,6 +827,14 @@ internal fun BoxScope.CanvasEditorOverlay(
             }
         }
 
+        // 3g'. The point tool: the stroke laying new points, else where a click would land - the vertex it would grab,
+        //      the spot on an edge it would split, or the free point it would add.
+        if (editor.tool == CanvasTool.MESH_POINT && currentTarget != null && currentTarget.kind == "mesh") {
+            val stroke = editor.pointStroke
+            if (stroke.size > 1) drawMeshWires(stroke.zipWithNext().flatMap { listOf(it.first, it.second) }, MeshLook.Structure, alpha = 1f)
+            else editor.knifeHover?.let { at -> drawMeshHandle(at, MeshLook.Structure, colors.accent, hovered = true) }
+        }
+
         // 3h. The weight gradient: the drag from full to empty, with the two lines the ramp runs between.
         editor.weightGradient?.let { (from, to) ->
             val axis = to - from

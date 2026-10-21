@@ -777,6 +777,7 @@ fun CanvasViewportComposable(
 			ShortcutAction.TOOL_GLUE -> { editor.activateTool(CanvasTool.GLUE); true }
 			ShortcutAction.TOOL_SUBDIVIDE -> { editor.activateTool(CanvasTool.SUBDIVIDE); true }
 			ShortcutAction.TOOL_KNIFE -> { editor.activateTool(CanvasTool.KNIFE); true }
+			ShortcutAction.TOOL_MESH_POINT -> { editor.activateTool(CanvasTool.MESH_POINT); true }
 			ShortcutAction.TOOL_WEIGHT_PAINT -> { editor.activateTool(CanvasTool.WEIGHT_PAINT); true }
 			ShortcutAction.TOOL_WEIGHT_GRADIENT -> { editor.activateTool(CanvasTool.WEIGHT_GRADIENT); true }
 			ShortcutAction.TOOL_INTERIOR -> { editor.activateTool(CanvasTool.INTERIOR); true }
@@ -829,7 +830,7 @@ fun CanvasViewportComposable(
 				else if (editor.tool == CanvasTool.KNIFE || editor.drawingPath) editor.undoDraftPoint()
 				else if (editor.tool == CanvasTool.INTERIOR) editor.interiorTool.deleteSelection()
                         else if (editor.tool == CanvasTool.CREATE_DEFORM_PATH || editor.activePath != null) editor.deletePathPoint()
-				else if (editor.hierarchyMode == EditHierarchyMode.EDIT) editor.topology("delete")
+				else if (editor.hierarchyMode == EditHierarchyMode.EDIT) editor.deleteMeshSelection()
 				true
 			}
 			ShortcutAction.TOOL_PAINT_BRUSH -> {

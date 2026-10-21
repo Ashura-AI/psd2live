@@ -888,6 +888,9 @@ Where the automatic mesh is not right in a few places, change the topology direc
 | Duplicate | Duplicates the selected vertices and the faces they fully cover; the new copy becomes the selection |
 | Delete ({key:DELETE_SELECTION}) | Deletes the selection and tries to fill the gap; refused when no valid topology can result |
 | Knife ({key:TOOL_KNIFE}) | Specify a polyline point by point, snapping near points or edges (hold {kbd:Shift} to turn this off temporarily); {key:FINISH_PATH} finishes and {key:CANCEL} cancels |
+| Mesh points ({key:TOOL_MESH_POINT}) | Click on open canvas to add a vertex (inside a triangle, on an edge or outside the mesh), drag on open canvas to add points along the stroke at **Point spacing**, drag a vertex to move it; {kbd:Shift}+click connects from the selected vertex, {kbd:Alt}+click deletes a vertex or edge; **Mirror across centre** repeats it on the other side |
+| Delete edges | {key:DELETE_SELECTION} in edge mode or the topology menu: an inner edge becomes the other diagonal of its quad, an outline edge removes its triangle; refused when it would break the mesh |
+| Re-triangulate | Topology menu: around the selected vertices (the whole mesh with none selected) turns slivers into more even triangles, leaving vertices and texture in place |
 When several art meshes are selected, clicking a vertex of one mesh makes it the primary mesh; the knife and edge and face selection act only on the primary mesh.
 !> Deleting outline points changes the boundary, so check under several parameter poses after changing it. Do everyday shape pulling in Deform mode, and use Edit mode only to change topology.
 
