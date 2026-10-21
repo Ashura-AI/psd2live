@@ -694,6 +694,9 @@ private fun ArtMeshInspector(
             }
         }
 
+        // 13b. 判定区域 (Hit Area)
+        HitAreaInspectorRows(drawable, state, viewModel)
+
         // 14. 顶点信息 (Vertex Info X, Y)
         VertexInfoRows(editor = editor)
     }

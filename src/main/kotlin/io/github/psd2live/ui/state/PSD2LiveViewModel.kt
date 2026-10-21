@@ -6664,6 +6664,101 @@ class PSD2LiveViewModel : AutoCloseable {
         editorChanged("Updated drawing order")
     }
 
+    /** Hit area edits from the inspector and the hierarchy menu: the document operations MCP's hit_area_* run. */
+    private fun editHitAreas(operations: List<io.github.psd2live.application.WorkspaceDocumentOperation>) {
+        if (operations.isEmpty()) return
+        workspaceBackend?.takeUnless { editorSessions.anyOpen }?.let { workspace ->
+            val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace
+            runWorkspaceCommand { state -> port.applyDocumentEdits(state, "Updated hit areas", operations, MutationAuthor.USER) }
+            return
+        }
+        val current = _state.value
+        val model = current.previewModel ?: return
+        val candidate = try {
+            operations.fold(WorkspaceStateCodec.document(current)) { document, operation ->
+                io.github.psd2live.application.WorkspaceHitAreaEdits.apply(operation, document, model)
+            }
+        } catch (failure: Exception) { setErrorMessage(failure.message ?: "Invalid hit area"); return }
+        if (candidate.rigEdits.hitAreas == current.rigEdits.hitAreas) return
+        updateState { it.copy(rigEdits = it.rigEdits.copy(hitAreas = candidate.rigEdits.hitAreas), projectDirty = true) }
+        editorChanged("Updated hit areas")
+    }
+
+    private fun hitAreaOperation(operation: String, request: kotlinx.serialization.json.JsonObject) =
+        io.github.psd2live.application.WorkspaceDocumentOperation(operation, request)
+
+    /** [meshId] in hit area [areaId] alone, or in none: the inspector's choice. */
+    fun assignMeshHitArea(meshId: String, areaId: String?) {
+        val edits = io.github.psd2live.application.WorkspaceHitAreaEdits
+        editHitAreas(_state.value.rigEdits.hitAreas.mapNotNull { area ->
+            val member = meshId in area.meshes
+            when {
+                area.id == areaId && !member -> hitAreaOperation(edits.PUT, edits.put(area.id, meshes = area.meshes + meshId))
+                area.id != areaId && member && area.meshes.size == 1 -> hitAreaOperation(edits.DELETE, edits.delete(area.id))
+                area.id != areaId && member -> hitAreaOperation(edits.PUT, edits.put(area.id, meshes = area.meshes - meshId))
+                else -> null
+            }
+        })
+    }
+
+    /** Adds [meshId] to hit area [areaId], or takes it out: a hierarchy menu row. An area left without meshes is deleted. */
+    fun toggleMeshHitArea(meshId: String, areaId: String) {
+        val edits = io.github.psd2live.application.WorkspaceHitAreaEdits
+        val area = _state.value.rigEdits.hitAreas.firstOrNull { it.id == areaId } ?: return
+        editHitAreas(listOf(when {
+            meshId !in area.meshes -> hitAreaOperation(edits.PUT, edits.put(area.id, meshes = area.meshes + meshId))
+            area.meshes.size == 1 -> hitAreaOperation(edits.DELETE, edits.delete(area.id))
+            else -> hitAreaOperation(edits.PUT, edits.put(area.id, meshes = area.meshes - meshId))
+        }))
+    }
+
+    /** A new hit area of [meshIds], after the existing ones, under the next free `HitArea<n>` ID. */
+    fun createHitArea(meshIds: List<String>) {
+        if (meshIds.isEmpty()) return
+        val edits = io.github.psd2live.application.WorkspaceHitAreaEdits
+        editHitAreas(listOf(hitAreaOperation(edits.PUT, edits.put(io.github.psd2live.core.RigHitAreas.nextId(_state.value.rigEdits.hitAreas), meshes = meshIds))))
+    }
+
+    fun renameHitArea(id: String, name: String) {
+        val trimmed = name.trim()
+        val area = _state.value.rigEdits.hitAreas.firstOrNull { it.id == id } ?: return
+        if (trimmed.isEmpty() || trimmed == area.name) return
+        val edits = io.github.psd2live.application.WorkspaceHitAreaEdits
+        editHitAreas(listOf(hitAreaOperation(edits.PUT, edits.put(id, name = trimmed))))
+    }
+
+    fun changeHitAreaId(id: String, newId: String) {
+        val trimmed = newId.trim()
+        if (trimmed == id || _state.value.rigEdits.hitAreas.none { it.id == id }) return
+        if (!io.github.psd2live.core.RigHitAreas.ID.matches(trimmed)) { setErrorMessage(tr("hitArea.invalidId")); return }
+        val edits = io.github.psd2live.application.WorkspaceHitAreaEdits
+        editHitAreas(listOf(hitAreaOperation(edits.PUT, edits.put(id, newId = trimmed))))
+    }
+
+    fun deleteHitArea(id: String) {
+        val edits = io.github.psd2live.application.WorkspaceHitAreaEdits
+        editHitAreas(listOf(hitAreaOperation(edits.DELETE, edits.delete(id))))
+    }
+
+    /** Head and Body as the generated rig suggests them. */
+    fun presetHitAreas() {
+        val edits = io.github.psd2live.application.WorkspaceHitAreaEdits
+        editHitAreas(listOf(hitAreaOperation(edits.PRESET, kotlinx.serialization.json.JsonObject(emptyMap()))))
+    }
+
+    /**
+     * A click on the preview at world point ([worldX], [worldY]) of [geometry]: the hit area there, as the runtime tests
+     * it, also written to the log so a setup can be checked.
+     */
+    internal fun previewHitTest(model: RigPreviewModel, geometry: org.umamo.render.eval.DeformedGeometry, worldX: Float, worldY: Float): io.github.psd2live.core.RigHitArea? {
+        val areas = _state.value.rigEdits.hitAreas
+        if (areas.isEmpty()) return null
+        val hit = io.github.psd2live.core.RigHitAreas.areaAt(areas, model.rig.puppet, geometry, worldX, worldY)
+        if (hit != null) addLog(tr("log.hitArea.hit", hit.name, hit.id), tag = "HitArea")
+        else addLog(tr("log.hitArea.miss"), tag = "HitArea")
+        return hit
+    }
+
 	fun setLayerClassification(layerId: String, override: LayerClassificationOverride) {
         workspaceBackend?.takeUnless { editorSessions.anyOpen }?.let { workspace ->
             val port: io.github.psd2live.application.WorkspaceSourcePort = workspace

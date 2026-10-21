@@ -248,6 +248,14 @@ fun CanvasViewportComposable(
 	var temporarySelectButton by remember { mutableStateOf<PointerButton?>(null) }
 	var showContextMenu by remember { mutableStateOf(false) }
 	var contextMenuOffset by remember { mutableStateOf(Offset.Zero) }
+	// The hit area the last preview click hit, highlighted until the next click; it fades in as other highlights do.
+	var hitShown by remember { mutableStateOf<io.github.psd2live.core.RigHitArea?>(null) }
+	val hitAlpha = remember { androidx.compose.animation.core.Animatable(0f) }
+	LaunchedEffect(hitShown) {
+		if (hitShown == null) hitAlpha.snapTo(0f)
+		else { hitAlpha.snapTo(0f); hitAlpha.animateTo(1f, androidx.compose.animation.core.tween(io.github.psd2live.ui.theme.Motion.Fade,
+			easing = androidx.compose.animation.core.LinearOutSlowInEasing)) }
+	}
 	var fps by remember { mutableStateOf(0f) }
 	val fpsCounter = remember { ActualFpsCounter() }
 	// A paused preview still follows the pointer, so the frame pump must stay awake for a moment
@@ -1372,6 +1380,15 @@ fun CanvasViewportComposable(
                     }
                     return@onPointerEvent
                 }
+                // A click on the preview, not a drag: hit-test it as the runtime would, to check the hit areas.
+                if (mode == CanvasMode.PREVIEW && isDragging && zoomDragAnchor == null && event.button == PointerButton.Primary &&
+                    change != null && (change.position - dragStartPos).getDistance() <= HIT_CLICK_SLOP * density && previewModel != null &&
+                    canvasState.rigEdits.hitAreas.isNotEmpty()) {
+                    val viewport = currentViewportFor(viewSize)
+                    val geometry = RigCanvasSupport.evaluate(previewModel, informationPose(frameFlow.value))
+                    hitShown = viewModel.previewHitTest(previewModel, geometry, viewport.canvasX(change.position.x).toFloat(),
+                        -viewport.canvasY(change.position.y).toFloat())
+                }
                 if (isDragging) {
 					isDragging = false
 					zoomDragAnchor = null
@@ -2239,6 +2256,35 @@ fun CanvasViewportComposable(
 			CompositedCanvas(Modifier.fillMaxSize(), previewGpu, "$gpuKey/aids", editComposited, canvasOriginState,
 				order = 3, clear = false, layer = gpuKey, onDraw = drawAids)
 		}
+		val hitArea = hitShown?.takeIf { mode == CanvasMode.PREVIEW && it in canvasState.rigEdits.hitAreas }
+		if (hitArea != null && previewModel != null) {
+			// The hit area follows the pose the preview plays.
+			val pose = informationPose(frameFlow.collectAsState().value)
+			val geometry = remember(previewModel, pose) { RigCanvasSupport.evaluate(previewModel, pose) }
+			val drawables = remember(previewModel) { previewModel.rig.puppet.drawables.associateBy { it.id.raw } }
+			val fill = colors.accent
+			androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+				val viewport = currentViewportFor(viewSize)
+				val path = androidx.compose.ui.graphics.Path()
+				for (id in hitArea.meshes) {
+					val drawable = drawables[id] ?: continue
+					val indices = drawable.mesh?.indices ?: continue
+					val positions = geometry.worldPositions[drawable.id] ?: continue
+					for (offset in 0 until indices.size - 2 step 3) {
+						val a = indices[offset]
+						// Every triangle wound the same way, so overlapping ones never cancel under the non-zero fill.
+						val ab = (positions[indices[offset + 1] * 2] - positions[a * 2]) * (positions[indices[offset + 2] * 2 + 1] - positions[a * 2 + 1]) -
+							(positions[indices[offset + 1] * 2 + 1] - positions[a * 2 + 1]) * (positions[indices[offset + 2] * 2] - positions[a * 2])
+						val b = indices[if (ab >= 0f) offset + 1 else offset + 2]; val c = indices[if (ab >= 0f) offset + 2 else offset + 1]
+						path.moveTo(viewport.x(positions[a * 2]).toFloat(), viewport.yFromWorld(positions[a * 2 + 1]).toFloat())
+						path.lineTo(viewport.x(positions[b * 2]).toFloat(), viewport.yFromWorld(positions[b * 2 + 1]).toFloat())
+						path.lineTo(viewport.x(positions[c * 2]).toFloat(), viewport.yFromWorld(positions[c * 2 + 1]).toFloat())
+						path.close()
+					}
+				}
+				drawPath(path, fill.copy(alpha = HIT_HIGHLIGHT_ALPHA * hitAlpha.value))
+			}
+		}
 		if (mode == CanvasMode.PREVIEW && previewModel != null) {
 			MotionTrajectoryOverlay(viewModel, previewModel, canvasState.parameterValues, canvasState.lockedParameters,
 				canvasState.selectedLayerIds.ifEmpty { setOfNotNull(canvasState.selectedLayerId) }, canvasState.selectedDeformerId) {
@@ -2478,6 +2524,12 @@ private class DrawnGeometryMemo {
         return next
     }
 }
+
+/** How far a preview press may move, in dp, and still count as a hit-test click rather than a pan. */
+private const val HIT_CLICK_SLOP = 4f
+
+/** The hit-area highlight: the accent's pressed strength. */
+private const val HIT_HIGHLIGHT_ALPHA = 0.30f
 
 /** How strongly the reference simulation shows over the export. */
 private const val SIMULATION_GHOST_ALPHA = 0.55f

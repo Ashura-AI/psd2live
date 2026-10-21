@@ -71,6 +71,10 @@ internal fun ArtMeshMenu(
             val picked = NativeFilePicker.chooseTransparentImages()
             if (picked.isNotEmpty()) viewModel.importLayersFromFiles(picked, ImageLayerInsertion(parentId, drawable.id.raw))
         }, enabled = editable, icon = { IconSelectionBounds(it, Modifier.size(12.dp)) }) }
+        if (drawable.mesh != null) {
+            section("hitArea.menuSection")
+            hitAreaMenuRows(drawable, state, viewModel, editable, close) { highlight, content -> add(highlight, content = content) }
+        }
         section("canvas.hierarchy.menuSettings")
         add(highlight = editable && drawable.mesh != null) { FloatingMenuRow(if (viewModel.depthSplitMiddleIds(drawable.id.raw).isNotEmpty())
             tr("editor.depthSplit.quick", drawable.name) else tr("editor.depthSplit.menu"),
