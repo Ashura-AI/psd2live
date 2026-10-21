@@ -27,7 +27,7 @@ Local audition uses temporary aliases in the edit canvas, leaving body/head inpu
 | Direction endpoints | Each coordinate 0–1 | Layer-relative propagation direction; distance at least 0.05 |
 | X / Y mouse gain | Each 0.1–1 | Uniform gain, for mouse audition only |
 
-Guides store source-pixel points, positive radius, amount and an optional pitch-only flag; lines found by `layer_mesh_structure` also record `detected` (`FOLD`, `SHADE` or `PATTERN`). TOPOLOGY guides do not produce folds; FOLD guides do, and a detected line folds only once the author marks it FOLD. Drawn guides expose numeric point controls; on-canvas guide handles are not implemented.
+Guides store source-pixel points, positive radius, amount and an optional pitch-only flag; lines found by `layer_mesh_structure` also record `detected` (`FOLD`, `SHADE` or `PATTERN`). TOPOLOGY guides do not produce folds; FOLD guides do, and a detected line folds only once the author marks it FOLD. Guides can be edited numerically in the panel, or drawn and edited with the canvas handles below.
 
 ## Surface and generated representation
 
@@ -39,7 +39,20 @@ Guides store source-pixel points, positive radius, amount and an optional pitch-
 
 Existing NORMAL/BLEND inputs may be read, provided they do not repeat and their defaults lie inside their ranges. Omitted bindings prefer standard body X/Y, falling back to private sources; an explicit empty ID creates a source. Nonzero defaults are represented with F(0) constants and gated residuals while retaining Cubism blend neutral VALUE 0. Applied fields include current grid default offsets and scalar references to match native subtraction semantics and avoid neutral drift.
 
-The interior of a mesh can be rebuilt along its texture structure with `layer_mesh_structure` ([Chinese specification](../../zh/spec/TEXTURE_STRUCTURE_MESH.md)): the outline row and edge band stay, the inside follows detected creases, shading boundaries and pattern lines, and a mesh with an interior effect is baked again in the same history node. Manual mesh tools and on-canvas surface/guide handles are future-PR work.
+The interior of a mesh can be rebuilt along its texture structure with `layer_mesh_structure` ([Chinese specification](../../zh/spec/TEXTURE_STRUCTURE_MESH.md)): the outline row and edge band stay, the inside follows detected creases, shading boundaries and pattern lines, and a mesh with an interior effect is baked again in the same history node. Manual mesh tools are implemented separately.
+
+## Canvas handles
+
+The Edit-mode **Interior handles** tool (`TOOL_INTERIOR` in `ShortcutRegistry`, Shift+I by default; also **Edit on canvas** in the panel toolbar) shows the enabled effect of the selected mesh. When the mesh has no effect, or it is off, the options bar says so and offers **Turn on interior shape**.
+
+- **Virtual surface**: the dashed box is the visible extent of the source alpha (the surface span, set by the outline; there is no separate centre or extent setting). The four arms of the centre cross are bulge (up), pressure (left), horizontal gain (right) and vertical gain (down). An arm grows linearly with its value and reaches the box edge at 2; at 0 it keeps a short stem so handles never overlap. Two arches are drawn across the box: solid at rest (height follows bulge) and dashed leaning as a full input leans it (pressure). The arches illustrate the surface; they are not the displacement.
+- **Direction**: with timing and transmission on, an arrow shows the propagation. Drag either end, or the middle to move both; coordinates are normalized to the mesh's source-pixel bounds and ends closer than 0.05 are refused.
+- **Guides**: folds draw in a warm tone with a translucent band for the radius; detected SHADE / PATTERN lines draw in their kind's tone, faded until marked a fold. Click empty space to start a fold line, click to add points, click the last point or press Enter to finish, Delete to undo a point, Esc to cancel. Drag a point to move it or a segment to move the whole line; Ctrl+click a segment inserts a point, Alt+click removes one, Delete removes the selected point (the whole line when no point is picked). A selected fold has a radius handle. The options bar marks the selected line a fold (or not) or deletes it.
+- **Feedback**: hovered handles, points and lines light up and the status bar shows the handle's name and value; the held handle draws as selected. Points and wires use `MeshLook`.
+
+Handle geometry, request conversion and guide edits are pure functions in `core/interior/InteriorHandles.kt` (`InteriorHandles`, `InteriorGuideEdits`, `InteriorPolylines`). Guides and handles stay in source pixels; `InteriorCanvasMap` maps them through barycentric coordinates of the mesh's UV-sampled source positions, so they follow the mesh as drawn and screen positions map back to source pixels.
+
+A drag edits the `InteriorDraft` the panel shares, so panel values follow the handles and panel edits move them. While the effect is auditioned, `InteriorController.previewLater` previews the draft with the same `interior_put` on an isolated candidate (at neutral the effect moves no vertex; only handles and arches update). Release commits one full `interior_put` built by `NativeInteriorAuthoring.request` (the panel commits through it too); press-to-release sits in one `beginEditorGesture` / `endEditorGesture` and appends one history node, and Esc during a drag restores the draft. Finishing a line, removing a point and marking a fold commit once each. No document field is added; replay, save/reopen and MCP use the existing recipe.
 
 ## Optional timing
 
@@ -62,7 +75,7 @@ UI and MCP share `interior_put` and `interior_delete`. `workspace_inspect scope=
 ## Validation and limits
 
 ```bash
-./gradlew test --tests '*InteriorSurfaceTest' --tests '*InteriorReferenceParityTest' --tests '*InteriorBasisKeyformTest' --tests '*InteriorMotionTest' --tests '*NativeInteriorEffectTest'
+./gradlew test --tests '*InteriorSurfaceTest' --tests '*InteriorReferenceParityTest' --tests '*InteriorBasisKeyformTest' --tests '*InteriorMotionTest' --tests '*NativeInteriorEffectTest' --tests '*InteriorHandlesTest'
 ./gradlew test
 ```
 

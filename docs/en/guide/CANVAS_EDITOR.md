@@ -12,7 +12,7 @@ The mode menu at the top left of the canvas (like Blender's mode drop-down) list
 | --- | --- | --- |
 | Object | Object selection | Click, box and lasso select; synced with the hierarchy; the toolbar's **Create** |
 | Deform | Base shape or the keyform of the current parameters | Vertex / edge / face select, transform, push, smooth, inflate, path control points |
-| Edit | Mesh topology and path binding | Vertex / edge / face select, connect, merge, subdivide, knife, delete, Glue (when two meshes are selected) |
+| Edit | Mesh topology and path binding | Vertex / edge / face select, connect, merge, subdivide, knife, delete, Glue (when two meshes are selected), interior handles |
 | Simulate | Vertex weight groups read by the simulation (this app only) | Weight brush, weight gradient, with the group to paint (pinned, stiffness and so on) switched by kind beneath them; the mode bar creates cloth / hair and switches the reference simulation (not exported) |
 | Skeleton | Skeleton | Pose, bone edit; bone edits are saved when switching to pose or leaving the mode |
 | Paint | Layer pixels | Brush, pencil, eraser, fill, eyedropper, shapes |
@@ -104,6 +104,19 @@ The tip shape is picked under the brush in the left toolbar (the same for the we
 | Knife | Places a polyline point by point; snaps near points or edges, Shift turns snapping off temporarily; Enter finishes, Esc cancels |
 
 The knife may place points outside the original mesh. Topology updates also handle UVs, keyforms, blend shapes and Glue vertex references, and rebind paths. Still check existing poses, especially boundary changes after deleting outline points.
+
+## Interior handles
+
+The Edit-mode **Interior handles** tool (Shift+I, or **Edit on canvas** in the Interior panel toolbar) adjusts the [interior surface](../spec/INTERIOR_SURFACE.md) of the selected mesh on the canvas; when the mesh has no effect yet or it is off, the options bar says so and can turn it on.
+
+| Handle | Effect |
+| --- | --- |
+| Centre cross | Up arm bulge, left arm pressure, right arm horizontal gain, down arm vertical gain; a longer arm is a larger value, 2 at the dashed box |
+| Arches | Solid: the virtual arch at rest; dashed: the arch leaning under a full input (illustration) |
+| Arrow | Shown when timing and transmission are on; drag an end to move the start or end, the middle to move both |
+| Guides | Click empty space to start a fold line, click the last point or press Enter to finish; drag a point to move it, a segment to move the line, Ctrl+click to add a point, Alt+click to remove one, Delete removes the selected point or the whole line; a selected fold has a radius handle |
+
+Hovered handles and lines light up and the status bar shows the name and value. Each drag records one history step on release and Esc cancels it; panel values and handles stay in step. With audition on, the shape updates while you drag.
 
 ## Creating and placing materials
 
