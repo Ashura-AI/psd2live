@@ -12,7 +12,7 @@ The mode menu at the top left of the canvas (like Blender's mode drop-down) list
 | --- | --- | --- |
 | Object | Object selection | Click, box and lasso select; synced with the hierarchy; the toolbar's **Create** |
 | Deform | Base shape or the keyform of the current parameters | Vertex / edge / face select, transform, push, smooth, inflate, path control points |
-| Edit | Mesh topology and path binding | Vertex / edge / face select, connect, merge, subdivide, knife, delete, Glue (when two meshes are selected), interior handles |
+| Edit | Mesh topology and path binding | Vertex / edge / face select, mesh points, connect, merge, subdivide, knife, delete edges, re-triangulate, delete, Glue (when two meshes are selected), interior handles |
 | Simulate | Vertex weight groups read by the simulation (this app only) | Weight brush, weight gradient, with the group to paint (pinned, stiffness and so on) switched by kind beneath them; the mode bar creates cloth / hair and switches the reference simulation (not exported) |
 | Skeleton | Skeleton | Pose, bone edit; bone edits are saved when switching to pose or leaving the mode |
 | Paint | Layer pixels | Brush, pencil, eraser, fill, eyedropper, shapes |
@@ -101,7 +101,26 @@ The tip shape is picked under the brush in the left toolbar (the same for the we
 | Connect / merge | Connects the selected points, or merges the selected vertices into one |
 | **Duplicate** | Copies the selected vertices and the faces they fully cover; the copy becomes the selection |
 | **Delete** | Deletes the selection and tries to rebuild the gap; refused when no valid topology can be formed |
+| Delete edges | Deletes the selected edges (`Del` in edge mode, or **Delete edges** in the topology menu): an inner edge is replaced by the other diagonal of the quad its two triangles form, refused for a concave quad; an outline edge removes its triangle, together with any vertex no longer used; refused when a vertex would be left joined by a single point or no triangle would remain |
+| Re-triangulate | Topology menu: around the selected vertices (the whole mesh when nothing is selected), turns slivers into more even triangles; vertices, outline and texture stay put, and a notice says when there is nothing to improve |
 | Knife | Places a polyline point by point; snaps near points or edges, Shift turns snapping off temporarily; Enter finishes, Esc cancels |
+| Mesh points | Point-by-point corrections to the automatic layout, see below |
+
+### Mesh points
+
+The first tool of the topology group in the Edit mode toolbar (`Alt+M`), for ordinary meshes and meshes with an interior effect alike. The pointer snaps to nearby vertices and edges (the snap radius is the knife's), and the hover marker shows where a press would land.
+
+| Action | Result |
+| --- | --- |
+| Click on open canvas | Adds a vertex there: inside a triangle it splits the triangle in three, on an edge it splits the edge, outside the mesh it grows one triangle from the nearest visible outline edge |
+| Drag on open canvas | Adds a vertex every **Point spacing** (canvas pixels) along the stroke, committed as one step |
+| Drag a vertex | Moves it, as the select tool does: the texture stays, glued points move together |
+| Shift + click a vertex | Connects the one selected vertex to it and moves the selection onto it, so repeated Shift-clicks draw a chain |
+| Alt + click | Deletes a vertex (filling the gap) or an edge |
+
+A new vertex's position, UV, keyforms, blend shapes and vertex weights all derive from the vertices around it by one set of weights, so adding points never moves the picture; afterwards the edges around it are flipped where that does not change the texture, to avoid slivers. With **Mirror across centre** on, adds, deletes and edge deletes also happen at the mirror position across the vertical centre line of the mesh's current bounds (only on this side when there is no vertex or edge there). The selection group of the context menu also has **Select outline vertices** and **Select inner vertices**, for working on the boundary or the inside alone.
+
+On a mesh with an interior effect, adding, deleting or connecting points, deleting edges, re-triangulating or moving rest-shape vertices bakes the effect again on the new mesh in the same step; when the new mesh fails the effect's area checks, the edit is still committed and the interior panel reports that the mesh changed and needs regenerating.
 
 The knife may place points outside the original mesh. Topology updates also handle UVs, keyforms, blend shapes and Glue vertex references, and rebind paths. Still check existing poses, especially boundary changes after deleting outline points.
 

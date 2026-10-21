@@ -81,7 +81,7 @@
 | `rig_create_warp` | `name`、`targets`；可选 `id`、`rows/columns`、`fit_local` | 后台创建共用父 Warp 的 Mesh 的独立 Warp，也支持原子批量；终态返回 `target` |
 | `object_edit_appearance` | `request` 内 `state`、`edits` | 名称、显隐、结构等有序编辑；网格 `bind` 的 `space=local` 保留局部坐标与关键形（继承的运动与位置随新父级改变），`space=canvas` 把静止网格、关键形与混合形经新父级换算，使网格在默认姿态下留在画布原位（层级树拖放与检查器改父级即用此项）；变形器 `move` 只接受 `space=local` |
 | `rig_edit_structure` | `request` 内 `state`、`edits` | 静态对象属性、变形器删除与 Part 归属、参数文件夹和 XY 关联 |
-| `canvas_warp / canvas_rotation / canvas_glue / canvas_topology` | `request` | `warp/rotation/glue/topology`。`glue` 必须同时给出两个不同的画元 `mesh_a` 与 `mesh_b`。`rotation` 的 `origin` 为画布像素（y 向下），提交时换算到其父变形器的局部空间；`preservePose` 缺省为 true，网格在静止姿态下保持原位 |
+| `canvas_warp / canvas_rotation / canvas_glue / canvas_topology` | `request` | `warp/rotation/glue/topology`。`glue` 必须同时给出两个不同的画元 `mesh_a` 与 `mesh_b`。`rotation` 的 `origin` 为画布像素（y 向下），提交时换算到其父变形器的局部空间；`preservePose` 缺省为 true，网格在静止姿态下保持原位。`topology` 见下文[网格拓扑](#网格拓扑) |
 | `view_render_model / view_render_layer / view_render_context / view_render_poses / view_render_pad / view_check_coverage / view_compare_history / view_sample_motion` | `request` | `model/layer/context/poses/pad/coverage/compare/motion`；动作采样返回只读任务句柄，终态包含采样拼图与参数范围 |
 | `parameter_create / parameter_update / parameter_delete` | `request` | `create/update/delete`；删除时按最后一次默认值选择最近的已写关键点切片并折叠轴。收窄范围时，动作中该参数的关键点与手柄被夹入新范围；删除参数时同时移除动作中该参数的曲线 |
 | `layer_import_images` | `request` | 从 PNG、无损 WebP、TIFF 或 BMP 文件一次导入多层源图，后台完成后返回图层与网格句柄 |
@@ -109,6 +109,22 @@
 网格重建使用 `layer_mesh_rebuild`（必需 `state/layer_id`）：按图层当前像素和网格设置重新生成它的网格，关键形、路径、权重与 Glue 迁移到新拓扑，整体移动过的图层保持位置。网格只在这些时候重新生成：导入、本命令、绘画与换图的 `rebuild_mesh` 选项、网格设置变更、再生成；没有网格的图层首次绘画出可见像素时为它建网格。绘画到网格外的像素不显示，界面的网格面板会给出比例并提供“按当前像素重建”。
 
 按纹理结构重布点使用 `layer_mesh_structure`（必需 `state/target`，target 为网格 ID 或 `mesh:<ID>`；可选 `settings`：`sensitivity` 0–1、`min_length` 源像素、`near_density` 为线上点距相对保留边缘行点距的倍数（默认 1）、`fill` 是否在线间加点（默认否：只有边缘行与线上有顶点）、`far_density` 为填充时相对原内侧边长的边长、`bands` 是否在画出的褶皱线两侧加行与横档（默认否）、`kinds` 为 `FOLD`/`SHADE`/`PATTERN` 子集、`max_lines` ≤64、`max_vertices` ≤16000）：外轮廓行与边缘带不动，内侧沿纹理中的褶皱、明暗分界与图案线条重建；关键形、路径、权重与 Glue 照常迁移，写一条 `canvas_mesh_rebuild`。目标有内部造型时替换其检测出的 TOPOLOGY 引导线（手绘及已标为 FOLD 的保留），并在同一历史节点中重新烘焙（`interior_rebaked`）。无法成网或超过 `max_vertices` 时报错且不做任何修改。`layer_mesh_structure_preview`（只读，参数同上，无 `state`）返回识别线（类型、是否被采用 `followed`、是否加带 `banded`，源像素与画布坐标）及新网格的画布点与三角形。细节见[按纹理结构重布点](../spec/TEXTURE_STRUCTURE_MESH.md)。
+
+### 网格拓扑
+
+`canvas_topology`（`request.mode` 为 `topology`）与编辑器的拓扑操作是同一条 `canvas_topology` 作者日志，必需 `state/id/action/vertices`（`id` 为网格 ID，`vertices` 为当前网格的顶点索引，可为空数组）。索引来自当前网格，须使用最新 `state`。`action`：
+
+| `action` | 输入 | 结果 |
+| --- | --- | --- |
+| `merge` / `duplicate` / `delete` | `vertices` | 合并为一点、复制顶点及其完整覆盖的面、删除并补洞（至少保留三个顶点） |
+| `connect` | `vertices` 恰为两个 | 两点间直线切过的边被拆分，连成新边；已相连或无法沿直线切出新边时失败 |
+| `subdivide` / `split` | `vertices` 或 `edges` | 细分选中顶点所涉及的边或所给边 |
+| `knife` | `anchors` | 沿折线切割；锚点为 `{vertex}` 或网格自身静止空间的 `{x, y}` |
+| `add_points` | `anchors`（`{x, y}`，网格自身静止空间，与 `knife` 相同） | 每点加一个顶点：三角形内 1→3，边上拆边，网格外从最近可见轮廓边扩一个三角形；落在已有顶点上的点忽略；新顶点的 UV、关键形、混合形与权重由周围顶点按同一权重得出，随后在不改变贴图的前提下翻边 |
+| `delete_edges` | `edges`（`[[a, b], …]`），省略时取两端都在 `vertices` 中的边 | 内部边在其四边形内换到另一条对角线（凹四边形失败），轮廓边删掉所在三角形，不再使用的顶点一并删除；造成顶点点接或删光三角形时整批失败 |
+| `retriangulate` | `vertices`（空数组为全网格） | 在这些顶点周围向 Delaunay 翻边，只翻贴图映射不变的四边形；顶点与关键形不变；已无可翻时失败 |
+
+操作不适用时返回错误，不写入任何内容。关键形、混合形、顶点组与 Glue 随拓扑迁移（被删顶点的 Glue 对删除），路径重新绑定；目标网格有内部造型且改动前一致时，同一节点内按新网格重新烘焙。结果须通过[几何检查](#几何检查与试运行)。算法与 Cubism 网格编辑的对照见[网格拓扑](../spec/MESH_TOPOLOGY_AND_SPLIT.md#手工拓扑编辑)。
 
 ### 纹理与纹理集
 
