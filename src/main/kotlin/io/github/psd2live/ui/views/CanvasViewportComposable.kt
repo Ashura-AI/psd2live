@@ -113,6 +113,9 @@ import io.github.psd2live.core.CanvasViewport
 import io.github.psd2live.core.ComponentPalette
 import io.github.psd2live.core.CubismViewport
 import io.github.psd2live.core.RigCanvasSupport
+import io.github.psd2live.ui.parameterKeyMarks
+import io.github.psd2live.ui.selectedParameterOwner
+import org.umamo.runtime.model.ParameterId
 import io.github.psd2live.ui.CachedSkiaPicture
 import io.github.psd2live.ui.SkiaRigPainter
 import io.github.psd2live.ui.SourcePixelImages
@@ -355,6 +358,51 @@ fun CanvasViewportComposable(
 			RigCanvasSupport.evaluate(previewModel, snapshotPreview.previewValues(previewModel.rig.puppet.parameters))
 		else null
 	}
+	// The onion skin: the shape a step away on either side, faded and tinted over the artwork. An open motion steps
+	// through its frames around the playhead; otherwise the ghosts sit at the keys of the parameter being edited,
+	// around its value. An editing aid only: neither the document nor an export sees it.
+	val aids = viewOptions.aids
+	val onionOn = mode == CanvasMode.EDIT && aids.onionSkin && previewModel != null && paintSession == null && snapshotPreview == null
+	val onionClip = if (onionOn) viewModel.editingMotionClip(canvasState) else null
+	val onionParameter = if (onionOn && onionClip == null) editor.parameter?.let(::ParameterId)
+		?.takeIf { id -> previewModel?.rig?.puppet?.parameters?.any { it.id == id } == true } else null
+	val onionKeys = remember(previewModel?.rig?.puppet, onionParameter, canvasState.selectedLayerId, canvasState.selectedDeformerId) {
+		val model = previewModel
+		if (model == null || onionParameter == null) emptyList() else {
+			val puppet = model.rig.puppet
+			// The keys of the object being edited, or of the whole rig when it has none on this parameter.
+			val owner = puppet.selectedParameterOwner(canvasState.selectedLayerId, canvasState.selectedDeformerId, model.rig.layerIdByDrawableId)
+			(owner?.let { puppet.parameterKeyMarks(it)[onionParameter]?.allKeys }?.takeIf { it.isNotEmpty() }
+				?: puppet.parameterKeyMarks()[onionParameter]?.allKeys).orEmpty()
+		}
+	}
+	val onionPoses: List<Pair<io.github.psd2live.ui.OnionGhost, Map<org.umamo.runtime.model.ParameterId, Float>>> = when {
+		previewModel == null -> emptyList()
+		onionClip != null -> io.github.psd2live.ui.OnionSkin.frameGhosts(viewModel.motionEditor.playhead, onionClip.fps,
+			aids.onionFrameStep, aids.onionBefore, aids.onionAfter, onionClip.duration, onionClip.loop).map { ghost ->
+			val motion = io.github.psd2live.core.MotionClips.sampleAll(onionClip, ghost.value.toDouble(), loop = false)
+				.filterKeys { it !in canvasState.lockedParameters }
+			ghost to io.github.psd2live.core.boundedPreviewPose(geometryPose + motion, previewModel.rig.puppet.parameters)
+		}
+		onionParameter != null -> {
+			val current = geometryPose[onionParameter]
+				?: previewModel.rig.puppet.parameters.first { it.id == onionParameter }.default
+			io.github.psd2live.ui.OnionSkin.keyGhosts(onionKeys, current, aids.onionBefore, aids.onionAfter)
+				.map { ghost -> ghost to geometryPose + (onionParameter to ghost.value) }
+		}
+		else -> emptyList()
+	}
+	val onionGeometry = remember(previewModel, onionPoses) {
+		previewModel?.let { model -> onionPoses.map { (ghost, pose) -> ghost to RigCanvasSupport.evaluate(model, pose) } }.orEmpty()
+	}
+	val onionSource = when {
+		!aids.onionSkin -> null
+		onionClip != null -> tr("canvas.aids.onion.frames", onionClip.name)
+		onionParameter != null -> tr("canvas.aids.onion.keys",
+			previewModel?.rig?.puppet?.parameters?.firstOrNull { it.id == onionParameter }?.name ?: onionParameter.raw)
+		else -> tr("canvas.aids.onion.none")
+	}
+	val guideDrag = remember { CanvasGuideDrag() }
 	val guideState = if (allowSelectionChrome) canvasState else canvasState.copy(
 		selectedLayerId = null,
 		selectedLayerIds = emptySet(),
@@ -420,10 +468,20 @@ fun CanvasViewportComposable(
 	val gpuKey = viewModel.canvasRenderKey(canvasId, CanvasMode.EDIT)
 	val ghostKey = "$gpuKey#snapshot"
 	val simulationKey = "$gpuKey#simulation"
+	val onionKey = "$gpuKey#onion"
 	val simulationGhost = remember { SimulationGhostMemo() }
 	// The paint session this view's GPU texture holds in full; another session, or a new view, uploads all of it.
 	val paintUploaded = remember(gpuKey) { arrayOfNulls<Any>(1) }
 	DisposableEffect(gpuKey) { onDispose { CanvasGpu.release(gpuKey); CanvasGpu.release(ghostKey); CanvasGpu.release(simulationKey) } }
+	// Ghost views no longer drawn give their textures back, as do all of them with the canvas.
+	val onionViews = onionGeometry.size
+	DisposableEffect(gpuKey, onionViews) {
+		for (i in onionViews until 2 * io.github.psd2live.ui.CanvasAidOptions.MAX_ONION_GHOSTS) CanvasGpu.release("$onionKey$i")
+		onDispose {}
+	}
+	DisposableEffect(gpuKey) {
+		onDispose { for (i in 0 until 2 * io.github.psd2live.ui.CanvasAidOptions.MAX_ONION_GHOSTS) CanvasGpu.release("$onionKey$i") }
+	}
 	val drawnGeometry = remember { DrawnGeometryMemo() }
 	// A session shown by the GPU hands it changed areas instead of painting preview tiles.
 	LaunchedEffect(paintSession, gpuReady) { paintSession?.gpuPreview = gpuReady }
@@ -733,6 +791,78 @@ fun CanvasViewportComposable(
 
 	// One canvas command, from a key press, a wheel notch ([wheel]) or a button click. False lets the input
 	// through: a key to the views behind the canvas, a wheel notch to the zoom.
+	// Guides: dragged out of the rulers, moved by dragging, removed by dragging them back onto a ruler. The press
+	// and the moves only touch [guideDrag]; the release saves the guides once.
+	val guidesShown = mode == CanvasMode.EDIT && previewModel != null && aids.showGuides
+	val rulerPx = CANVAS_RULER_WIDTH.value * density
+	fun guidePosition(at: Offset, vertical: Boolean, viewport: io.github.psd2live.core.CanvasViewport): Float {
+		val raw = if (vertical) viewport.canvasX(at.x) else viewport.canvasY(at.y)
+		if (!aids.snap || !aids.showGrid) return raw
+		val line = io.github.psd2live.ui.CanvasGrid.nearest(raw, aids.gridSpacing, aids.gridSubdivisions, viewport.scale / density)
+		val tolerance = (io.github.psd2live.ui.CanvasSnap.SCREEN_TOLERANCE * density / viewport.scale).toFloat()
+		return if (kotlin.math.abs(line - raw) <= tolerance) line else raw
+	}
+	fun guideAt(at: Offset, viewport: io.github.psd2live.core.CanvasViewport): io.github.psd2live.project.CanvasGuide? =
+		io.github.psd2live.ui.CanvasGuides.hit(canvasState.canvasGuides, viewport.canvasX(at.x), viewport.canvasY(at.y),
+			(GUIDE_HIT_DP * density / viewport.scale).toFloat())
+	fun guidePress(at: Offset): Boolean {
+		if (!guidesShown) return false
+		val onTop = at.y < rulerPx
+		val onLeft = at.x < rulerPx
+		val viewport = currentViewportFor(viewSize)
+		val guides = canvasState.canvasGuides
+		if (onTop || onLeft) {
+			// The top ruler gives a horizontal guide and the left one a vertical guide; the corner neither.
+			if (!(onTop && onLeft) && !aids.guidesLocked && guides.size < io.github.psd2live.ui.CanvasGuides.MAX_GUIDES) {
+				val vertical = onLeft
+				guideDrag.draft = io.github.psd2live.project.CanvasGuide(io.github.psd2live.ui.CanvasGuides.nextId(guides), vertical,
+					guidePosition(at, vertical, viewport))
+				guideDrag.overRuler = true
+			}
+			return true
+		}
+		if (aids.guidesLocked) return false
+		val hit = guideAt(at, viewport) ?: return false
+		guideDrag.draft = hit
+		guideDrag.overRuler = false
+		return true
+	}
+	fun guideMove(at: Offset): Boolean {
+		val draft = guideDrag.draft
+		if (draft == null) {
+			guideDrag.hovered = if (guidesShown && !aids.guidesLocked && at.x >= rulerPx && at.y >= rulerPx)
+				guideAt(at, currentViewportFor(viewSize)) else null
+			return false
+		}
+		guideDrag.draft = draft.copy(position = guidePosition(at, draft.vertical, currentViewportFor(viewSize)))
+		guideDrag.overRuler = (if (draft.vertical) at.x < rulerPx else at.y < rulerPx) ||
+			at.x > viewSize.width || at.y > viewSize.height
+		return true
+	}
+	fun guideRelease(): Boolean {
+		val draft = guideDrag.draft ?: return false
+		val remove = guideDrag.overRuler
+		guideDrag.draft = null
+		guideDrag.overRuler = false
+		val guides = canvasState.canvasGuides
+		viewModel.setCanvasGuides(if (remove) guides.filterNot { it.id == draft.id } else io.github.psd2live.ui.CanvasGuides.put(guides, draft))
+		return true
+	}
+	// With snapping on, the editor sees the pointer drawn to the grid and the guides it is near. Paint strokes and
+	// the deform brushes keep the pointer as it is: a stroke bent onto a grid line is not what was drawn.
+	fun snapPointer(at: Offset): Offset {
+		if (mode != CanvasMode.EDIT || !aids.snaps || editor.hierarchyMode == EditHierarchyMode.PAINT ||
+			editor.tool in io.github.psd2live.ui.DEFORM_BRUSH_TOOLS) return at
+		val viewport = currentViewportFor(viewSize)
+		val grid: ((Float) -> Float)? = if (!aids.showGrid) null else { value ->
+			io.github.psd2live.ui.CanvasGrid.nearest(value, aids.gridSpacing, aids.gridSubdivisions, viewport.scale / density)
+		}
+		val (x, y) = io.github.psd2live.ui.CanvasSnap.snap(viewport.canvasX(at.x), viewport.canvasY(at.y),
+			if (aids.showGuides) canvasState.canvasGuides else emptyList(), grid,
+			(io.github.psd2live.ui.CanvasSnap.SCREEN_TOLERANCE * density / viewport.scale).toFloat())
+		return Offset(viewport.x(x).toFloat(), (viewport.offsetY + y * viewport.scale).toFloat())
+	}
+
 	fun runCanvasCommand(action: ShortcutAction, shift: Boolean, wheel: Boolean): Boolean {
 		if (action == ShortcutAction.QUICK_PREVIEW) {
 			if (previewModel != null && !canvasState.workspaceEditBusy) editor.toggleQuickPreview()
@@ -747,6 +877,33 @@ fun CanvasViewportComposable(
 			}
 			ShortcutAction.RESET_CAMERA -> {
 				resetCamera()
+				return true
+			}
+			else -> Unit
+		}
+		// The canvas aids are view options and a pose: like the camera, a running commit does not hold them up.
+		when (action) {
+			ShortcutAction.TOGGLE_GRID, ShortcutAction.TOGGLE_GUIDES, ShortcutAction.LOCK_GUIDES,
+			ShortcutAction.TOGGLE_SNAP, ShortcutAction.TOGGLE_ONION_SKIN -> {
+				if (mode != CanvasMode.EDIT || previewModel == null) return false
+				val a = viewOptions.aids
+				val next = when (action) {
+					ShortcutAction.TOGGLE_GRID -> a.copy(showGrid = !a.showGrid)
+					ShortcutAction.TOGGLE_GUIDES -> a.copy(showGuides = !a.showGuides)
+					ShortcutAction.LOCK_GUIDES -> a.copy(guidesLocked = !a.guidesLocked)
+					ShortcutAction.TOGGLE_SNAP -> a.copy(snap = !a.snap)
+					else -> a.copy(onionSkin = !a.onionSkin)
+				}
+				viewModel.setCanvasViewOptions(canvasId, viewOptions.copy(aids = next), mode)
+				return true
+			}
+			ShortcutAction.RANDOM_POSE -> {
+				if (previewModel == null) return false
+				viewModel.applyRandomPose(canvasId)
+				return true
+			}
+			ShortcutAction.RESTORE_RANDOM_POSE -> {
+				viewModel.restoreRandomPose()
 				return true
 			}
 			else -> Unit
@@ -996,6 +1153,8 @@ fun CanvasViewportComposable(
 				runCanvasCommand(action, event.isShiftPressed, wheel = false)
 			}
 			.pointerHoverIcon(PointerIcon(when {
+                (guideDrag.draft ?: guideDrag.hovered) != null -> Cursor.getPredefinedCursor(
+                    if ((guideDrag.draft ?: guideDrag.hovered)!!.vertical) Cursor.E_RESIZE_CURSOR else Cursor.N_RESIZE_CURSOR)
                 isDragging && zoomDragAnchor != null -> Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR)
                 isDragging -> Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR)
                 mode == CanvasMode.EDIT && canvasState.selectedReferenceId != null -> io.github.psd2live.ui.CanvasCursors.transform(
@@ -1023,6 +1182,11 @@ fun CanvasViewportComposable(
                 // The floating bars and rails consume the presses that land on them (canvasChrome), whatever
                 // their size at the moment; the strips along the top and bottom edge stay out of reach.
                 if(change.isConsumed) return@onPointerEvent
+                if (mode == CanvasMode.EDIT && event.button == PointerButton.Primary && !editor.space && !editor.inGesture &&
+                    !referenceInteraction.active && guidePress(change.position)) {
+                    focusRequester.requestFocus()
+                    change.consume(); return@onPointerEvent
+                }
                 if (mode == CanvasMode.EDIT && referenceInteraction.active) {
                     if (event.button == PointerButton.Primary) referenceInteraction.cancel()
                     else { change.consume(); return@onPointerEvent }
@@ -1111,7 +1275,7 @@ fun CanvasViewportComposable(
                     }
                     var handled = false
                     editorGuard {
-                        handled = editor.press(change.position,computeViewport(previewModel,viewSize.width,viewSize.height),event.keyboardModifiers.isShiftPressed,event.keyboardModifiers.isAltPressed,event.keyboardModifiers.isPrimaryPressed)
+                        handled = editor.press(snapPointer(change.position),computeViewport(previewModel,viewSize.width,viewSize.height),event.keyboardModifiers.isShiftPressed,event.keyboardModifiers.isAltPressed,event.keyboardModifiers.isPrimaryPressed)
                     }
                     if (handled) {
                         change.consume(); return@onPointerEvent
@@ -1130,6 +1294,10 @@ fun CanvasViewportComposable(
 			}
 			.onPointerEvent(PointerEventType.Release) { event ->
 				val change = event.changes.firstOrNull()
+                if (event.button == PointerButton.Primary && guideRelease()) {
+                    change?.consume()
+                    return@onPointerEvent
+                }
                 if (mode == CanvasMode.EDIT && event.button == PointerButton.Primary && referenceInteraction.active) {
                     referenceInteraction.release()?.let { viewModel.placeReference(it.id, it.rect, it.rotation) }
                     change?.consume()
@@ -1218,6 +1386,8 @@ fun CanvasViewportComposable(
                 // would leave every paint tool picking; the pointer's own modifiers are the truth.
                 if (mode == CanvasMode.EDIT) editor.altHeld = event.keyboardModifiers.isAltPressed
                 if (mode == CanvasMode.EDIT && previewModel != null && !isDragging) {
+                    if (guideDrag.active && !event.buttons.isPrimaryPressed) guideRelease()
+                    if (guideMove(change.position)) { change.consume(); return@onPointerEvent }
                     if (referenceInteraction.active) {
                         if (!event.buttons.isPrimaryPressed) {
                             referenceInteraction.release()?.let { viewModel.placeReference(it.id, it.rect, it.rotation) }
@@ -1239,7 +1409,7 @@ fun CanvasViewportComposable(
                     editorGuard {
                         if (editor.adjustingBrush) editor.updateBrushAdjust(change.position)
                         else editor.move(
-                            change.position,
+                            snapPointer(change.position),
                             computeViewport(previewModel, viewSize.width, viewSize.height),
                             event.keyboardModifiers.isShiftPressed,
                             event.keyboardModifiers.isAltPressed,
@@ -1889,6 +2059,32 @@ fun CanvasViewportComposable(
 					}
 				}
 			}
+			// The onion skin's ghosts over the artwork, each one flattened layer faded and tinted as a whole, so meshes
+			// overlapping within a ghost do not darken it. Their GPU views keep their frames while the ghost stays.
+			if (snapshotGeometry == null && onionGeometry.isNotEmpty()) {
+				val options = ArtworkOptions(visibleLayerIds = targetVisibleLayerIds, drawOrderOverrides = canvasState.drawOrderOverrides)
+				onionGeometry.forEachIndexed { index, (ghost, ghostGeometry) ->
+					val before = ghost.offset < 0
+					val alpha = io.github.psd2live.ui.OnionSkin.alpha(ghost.offset, if (before) aids.onionBefore else aids.onionAfter, aids.onionOpacity)
+					val tint = (if (before) aids.onionBeforeColor else aids.onionAfterColor).color(colors)
+					if (gpuReady) {
+						CanvasGpu.draw(awtWindow, "$onionKey$index", listOf(model.rig.puppet, model.atlas, ghostGeometry, viewport, w, h, options)) {
+							CanvasScene(w, h, viewport, model, ghostGeometry, ArtworkDrawList.build(model, ghostGeometry, options))
+						}?.let { drawGpuFrame(it, alpha = alpha, tint = tint) }
+					} else if (editingPainter != null) drawIntoCanvas { target ->
+						org.jetbrains.skia.Paint().use { fade ->
+							fade.setAlphaf(alpha)
+							fade.colorFilter = onionTintFilter(tint)
+							val canvas = target.skiaCanvas
+							val saved = canvas.saveLayer(org.jetbrains.skia.Rect.makeWH(w.toFloat(), h.toFloat()), fade)
+							try {
+								editingPainter.paint(canvas, model, ghostGeometry, viewport, visibleLayerIds = options.visibleLayerIds,
+									drawOrderOverrides = canvasState.drawOrderOverrides)
+							} finally { canvas.restoreToCount(saved) }
+						}
+					}
+				}
+			}
 			// The reference simulation over the export: its meshes alone, faded, in one layer so they do not darken
 			// where they overlap.
 			if (simulationOverlay != null && snapshotGeometry == null) {
@@ -1976,6 +2172,16 @@ fun CanvasViewportComposable(
 					referenceInteraction.frame(selected, viewport),
 					if (referenceInteraction.active) referenceInteraction.activeHandle else referenceInteraction.hovered,
 					colors, referenceHandles, pointer = referenceInteraction.pointer, active = referenceInteraction.active)
+			}
+		}
+		// The grid, the guides and their rulers, over the artwork and its handles. Like the overlay it only redraws
+		// when the camera, the options or a guide changes, never with a pose.
+		if (mode == CanvasMode.EDIT && previewModel != null && (aids.showGrid || aids.showGuides)) {
+			val guides = canvasState.canvasGuides
+			CompositedCanvas(Modifier.fillMaxSize(), previewGpu, "$gpuKey/aids", editComposited, canvasOriginState,
+				order = 3, clear = false, layer = gpuKey) {
+				canvasOrigin.x
+				drawCanvasAids(currentViewportFor(viewSize), aids, guides, guideDrag, colors, guideLabelMeasurer)
 			}
 		}
 		if (mode == CanvasMode.PREVIEW && previewModel != null) {
@@ -2137,6 +2343,18 @@ fun CanvasViewportComposable(
 				// The skin weights belong to the skeleton's meshes, so the toggle comes with an armature.
 				skinWeights = editor.showSkeletonWeights.takeIf { mode == CanvasMode.EDIT && editor.committedSkeleton != null },
 				onSkinWeightsChange = { editor.showSkeletonWeights = it },
+				aids = CanvasAidsRail(
+					canvasAids = mode == CanvasMode.EDIT,
+					guideCount = canvasState.canvasGuides.size,
+					onClearGuides = { viewModel.setCanvasGuides(emptyList()) },
+					onionSource = onionSource,
+					randomPose = viewModel.randomPose,
+					editingParameters = editor.deformationParameterIds().size,
+					onRandomPose = { viewModel.applyRandomPose(canvasId); focusRequester.requestFocus() },
+					onRestorePose = { viewModel.restoreRandomPose(); focusRequester.requestFocus() },
+					keyLabel = canvasState.keymap::labelFor,
+					onMenuClosed = { focusRequester.requestFocus() },
+				),
 				modifier = Modifier
 					.align(Alignment.BottomEnd)
 					.padding(end = 8.dp, bottom = 8.dp),
@@ -2375,11 +2593,24 @@ private fun computeEditorViewport(model: RigPreviewModel, size: IntSize, zoom: D
 }
 
 
-/** Draws a GPU frame at the origin: the top-left [GpuFrame.width] × [GpuFrame.height] texels of its texture. */
-internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGpuFrame(frame: GpuFrame, alpha: Float = 1f) {
+/** An onion-skin ghost's colour: [tint] laid over the artwork's own colours, its coverage kept. */
+private fun onionTintFilter(tint: Color): org.jetbrains.skia.ColorFilter =
+	org.jetbrains.skia.ColorFilter.makeBlend(tint.copy(alpha = ONION_TINT).toArgb(), org.jetbrains.skia.BlendMode.SRC_ATOP)
+
+/** How much of its colour an onion-skin ghost takes over the artwork's. */
+private const val ONION_TINT = 0.6f
+
+/**
+ * Draws a GPU frame at the origin: the top-left [GpuFrame.width] × [GpuFrame.height] texels of its texture, faded
+ * to [alpha] and, for an onion-skin ghost, washed with [tint].
+ */
+internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawGpuFrame(frame: GpuFrame, alpha: Float = 1f, tint: Color? = null) {
 	drawIntoCanvas { canvas ->
 		val rect = org.jetbrains.skia.Rect.makeWH(frame.width.toFloat(), frame.height.toFloat())
-		val paint = if (alpha < 1f) org.jetbrains.skia.Paint().apply { setAlphaf(alpha) } else null
+		val paint = if (alpha < 1f || tint != null) org.jetbrains.skia.Paint().apply {
+			setAlphaf(alpha)
+			if (tint != null) colorFilter = onionTintFilter(tint)
+		} else null
 		try {
 			canvas.nativeCanvas.drawImageRect(frame.image, rect, rect, org.jetbrains.skia.SamplingMode.DEFAULT, paint, true)
 		} finally {

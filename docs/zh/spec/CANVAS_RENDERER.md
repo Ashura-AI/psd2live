@@ -89,6 +89,15 @@
 
 `PreviewWindowTool` 打开真实窗口：编辑画布与两种预览后端都在窗口的 Skia 上下文中出帧，帧从 GPU 读出核对（只读视图纹理，不截屏）；在 RTX 4080 笔记本上两种后端播放时都超过 100 FPS，无帧率锁。工具带看门狗，窗口卡住两分钟即转储线程并退出。
 
+### 10.8 画布辅助：栅格、辅助线、洋葱皮
+
+编辑画布的绘图辅助都是编辑时显示，不进入 Rig、历史或导出；纯计算在 `ui/CanvasAids.kt`（`CanvasAidsTest`）。
+
+- **设置**：开关与参数是画布视图选项的 `TabViewOptions.aids`（`CanvasAidOptions`），随工作区呈现保存，只写与默认值不同的字段，未用过的画布字节不变。颜色存主题语义（`CanvasAidColor`），绘制时取 `ToolColors`，换主题仍然醒目。
+- **辅助线**是工程数据：`WorkspaceAuxiliaryData.canvasGuides`，与参数快照同走运行时辅助 CAS（`WorkspaceAuxiliaryEdit.SetCanvasGuides`），所有编辑画布共用。拖动只改 `CanvasGuideDrag`（画布绘制与指针处理读取），松手时保存一次；拖回标尺即删除。
+- **栅格、辅助线与标尺**画在单独的合成视图 `$gpuKey/aids`（`order = 3`，叠加层与参考图之上），只读镜头、选项与辅助线，姿势变化与悬停不会让它重画。栅格的线距随缩放取能分辨的一级（`CanvasGrid.step`，屏幕间距按 dp 计），吸附也取这一级（`CanvasGrid.nearest`）；吸附在画布把指针坐标交给编辑器之前完成（`CanvasSnap`），绘画与变形笔刷不吸附。
+- **洋葱皮**的姿势在组合中求出：打开动作时取播放头前后按帧间隔的时刻（`OnionSkin.frameGhosts` + `MotionClips.sampleAll`），否则取最近设置的参数在当前值两侧的关键（`OnionSkin.keyGhosts`，选中对象有关键时用它的）。每个幽灵按 `RigCanvasSupport.evaluate` 求几何，画进各自的 GPU 视图（`$gpuKey#onion<i>`），以整层透明度与 `SRC_ATOP` 着色叠在美术层上；键未变时不重画。软件路径以同样的图层透明度与颜色滤镜绘制。关闭时不求值、不占视图。
+
 ## 11. 播放与跟踪会话
 
 画布的播放、鼠标跟踪按钮与动画面板共用应用层的播放会话（`WorkspacePlaybackSessions`），属于进程临时会话，不进入工程或历史。

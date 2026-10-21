@@ -107,7 +107,7 @@ internal class DesktopPresentation(private val viewModel: PSD2LiveViewModel) : W
 
     /** Canvas records are read from the same v1 presentation the project archive stores. */
     override fun auxiliary(view: PSD2LiveState): JsonObject = CanvasVisibilityCodec.withRecords(JsonObject(
-        WorkspaceAuxiliaryCodec.encode(WorkspaceAuxiliaryData(view.parameterSnapshots, view.historyAnnotations)) +
+        WorkspaceAuxiliaryCodec.encode(view.savedProjectData()) +
             ("posesByWorkspace" to buildJsonObject {
                 view.workspaces.forEach { workspace ->
                     val pose = workspace.pose
@@ -142,6 +142,7 @@ internal class DesktopPresentation(private val viewModel: PSD2LiveViewModel) : W
         val auxiliary = WorkspaceAuxiliaryCodec.decode(capture.auxiliary)
         val persisted = WorkspaceStateCodec.decode(capture.document.settings, ui).copy(
             parameterSnapshots = auxiliary.parameterSnapshots, historyAnnotations = auxiliary.historyAnnotations,
+            canvasGuides = auxiliary.canvasGuides,
             projectId = capture.projectId, analysis = capture.model.analysis, previewModel = capture.model,
             documentLayerVisibility = capture.document.layerVisibility, deletedLayerIds = capture.document.deletedLayerIds,
             layerOverrides = capture.document.layerOverrides, parentOverrides = capture.document.parentOverrides,

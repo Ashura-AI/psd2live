@@ -180,6 +180,14 @@ enum class ShortcutAction(
     AXIS_CONSTRAIN_Y(ShortcutCategory.CANVAS_EDIT, "shortcut.axisY"),
     FRAME_VIEW(ShortcutCategory.CANVAS_EDIT, "shortcut.frameView"),
     RESET_CAMERA(ShortcutCategory.CANVAS_EDIT, "shortcut.resetCamera"),
+    // Canvas aids: grid, guides, onion skin and random pose.
+    TOGGLE_GRID(ShortcutCategory.CANVAS_EDIT, "shortcut.toggleGrid"),
+    TOGGLE_GUIDES(ShortcutCategory.CANVAS_EDIT, "shortcut.toggleGuides"),
+    LOCK_GUIDES(ShortcutCategory.CANVAS_EDIT, "shortcut.lockGuides"),
+    TOGGLE_SNAP(ShortcutCategory.CANVAS_EDIT, "shortcut.toggleSnap"),
+    TOGGLE_ONION_SKIN(ShortcutCategory.CANVAS_EDIT, "shortcut.toggleOnionSkin"),
+    RANDOM_POSE(ShortcutCategory.CANVAS_EDIT, "shortcut.randomPose"),
+    RESTORE_RANDOM_POSE(ShortcutCategory.CANVAS_EDIT, "shortcut.restoreRandomPose"),
 
     // Canvas mouse gestures: a button starts them, the pointer's motion drives them.
     PAN_VIEW(ShortcutCategory.CANVAS_MOUSE, "shortcut.panView", ShortcutKind.DRAG),
@@ -376,6 +384,14 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.AXIS_CONSTRAIN_Y to keys("Y"),
     ShortcutAction.FRAME_VIEW to keys("F"),
     ShortcutAction.RESET_CAMERA to keys("Home", "0"),
+    // Photoshop's grid and guide keys.
+    ShortcutAction.TOGGLE_GRID to keys("Ctrl+'"),
+    ShortcutAction.TOGGLE_GUIDES to keys("Ctrl+;"),
+    ShortcutAction.LOCK_GUIDES to keys("Ctrl+Alt+;"),
+    ShortcutAction.TOGGLE_SNAP to keys("Ctrl+Shift+;"),
+    ShortcutAction.TOGGLE_ONION_SKIN to keys("Alt+O"),
+    ShortcutAction.RANDOM_POSE to keys("Alt+P"),
+    ShortcutAction.RESTORE_RANDOM_POSE to keys("Alt+Shift+P"),
 
     // Space + left drag also pans, but Space is a latch rather than a modifier and is not rebindable.
     ShortcutAction.PAN_VIEW to keys("MouseMiddle", "Shift+MouseMiddle"),

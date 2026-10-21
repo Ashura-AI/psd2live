@@ -135,9 +135,11 @@ data class TabViewOptions(
 	val densityHeatmap: Boolean = false,
 	/** How a preview canvas shows a running reference simulation against the baked export. */
 	val simulationView: SimulationView = SimulationView.REFERENCE,
+	/** Edit canvases' grid, guides and onion skin. */
+	val aids: io.github.psd2live.ui.CanvasAidOptions = io.github.psd2live.ui.CanvasAidOptions(),
 ) {
 	/** Point indices are only painted together with the warp overlay they annotate. */
-	fun normalized(): TabViewOptions = copy(showWarp = showWarp || warpShowIndices)
+	fun normalized(): TabViewOptions = copy(showWarp = showWarp || warpShowIndices, aids = aids.normalized())
 
 	companion object {
 		val Default = TabViewOptions()
@@ -600,6 +602,8 @@ data class PSD2LiveState(
 	val parameterSearchQuery: String = "",
 	/** Saved parameter snapshots, shown as the snapshot bar; project data, never history. */
 	val parameterSnapshots: List<ParameterSnapshot> = emptyList(),
+	/** The edit canvases' ruler guides; project data like the snapshots, never history. */
+	val canvasGuides: List<io.github.psd2live.project.CanvasGuide> = emptyList(),
 	val animationEnabled: Boolean = false,
 	val mouseTrackingEnabled: Boolean = true,
 	val smoothMouseTracking: Boolean = false,
@@ -915,3 +919,7 @@ data class ExportSuccess(
 	val notesTitle: String? = null,
 	val notes: List<String> = emptyList(),
 )
+
+/** The project data saved beside the document but outside its history: snapshots, history notes and guides. */
+internal fun PSD2LiveState.savedProjectData() =
+	io.github.psd2live.project.WorkspaceAuxiliaryData(parameterSnapshots, historyAnnotations, canvasGuides)

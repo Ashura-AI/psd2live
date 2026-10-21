@@ -57,10 +57,12 @@ import io.github.psd2live.ui.components.IconTextureView
 import io.github.psd2live.ui.components.IconWarpDeformer
 import io.github.psd2live.ui.components.GridIcon
 import io.github.psd2live.ui.components.ICON_FINE
+import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.state.TabViewOptions
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.frostedGlass
 import io.github.psd2live.ui.views.texture.BarTooltip
+import io.github.psd2live.ui.views.texture.FloatingMenu
 import io.github.psd2live.ui.views.texture.canvasChrome
 import io.github.psd2live.ui.tutorial.TutorialTargetId
 import io.github.psd2live.ui.tutorial.tutorialTarget
@@ -293,12 +295,16 @@ internal fun CanvasViewOptionsBar(
 	/** The skin weight wash over the skeleton's meshes: shown, hidden, or null with no skeleton to show it for. */
 	skinWeights: Boolean? = null,
 	onSkinWeightsChange: (Boolean) -> Unit = {},
+	/** The grid, guides, onion skin and random pose rows; null leaves them out. */
+	aids: CanvasAidsRail? = null,
 	modifier: Modifier = Modifier,
 ) {
 	fun apply(updated: TabViewOptions) {
 		onOptionsChange(updated.normalized())
 	}
-	CanvasOptionsRail(modifier.tutorialTarget(TutorialTargetId.VIEW_OPTIONS_BAR)) {
+	var aidsMenu by remember { mutableStateOf(false) }
+	// An open settings menu keeps the rail open under it.
+	CanvasOptionsRail(modifier.tutorialTarget(TutorialTargetId.VIEW_OPTIONS_BAR), pinned = aidsMenu) {
 		RailToggle(
 			label = tr("canvas.visibility.texture"),
 			isChecked = options.showTexture,
@@ -407,8 +413,52 @@ internal fun CanvasViewOptionsBar(
 				onClick = { apply(options.copy(filterSelectedOnly = !options.filterSelectedOnly)) },
 			)
 		}
+		if (aids != null) {
+			RailDivider()
+			val a = options.aids
+			fun applyAids(updated: io.github.psd2live.ui.CanvasAidOptions) = apply(options.copy(aids = updated))
+			if (aids.canvasAids) {
+				RailItem(tr("canvas.aids.grid"), a.showGrid, keyLabel = aids.keyLabel(ShortcutAction.TOGGLE_GRID).orEmpty(),
+					icon = { IconCanvasGrid(it) }, onClick = { applyAids(a.copy(showGrid = !a.showGrid)) })
+				RailItem(tr("canvas.aids.guides"), a.showGuides, keyLabel = aids.keyLabel(ShortcutAction.TOGGLE_GUIDES).orEmpty(),
+					icon = { IconCanvasGuides(it) }, onClick = { applyAids(a.copy(showGuides = !a.showGuides)) })
+				RailItem(tr("canvas.aids.onion"), a.onionSkin, keyLabel = aids.keyLabel(ShortcutAction.TOGGLE_ONION_SKIN).orEmpty(),
+					tooltip = aids.onionSource.takeIf { a.onionSkin },
+					icon = { IconOnionSkin(it) }, onClick = { applyAids(a.copy(onionSkin = !a.onionSkin)) })
+			}
+			RailItem(tr("canvas.aids.random.apply"), false, keyLabel = aids.keyLabel(ShortcutAction.RANDOM_POSE).orEmpty(),
+				icon = { IconRandomPose(it) }, onClick = aids.onRandomPose)
+			if (aids.randomPose.restore != null) RailItem(tr("canvas.aids.random.restore"), false,
+				keyLabel = aids.keyLabel(ShortcutAction.RESTORE_RANDOM_POSE).orEmpty(),
+				icon = { IconRestorePose(it) }, onClick = aids.onRestorePose)
+			Box {
+				RailItem(tr("canvas.aids.settings"), aidsMenu, icon = { IconAidSettings(it) }, onClick = { aidsMenu = !aidsMenu })
+				FloatingMenu(expanded = aidsMenu, onDismiss = { aidsMenu = false; aids.onMenuClosed() }, width = 260.dp,
+					alignment = Alignment.BottomEnd, rise = true) {
+					CanvasAidsMenuContent(a, ::applyAids, aids.guideCount, aids.onClearGuides, aids.onionSource, aids.randomPose,
+						aids.editingParameters, aids.onRandomPose, aids.onRestorePose, aids.keyLabel, showCanvasAids = aids.canvasAids)
+				}
+			}
+		}
 	}
 }
+
+/** What the display rail's canvas-aid rows need beyond the view options. */
+internal class CanvasAidsRail(
+	/** The grid, guides and onion skin rows: the edit canvas's. */
+	val canvasAids: Boolean,
+	val guideCount: Int,
+	val onClearGuides: () -> Unit,
+	/** What the onion skin's ghosts show now, or why there are none. */
+	val onionSource: String?,
+	val randomPose: io.github.psd2live.ui.state.RandomPoseControls,
+	val editingParameters: Int,
+	val onRandomPose: () -> Unit,
+	val onRestorePose: () -> Unit,
+	val keyLabel: (ShortcutAction) -> String?,
+	/** Hands the focus back to the canvas. */
+	val onMenuClosed: () -> Unit,
+)
 
 /** The reference image: a picture frame with a figure's head and shoulders. */
 @Composable

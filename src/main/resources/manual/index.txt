@@ -32,13 +32,13 @@
     - about-viewarea different cubism=about-viewarea
     - canvas-modes exclusive
     - preview-canvas exclusive
-    - guide-function missing cubism=guide-function
+    - guide-function different cubism=guide-function
     - solo different cubism=solo
-    - grid missing cubism=grid
+    - grid different cubism=grid
     - snapshot missing cubism=snapshot
-    - onion-skin missing cubism=onion-skin
+    - onion-skin different cubism=onion-skin
     - multiview different cubism=multiview
-    - random-pose missing cubism=random-pose
+    - random-pose different cubism=random-pose
   + toolbar-folder
     - toolbar different cubism=toolbar
     - edit-level different cubism=edit-level

@@ -344,6 +344,21 @@ The bottom of the canvas shows the current runtime, physics state and zoom ratio
 !> The reference simulation runs only in the editor and is not exported; to carry it into the exported files, bake it in the Simulation panel.
 
 @@ guide-function | Guide line function
+Guides are horizontal or vertical reference lines dragged out of the rulers, for lining parts up, checking left-right symmetry or marking where a keyform should reach. Guides are saved with the project, stay out of the history and are never exported.
+## Showing the rulers and guides
+- Click **Guides** in the display rail at the lower right of the canvas ({key:TOGGLE_GUIDES}); rulers appear along the top and left edges, in canvas pixels.
+- Each edit canvas decides whether it shows them; the guides themselves belong to the project, and every edit canvas shares one set.
+## Operations
+| Operation | How |
+|---|---|
+| Add | Drag down from the top ruler for a horizontal guide, right from the left ruler for a vertical one |
+| Move | Drag a guide when the pointer over it turns into a double arrow |
+| Remove | Drag the guide back onto its ruler, or choose **Clear all guides** in **Canvas aids…** of the display rail |
+| Lock | Turn on **Lock guides** in **Canvas aids…** ({key:LOCK_GUIDES}); locked guides are dashed and can be neither added nor dragged |
+| Snap | With **Snap to grid and guides** on ({key:TOGGLE_SNAP}), clicks and drags near a guide line up with it |
+The guides' colour is picked among the theme colours in **Canvas aids…**, so they stay visible in any theme.
+*> Unlike Cubism, locking and colour are switched in the display rail's settings menu rather than a guide dialog; with snapping and the grid on, a dragged guide also snaps to the grid lines.
+
 @@ solo | Solo function
 Solo shows only the selected layer and temporarily hides the others, which makes it easy to check parts covered by hair or clothing.
 ## How to use
@@ -354,8 +369,34 @@ Solo affects only the current canvas; other canvases in the same workspace displ
 *> Solo is only a temporary show/hide while editing. To show or hide a part with a parameter, set up a variant or an opacity keyform (see [[variants]]).
 
 @@ grid | Grid Function
+The grid draws evenly spaced reference lines over the document, for lining up mesh points, deformers and parts. It shows on edit canvases only and changes neither the model nor the export.
+## Showing the grid
+Click **Grid** in the display rail at the lower right of the canvas ({key:TOGGLE_GRID}).
+## Settings
+In **Canvas aids…** of the display rail:
+| Item | Effect |
+|---|---|
+| Spacing | Canvas pixels between major grid lines (2–1024) |
+| Divisions | Smaller cells within each cell; 1 draws major lines only |
+| Opacity, colour | How strong the lines are and their colour, picked among the theme colours |
+Zoomed out, divisions that would crowd together are hidden and the major lines spread out as needed, so the grid never turns into a wash.
+## Snapping
+With **Snap to grid and guides** on ({key:TOGGLE_SNAP}), the pointer is drawn to a grid line within about 6 pixels: picking, dragging points and placing deformers and path points all line up. It snaps to the grid lines visible at the current zoom. Paint and the deform brushes do not snap, so strokes are not pulled onto the lines.
+
 @@ snapshot | Snapshot Function
 @@ onion-skin | Onion Skin
+The onion skin lays the shape at neighbouring keys or frames translucently over the current view: while shaping you see the keys either side, while animating the path through the neighbouring frames. It shows on edit canvases only, is not written to the project and is never exported.
+## Showing the onion skin
+Click **Onion skin** in the display rail at the lower right of the canvas ({key:TOGGLE_ONION_SKIN}). What it shows depends on the moment:
+| State | Shapes laid over |
+|---|---|
+| A motion is open in the animation panel | Frames around the playhead, every "Frame step" frames |
+| No motion is open | The keys around the current value of the parameter last set in the parameters panel: the selected object's keys on it when it has any, else the whole model's |
+The tooltip of the onion skin's row in the display rail says which of the two it is showing.
+## Settings
+In the "Onion skin" group of **Canvas aids…**: how many before and after (0–5), the frame step, the opacity, and a colour each for before and after. Layers farther from the current pose are fainter.
+*> The onion skin follows the canvas's display filters (selected only, layer visibility); it is not shown while a parameter snapshot is previewed on hover or in Paint mode.
+
 @@ multiview | Multiview
 One workspace can hold several canvases: for example an editing canvas and a preview canvas side by side, so you see the finished result while editing keyforms; or two editing canvases, one zoomed in on detail and one showing the full body.
 ## Adding a canvas
@@ -370,6 +411,19 @@ So when you drag a parameter on the editing canvas, the preview canvas shows the
 *> To compare two different parameter poses side by side, put them in two workspaces: each workspace keeps its own pose.
 
 @@ random-pose | Random Pose
+The random pose sets parameters to random values in their ranges, to check many parameter combinations at once and find clipping, tearing or runaway deformation.
+## How to use
+1. Click **Random pose** in the display rail at the lower right of the canvas ({key:RANDOM_POSE}); each click gives a new pose.
+2. When done, click **Restore pose** ({key:RESTORE_RANDOM_POSE}); the parameters return to the values they had before the first random pose.
+## Choosing the parameters
+In the "Random pose" group of **Canvas aids…**:
+| Item | Effect |
+|---|---|
+| All unlocked parameters | Every parameter takes part; parameters locked in the parameters panel stay put |
+| Parameters being edited | Only the parameters last set in the parameters panel |
+| Range | How far each parameter may go from its default; 100% reaches both ends of its range |
+The random pose sets the current pose the way dragging sliders does, except that it never keys an open motion.
+
 @@ toolbar-folder | Toolbar
 @@ toolbar | About the Toolbar
 The toolbar sits at the upper left of each canvas, below the mode menu, and lists only the tools available in the current mode. Tools of the same kind share one slot that shows the one used last; click the slot again or right-click it to expand the rest, and hovering shows the name and shortcut.

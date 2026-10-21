@@ -1536,6 +1536,9 @@ internal class CanvasEditor(
     internal fun selectDeformationParameters(ids: Collection<ParameterId>) {
         deformationParameters = ids.map { it.raw }.distinct()
     }
+
+    /** The parameters the panel last set, the first of them [parameter]. */
+    internal fun deformationParameterIds(): List<String> = deformationParameters
     private var activeElementMode by mutableStateOf(0)
     var elementMode: Int
         get() = activeElementMode

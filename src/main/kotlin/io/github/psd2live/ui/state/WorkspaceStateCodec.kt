@@ -18,6 +18,8 @@ import io.github.psd2live.core.MeshSettings
 import io.github.psd2live.core.MeshFillAlgorithm
 import io.github.psd2live.core.MeshEdgeMode
 
+import io.github.psd2live.ui.CanvasAidColor
+import io.github.psd2live.ui.CanvasAidOptions
 import io.github.psd2live.ui.EditHierarchyMode
 import io.github.psd2live.ui.state.*
 import org.umamo.runtime.model.ParameterId
@@ -79,7 +81,55 @@ internal object WorkspaceStateCodec {
             referenceLayersOver = booleanOr(obj, "referenceLayersOver", defaults.referenceLayersOver),
             densityHeatmap = booleanOr(obj, "densityHeatmap", defaults.densityHeatmap),
             simulationView = obj["simulationView"]?.jsonPrimitive?.contentOrNull?.let(SimulationView::parse) ?: defaults.simulationView,
+            aids = decodeAids(obj["aids"] as? JsonObject, defaults.aids),
         )
+    }
+
+    private fun decodeAids(obj: JsonObject?, defaults: CanvasAidOptions): CanvasAidOptions {
+        obj ?: return defaults
+        fun float(key: String, fallback: Float) = obj[key]?.jsonPrimitive?.floatOrNull ?: fallback
+        fun int(key: String, fallback: Int) = obj[key]?.jsonPrimitive?.intOrNull ?: fallback
+        fun color(key: String, fallback: CanvasAidColor) = obj[key]?.jsonPrimitive?.contentOrNull
+            ?.let { name -> CanvasAidColor.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } } ?: fallback
+        return CanvasAidOptions(
+            showGrid = booleanOr(obj, "showGrid", defaults.showGrid),
+            gridSpacing = float("gridSpacing", defaults.gridSpacing),
+            gridSubdivisions = int("gridSubdivisions", defaults.gridSubdivisions),
+            gridColor = color("gridColor", defaults.gridColor),
+            gridOpacity = float("gridOpacity", defaults.gridOpacity),
+            showGuides = booleanOr(obj, "showGuides", defaults.showGuides),
+            guidesLocked = booleanOr(obj, "guidesLocked", defaults.guidesLocked),
+            guideColor = color("guideColor", defaults.guideColor),
+            snap = booleanOr(obj, "snap", defaults.snap),
+            onionSkin = booleanOr(obj, "onionSkin", defaults.onionSkin),
+            onionBefore = int("onionBefore", defaults.onionBefore),
+            onionAfter = int("onionAfter", defaults.onionAfter),
+            onionOpacity = float("onionOpacity", defaults.onionOpacity),
+            onionBeforeColor = color("onionBeforeColor", defaults.onionBeforeColor),
+            onionAfterColor = color("onionAfterColor", defaults.onionAfterColor),
+            onionFrameStep = int("onionFrameStep", defaults.onionFrameStep),
+        ).normalized()
+    }
+
+    /** Only the settings changed from their defaults, so canvases that never used an aid keep their bytes. */
+    private fun encodeAids(aids: CanvasAidOptions): JsonObject = buildJsonObject {
+        val d = CanvasAidOptions()
+        if (aids.showGrid != d.showGrid) put("showGrid", aids.showGrid)
+        if (aids.gridSpacing != d.gridSpacing) put("gridSpacing", aids.gridSpacing)
+        if (aids.gridSubdivisions != d.gridSubdivisions) put("gridSubdivisions", aids.gridSubdivisions)
+        if (aids.gridColor != d.gridColor) put("gridColor", aids.gridColor.name.lowercase())
+        if (aids.gridOpacity != d.gridOpacity) put("gridOpacity", aids.gridOpacity)
+        if (aids.showGuides != d.showGuides) put("showGuides", aids.showGuides)
+        if (aids.guidesLocked != d.guidesLocked) put("guidesLocked", aids.guidesLocked)
+        if (aids.guideColor != d.guideColor) put("guideColor", aids.guideColor.name.lowercase())
+        if (aids.snap != d.snap) put("snap", aids.snap)
+        if (aids.onionSkin != d.onionSkin) put("onionSkin", aids.onionSkin)
+        if (aids.onionBefore != d.onionBefore) put("onionBefore", aids.onionBefore)
+        if (aids.onionAfter != d.onionAfter) put("onionAfter", aids.onionAfter)
+        if (aids.onionOpacity != d.onionOpacity) put("onionOpacity", aids.onionOpacity)
+        if (aids.onionBeforeColor != d.onionBeforeColor) put("onionBeforeColor", aids.onionBeforeColor.name.lowercase())
+        if (aids.onionAfterColor != d.onionAfterColor) put("onionAfterColor", aids.onionAfterColor.name.lowercase())
+        if (aids.onionFrameStep != d.onionFrameStep) put("onionFrameStep", aids.onionFrameStep)
     }
 
     private fun decodeCamera(value: JsonElement?): TabCamera {
@@ -112,6 +162,7 @@ internal object WorkspaceStateCodec {
         if (options.referenceLayersOver) put("referenceLayersOver", true)
         if (options.densityHeatmap) put("densityHeatmap", true)
         if (options.simulationView != SimulationView.REFERENCE) put("simulationView", options.simulationView.jsonName)
+        encodeAids(options.aids).takeIf { it.isNotEmpty() }?.let { put("aids", it) }
     }
 
     private fun encodeCamera(camera: TabCamera): JsonObject = buildJsonObject {
@@ -465,7 +516,7 @@ internal object WorkspaceStateCodec {
         state.isolationSnapshot?.let { values -> putJsonObject("isolationSnapshot") { values.forEach { (id, v) -> put(id, v) } } }
         putJsonObject("parameterValues") { state.parameterValues.forEach { (id, v) -> put(id.raw, v) } }
         putJsonArray("lockedParameters") { state.lockedParameters.forEach { add(it.raw) } }
-        WorkspaceAuxiliaryCodec.encode(WorkspaceAuxiliaryData(state.parameterSnapshots, state.historyAnnotations))
+        WorkspaceAuxiliaryCodec.encode(state.savedProjectData())
             .forEach { (key, value) -> put(key, value) }
         putJsonObject("drawOrderOverrides") { state.drawOrderOverrides.forEach { (k, v) -> put(k, v) } }
         if (includeLogs) putJsonArray("logEntries") { state.logEntries.forEach { log -> add(buildJsonObject {
@@ -612,9 +663,10 @@ internal object WorkspaceStateCodec {
         isolationSnapshot = value["isolationSnapshot"]?.jsonObject?.mapValues { it.value.jsonPrimitive.boolean },
         parameterValues = value["parameterValues"]?.jsonObject?.map { (id, v) -> ParameterId(id) to v.jsonPrimitive.float }?.toMap() ?: base.parameterValues,
         lockedParameters = value["lockedParameters"]?.jsonArray?.map { ParameterId(it.jsonPrimitive.content) }?.toSet() ?: base.lockedParameters,
-        parameterSnapshots = WorkspaceAuxiliaryCodec.decode(value, WorkspaceAuxiliaryData(base.parameterSnapshots, base.historyAnnotations)).parameterSnapshots,
+        parameterSnapshots = WorkspaceAuxiliaryCodec.decode(value, base.savedProjectData()).parameterSnapshots,
+        canvasGuides = WorkspaceAuxiliaryCodec.decode(value, base.savedProjectData()).canvasGuides,
         drawOrderOverrides = value["drawOrderOverrides"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float.coerceIn(0f, 1000f) } ?: base.drawOrderOverrides,
-        historyAnnotations = WorkspaceAuxiliaryCodec.decode(value, WorkspaceAuxiliaryData(base.parameterSnapshots, base.historyAnnotations)).historyAnnotations,
+        historyAnnotations = WorkspaceAuxiliaryCodec.decode(value, base.savedProjectData()).historyAnnotations,
         logEntries = value["logEntries"]?.jsonArray?.mapNotNull { v -> val l = v.jsonObject
             val source = runCatching { LogSource.valueOf(l.getValue("source").jsonPrimitive.content) }.getOrNull() ?: return@mapNotNull null
             val level = runCatching { LogLevel.valueOf(l.getValue("level").jsonPrimitive.content) }.getOrDefault(LogLevel.INFO)

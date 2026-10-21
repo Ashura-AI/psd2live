@@ -2483,6 +2483,7 @@ class PSD2LiveViewModel : AutoCloseable {
             animationEnabled = false, simulationPreviewId = null,
             historySnapshot = if (replacing) current.historySnapshot else null,
             historyAnnotations = if (replacing) current.historyAnnotations else emptyMap(),
+            canvasGuides = if (replacing) current.canvasGuides else emptyList(),
             projectDirty = true, projectEditVersion = current.projectEditVersion + 1,
             showProjectLocationDialog = false, statusText = status, errorMessage = null,
         )
@@ -2912,11 +2913,11 @@ class PSD2LiveViewModel : AutoCloseable {
                                           next: io.github.psd2live.project.WorkspaceAuxiliaryData) = synchronized(stateLock) {
         val current = _state.value
         check(current.projectId == expected.projectId && current.projectOpenGeneration == expected.projectOpenGeneration &&
-            current.parameterSnapshots == before.parameterSnapshots && current.historyAnnotations == before.historyAnnotations) {
+            current.savedProjectData() == before) {
             "Saved project data changed while the operation was being prepared"
         }
         updateState { it.copy(parameterSnapshots = next.parameterSnapshots, historyAnnotations = next.historyAnnotations,
-            projectDirty = it.projectDirty || it.analysis != null, projectEditVersion = it.projectEditVersion + 1,
+            canvasGuides = next.canvasGuides, projectDirty = it.projectDirty || it.analysis != null, projectEditVersion = it.projectEditVersion + 1,
             projectAuxiliaryVersion = it.projectAuxiliaryVersion + 1) }
     }
 
@@ -2927,11 +2928,11 @@ class PSD2LiveViewModel : AutoCloseable {
             return
         }
         updateState { current ->
-            val before = io.github.psd2live.project.WorkspaceAuxiliaryData(current.parameterSnapshots, current.historyAnnotations)
+            val before = current.savedProjectData()
             val next = io.github.psd2live.application.WorkspaceAuxiliaryEdits.apply(before, edit,
                 current.previewModel?.rig?.puppet?.parameters.orEmpty(), current.historySnapshot?.nodes.orEmpty().mapTo(HashSet()) { it.id })
             if (next == before) current else current.copy(parameterSnapshots = next.parameterSnapshots,
-                historyAnnotations = next.historyAnnotations, projectDirty = current.projectDirty || current.analysis != null,
+                historyAnnotations = next.historyAnnotations, canvasGuides = next.canvasGuides, projectDirty = current.projectDirty || current.analysis != null,
                 projectEditVersion = current.projectEditVersion + 1, projectAuxiliaryVersion = current.projectAuxiliaryVersion + 1)
         }
     }
@@ -6992,6 +6993,48 @@ class PSD2LiveViewModel : AutoCloseable {
     fun deleteParameterSnapshot(id: String) {
         editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.DeleteSnapshot(id))
     }
+
+	/** Replaces the edit canvases' ruler guides, as saved project data beside the snapshots. */
+	fun setCanvasGuides(guides: List<io.github.psd2live.project.CanvasGuide>) {
+		if (_state.value.analysis == null || guides == _state.value.canvasGuides) return
+		editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.SetCanvasGuides(guides))
+	}
+
+	/** The random pose's settings, and the pose it replaced while one is shown. Session only. */
+	internal val randomPose = RandomPoseControls()
+
+	/**
+	 * Sets the unlocked parameters of the scope to random values in their ranges, to look for the combinations
+	 * that break. The first random pose remembers the values it replaced, so [restoreRandomPose] puts them back
+	 * however many follow. The pose is authored like a slider's, without keying an open motion.
+	 */
+	fun applyRandomPose(canvasId: String) {
+		val current = _state.value
+		val parameters = current.previewModel?.rig?.puppet?.parameters ?: return
+		val targets = if (randomPose.scope == io.github.psd2live.ui.RandomPoseScope.EDITING)
+			canvasEditorFor(canvasId).deformationParameterIds().mapTo(HashSet(), ::ParameterId) else null
+		val values = io.github.psd2live.ui.RandomPose.sample(parameters, targets, current.lockedParameters, randomPose.amount,
+			kotlin.random.Random.Default)
+		if (values.isEmpty()) return
+		val state = currentWorkspaceState() ?: return
+		val saved = randomPose.restore?.takeIf { it.generation == current.projectOpenGeneration && it.workspaceId == current.activeWorkspace.id }
+		val before = values.keys.associateWith { id -> current.parameterValues[id] ?: parameters.first { it.id == id }.default }
+		randomPose.restore = RandomPoseRestore(current.projectOpenGeneration, current.activeWorkspace.id,
+			before + saved?.values.orEmpty())
+		submitParameterValues(values, state, autoKey = null)
+	}
+
+	/** Puts back the pose the first random pose replaced. */
+	fun restoreRandomPose() {
+		val saved = randomPose.restore ?: return
+		randomPose.restore = null
+		val current = _state.value
+		if (saved.generation != current.projectOpenGeneration || saved.workspaceId != current.activeWorkspace.id) return
+		val known = current.previewModel?.rig?.puppet?.parameters?.mapTo(HashSet()) { it.id } ?: return
+		val values = saved.values.filterKeys { it in known && it !in current.lockedParameters }
+		if (values.isEmpty()) return
+		submitParameterValues(values, currentWorkspaceState() ?: return, autoKey = null)
+	}
 
 	private fun shownParameterValues(): Map<ParameterId, Float>? {
 		val current = _state.value

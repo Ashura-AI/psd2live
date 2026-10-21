@@ -7,9 +7,16 @@ import org.umamo.runtime.model.ParameterId
 data class ParameterSnapshot(val id: String, val number: Int, val name: String, val values: Map<ParameterId, Float>)
 data class HistoryAnnotation(val title: String = "", val note: String = "", val hidden: Boolean = false)
 
+/**
+ * A ruler guide of the edit canvases: a [vertical] line at x = [position] canvas pixels, or a horizontal one at
+ * y = [position]. Drawing help only; the rig and its exports never see it.
+ */
+data class CanvasGuide(val id: String, val vertical: Boolean, val position: Float)
+
 data class WorkspaceAuxiliaryData(
     val parameterSnapshots: List<ParameterSnapshot> = emptyList(),
     val historyAnnotations: Map<String, HistoryAnnotation> = emptyMap(),
+    val canvasGuides: List<CanvasGuide> = emptyList(),
 )
 
 /** These field names are the existing v1 presentation format; loading preserves IDs and numbers. */
@@ -22,6 +29,9 @@ object WorkspaceAuxiliaryCodec {
         putJsonObject("historyAnnotations") { value.historyAnnotations.forEach { (id, annotation) ->
             putJsonObject(id) { put("title", annotation.title); put("note", annotation.note); put("hidden", annotation.hidden) }
         } }
+        putJsonArray("canvasGuides") { value.canvasGuides.forEach { guide -> add(buildJsonObject {
+            put("id", guide.id); put("axis", if (guide.vertical) "x" else "y"); put("position", guide.position)
+        }) } }
     }
 
     fun decode(value: JsonObject, fallback: WorkspaceAuxiliaryData = WorkspaceAuxiliaryData()): WorkspaceAuxiliaryData = WorkspaceAuxiliaryData(
@@ -39,5 +49,12 @@ object WorkspaceAuxiliaryCodec {
             HistoryAnnotation(annotation.getValue("title").jsonPrimitive.content,
                 annotation.getValue("note").jsonPrimitive.content, annotation.getValue("hidden").jsonPrimitive.boolean)
         } ?: fallback.historyAnnotations,
+        canvasGuides = value["canvasGuides"]?.jsonArray?.mapNotNull { element ->
+            val obj = element as? JsonObject ?: return@mapNotNull null
+            val id = obj["id"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val axis = obj["axis"]?.jsonPrimitive?.contentOrNull?.takeIf { it == "x" || it == "y" } ?: return@mapNotNull null
+            val position = obj["position"]?.jsonPrimitive?.floatOrNull?.takeIf(Float::isFinite) ?: return@mapNotNull null
+            CanvasGuide(id, axis == "x", position)
+        }?.distinctBy { it.id } ?: fallback.canvasGuides,
     )
 }
