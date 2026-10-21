@@ -529,25 +529,34 @@ private fun MutableList<ToolOption>.addKeyformMirror() {
 }
 
 /**
- * Deform: the keyform tools, in one submenu - copy the shape in hand, paste the copied one onto the key in hand, reset
- * it to its default-key shape (a mesh also to its rest), and interpolate it from the keys on either side along each
- * parameter it sits between keys of. With points picked, all but copy keep to them, as the rows say.
+ * Deform: the keyform tools, in one submenu - copy the shapes in hand, paste the copied ones onto the keys in hand
+ * (or with options: what to carry, a blend ratio, a flip and which shape goes where), reset the key to its default-key
+ * shape (a mesh also to its rest), interpolate it from the keys on either side along each parameter it sits between
+ * keys of, restore every key of the object, and edit the opacity, draw order and colours of many keyforms at once.
+ * With points picked, the shape rows keep to them, as the rows say.
  */
 private fun MutableList<ToolOption>.addKeyformTools(editor: CanvasEditor) {
     add(SectionOption("keyform", "editor.keyform.menu", OptionPlace.MENU, submenu = true, icon = OptionIcon.KEYFORM, alwaysFolds = true))
     fun scope(e: CanvasEditor): String = e.keyformPointCount().let { if (it > 0) tr("editor.keyform.points", it) else "" }
     fun tool(id: String, labelKey: String, icon: OptionIcon, action: CanvasEditor.KeyformToolAction, parameter: String? = null,
              args: (CanvasEditor) -> List<Any> = { listOf(scope(it)) }) =
-        ActionOption("keyform.$id", labelKey, { it.editable && it.keyformToolCommand(action, parameter) != null },
+        ActionOption("keyform.$id", labelKey, { it.editable && it.keyformToolCommands(action, parameter).isNotEmpty() },
             { it.runKeyformTool(action, parameter) }, icon, labelArgs = args, place = OptionPlace.MENU)
     add(ActionOption("keyform.copy", "editor.keyform.copy", { it.canCopyKeyform() }, { it.copyKeyform() }, OptionIcon.DUPLICATE, place = OptionPlace.MENU))
     add(tool("paste", "editor.keyform.paste", OptionIcon.KEYFORM_PASTE, CanvasEditor.KeyformToolAction.PASTE) { e ->
-        listOf(e.keyformClipboard?.label ?: "…", scope(e))
+        listOf(e.keyformClipboardLabel(), scope(e))
     })
+    add(ActionOption("keyform.pasteOptions", "editor.keyform.pasteOptions", { it.editable && it.keyformClipboard.isNotEmpty() },
+        { e -> io.github.psd2live.ui.components.KeyformDialogs.request = io.github.psd2live.ui.components.KeyformDialogs.Request.Paste(e) },
+        OptionIcon.KEYFORM_PASTE, place = OptionPlace.MENU, opensDialog = true))
     add(tool("resetDefault", "editor.keyform.resetDefault", OptionIcon.RESET, CanvasEditor.KeyformToolAction.RESET_DEFAULT))
     if (editor.target()?.kind == "mesh") add(tool("resetRest", "editor.keyform.resetRest", OptionIcon.RESET, CanvasEditor.KeyformToolAction.RESET_REST))
     for (parameter in editor.keyformInterpolationAxes()) add(tool("interpolate.$parameter", "editor.keyform.interpolate", OptionIcon.INTERPOLATE,
         CanvasEditor.KeyformToolAction.INTERPOLATE, parameter) { e -> listOf(e.parameterLabel(parameter), scope(e)) })
+    add(tool("restore", "editor.keyform.restore", OptionIcon.RESET, CanvasEditor.KeyformToolAction.RESTORE) { emptyList() })
+    add(ActionOption("keyform.multiKey", "editor.keyform.multiKey", { it.editable && it.multiKeyTargets().isNotEmpty() },
+        { e -> io.github.psd2live.ui.components.KeyformDialogs.request = io.github.psd2live.ui.components.KeyformDialogs.Request.MultiKey(e) },
+        OptionIcon.KEYFORM, place = OptionPlace.MENU, opensDialog = true))
 }
 
 private val TOPOLOGY_ACTIONS = listOf(

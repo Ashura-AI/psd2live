@@ -4195,31 +4195,50 @@ internal class CanvasEditor(
         if (!committed && error == null) error = tr("editor.mirror.nothing")
     }
 
-    /** A keyform copied in Deform: the object, the key it was copied at and what the paste row names it. */
+    /** A keyform copied in Deform: the object, the key it was copied at and what the paste rows name it. */
     internal data class KeyformClip(val kind: String, val id: String, val key: Map<String, Float>, val count: Int, val label: String)
 
-    /** What [pasteKeyform] writes; it is read from the model when pasting, so a later edit of the source carries over. */
-    var keyformClipboard by mutableStateOf<KeyformClip?>(null)
+    /**
+     * What a paste writes: one clip per object copied together. Each is read from the model when pasting, so a later
+     * edit of a source carries over.
+     */
+    var keyformClipboard by mutableStateOf<List<KeyformClip>>(emptyList())
 
-    /** A keyform tool the deform menu runs on the key in hand (see [KeyformTools]). */
-    enum class KeyformToolAction { RESET_DEFAULT, RESET_REST, INTERPOLATE, PASTE }
+    /** A keyform tool the deform menu runs on the keys in hand (see [KeyformTools]). */
+    enum class KeyformToolAction { RESET_DEFAULT, RESET_REST, INTERPOLATE, PASTE, RESTORE }
+
+    /** How a paste writes: what it carries, how far it moves the key toward the copied values, and a flip. */
+    internal data class KeyformPasteOptions(
+        val channels: Set<String> = setOf("geometry"),
+        val ratio: Float = 1f,
+        val flip: String? = null,
+    )
+
+    /**
+     * The objects in hand that have keyforms - the target, then each other selected layer's mesh - each with the key
+     * the canvas shows it at; empty outside Deform.
+     */
+    private fun keyformTargets(): List<Pair<CanvasTarget, Map<String, Float>>> {
+        if (hierarchyMode != EditHierarchyMode.DEFORM) return emptyList()
+        val source = state.previewModel?.rig?.puppet ?: return emptyList()
+        val primary = target(source)?.takeIf { it.kind in setOf("mesh", "warp", "rotation") } ?: return emptyList()
+        val layers = LinkedHashSet(objects).apply { state.selectedLayerId?.let(::add) }
+        val others = if (primary.kind == "mesh") layers.mapNotNull { target(source, it, null)?.takeIf { t -> t.kind == "mesh" } } else emptyList()
+        return (listOf(primary) + others).distinctBy { it.id }.map { it to canvasDeformationCoordinate(source, it.geometry.axes, pose, deformationParameters) }
+    }
 
     /** The target in hand that has keyforms, with the key the canvas shows it at; null outside Deform. */
-    private fun keyformTarget(): Pair<CanvasTarget, Map<String, Float>>? {
-        if (hierarchyMode != EditHierarchyMode.DEFORM) return null
-        val source = state.previewModel?.rig?.puppet ?: return null
-        val t = target(source)?.takeIf { it.kind in setOf("mesh", "warp", "rotation") } ?: return null
-        return t to canvasDeformationCoordinate(source, t.geometry.axes, pose, deformationParameters)
+    private fun keyformTarget(): Pair<CanvasTarget, Map<String, Float>>? = keyformTargets().firstOrNull()
+
+    /** Whether [key] is one of [t]'s keyforms: no new axis, every value one of the axis's keys. */
+    private fun onKey(t: CanvasTarget, key: Map<String, Float>): Boolean {
+        val axes = t.geometry.axes
+        if (axes.isEmpty() || key.keys != axes.mapTo(HashSet()) { it.parameterId.raw }) return false
+        return axes.all { axis -> axis.keys.any { abs(it - key.getValue(axis.parameterId.raw)) <= org.umamo.runtime.eval.EPS_KEY } }
     }
 
-    /** [keyformTarget] when its key is one of the target's keyforms: no new axis, every value one of the axis's keys. */
-    private fun keyedTarget(): Pair<CanvasTarget, Map<String, Float>>? {
-        val (t, key) = keyformTarget() ?: return null
-        val axes = t.geometry.axes
-        if (axes.isEmpty() || key.keys != axes.mapTo(HashSet()) { it.parameterId.raw }) return null
-        if (axes.any { axis -> axis.keys.none { abs(it - key.getValue(axis.parameterId.raw)) <= org.umamo.runtime.eval.EPS_KEY } }) return null
-        return t to key
-    }
+    /** [keyformTarget] when its key is one of the target's keyforms. */
+    private fun keyedTarget(): Pair<CanvasTarget, Map<String, Float>>? = keyformTarget()?.takeIf { (t, key) -> onKey(t, key) }
 
     /** The points a keyform tool keeps to: the picked ones, but none of a warp's at the Bezier level or of a rotation. */
     private fun keyformPoints(t: CanvasTarget): Set<Int> =
@@ -4240,57 +4259,129 @@ internal class CanvasEditor(
     /** A parameter's display name. */
     fun parameterLabel(id: String): String = (preview ?: state.previewModel?.rig?.puppet)?.parameters?.firstOrNull { it.id.raw == id }?.name?.ifBlank { null } ?: id
 
+    /** An object's display name. */
+    fun objectLabel(id: String): String = (preview ?: state.previewModel?.rig?.puppet)?.let { source ->
+        source.drawables.firstOrNull { it.id.raw == id }?.name ?: source.deformers.firstOrNull { it.id.raw == id }?.name
+    } ?: id
+
     fun canCopyKeyform(): Boolean = keyformTarget() != null
 
-    /** Copies the shape in hand at the key the canvas shows, for [KeyformToolAction.PASTE]. */
+    /** Copies the shape of each object in hand at the key the canvas shows it at, for [KeyformToolAction.PASTE]. */
     fun copyKeyform() {
-        val (t, key) = keyformTarget() ?: return
         val source = state.previewModel?.rig?.puppet ?: return
-        val name = source.drawables.firstOrNull { it.id.raw == t.id }?.name ?: source.deformers.firstOrNull { it.id.raw == t.id }?.name ?: t.id
-        keyformClipboard = KeyformClip(t.kind, t.id, key, t.count, if (key.isEmpty()) name else "$name · ${describeKey(source, key)}")
+        keyformClipboard = keyformTargets().map { (t, key) ->
+            val name = objectLabel(t.id)
+            KeyformClip(t.kind, t.id, key, t.count, if (key.isEmpty()) name else "$name · ${describeKey(source, key)}")
+        }
+    }
+
+    /** What the paste row names: the one copied shape, or how many there are. */
+    fun keyformClipboardLabel(): String = keyformClipboard.singleOrNull()?.label
+        ?: if (keyformClipboard.isEmpty()) "…" else tr("editor.keyform.shapes", keyformClipboard.size)
+
+    /** The objects in hand a paste can write to now: those whose key the canvas shows is one of their keyforms. */
+    fun keyformPasteDestinations(): List<String> = keyformTargets().filter { (t, key) -> onKey(t, key) }.map { it.first.id }
+
+    /** Whether the copied shape [clip] can go onto [destination]: the same kind and point count. */
+    fun keyformPasteFits(clip: KeyformClip, destination: String): Boolean =
+        keyformTargets().firstOrNull { it.first.id == destination }?.first?.let { it.kind == clip.kind && it.count == clip.count } == true
+
+    /**
+     * Each copied shape with the object in hand it pastes onto: itself when it is in hand, else the next one not yet
+     * taken of its kind and point count; null leaves a shape out.
+     */
+    fun keyformPastePairs(): List<Pair<KeyformClip, String?>> {
+        val free = keyformPasteDestinations().toMutableList()
+        val own = keyformClipboard.map { clip -> clip.id.takeIf { it in free && keyformPasteFits(clip, it) } }
+        own.filterNotNull().forEach { free -= it }
+        return keyformClipboard.zip(own).map { (clip, mine) ->
+            clip to (mine ?: free.firstOrNull { keyformPasteFits(clip, it) }?.also { free -= it })
+        }
+    }
+
+    /** The paste commands of [pairs] written with [options]; empty when none can be written. */
+    internal fun keyformPasteCommands(pairs: List<Pair<KeyformClip, String?>> = keyformPastePairs(),
+                                      options: KeyformPasteOptions = KeyformPasteOptions()): List<JsonObject> {
+        if (options.channels.isEmpty()) return emptyList()
+        val targets = keyformTargets().filter { (t, key) -> onKey(t, key) }.associateBy { it.first.id }
+        val primary = keyformTarget()?.first?.id
+        fun Map<String, Float>.json() = JsonObject(mapValues { JsonPrimitive(it.value) })
+        return pairs.mapNotNull { (clip, destination) ->
+            val (t, key) = targets[destination] ?: return@mapNotNull null
+            if (!keyformPasteFits(clip, t.id) && options.channels.contains("geometry")) return@mapNotNull null
+            buildJsonObject {
+                put("op", KeyformTools.PASTE); put("target", "${clip.kind}:${clip.id}"); put("from", clip.key.json())
+                put("destination", "${t.kind}:${t.id}"); put("key", key.json())
+                if (options.channels != setOf("geometry")) put("channels", JsonArray(options.channels.map(::JsonPrimitive)))
+                if (options.ratio < 1f) put("ratio", options.ratio)
+                options.flip?.let { put("flip", it) }
+                val points = if (t.id == primary && "geometry" in options.channels) keyformPoints(t) else emptySet()
+                if (points.isNotEmpty()) put("vertices", JsonArray(points.sorted().map(::JsonPrimitive)))
+            }
+        }
     }
 
     /**
-     * The command [action] runs on the key in hand, or null when it cannot: the pose is off the target's keys, a reset
-     * to rest asks it of a deformer, there is nothing on both sides to interpolate from ([parameter] names the axis), or
-     * the copied shape is of another kind or point count.
+     * The commands [action] runs on the keys in hand, or empty when it cannot: the pose is off the target's keys, a
+     * reset to rest asks it of a deformer, there is nothing on both sides to interpolate from ([parameter] names the
+     * axis), nothing copied fits, or the target has no keyforms to restore.
      */
-    internal fun keyformToolCommand(action: KeyformToolAction, parameter: String? = null): JsonObject? {
-        val (t, key) = keyedTarget() ?: return null
-        val clip = keyformClipboard
+    internal fun keyformToolCommands(action: KeyformToolAction, parameter: String? = null): List<JsonObject> {
+        if (action == KeyformToolAction.PASTE) return keyformPasteCommands()
+        if (action == KeyformToolAction.RESTORE) {
+            val (t, _) = keyformTarget() ?: return emptyList()
+            if (t.geometry.axes.isEmpty()) return emptyList()
+            return listOf(buildJsonObject { put("op", KeyformTools.RESET); put("target", "${t.kind}:${t.id}"); put("all_keys", true) })
+        }
+        val (t, key) = keyedTarget() ?: return emptyList()
         when (action) {
-            KeyformToolAction.RESET_REST -> if (t.kind != "mesh") return null
-            KeyformToolAction.INTERPOLATE -> if (parameter !in keyformInterpolationAxes()) return null
-            KeyformToolAction.PASTE -> if (clip == null || clip.kind != t.kind || clip.count != t.count) return null
-            KeyformToolAction.RESET_DEFAULT -> Unit
+            KeyformToolAction.RESET_REST -> if (t.kind != "mesh") return emptyList()
+            KeyformToolAction.INTERPOLATE -> if (parameter !in keyformInterpolationAxes()) return emptyList()
+            else -> Unit
         }
-        fun Map<String, Float>.json() = JsonObject(mapValues { JsonPrimitive(it.value) })
         val points = keyformPoints(t)
-        return buildJsonObject {
-            when (action) {
-                KeyformToolAction.RESET_DEFAULT, KeyformToolAction.RESET_REST -> {
-                    put("op", KeyformTools.RESET); put("target", "${t.kind}:${t.id}")
-                    put("to", if (action == KeyformToolAction.RESET_REST) "rest" else "default")
-                }
-                KeyformToolAction.INTERPOLATE -> {
-                    put("op", KeyformTools.INTERPOLATE); put("target", "${t.kind}:${t.id}"); put("parameter", parameter!!)
-                }
-                KeyformToolAction.PASTE -> {
-                    put("op", KeyformTools.PASTE); put("target", "${clip!!.kind}:${clip.id}"); put("from", clip.key.json())
-                    put("destination", "${t.kind}:${t.id}")
-                }
+        return listOf(buildJsonObject {
+            if (action == KeyformToolAction.INTERPOLATE) {
+                put("op", KeyformTools.INTERPOLATE); put("target", "${t.kind}:${t.id}"); put("parameter", parameter!!)
+            } else {
+                put("op", KeyformTools.RESET); put("target", "${t.kind}:${t.id}")
+                put("to", if (action == KeyformToolAction.RESET_REST) "rest" else "default")
             }
-            put("key", key.json())
+            put("key", JsonObject(key.mapValues { JsonPrimitive(it.value) }))
             if (points.isNotEmpty()) put("vertices", JsonArray(points.sorted().map(::JsonPrimitive)))
-        }
+        })
     }
 
-    /** Runs [action] as one history step; says so when it would change nothing. */
-    fun runKeyformTool(action: KeyformToolAction, parameter: String? = null) {
-        if (!editable) return
-        val command = keyformToolCommand(action, parameter) ?: return
-        val committed = commitBatch(listOf(command))
+    /** Runs [commands] as one history step; says so when they would change nothing. */
+    internal fun runKeyformCommands(commands: List<JsonObject>) {
+        if (!editable || commands.isEmpty()) return
+        val committed = commitBatch(commands)
         if (!committed && error == null) error = tr("editor.keyform.nothing")
+    }
+
+    /** Runs [action] as one history step. */
+    fun runKeyformTool(action: KeyformToolAction, parameter: String? = null) = runKeyformCommands(keyformToolCommands(action, parameter))
+
+    /** The objects in hand multi-key editing reaches, as `kind:id` references. */
+    fun multiKeyTargets(): List<String> = keyformTargets().map { "${it.first.kind}:${it.first.id}" }
+
+    /** Each parameter the keyforms of [targets] sit on, with its key values. */
+    fun multiKeyAxes(targets: List<String> = multiKeyTargets()): Map<String, List<Float>> {
+        val source = state.previewModel?.rig?.puppet ?: return emptyMap()
+        val axes = LinkedHashMap<String, MutableSet<Float>>()
+        for (ref in targets) for (key in KeyformTools.keyformKeys(source, RigAuthoringJournal.target(source, ref)))
+            for ((id, value) in key) axes.getOrPut(id) { sortedSetOf() } += value
+        return axes.mapValues { it.value.toList() }
+    }
+
+    /** How many keyforms of [targets] lie in [ranges] (per parameter, the values allowed). */
+    fun multiKeyCount(targets: List<String>, ranges: Map<String, Set<Float>>): Int {
+        val source = state.previewModel?.rig?.puppet ?: return 0
+        return targets.sumOf { ref ->
+            KeyformTools.keyformKeys(source, RigAuthoringJournal.target(source, ref)).count { key ->
+                ranges.all { (id, values) -> key[id]?.let { k -> values.any { abs(it - k) <= org.umamo.runtime.eval.EPS_KEY } } ?: true }
+            }
+        }
     }
 
     /** Whether a drag of picked points carries the points around them: Deform's point tools with [softSelection] on. */

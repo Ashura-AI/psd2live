@@ -402,6 +402,7 @@ internal fun DockWorkspaceView(
             io.github.psd2live.ui.components.DepthSplitDialog(offer,
                 onConfirm = viewModel::confirmDepthSplit, onDismiss = viewModel::dismissDepthSplit)
         }
+        io.github.psd2live.ui.components.KeyformDialogHost()
         viewModel.pendingMeshSplit?.let { offer ->
             io.github.psd2live.ui.components.MeshSplitDialog(
                 offer = offer,

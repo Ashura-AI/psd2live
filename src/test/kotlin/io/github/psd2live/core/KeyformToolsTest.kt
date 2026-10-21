@@ -67,6 +67,69 @@ class KeyformToolsTest {
         }
     }
 
+    @Test fun pasteBlendsByRatioAndFlips() {
+        val model = fixture()
+        val half = RigAuthoringJournal.compile(model, JsonArray(listOf(tool("paste", "warp:face") {
+            put("from", key("ParamAngleX" to 30f)); put("key", key("ParamAngleX" to 0f)); put("ratio", 0.5f)
+        }))).first
+        val right = RigGeometryTools.geometry(model, "warp", "face", mapOf("ParamAngleX" to 30f)).points
+        val neutral = RigGeometryTools.geometry(model, "warp", "face", mapOf("ParamAngleX" to 0f)).points
+        val blended = RigGeometryTools.geometry(half, "warp", "face", mapOf("ParamAngleX" to 0f)).points
+        for (i in blended.indices) assertEquals((right[i] + neutral[i]) / 2f, blended[i], 1e-4f, "coordinate $i")
+        val flipped = RigAuthoringJournal.compile(model, JsonArray(listOf(tool("paste", "warp:face") {
+            put("from", key("ParamAngleX" to 30f)); put("key", key("ParamAngleX" to 0f)); put("flip", "horizontal"); put("flip_center", 50f)
+        }))).first
+        val result = RigGeometryTools.geometry(flipped, "warp", "face", mapOf("ParamAngleX" to 0f)).points
+        for (i in result.indices) assertEquals(if (i % 2 == 0) 100f - right[i] else right[i], result[i], 1e-4f, "coordinate $i")
+        val rotation = RigAuthoringJournal.compile(model, JsonArray(listOf(tool("paste", "rotation:arm") {
+            put("from", key("ParamAngleX" to 30f)); put("key", key("ParamAngleX" to -30f)); put("flip", "horizontal")
+        }))).first
+        val form = (rotation.deformers.single { it.id.raw == "arm" } as Deformer.Rotation).geometryGrid!!.cells.first().form
+        assertEquals(-20f, form.angle, 1e-4f)
+    }
+
+    @Test fun pasteCarriesOnlyTheChosenChannels() {
+        val model = fixture()
+        val faded = applyAll(model, buildJsonObject {
+            put("op", "multi_key"); put("targets", JsonArray(listOf(JsonPrimitive("mesh:eye")))); put("opacity", 0.25f)
+            put("keys", JsonArray(listOf(key("ParamEyeOpen" to 0f))))
+        })
+        val (pasted, journal) = RigAuthoringJournal.compile(faded, JsonArray(listOf(tool("paste", "mesh:eye") {
+            put("from", key("ParamEyeOpen" to 0f)); put("key", key("ParamEyeOpen" to 1f)); put("channels", JsonArray(listOf(JsonPrimitive("opacity"))))
+        })))
+        assertEquals(listOf(false), journal.map { "geometry" in it })
+        val owner = KeyformOwner.Drawable(DrawableId("eye"))
+        assertEquals(0.25f, (KeyformTools.channelAt(pasted, owner, FormChannel.OPACITY, mapOf("ParamEyeOpen" to 1f)) as ChannelValue.Scalar).value, 1e-5f)
+    }
+
+    @Test fun multiKeyEditsTheMatchingKeyformsByMethod() {
+        val model = fixture()
+        val owner = KeyformOwner.Drawable(DrawableId("eye"))
+        fun opacity(m: PuppetModel, open: Float) = (KeyformTools.channelAt(m, owner, FormChannel.OPACITY, mapOf("ParamEyeOpen" to open)) as ChannelValue.Scalar).value
+        val closedOnly = applyAll(model, buildJsonObject {
+            put("op", "multi_key"); put("targets", JsonArray(listOf(JsonPrimitive("mesh:eye")))); put("opacity", 0.5f)
+            put("keys", JsonArray(listOf(key("ParamEyeOpen" to 0f))))
+        })
+        assertEquals(0.5f, opacity(closedOnly, 0f), 1e-5f); assertEquals(1f, opacity(closedOnly, 1f), 1e-5f)
+        val halved = applyAll(closedOnly, buildJsonObject {
+            put("op", "multi_key"); put("targets", JsonArray(listOf(JsonPrimitive("mesh:eye")))); put("opacity", 0.5f); put("method", "multiply")
+        })
+        assertEquals(0.25f, opacity(halved, 0f), 1e-5f); assertEquals(0.5f, opacity(halved, 1f), 1e-5f)
+        assertFailsWith<IllegalArgumentException> { KeyformTools.compile(model, buildJsonObject {
+            put("op", "multi_key"); put("targets", JsonArray(listOf(JsonPrimitive("warp:face")))); put("drawOrder", 600)
+        }) }
+    }
+
+    @Test fun restoringEveryKeyGivesTheDefaultKeyShapeEverywhere() {
+        val model = fixture()
+        val (restored, journal) = RigAuthoringJournal.compile(model, JsonArray(listOf(tool("reset", "warp:face") { put("all_keys", true) })))
+        val neutral = RigGeometryTools.geometry(model, "warp", "face", mapOf("ParamAngleX" to 0f)).points
+        for (value in listOf(-30f, 30f)) assertTrue(neutral.contentEquals(RigGeometryTools.geometry(restored, "warp", "face", mapOf("ParamAngleX" to value)).points))
+        assertEquals(2, journal.size, "the neutral key already has its shape")
+    }
+
+    private fun applyAll(model: PuppetModel, command: JsonObject) = RigAuthoringJournal.compile(model, JsonArray(listOf(command))).first
+
     @Test fun aKeyMustNameEveryBoundAxis() {
         val model = fixture()
         val failure = assertFailsWith<IllegalArgumentException> { KeyformTools.compile(model, tool("reset", "warp:face") { put("key", key("ParamEyeOpen" to 0f)) }) }

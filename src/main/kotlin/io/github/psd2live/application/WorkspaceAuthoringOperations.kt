@@ -362,7 +362,8 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         "Only these points (mesh vertex or warp control point indices) change; the rest keep the shape at the key. Not for rotations.")
     registerJsonOperation("form", "Author key collections atomically. seed captures interpolated geometry without changing other keys. copy transfers selected channels (omit for all) from an explicit source key. set writes scalar/color channels or a rotation form, never mesh point arrays. " +
         "mirror reflects a keyform across a vertical canvas line onto the opposite key of the same object (from {ParamAngleX:30} writes ParamAngleX -30), onto the opposite-side object (destination, or \"auto\" to pair by L/R id or name), or in place; it writes ordinary keyforms. " +
-        "reset, interpolate and paste write a whole geometry keyform (or only the given vertices) as an ordinary set: reset takes the key back to its default-key shape (to rest: a mesh's undeformed points), interpolate remakes it from the keys on either side along one parameter, paste writes the shape another key of the same or another object of the same kind and point count shows. " +
+        "reset, interpolate and paste write a whole geometry keyform (or only the given vertices) as an ordinary set: reset takes the key back to its default-key shape (to rest: a mesh's undeformed points), interpolate remakes it from the keys on either side along one parameter, paste writes the shape another key of the same or another object of the same kind and point count shows, optionally blended by ratio, flipped or with its opacity, draw order and colors; reset all_keys restores every key. " +
+        "multi_key sets the opacity, draw order or colors of many keyforms of many objects at once (overwrite, add, multiply or screen). " +
         "Keys name only the destination object's axes, not the viewing pose. A keyed drawOrder channel: " + WorkspaceDrawOrderSchemas.GUIDE,
         buildJsonObject { put("state", string()); put("changes", arraySchema(oneOf(listOf(
             variant("op", "seed", formBase, listOf("target", "key")),
@@ -386,8 +387,9 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
             variant("op", "reset", JsonObject(formBase + buildJsonObject {
                 put("to", described(choices("default", "rest"), "default (the default): the shape with the along parameters at their defaults; rest: a mesh's undeformed points."))
                 put("along", described(arraySchema(string(), 1, 64), "With to default: the key's parameters taken to their default; default all of them."))
+                put("all_keys", described(boolean(), "In place of key: every keyform of the target back to its default-key shape, restoring a deformer to the shape it had when first keyed."))
                 put("vertices", pointIndices)
-            }), listOf("target", "key")),
+            }), listOf("target")),
             variant("op", "interpolate", JsonObject(formBase + buildJsonObject {
                 put("parameter", described(string(), "The axis to interpolate along; default the one the key sits between two keys of."))
                 put("vertices", pointIndices)
@@ -396,7 +398,22 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
                 put("from", described(key, "Source key; the source's missing axes at their defaults."))
                 put("destination", described(string(), "Destination of the target's kind and point count; default the target."))
                 put("vertices", pointIndices)
-            }), listOf("target", "from", "key"))
+                put("ratio", described(JsonObject(number() + mapOf("minimum" to JsonPrimitive(0), "maximum" to JsonPrimitive(1))), "How far the key moves toward the pasted values: 1 (default) pastes, less blends."))
+                put("flip", described(choices("horizontal", "vertical"), "Flip the pasted shape: points reflected in x (horizontal) or y about flip_center; a rotation's angle turned the other way."))
+                put("flip_center", described(number(), "Parent-local coordinate of the flip line; default the middle of the pasted shape."))
+                put("channels", described(arraySchema(choices("geometry", "opacity", "drawOrder", "multiplyColor", "screenColor"), 1, 5), "What to paste; default geometry."))
+            }), listOf("target", "from", "key")),
+            variant("op", "multi_key", buildJsonObject {
+                put("targets", described(arraySchema(string(), 1, 128), "Meshes, deformers or parts."))
+                put("keys", described(arraySchema(key, 1, 256), "Partial keys a keyform must match one of (a parameter's value, or a whole key); default every keyform of each target."))
+                put("ranges", described(buildJsonObject { put("type", "object"); put("additionalProperties", arraySchema(number(), 1, 64)) },
+                    "Per parameter, the key values a keyform on it may have; a keyform not on that parameter passes."))
+                put("opacity", described(JsonObject(number() + mapOf("minimum" to JsonPrimitive(0), "maximum" to JsonPrimitive(1))), "Opacity 0..1."))
+                put("drawOrder", described(number(), "Draw order 0..1000; not for deformers."))
+                put("multiplyColor", described(vector(3), "Multiply color [r, g, b] 0..1."))
+                put("screenColor", described(vector(3), "Screen color [r, g, b] 0..1."))
+                put("method", described(choices("overwrite", "add", "multiply", "screen"), "How a value combines with each keyform's own; default overwrite."))
+            }, listOf("targets"))
         )), 1, 128)) }, listOf("state", "changes"), true) { a -> workspace.authorRig(a.text("state"), a.getValue("changes").jsonArray, MutationAuthor.AGENT).compact() }
 
     registerJsonOperation("rig", "Create a fitted independent Warp for meshes sharing a parent. Existing keyforms and UVs migrate; the parent lattice constrains fit precision. Use deform directly when no independent motion layer is needed. Returned target is the new Warp.",

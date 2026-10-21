@@ -261,7 +261,7 @@ class EditorAndAgentScenario {
 		settle()
 		withContext(Dispatchers.Main) {
 			canvas.copyKeyform()
-			assertEquals(key(range.max), canvas.keyformClipboard?.key)
+			assertEquals(key(range.max), canvas.keyformClipboard.single().key)
 			vm.setParameterValue(angle, range.min)
 		}
 		settle()
@@ -309,6 +309,41 @@ class EditorAndAgentScenario {
 		val neighbour = middle + 1
 		assertTrue(moved(middle) > 1e-4f, "the picked point did not move")
 		assertTrue(moved(neighbour) > 1e-6f && moved(neighbour) < moved(middle), "a neighbour must follow part of the way: ${moved(neighbour)} of ${moved(middle)}")
+
+		// Paste with options: half way toward the copied right turn.
+		withContext(Dispatchers.Main) {
+			canvas.softSelection = false
+			canvas.vertices = emptySet()
+			vm.setParameterValue(angle, range.max)
+		}
+		settle()
+		val right = shape(range.max)
+		withContext(Dispatchers.Main) { canvas.copyKeyform(); vm.setParameterValue(angle, range.min) }
+		settle()
+		val left = shape(range.min)
+		withContext(Dispatchers.Main) {
+			canvas.runKeyformCommands(canvas.keyformPasteCommands(options = io.github.psd2live.ui.CanvasEditor.KeyformPasteOptions(ratio = 0.5f)))
+		}
+		consistent("blended the right turn into the left")
+		val blended = shape(range.min)
+		assertTrue(blended.indices.all { kotlin.math.abs(blended[it] - (left[it] + right[it]) / 2f) < 1e-3f }, "the blend did not land half way")
+
+		// Multi-key editing: every key of the warp half transparent, one history step.
+		withContext(Dispatchers.Main) {
+			canvas.runKeyformCommands(listOf(buildJsonObject {
+				put("op", "multi_key"); put("targets", JsonArray(canvas.multiKeyTargets().map(::JsonPrimitive))); put("opacity", 0.5f)
+			}))
+		}
+		consistent("multi-key opacity")
+		val owner = org.umamo.runtime.model.KeyformOwner.Deformer(warp.id)
+		for (value in listOf(range.min, 0f, range.max)) assertEquals(0.5f, (io.github.psd2live.core.KeyformTools.channelAt(vm.state.value.previewModel!!.rig.puppet, owner,
+			org.umamo.runtime.model.FormChannel.OPACITY, key(value)) as org.umamo.runtime.model.ChannelValue.Scalar).value, 1e-4f)
+
+		// Restore: every key back to the default-key shape.
+		withContext(Dispatchers.Main) { canvas.runKeyformTool(io.github.psd2live.ui.CanvasEditor.KeyformToolAction.RESTORE) }
+		consistent("restored the warp")
+		val rest = shape(0f)
+		for (value in listOf(range.min, range.max)) assertTrue(differs(rest, shape(value)) < 1e-4f, "key $value was not restored")
 	}
 
 	@Test fun mouthPresetAndThicknessChangePreviewAndSurviveReopening() = editor {

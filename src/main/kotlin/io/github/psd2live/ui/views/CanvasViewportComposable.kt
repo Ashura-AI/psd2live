@@ -973,9 +973,9 @@ fun CanvasViewportComposable(
 				true.also { editor.mirrorKeyform(CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_KEY) }
 			ShortcutAction.SOFT_SELECTION_TOGGLE -> (editor.hierarchyMode == EditHierarchyMode.DEFORM) && true.also { editor.softSelection = !editor.softSelection }
 			ShortcutAction.KEYFORM_COPY -> editor.canCopyKeyform() && true.also { editor.copyKeyform() }
-			ShortcutAction.KEYFORM_PASTE -> editor.keyformToolCommand(CanvasEditor.KeyformToolAction.PASTE) != null &&
+			ShortcutAction.KEYFORM_PASTE -> editor.keyformToolCommands(CanvasEditor.KeyformToolAction.PASTE).isNotEmpty() &&
 				true.also { editor.runKeyformTool(CanvasEditor.KeyformToolAction.PASTE) }
-			ShortcutAction.KEYFORM_RESET -> editor.keyformToolCommand(CanvasEditor.KeyformToolAction.RESET_DEFAULT) != null &&
+			ShortcutAction.KEYFORM_RESET -> editor.keyformToolCommands(CanvasEditor.KeyformToolAction.RESET_DEFAULT).isNotEmpty() &&
 				true.also { editor.runKeyformTool(CanvasEditor.KeyformToolAction.RESET_DEFAULT) }
 			// The first axis the key sits between keys of; the menu lists each.
 			ShortcutAction.KEYFORM_INTERPOLATE -> editor.keyformInterpolationAxes().firstOrNull()?.let { parameter ->
