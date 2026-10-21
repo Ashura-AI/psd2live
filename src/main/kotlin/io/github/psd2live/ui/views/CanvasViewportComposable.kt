@@ -971,6 +971,7 @@ fun CanvasViewportComposable(
 			ShortcutAction.SELECT_LINKED -> { editor.selectLinked(); true }
 			ShortcutAction.MIRROR_KEYFORM -> editor.editable && editor.keyformMirrorPlan(CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_KEY) != null &&
 				true.also { editor.mirrorKeyform(CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_KEY) }
+			ShortcutAction.SOFT_SELECTION_TOGGLE -> (editor.hierarchyMode == EditHierarchyMode.DEFORM) && true.also { editor.softSelection = !editor.softSelection }
 			ShortcutAction.KEYFORM_COPY -> editor.canCopyKeyform() && true.also { editor.copyKeyform() }
 			ShortcutAction.KEYFORM_PASTE -> editor.keyformToolCommand(CanvasEditor.KeyformToolAction.PASTE) != null &&
 				true.also { editor.runKeyformTool(CanvasEditor.KeyformToolAction.PASTE) }

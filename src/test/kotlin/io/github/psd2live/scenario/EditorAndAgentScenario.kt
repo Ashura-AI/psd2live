@@ -284,6 +284,31 @@ class EditorAndAgentScenario {
 		withContext(Dispatchers.Main) { canvas.runKeyformTool(io.github.psd2live.ui.CanvasEditor.KeyformToolAction.RESET_DEFAULT) }
 		consistent("reset the left turn")
 		assertTrue(differs(neutral, shape(range.min)) < 1e-4f, "the reset did not write the default-key shape")
+
+		// Soft selection: dragging the middle control point carries its neighbours part of the way.
+		val before = shape(range.min)
+		val columns = warp.columns + 1
+		val middle = (warp.rows / 2) * columns + warp.columns / 2
+		withContext(Dispatchers.Main) {
+			canvas.setEditLevel(1)
+			canvas.activateTool(io.github.psd2live.ui.CanvasTool.SELECT)
+			canvas.vertices = setOf(middle)
+			canvas.softSelection = true
+			val puppet = vm.state.value.previewModel!!.rig.puppet
+			val viewport = io.github.psd2live.core.CanvasViewport(1.0, 0.0, 0.0, puppet.canvasWidth, puppet.canvasHeight)
+			canvas.softRadius = puppet.canvasWidth
+			val t = assertNotNull(canvas.target())
+			val at = canvas.screen(t.geometry.points, t, viewport)[middle]
+			canvas.press(at, viewport, shift = false, alt = false)
+			canvas.move(at + androidx.compose.ui.geometry.Offset(12f, 0f), viewport, shift = false)
+			canvas.release()
+		}
+		consistent("soft drag")
+		val after = shape(range.min)
+		fun moved(i: Int) = kotlin.math.hypot(after[i * 2] - before[i * 2], after[i * 2 + 1] - before[i * 2 + 1])
+		val neighbour = middle + 1
+		assertTrue(moved(middle) > 1e-4f, "the picked point did not move")
+		assertTrue(moved(neighbour) > 1e-6f && moved(neighbour) < moved(middle), "a neighbour must follow part of the way: ${moved(neighbour)} of ${moved(middle)}")
 	}
 
 	@Test fun mouthPresetAndThicknessChangePreviewAndSurviveReopening() = editor {

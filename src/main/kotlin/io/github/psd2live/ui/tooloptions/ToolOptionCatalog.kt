@@ -46,6 +46,11 @@ internal val BRUSH_FALLOFF = ChoiceOption("brush.falloff", "editor.falloff", { B
 
 internal val BRUSH_CONNECTED = ToggleOption("brush.connected", "editor.connectedOnly", { it.connectedOnly }, { e, on -> e.connectedOnly = on })
 
+internal val SOFT_SELECTION = ToggleOption("soft.selection", "editor.softSelection", { it.softSelection }, { e, on -> e.softSelection = on })
+
+internal val SOFT_RADIUS = SliderOption("soft.radius", "editor.softRadius", OptionUnit.PX, { 1f..it },
+    { it.softRadius }, { e, v -> e.softRadius = v }, logarithmic = true, role = OptionRole.SIZE)
+
 internal val INFLATE_DIRECTION = ChoiceOption("brush.inflate", "editor.tool.inflate", { listOf(false, true) },
     { _, shrink -> tr(if (shrink) "editor.inflate.shrink" else "editor.inflate.grow") },
     { it.inflateInvert }, { e, shrink -> e.inflateInvert = shrink })
@@ -472,6 +477,14 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
             add(ActionOption("knife.cancel", "action.cancel", { !it.busy && it.knifeDraft.isNotEmpty() }, { it.cancel() }, OptionIcon.CANCEL, place = OptionPlace.TOP))
         }
         else -> Unit
+    }
+    // Deform's soft selection: the points around the picked ones follow a drag of them.
+    if (!editing && target?.kind != "rotation" && (editor.tool in SELECTION_TOOLS || editor.tool == CanvasTool.TRANSFORM)) {
+        add(SOFT_SELECTION)
+        if (editor.softSelection) {
+            add(SOFT_RADIUS)
+            add(BRUSH_FALLOFF)
+        }
     }
     if (editing && mesh && editor.tool != CanvasTool.KNIFE) {
         add(SectionOption("topology", "editor.topology", OptionPlace.MENU, submenu = true, icon = OptionIcon.TOPOLOGY))

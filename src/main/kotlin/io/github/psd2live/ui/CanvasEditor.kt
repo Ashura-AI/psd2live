@@ -1489,6 +1489,14 @@ internal class CanvasEditor(
             }
         }
     var radius by mutableStateOf(48f)
+
+    /**
+     * Deform's soft selection: a drag or transform of picked points also carries the points around them, each by the
+     * [brushFalloff] share of the move its own place would make, out to [softRadius] canvas units from the nearest
+     * picked point. It shapes the points of one edit; the committed command is the ordinary geometry it computes.
+     */
+    var softSelection by mutableStateOf(false)
+    var softRadius by mutableStateOf(64f)
     var strength by mutableStateOf(0.5f)
     var hardness by mutableStateOf(0.35f)
     var brushShape by mutableStateOf(BrushShape.CIRCLE)
@@ -1724,6 +1732,9 @@ internal class CanvasEditor(
      */
     private var pressedObject: String? = null
     private var initialScreenPoints = emptyList<List<Offset>>()
+
+    /** Per target of a box drag, how far each point follows the picked ones under soft selection; null without it. */
+    private var softWeightsAtPress = emptyList<FloatArray?>()
     private var objectTargets = emptyList<CanvasTarget>()
     private var pendingObjects = emptyList<JsonObject>()
     /** The rectangle an object-mode box drag moves a file-imported layer to, when the drag only moves and scales it. */
@@ -2495,7 +2506,7 @@ internal class CanvasEditor(
         axis = null; gestureState = null; objectTargets = emptyList(); pendingObjects = emptyList()
         activeHandle = BoundingHandle.NONE
         initialBounds = null
-        boxDrag = false; dragIndices = emptyList()
+        boxDrag = false; dragIndices = emptyList(); softWeightsAtPress = emptyList()
         endTransformBox()
         anchorDragging = false
         isPainting = false; isSampling = false; paintStrokeStart = null; paintStrokeCurrent = null
@@ -4282,6 +4293,31 @@ internal class CanvasEditor(
         if (!committed && error == null) error = tr("editor.keyform.nothing")
     }
 
+    /** Whether a drag of picked points carries the points around them: Deform's point tools with [softSelection] on. */
+    fun softSelectionActive(): Boolean = softSelection && hierarchyMode == EditHierarchyMode.DEFORM &&
+        (tool in SELECTION_TOOLS || tool == CanvasTool.TRANSFORM)
+
+    private var softReachKey: List<Any?>? = null
+    private var softReach: Map<String, FloatArray> = emptyMap()
+
+    /**
+     * How far each point would follow the picked ones, by target id, for the overlay's reach rings: the weights the drag
+     * in hand uses, else those a drag would. Kept while nothing it reads changes, as the overlay asks on every frame.
+     */
+    fun softSelectionReach(viewport: CanvasViewport): Map<String, FloatArray> {
+        if (!softSelectionActive()) return emptyMap()
+        if (boxDrag && softWeightsAtPress.isNotEmpty()) return objectTargets.zip(softWeightsAtPress).mapNotNull { (t, w) -> w?.let { t.id to it } }.toMap()
+        val t = target()?.takeIf { it.kind != "rotation" } ?: return emptyMap()
+        val picked = vertices
+        if (picked.isEmpty()) return emptyMap()
+        val key = listOf(state.previewModel?.rig?.puppet, pose, viewport, softRadius, brushFalloff, picked, t.id, editLevel)
+        if (key != softReachKey) {
+            softReach = mapOf(t.id to softSelectionWeights(screen(t.geometry.points, t, viewport), picked, (softRadius * viewport.scale).toFloat(), brushFalloff))
+            softReachKey = key
+        }
+        return softReach
+    }
+
     /**
      * Runs a topology op on the mesh selection.
      *
@@ -5594,6 +5630,9 @@ internal class CanvasEditor(
         // Every point of every target, indexed by vertex index; [dragIndices] picks the ones that move.
         initialScreenPoints = targets.map { screen(it.geometry.points, it, viewport) }
         dragIndices = targets.map { gestureIndices(it) }
+        softWeightsAtPress = if (softSelectionActive()) targets.indices.map { i ->
+            softSelectionWeights(initialScreenPoints[i], dragIndices[i], (softRadius * viewport.scale).toFloat(), brushFalloff)
+        } else emptyList()
         currentDragBounds = bounds
         frameAngleAtPress = frame?.angleDeg ?: frameAngle
         framePivotAtPress = pivot
@@ -6225,6 +6264,18 @@ internal class CanvasEditor(
                         world[i * 2 + 1] = -((dest.y - viewport.offsetY) / viewport.scale).toFloat()
                         moved += i
                     }
+                    // Soft selection: each point around the picked ones takes its share of the move its own place makes.
+                    softWeightsAtPress.getOrNull(itemIndex)?.let { weights ->
+                        for (i in pressPoints.indices) {
+                            val w = weights.getOrElse(i) { 0f }
+                            if (i in indices || w <= 0f) continue
+                            val full = result?.destination(pressPoints[i]) ?: (pressPoints[i] + delta)
+                            val dest = pressPoints[i] + (full - pressPoints[i]) * w
+                            world[i * 2] = ((dest.x - viewport.offsetX) / viewport.scale).toFloat()
+                            world[i * 2 + 1] = -((dest.y - viewport.offsetY) / viewport.scale).toFloat()
+                            moved += i
+                        }
+                    }
                     moved
                 }
                 // A glued point is one point: all of its members land on one spot, whatever the gesture.
@@ -6296,14 +6347,17 @@ internal class CanvasEditor(
             // Brush gestures use the captured neutral session above. This is the select-tool translation.
             val base = t.geometry.points
             val points = screen(base, t, viewport); val world = t.mapping.localToWorld(base)
-            val affected = vertices.filter { it in points.indices }.toSet()
+            val picked = vertices.filter { it in points.indices }.toSet()
             val delta = pos - start
+            if (picked.isEmpty()) { previous = pos; return }
+            // Soft selection carries the points around the picked ones by their share of the move.
+            val weights = if (softSelectionActive()) softSelectionWeights(points, picked, (softRadius * viewport.scale).toFloat(), brushFalloff) else null
+            val affected = if (weights == null) picked else points.indices.filterTo(HashSet()) { weights[it] > 0f }
             for (i in affected) {
-                val destination = points[i] + delta
+                val destination = points[i] + delta * (weights?.get(i) ?: 1f)
                 world[i * 2] = ((destination.x - viewport.offsetX) / viewport.scale).toFloat()
                 world[i * 2 + 1] = -((destination.y - viewport.offsetY) / viewport.scale).toFloat()
             }
-            if (affected.isEmpty()) { previous = pos; return }
             val cmd = geometryCommand(t, t.mapping.worldToLocal(world, base, affected), effectiveCtrl)
             preview = RigAuthoringJournal.apply(source, cmd); pending = cmd; previous = pos
         } catch (e: Exception) { error = e.message }
@@ -6446,7 +6500,7 @@ internal class CanvasEditor(
         dragging = false; ctrlAtPress = false; axis = null; activeHandle = BoundingHandle.NONE
         initialBounds = null
         initialScreenPoints = emptyList()
-        boxDrag = false; dragIndices = emptyList()
+        boxDrag = false; dragIndices = emptyList(); softWeightsAtPress = emptyList()
         activeBrushWeights = null; activeBrushCenter = null; endMeshStroke()
         endPathDrag()
 
@@ -6618,6 +6672,22 @@ internal class CanvasEditor(
     private fun neighbors(t: CanvasTarget): List<IntArray> = if (t.kind == "mesh") MeshTopology.buildVertexAdjacency(t.count, t.indices) else {
         val columns = t.geometry.columns!! + 1
         (0 until t.count).map { i -> listOfNotNull(if (i % columns > 0) i - 1 else null, if (i % columns < columns - 1) i + 1 else null, if (i >= columns) i - columns else null, if (i + columns < t.count) i + columns else null).toIntArray() }
+    }
+}
+
+/**
+ * Soft selection's share of a move for each of [points] (on screen): 1 for the [picked] ones, and for the rest the
+ * [falloff] of their distance to the nearest picked point over [radius], 0 beyond it.
+ */
+internal fun softSelectionWeights(points: List<Offset>, picked: Set<Int>, radius: Float, falloff: BrushFalloff): FloatArray {
+    val anchors = picked.filter { it in points.indices }.map { points[it] }
+    return FloatArray(points.size) { i ->
+        if (i in picked) 1f
+        else if (anchors.isEmpty() || radius <= 0f) 0f
+        else {
+            val distance = anchors.minOf { (it - points[i]).getDistance() }
+            if (distance >= radius) 0f else brushWeight(distance, radius, 0f, falloff, i)
+        }
     }
 }
 

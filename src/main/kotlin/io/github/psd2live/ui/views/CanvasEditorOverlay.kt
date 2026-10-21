@@ -350,6 +350,8 @@ internal fun BoxScope.CanvasEditorOverlay(
             val hovered = editor.hoveredMeshVertex
             val hoveredGroup = hovered?.let { welds.members(it) }.orEmpty()
             val hoverReach = editor.brushHoverReach(viewport)
+            // Soft selection rings the points a drag of the picked ones would carry, by the share each would follow.
+            val softReach = editor.softSelectionReach(viewport)
             // The selection brush rings, in the selection's colour, the points a press would take.
             val selectReach = if (editor.tool == CanvasTool.BRUSH_SELECT && !editor.inGesture)
                 editor.cursor?.let { it to (editor.radius * viewport.scale).toFloat() } else null
@@ -382,6 +384,7 @@ internal fun BoxScope.CanvasEditorOverlay(
                     val isHovered = vertex == hovered || (primary && hovered == null && i == editor.hoveredVertex)
                     drawMeshHandle(p, meshColor, colors.accent, selected = i in selected || i in stroked, hovered = isHovered)
                     reach?.getOrNull(i)?.let { w -> drawReachRing(p, editor.reachShown(w), MeshLook.Reach) }
+                    if (i !in selected) softReach[t.id]?.getOrNull(i)?.let { w -> drawReachRing(p, w, MeshLook.Reach) }
                     selectReach?.let { (center, r) -> if ((p - center).getDistance() <= r) drawReachRing(p, 1f, colors.accent) }
                 }
             }
@@ -538,6 +541,7 @@ internal fun BoxScope.CanvasEditorOverlay(
                     drawMeshHandle(p, MeshLook.Structure, colors.accent, selected = i in editor.vertices,
                         hovered = i == editor.hoveredVertex, shape = HandleShape.SQUARE)
                     reach?.getOrNull(i)?.let { w -> drawReachRing(p, editor.reachShown(w), MeshLook.Reach) }
+                    if (i !in editor.vertices) editor.softSelectionReach(viewport)[target.id]?.getOrNull(i)?.let { w -> drawReachRing(p, w, MeshLook.Reach) }
                 }
             }
         }
