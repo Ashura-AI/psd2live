@@ -632,6 +632,9 @@ internal fun BoxScope.CanvasEditorOverlay(
             drawStructurePreview(preview) { x, y -> Offset(viewport.x(x).toFloat(), (viewport.offsetY + y * viewport.scale).toFloat()) }
         }
 
+        // The interior tool's surface, propagation and guide handles on the selected mesh.
+        if (editor.tool == CanvasTool.INTERIOR) drawInteriorHandles(editor.interiorTool, viewport, colors)
+
         // 3c-3e. Paint mode: the shape being drawn, the tip, the colour pick and the tip being retuned.
         drawPaintOverlays(editor, viewport, colors, textMeasurer)
 

@@ -777,6 +777,7 @@ fun CanvasViewportComposable(
 			ShortcutAction.TOOL_KNIFE -> { editor.activateTool(CanvasTool.KNIFE); true }
 			ShortcutAction.TOOL_WEIGHT_PAINT -> { editor.activateTool(CanvasTool.WEIGHT_PAINT); true }
 			ShortcutAction.TOOL_WEIGHT_GRADIENT -> { editor.activateTool(CanvasTool.WEIGHT_GRADIENT); true }
+			ShortcutAction.TOOL_INTERIOR -> { editor.activateTool(CanvasTool.INTERIOR); true }
 			ShortcutAction.SELECTION_STYLE_BOX -> { editor.selectionStyle = SelectionStyle.BOX; true }
 			ShortcutAction.SELECTION_STYLE_LASSO -> { editor.selectionStyle = SelectionStyle.LASSO; true }
 			ShortcutAction.SELECT_LINKED -> { editor.selectLinked(); true }
@@ -798,6 +799,8 @@ fun CanvasViewportComposable(
 					if (referenceInteraction.active) referenceInteraction.cancel()
 					else if (selectedReference() != null) viewModel.selectReference(null, canvasId, canvasState.activeWorkspace.id)
 					else if (viewModel.swingSession != null) viewModel.endSwing()
+					// The interior tool steps back its own gesture first, leaving the audition running.
+					else if (editor.tool == CanvasTool.INTERIOR && editor.cancelInterior()) Unit
 					else if (editor.placement != null) editor.cancelPlacement() else editor.cancel()
 					true
 				}
@@ -806,6 +809,7 @@ fun CanvasViewportComposable(
 				when {
 					viewModel.swingSession != null -> { viewModel.commitSwing(); true }
 					editor.tool == CanvasTool.KNIFE -> { editor.finishKnife(); true }
+					editor.tool == CanvasTool.INTERIOR -> { editor.interiorTool.finish(); true }
 					editor.placement != null && editor.placement?.kind != CreatePlacementKind.PATH -> {
 						editor.confirmPlacement(); true
 					}
@@ -821,6 +825,7 @@ fun CanvasViewportComposable(
 			ShortcutAction.DELETE_SELECTION -> {
 				if (selectedReference() != null) { referenceInteraction.cancel(); viewModel.removeReference(requireNotNull(selectedReference()).id) }
 				else if (editor.tool == CanvasTool.KNIFE || editor.drawingPath) editor.undoDraftPoint()
+				else if (editor.tool == CanvasTool.INTERIOR) editor.interiorTool.deleteSelection()
                         else if (editor.tool == CanvasTool.CREATE_DEFORM_PATH || editor.activePath != null) editor.deletePathPoint()
 				else if (editor.hierarchyMode == EditHierarchyMode.EDIT) editor.topology("delete")
 				true

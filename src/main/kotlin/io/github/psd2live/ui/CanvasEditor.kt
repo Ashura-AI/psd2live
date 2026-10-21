@@ -127,6 +127,8 @@ internal enum class CanvasTool(val action: ShortcutAction) {
     PAINT_EYEDROPPER(ShortcutAction.TOOL_PAINT_EYEDROPPER),
     /** Line, rectangle and ellipse: one tool with a [paintShape], not three tools. */
     PAINT_SHAPE(ShortcutAction.TOOL_PAINT_LINE),
+    /** Edit-mode handles of the selected mesh's interior effect: its surface, propagation and guides ([InteriorCanvasTool]). */
+    INTERIOR(ShortcutAction.TOOL_INTERIOR),
 }
 
 internal enum class SelectionStyle { BOX, LASSO }
@@ -301,6 +303,7 @@ internal val TOOLBAR_TOOL_ORDER = listOf(
     CanvasTool.BRUSH, CanvasTool.SMOOTH, CanvasTool.INFLATE,
     CanvasTool.SKELETON_POSE, CanvasTool.SKELETON_EDIT,
     CanvasTool.SUBDIVIDE, CanvasTool.KNIFE, CanvasTool.GLUE,
+    CanvasTool.INTERIOR,
     CanvasTool.WEIGHT_PAINT, CanvasTool.WEIGHT_GRADIENT,
     CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER,
     CanvasTool.PAINT_BUCKET, CanvasTool.PAINT_EYEDROPPER,
@@ -332,6 +335,7 @@ internal fun toolbarGroups(mode: EditHierarchyMode): List<List<CanvasTool>> = wh
         listOf(CanvasTool.SELECT, CanvasTool.TRANSFORM, CanvasTool.LASSO_SELECT, CanvasTool.BRUSH_SELECT),
         listOf(CanvasTool.BRUSH, CanvasTool.SMOOTH, CanvasTool.INFLATE),
         listOf(CanvasTool.SUBDIVIDE, CanvasTool.KNIFE, CanvasTool.GLUE),
+        listOf(CanvasTool.INTERIOR),
     )
     EditHierarchyMode.SIMULATE -> listOf(
         listOf(CanvasTool.WEIGHT_PAINT, CanvasTool.WEIGHT_GRADIENT),
@@ -1088,6 +1092,7 @@ internal class CanvasEditor(
         }
         val glueCount = if (tool == CanvasTool.GLUE) glueMeshCount() else -1
         val hint = when {
+            tool == CanvasTool.INTERIOR -> interiorTool.hint()
             tool == CanvasTool.GLUE && glueCount == 2 -> tr("editor.glueReadyHint")
             tool == CanvasTool.GLUE -> tr("editor.glueNeedTwo", glueCount)
             else -> tr(hintKey)
@@ -2095,6 +2100,7 @@ internal class CanvasEditor(
         endBrushAdjust(cancel = true)
         preview = null; pending = null; dragging = false; targetAtPress = null; original = null; topologyFills = null
         swingHandle = null
+        interiorTool.cancel()
         knifeDraft = emptyList(); knifeDrawableId = null; subdividing = false; subdivideEdges = emptySet()
         knifeHover = null; knifeSnapKind = null
         placementInput = null; knifeInput = null; pathInput = null
@@ -2971,6 +2977,7 @@ internal class CanvasEditor(
         tool in PAINT_TOOLS -> EditHierarchyMode.PAINT
         tool in WEIGHT_TOOLS -> EditHierarchyMode.SIMULATE
         tool == CanvasTool.KNIFE || tool == CanvasTool.SUBDIVIDE -> EditHierarchyMode.EDIT
+        tool == CanvasTool.INTERIOR -> EditHierarchyMode.EDIT
         else -> EditHierarchyMode.DEFORM
     }
 
@@ -3124,6 +3131,7 @@ internal class CanvasEditor(
 
     fun clearHover() {
         cursor = null
+        interiorTool.clearHover()
         altHeld = false
         hoveredVertex = null; hoveredMeshVertex = null
         hoveredPathPoint = null
@@ -3381,6 +3389,10 @@ internal class CanvasEditor(
             hoverPose(pos, viewport)
             return
         }
+        if (tool == CanvasTool.INTERIOR) {
+            interiorTool.hover(pos, viewport)
+            return
+        }
         hoveredBezierAnchor = null
         hoveredBezierHandle = null
         hoveredVertex = null; hoveredMeshVertex = null
@@ -3556,6 +3568,7 @@ internal class CanvasEditor(
         if (space) return if (dragging) move else hand
         // A swing session locks the canvas to its handles, so the tool's own pointer never applies.
         if (viewModel.swingSession != null) return if (swingHandle != null || swingHover != null) hand else arrow
+        if (tool == CanvasTool.INTERIOR) return if (interiorTool.cursorHand()) hand else cross
         if (eyedropperArmed) return CanvasCursors.eyedropper
         if (dragging) {
             if (placementHandle == PlacementHandle.BOX) return CanvasCursors.transform(placementBoxHandle, 0f)
@@ -4061,6 +4074,12 @@ internal class CanvasEditor(
         val adjacency = MeshTopology.buildVertexAdjacency(t.count, t.indices)
         vertices = vertices.flatMap { MeshTopology.connectedVertices(adjacency, it) }.toSet()
     }
+
+    /** The interior tool's handles, guides and the line being drawn. */
+    val interiorTool = InteriorCanvasTool(this)
+
+    /** Esc with the interior tool: its own gesture steps back first, without ending the audition the way [cancel] does. */
+    fun cancelInterior(): Boolean = interiorTool.cancel().also { if (it) dragging = false }
 
     /** The swing handle under a drag; the swing session itself lives on the view model. */
     var swingHandle by mutableStateOf<io.github.psd2live.core.SwingGizmo.Handle?>(null)
@@ -4993,6 +5012,13 @@ internal class CanvasEditor(
             return true
         }
 
+        // The interior tool's handles and guides own its presses: a miss starts a fold line, never a selection.
+        if (tool == CanvasTool.INTERIOR) {
+            interiorTool.press(pos, viewport, ctrl, alt)
+            dragging = interiorTool.dragging
+            return true
+        }
+
         // 0. The pose tool turns bones; a press off every bone does nothing, so a stray click cannot
         //    select or move points while the tool is armed.
         if (posing()) {
@@ -5396,6 +5422,7 @@ internal class CanvasEditor(
         weightAltHeld = alt
         if (!dragging || busy) return
         swingHandle?.let { handle -> dragSwing(handle, pos, viewport); previous = pos; return }
+        if (interiorTool.dragging) { interiorTool.move(pos, viewport); previous = pos; return }
         moved = moved || (pos - start).getDistance() > 2f
         if (!moved) return
 
@@ -5642,6 +5669,11 @@ internal class CanvasEditor(
         if (swingHandle != null) {
             swingHover = swingHandle
             swingHandle = null
+            dragging = false
+            return
+        }
+        if (interiorTool.dragging) {
+            interiorTool.release()
             dragging = false
             return
         }

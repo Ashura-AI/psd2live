@@ -94,10 +94,13 @@ private fun InteriorToolbar(
 ) {
 	val colors = LocalToolColors.current
 	val solo = vm.interior.soloActiveFor(state)
-	val labels = listOf(tr("interior.enabled"), tr(if (solo) "interior.restoreView" else "interior.solo"), tr("interior.delete"))
+	val labels = listOf(tr("interior.enabled"), tr(if (solo) "interior.restoreView" else "interior.solo"), tr("interior.delete"),
+		tr("interior.canvasEdit"))
+	val onCanvas = state.activeCanvas.mode == CanvasMode.EDIT &&
+		vm.canvasEditorFor(state.activeCanvas.id).tool == io.github.psd2live.ui.CanvasTool.INTERIOR
 	PanelToolbar(
 		labels = labels,
-		iconCount = 5,
+		iconCount = 6,
 	) { labelsShown ->
 		PanelToolSwitch(
 			labels[0],
@@ -124,6 +127,19 @@ private fun InteriorToolbar(
 			active = solo,
 		) {
 			InteriorIconView(InteriorIcon.SOLO, if (solo) colors.accent else colors.textPrimary, size = 11.dp)
+		}
+		val key = state.keymap.labelFor(ShortcutAction.TOOL_INTERIOR)
+		PanelToolButton(
+			labels[3],
+			showLabel = labelsShown > 3,
+			onClick = { editInteriorOnCanvas(vm, state) },
+			enabled = drawable != null,
+			tooltip = tr("interior.canvasEditTip") + (key?.let { " ($it)" } ?: ""),
+			active = onCanvas,
+		) {
+			androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
+				drawToolIcon(io.github.psd2live.ui.CanvasTool.INTERIOR, if (onCanvas) colors.accent else colors.textPrimary)
+			}
 		}
 		PanelToolbarSeparator()
 		PanelToolButton(
@@ -160,48 +176,10 @@ private fun InteriorBody(
 	val caption = typography.caption.copy(fontSize = 10.sp)
 	val draft = vm.interior.draft(drawable.id.raw, effect)
 	val issue = remember(effect, preview) { effect?.issue(preview.authored.rig.puppet) }
-	fun request() = buildJsonObject {
-		put("target", target)
-		put("enabled", effect?.enabled ?: true)
-		put("settings", NativeInteriorAuthoring.settingsJson(draft.shape))
-		put("motion", draft.motion.toJson())
-		put("parameters", JsonArray(draft.sources.map(::JsonPrimitive)))
-		put(
-			"guides",
-			JsonArray(
-				draft.guides.map { g ->
-					buildJsonObject {
-						put("id", g.id)
-						put("purpose", g.purpose.name)
-						put("radius", g.radius)
-						put("amount", g.amount)
-						put("pitchOnly", g.pitchOnly)
-						g.detected?.let { put("detected", it.name) }
-						put(
-							"points",
-							JsonArray(
-								g.points.map {
-									JsonArray(listOf(JsonPrimitive(it.x), JsonPrimitive(it.y)))
-								}
-							),
-						)
-					}
-				}
-			),
-		)
-	}
+	fun request() = draft.request(target, effect?.enabled ?: true)
 	fun save() = vm.interior.put(request())
 	LaunchedEffect(target, draft.version, draft.dirty, vm.interior.poseTarget != null) {
-		if (effect?.enabled == true && draft.dirty && vm.interior.poseTarget != null) {
-			kotlinx.coroutines.delay(90)
-			try {
-				vm.interior.previewDraft(request(), draft, draft.version)
-			} catch (e: kotlinx.coroutines.CancellationException) {
-				throw e
-			} catch (e: Exception) {
-				vm.interior.fail(e.message ?: e.toString())
-			}
-		}
+		vm.interior.previewLater(target, effect?.enabled == true, draft)
 	}
 	DisposableEffect(
 		target,
@@ -590,6 +568,14 @@ private fun InteriorBody(
 			}
 		}
 	}
+}
+
+/** Arms the interior tool on the active canvas, in edit mode, and hands the keyboard back to the canvas. */
+private fun editInteriorOnCanvas(vm: PSD2LiveViewModel, state: PSD2LiveState) {
+	val canvas = state.activeCanvas.id
+	if (state.activeCanvas.mode != CanvasMode.EDIT) vm.setCanvasMode(canvas, CanvasMode.EDIT)
+	vm.canvasEditorFor(canvas).activateTool(io.github.psd2live.ui.CanvasTool.INTERIOR)
+	vm.requestCanvasFocus(canvas)
 }
 
 /** A labelled slider that edits the draft while dragged and submits on release. */

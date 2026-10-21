@@ -135,6 +135,10 @@ internal fun toolOptions(editor: CanvasEditor): List<ToolOption> = buildList {
             addGlue(editor)
             return@buildList
         }
+        CanvasTool.INTERIOR -> {
+            addInterior(editor)
+            return@buildList
+        }
         else -> Unit
     }
     when (editor.hierarchyMode) {
@@ -533,4 +537,25 @@ private fun MutableList<ToolOption>.addPaint(editor: CanvasEditor) {
         danger = true, place = OptionPlace.MENU))
     // A mesh rebuilt from the pixels just painted, or the material they reach.
     addLayerActions(editor, editor.paintSession?.layerId?.takeUnless { it.startsWith(io.github.psd2live.application.WorkspacePaintSession.MATERIAL_PREFIX) })
+}
+
+// ─── Interior ───────────────────────────────────────────────────────────────
+
+/** The interior tool: what is missing to edit, the line being drawn, and the selected guide's purpose. */
+private fun MutableList<ToolOption>.addInterior(editor: CanvasEditor) {
+    val tool = editor.interiorTool
+    add(NoteOption("interior.missing", { tool.missing() }, warning = { true }, place = OptionPlace.BAR))
+    add(ActionOption("interior.enable", "interior.canvas.enable", { it.editable && tool.canEnable() },
+        { tool.enable() }, OptionIcon.CREATE, primary = true))
+    add(ActionOption("interior.finishLine", "interior.canvas.finishLine", { it.editable && tool.drawing.size >= 2 }, { tool.finish() },
+        OptionIcon.CONFIRM, primary = true, place = OptionPlace.TOP))
+    add(ActionOption("interior.undoPoint", "editor.undoPoint", { tool.drawing.isNotEmpty() }, { tool.deleteSelection() },
+        OptionIcon.UNDO, keepsMenu = true, place = OptionPlace.TOP))
+    add(ActionOption("interior.cancelLine", "action.cancel", { tool.drawing.isNotEmpty() }, { it.cancelInterior() }, OptionIcon.CANCEL,
+        place = OptionPlace.TOP))
+    if (tool.selected != null) {
+        add(ToggleOption("interior.fold", "interior.markFold", { tool.selectedIsFold() }, { e, on -> if (e.editable) tool.markFold(on) }))
+        add(ActionOption("interior.deleteGuide", "interior.canvas.delete", { it.editable }, { tool.deleteSelection() }, OptionIcon.DELETE,
+            danger = true))
+    }
 }

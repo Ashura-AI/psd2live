@@ -128,6 +128,7 @@ internal fun DrawScope.drawToolIcon(
         CanvasTool.PAINT_EYEDROPPER -> pen.eyedropper()
         // The row carries the face in hand, the way the deform brush's row carries its footprint.
         CanvasTool.PAINT_SHAPE -> pen.paintShape(paintShape ?: PaintShape.LINE)
+        CanvasTool.INTERIOR -> pen.interiorHandles()
     }
 }
 
@@ -439,6 +440,16 @@ private fun IconPen.weightGradient() {
         line(9f, y0, 9f, y0 + 8f / steps, tint = color.copy(alpha = color.alpha * (1f - 0.75f * (i + 0.5f) / steps)))
     }
     box(3.6f, 13f, 10.8f, 2.6f, 1.1f)
+}
+
+/** Interior handles: the virtual arch over its rest line, held by the handle at its crown. */
+private fun IconPen.interiorHandles() {
+    outline(path { m(2.4f, 14.2f); l(15.6f, 14.2f) }, width = ICON_FINE, dash = floatArrayOf(1.4f, 1.1f))
+    val arch = path { m(2.4f, 14.2f); c(4.2f, 5.6f, 13.8f, 5.6f, 15.6f, 14.2f) }
+    outline(arch)
+    line(9f, 14.2f, 9f, 8.4f, width = ICON_FINE)
+    dot(9f, 7.8f, 2.2f, soft)
+    ring(9f, 7.8f, 2.2f)
 }
 
 // --- painting --------------------------------------------------------------------------------------------

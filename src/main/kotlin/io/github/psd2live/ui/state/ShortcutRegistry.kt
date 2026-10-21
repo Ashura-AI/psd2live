@@ -133,6 +133,7 @@ enum class ShortcutAction(
     TOOL_PAINT_LINE(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_line"),
     TOOL_PAINT_RECT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_rect"),
     TOOL_PAINT_ELLIPSE(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_ellipse"),
+    TOOL_INTERIOR(ShortcutCategory.CANVAS_TOOLS, "editor.tool.interior"),
     // The numbered choices of the mode or tool in hand: Deform's levels, otherwise the variants the toolbar
     // lists under the tool (brush tips, glue and skeleton sub-tools, the vertex group kinds, paint shapes).
     PICK_OPTION_1(ShortcutCategory.CANVAS_TOOLS, "shortcut.pickOption"),
@@ -315,6 +316,7 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.TOOL_PAINT_LINE to keys("U"),
     ShortcutAction.TOOL_PAINT_RECT to keys("Shift+R"),
     ShortcutAction.TOOL_PAINT_ELLIPSE to keys("Shift+O"),
+    ShortcutAction.TOOL_INTERIOR to keys("Shift+I"),
     ShortcutAction.PICK_OPTION_1 to keys("1", "NumPad1"),
     ShortcutAction.PICK_OPTION_2 to keys("2", "NumPad2"),
     ShortcutAction.PICK_OPTION_3 to keys("3", "NumPad3"),
