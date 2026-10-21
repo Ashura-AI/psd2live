@@ -31,28 +31,28 @@ flowchart TD
 
 - **`WorkspaceHost<V>`**（`application/WorkspaceHost.kt`）实现 `WorkspaceBackend`：持有运行时、全部命令对象、草稿队列、持久化与恢复检查点（`SessionRecovery`）、工程归档的打开与保存（原 `ProjectController`）。`V` 是宿主自己的展示快照类型，操作开始时捕获，通知时交回，宿主据此判断展示是否已经变化。
 - **`WorkspaceHostPresentation<V>`**（`application/WorkspaceHostPresentation.kt`）是宿主看到的全部界面：
-  - 读：`current` / `withCurrent`、`facts`（忙碌、未保存、当前工作区、画布地址、展示字段，见 `WorkspaceHostFacts`）、`document`（展示持有的文档副本，无则为 null）、`visibleLayers`、`auxiliary`、`config`、`basis`；
-  - 投影：`project`（提交内把结果投影进展示，返回 false 拒绝提交），以及历史、模型、姿态、播放帧、摆动与模拟预览、画布可见性、导入与安装、保存进度等通知；
+  - 读：`current` / `withCurrent`、`facts`（忙碌、未保存、当前工作区、画布地址、展示字段，见 `WorkspaceHostFacts`）、`visibleLayers`、`auxiliary`、`config`、`basis`；宿主不读展示中的文档；
+  - 投影：`show`（提交内把结果交给展示，展示把自己的字段草稿变基到它之上，从不拒绝提交，见下文"运行时唯一权威"），以及历史、模型、姿态、播放帧、摆动与模拟预览、画布可见性、导入与安装、保存进度等通知；
   - 归档展示：`encode` / `decode` 把展示部分（布局、镜头、画布）与归档 JSON 互转；
   - 其他：`simulationBake`、`sampleMotion`、`importedSource`（编辑器自行分析的 PSD）。
-- **`DesktopWorkspace`** 是编辑器的薄适配：用 `DesktopPresentation` 包装 ViewModel 构造宿主，转发编辑器与测试需要的内部入口。编辑器保留自己的文档副本，`project` 仍对它做二次 CAS，行为与重构前一致。
-- **`HeadlessPresentation`** 是无窗口展示：不持有文档副本，`project` 恒为 true，通知全部为空；只记录查询要报告的工程 ID、来源、保存路径，未保存取运行时的 `hasUnsavedChanges`；归档中的展示 JSON 原样往返；动作采样用不依赖窗口的 Cubism 会话（`CubismSdkPreviewSession.windowless`，`ThreadGpuExecutor`）。
+- **`DesktopWorkspace`** 是编辑器的薄适配：用 `DesktopPresentation` 包装 ViewModel 构造宿主，转发编辑器与测试需要的内部入口。编辑器状态里的文档字段是运行时文档的投影加字段草稿，草稿经 `WorkspaceDraftQueue` 提交。
+- **`HeadlessPresentation`** 是无窗口展示：不持有草稿，`show` 与其他通知全部为空；只记录查询要报告的工程 ID、来源、保存路径，未保存取运行时的 `hasUnsavedChanges`；归档中的展示 JSON 原样往返；动作采样用不依赖窗口的 Cubism 会话（`CubismSdkPreviewSession.windowless`，`ThreadGpuExecutor`）。
 - **`psd2live mcp`**（`HeadlessMcp`）设 `java.awt.headless=true`，构造 `WorkspaceHost(HeadlessPresentation)` + `WorkspaceOperations` + `AgentMcpService`，不创建 ViewModel、Compose 状态或窗口。一个进程一个工程，需要并行时起多个进程，各用自己的 `--store`。启动时除 `endpoint`、`token`、`profile`、`store` 外打印 `capabilities`，目前为 `view_sample_motion=yes|no`（构建是否带 Cubism Core）。
 
 ### 两个宿主的差别
 
 | 方面 | 桌面 | 无窗口 |
 | --- | --- | --- |
-| 文档副本 | 编辑器持有，提交时二次 CAS | 无，运行时文档即展示 |
+| 文档字段 | 运行时文档的投影加字段草稿，草稿经草稿队列提交 | 无，运行时文档即展示 |
 | 新来源的初始设置 | 编辑器当前设置 | `PipelineConfig()`，与编辑器默认相同（测试固定） |
 | 工作区与画布 | 编辑器的标签页与画布 | 固定一个工作区 `main`，无画布 |
 | 保存路径 | 生命周期记录或编辑器状态 | 生命周期记录或最近一次保存 / 打开的路径 |
 | 动作采样 | 主窗口的 Cubism 会话 | 独立线程的无窗口会话 |
-| 进度 | 状态栏 | 进程任务自身的进度 |
+| 进度 | 状态栏；模拟烘焙另有编辑器的烘焙条 | 进程任务自身的进度 |
 
-## 设计：运行时唯一权威（进行中）
+## 运行时唯一权威（已实现）
 
-目标：运行时（`WorkspaceRuntime`）是文档的唯一权威，编辑器状态里的文档字段只是**字段草稿**：未改动的字段始终是运行时文档的投影，改动过的字段等待经 `WorkspaceDraftQueue` 提交。任何提交都不会因为编辑器"显示着别的东西"而被拒绝。
+运行时（`WorkspaceRuntime`）是文档的唯一权威，编辑器状态里的文档字段只是**字段草稿**：未改动的字段始终是运行时文档的投影，改动过的字段等待经 `WorkspaceDraftQueue` 提交。任何提交都不会因为编辑器"显示着别的东西"而被拒绝。
 
 ### 规则
 
@@ -76,7 +76,11 @@ flowchart TD
 | 保存时编辑器有未经草稿提交的字段 | 作为 "Save project" 节点提交后保存 | 不提交；只保存运行时文档（所有编辑本应已经草稿提交） |
 | MCP 撤销 / 检出时编辑器有草稿 | 检出被拒 | 检出成功，草稿丢弃 |
 
+字段会话中的设置切换（`editorSettingsIntents`）随草稿按命令重放；投影判定为冲突的设置键同时从中移除，否则会话结束时会重新写回被覆盖的值。草稿预览（`schedulePreviewRebuild`）构建期间若有提交落地，预览以 `WorkspaceConflict` 结束而不报错，展示该提交时若仍有草稿字段会重新安排预览。
+
 风险：若仍有编辑器路径只改状态字段而不经 `editorChanged` / 命令提交，此前会被保存"兜底"提交，现在不会进入工程；这类路径应视为缺陷并改为草稿提交。
+
+模拟烘焙的进度与取消对两个宿主相同：命令用 `WorkspaceSimulationWork.cancellable` 把进度报给运行它的进程任务（`WorkspaceJobContext`）并随任务取消而停止；`simulationBake` 只是展示的观察入口，桌面用它显示烘焙条与取消按钮，无窗口为空。
 
 ## 外部工具的接入方式
 
@@ -90,8 +94,7 @@ flowchart TD
 
 ## 待做
 
-- **权威完全收归运行时**：编辑器仍持有文档副本，`DesktopPresentation.project` 对它做二次 CAS，保存前把编辑器版本的文档提交进运行时。改为界面只观察运行时（副本只作字段草稿，经 `WorkspaceDraftQueue` 提交）后，可去掉 `document` 与 `project` 的拒绝语义。这一步改变编辑器的提交与保存时机，单独进行。
-- **模拟烘焙进度**：无窗口宿主的 `simulationBake` 不报告进度，可接到进程任务的进度与取消。
+- **草稿收窄**：编辑器状态仍保存全部文档字段作为草稿载体，提交时整份送出再按字段变基；可改为只记录改动过的字段，届时 `WorkspaceStateCodec.document` 只在导入新来源时使用。
 
 ## 验收
 
@@ -101,4 +104,9 @@ flowchart TD
   - 同一组调用在桌面宿主与无窗口宿主上得到相同的文档修订；
   - 无窗口的默认设置与编辑器默认相同。
 - 实测：`psd2live mcp` 进程经 `mcp_proxy.py` 的 `Client` 跑通 Layout 与剥离流程，`view_sample_motion` 在无窗口时约 1 秒返回采样拼图。
-- 编辑器场景（`SaveAndCloseTest`、`EditorAndAgentScenario` 等）与全部测试不变通过。
+- 编辑器场景（`SaveAndCloseTest`、`EditorAndAgentScenario` 等）与全部测试通过，其中：
+  - `EditorDraftRebaseTest`：字段变基、映射与设置逐键合并、日志追加的命令级变基、同字段冲突；草稿队列中的草稿越过外部提交后重试，同字段冲突才拒绝；
+  - `EditorAndAgentScenario.anAgentEditDuringAnOpenFieldLandsAndTheFieldCommitsOverIt`：字段会话中的 MCP 提交成功、草稿保留并在其上提交；同一设置被 MCP 修改时草稿让步；
+  - `EditorAndAgentScenario.savingRecordsTheRuntimeAndNotTheEditorsCopy`：保存不追加修订，也不把未提交的编辑器字段写进归档；
+  - `SaveAndCloseTest.aGestureOverAnExternalCommit…`：越过外部提交的手势正常提交、同设置让步，之后的保存不再脏；
+  - `HeadlessSimulationBakeTest`：无窗口烘焙向进程任务报告进度，任务取消即停止。
