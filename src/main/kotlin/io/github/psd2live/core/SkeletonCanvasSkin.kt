@@ -162,7 +162,7 @@ internal object SkeletonCanvasSkin {
 			"canvas_geometry" -> if (command["kind"]?.jsonPrimitive?.contentOrNull !in setOf("warp", "rotation"))
 				add(command["id"]?.jsonPrimitive?.contentOrNull, CanvasGeometryJournal.size(command)?.div(2))
 			VertexGroupJournal.PUT -> add(command["target"]?.jsonPrimitive?.contentOrNull?.removePrefix("mesh:"), (command["weights"] as? JsonArray)?.size)
-			GeneratedOverrides.OP -> command["target"]?.jsonPrimitive?.contentOrNull?.takeIf { it.startsWith("mesh:") }?.let { target ->
+			GeneratedOverrides.OP -> command["target"]?.jsonPrimitive?.contentOrNull?.takeIf { it.startsWith("mesh:") && !GeneratedOverrides.isChannelOverride(command) }?.let { target ->
 				add(target.removePrefix("mesh:"), (command["points"] as? JsonArray)?.size?.div(2))
 			}
 		}

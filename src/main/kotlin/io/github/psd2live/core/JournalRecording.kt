@@ -18,7 +18,7 @@ internal object JournalRecording {
 	fun record(shown: PuppetModel, authored: PuppetModel, overlay: RigEditOverlay, edits: JsonArray,
 			   skins: PrimitiveSkins = PrimitiveSkins.None): List<JsonObject> {
 		val (_, compiled) = RigAuthoringJournal.compile(shown, GeneratedOverrides.capture(shown, overlay, edits, skins))
-		val owned = GeneratedOverrides.ownedWrites(shown, overlay, GeneratedOverrides.journalOnly(shown, authored, compiled), skins)
+		val owned = GeneratedOverrides.ownedWrites(shown, overlay, GeneratedOverrides.journalOnly(shown, authored, compiled), skins, authored)
 		return GeneratedParameterAdoption.adopted(shown, authored, owned)
 	}
 }

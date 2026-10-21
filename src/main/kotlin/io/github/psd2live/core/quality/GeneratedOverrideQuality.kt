@@ -79,6 +79,7 @@ object GeneratedOverrideQuality {
 				put("points", issue.points)
 				put("total", issue.total)
 				issue.reason?.let { put("reason", it.wire) }
+				issue.channel?.let { put("channel", it) }
 			}
 		}
 	}

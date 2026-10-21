@@ -16,7 +16,10 @@ enum class GeneratedOverrideIssueKind(val wire: String) { ORPHANED("orphaned"), 
 /** Why an override is orphaned; null for a conflict. */
 enum class GeneratedOverrideOrphanReason(val wire: String) { MISSING_KEYFORM("missing_keyform"), SHAPE_MISMATCH("shape_mismatch"), SUPERSEDED("superseded") }
 
-/** One override's issue: [points] of the form's [total] points in conflict, or every point of an orphaned one. */
+/**
+ * One override's issue: [points] of the form's [total] points in conflict, or every point of an orphaned one. For an
+ * override of a [channel] the points are the value's components (one for a scalar, three for a color).
+ */
 data class GeneratedOverrideIssue(
 	val kind: GeneratedOverrideIssueKind,
 	val generator: String,
@@ -26,14 +29,17 @@ data class GeneratedOverrideIssue(
 	val points: Int,
 	val total: Int,
 	val reason: GeneratedOverrideOrphanReason? = null,
+	/** The overridden channel's record name (`opacity`, `multiply_color`, ...), or null for geometry. */
+	val channel: String? = null,
 ) {
 	val id: String get() = target.substringAfter(':')
 
 	/** A plain English line for logs and tests; reports and the UI use the fields, never this text. */
 	fun describe(): String = when (kind) {
-		GeneratedOverrideIssueKind.CONFLICT -> "$id: $points of $total ${if (target.startsWith("warp:")) "control points" else "vertices"} at $key changed in both the generator and the override; the override is kept"
+		GeneratedOverrideIssueKind.CONFLICT -> if (channel != null) "$id: $points of $total $channel components at $key changed in both the generator and the override; the override is kept"
+			else "$id: $points of $total ${if (target.startsWith("warp:")) "control points" else "vertices"} at $key changed in both the generator and the override; the override is kept"
 		GeneratedOverrideIssueKind.ORPHANED -> if (reason == GeneratedOverrideOrphanReason.SHAPE_MISMATCH) "$id: override at $key no longer matches the ${if (target.startsWith("warp:")) "lattice" else "mesh"}"
-			else "$id: override at $key has no generated keyform"
+			else "$id: override at $key has no generated ${channel?.let { "$it " }.orEmpty()}keyform"
 	}
 }
 
@@ -47,6 +53,12 @@ data class GeneratedOverrideIssue(
  * every generator: each control point (Warp) or vertex offset (mesh) the user left where the generator had it
  * follows the new generation, each one the generator no longer changed keeps the user's value, and one both
  * moved keeps the user's value and is reported as a conflict.
+ *
+ * The channel keyforms (opacity, draw order, multiply and screen color) a generator adds on its axes are kept the same
+ * way: an override with a `channel` records the generated value (`base`) and the user's (`points`), one number for a
+ * scalar and three for a color, and merges them component by component. A channel cell is the generator's when its
+ * track gains the generator's axis after the journal; a track the journal itself keyed on that axis stays the user's,
+ * edited by ordinary journal entries.
  *
  * Which generator owns a keyform comes from [DocumentGenerators]' graph.
  */
@@ -151,8 +163,26 @@ internal object GeneratedOverrides {
 	 * it, a key deleted or added on the generator's axis, an edit that keeps the children in place - is refused, naming
 	 * the generator to change instead. [shown] is the generated rig the entries were made on.
 	 */
-	fun ownedWrites(shown: PuppetModel, overlay: RigEditOverlay, journal: List<JsonObject>, skins: PrimitiveSkins = PrimitiveSkins.None): List<JsonObject> {
+	fun ownedWrites(shown: PuppetModel, overlay: RigEditOverlay, journal: List<JsonObject>, skins: PrimitiveSkins = PrimitiveSkins.None,
+					authored: PuppetModel? = null): List<JsonObject> {
 		val graph by lazy { DocumentGenerators.graph(overlay, primitives = skins) }
+		/** The generator owning [channel]'s axis [parameter] on [kind] [id]: the track gains it after the journal ([authored] lacks it). */
+		fun channelAxisOwner(kind: String, id: String, channel: FormChannel, parameter: String): String? {
+			val before = authored ?: return null
+			if (channelGrid(shown, kind, id, channel)?.axes?.any { it.parameterId.raw == parameter } != true) return null
+			if (channelGrid(before, kind, id, channel)?.axes?.any { it.parameterId.raw == parameter } == true) return null
+			return (if (kind == "mesh") skins.owner(DrawableId(id), ParameterId(parameter)) else null)
+				?: DocumentGenerators.owner(graph, DocumentGenerators.keyform(kind, id, parameter))?.id
+		}
+		/** The generator owning [channel]'s cell of [kind] [id] at [key]: one of the key's parameters, away from its default, is such an axis. */
+		fun channelOwner(kind: String, id: String, channel: FormChannel, key: Map<String, Float>): String? {
+			if (channelCell(shown, kind, id, channel, key) == null) return null
+			val defaults = shown.parameters.associate { it.id.raw to it.default }
+			return key.entries.firstNotNullOfOrNull { (parameter, value) ->
+				if (abs(value - (defaults[parameter] ?: return@firstNotNullOfOrNull null)) <= org.umamo.runtime.eval.EPS_KEY) null
+				else channelAxisOwner(kind, id, channel, parameter)
+			}
+		}
 		fun targetKind(target: String): String? = runCatching { RigAuthoringJournal.target(target).kind }.getOrNull()?.let {
 			when (it) { RigTargetKind.WARP_DEFORMER -> "warp"; RigTargetKind.ART_MESH -> "mesh"; else -> null }
 		}
@@ -194,20 +224,41 @@ internal object GeneratedOverrides {
 					val kind = targetKind(target) ?: return@flatMap listOf(command)
 					val id = target.substringAfter(':')
 					val key = key(command, "key")
-					val geometry = command["geometry"] as? JsonObject ?: return@flatMap listOf(command)
-					val generator = owner(graph, shown, kind, id, key, skins) ?: return@flatMap listOf(command)
-					val values = geometry[if (kind == "warp") "controlPoints" else "positionDeltas"]?.jsonArray?.map { it.jsonPrimitive.float }
-						?: return@flatMap listOf(command)
-					val base = requireNotNull(cell(shown, kind, id, key)) { "$id has no keyform at $key" }
-					listOf(override(generator, kind, id, key, base, values.toFloatArray())) +
-						(if ("channels" in command) listOf(JsonObject(command - "geometry")) else emptyList())
+					val overrides = ArrayList<JsonObject>()
+					var rest = command
+					(command["geometry"] as? JsonObject)?.let { geometry ->
+						val generator = owner(graph, shown, kind, id, key, skins) ?: return@let
+						val values = geometry[if (kind == "warp") "controlPoints" else "positionDeltas"]?.jsonArray?.map { it.jsonPrimitive.float }
+							?: return@let
+						val base = requireNotNull(cell(shown, kind, id, key)) { "$id has no keyform at $key" }
+						overrides += override(generator, kind, id, key, base, values.toFloatArray())
+						rest = JsonObject(rest - "geometry")
+					}
+					// Each channel of a generated cell becomes its own override; the user's other channels stay in the entry.
+					(command["channels"] as? JsonObject)?.let { channels ->
+						val owned = channels.keys.filter { field ->
+							val channel = OVERRIDE_CHANNELS[field] ?: return@filter false
+							val generator = channelOwner(kind, id, channel, key) ?: return@filter false
+							val base = components(channelCell(shown, kind, id, channel, key)!!.form)
+							overrides += channelOverride(generator, kind, id, key, channel, base, requested(channel, channels.getValue(field)))
+							true
+						}
+						if (owned.isNotEmpty()) rest = if (owned.size == channels.size) JsonObject(rest - "channels")
+							else JsonObject(rest + ("channels" to JsonObject(channels - owned.toSet())))
+					}
+					if (overrides.isEmpty()) listOf(command)
+					else overrides + (if ("geometry" in rest || "channels" in rest) listOf(rest) else emptyList())
 				}
 				"copy" -> {
 					val source = command.getValue("target").jsonPrimitive.content
 					val destination = command["destination"]?.jsonPrimitive?.contentOrNull ?: source
-					if (command["channels"] == null) for ((target, field) in listOf(source to "from", destination to "key")) {
+					val listed = command["channels"]?.jsonArray?.map { it.jsonPrimitive.content }
+					for ((target, field) in listOf(source to "from", destination to "key")) {
 						val kind = targetKind(target) ?: continue
-						val generator = owner(graph, shown, kind, target.substringAfter(':'), key(command, field), skins)
+						val id = target.substringAfter(':')
+						val generator = (if (listed == null) owner(graph, shown, kind, id, key(command, field), skins) else null)
+							?: (listed?.mapNotNull { OVERRIDE_CHANNELS[it] } ?: OVERRIDE_CHANNELS.values.distinct())
+								.firstNotNullOfOrNull { channelOwner(kind, id, it, key(command, field)) }
 						require(generator == null) { "Keyforms $generator generates cannot be copied to or from; edit them on the canvas" }
 					}
 					listOf(command)
@@ -218,7 +269,9 @@ internal object GeneratedOverrides {
 					val parameter = command["parameter"]?.jsonPrimitive?.contentOrNull ?: return@flatMap listOf(command)
 					val geometry = (command["channel"]?.jsonPrimitive?.contentOrNull?.equals("geometry", ignoreCase = true) ?: true) &&
 						(command["track"]?.jsonPrimitive?.contentOrNull?.let { it == "geometry" } ?: true)
-					val generator = if (geometry) axisOwner(kind, target.substringAfter(':'), parameter) else null
+					val named = command["channel"]?.jsonPrimitive?.contentOrNull ?: command["track"]?.jsonPrimitive?.contentOrNull
+					val generator = if (geometry) axisOwner(kind, target.substringAfter(':'), parameter)
+						else named?.let { OVERRIDE_CHANNELS[it] }?.let { channelAxisOwner(kind, target.substringAfter(':'), it, parameter) }
 					require(generator == null) { "$generator makes the keys of $parameter on ${target.substringAfter(':')}; change it there instead" }
 					listOf(command)
 				}
@@ -252,6 +305,75 @@ internal object GeneratedOverrides {
 		return grid.cells.firstOrNull { it.coordinate.contentEquals(coordinate) }
 	}
 
+	/** The channels an override can carry, under both names journal entries give them (`multiply_color`, `multiplyColor`). */
+	private val OVERRIDE_CHANNELS: Map<String, FormChannel> = listOf(FormChannel.OPACITY, FormChannel.DRAW_ORDER, FormChannel.MULTIPLY_COLOR, FormChannel.SCREEN_COLOR)
+		.flatMap { channel ->
+			val wire = wire(channel)
+			val camel = wire.split('_').let { words -> words.first() + words.drop(1).joinToString("") { it.replaceFirstChar(Char::uppercaseChar) } }
+			listOf(wire to channel, camel to channel)
+		}.toMap()
+
+	/** The record's name of [channel]: `opacity`, `draw_order`, `multiply_color` or `screen_color`. */
+	fun wire(channel: FormChannel): String = channel.name.lowercase()
+
+	private fun channelGrid(model: PuppetModel, kind: String, id: String, channel: FormChannel): KeyformGrid<ChannelValue>? = when (kind) {
+		"warp" -> warp(model, id)?.channelGrids?.get(channel)
+		else -> model.drawables.firstOrNull { it.id.raw == id }?.channelGrids?.get(channel)
+	}
+
+	private fun channelCell(model: PuppetModel, kind: String, id: String, channel: FormChannel, key: Map<String, Float>): KeyformCell<ChannelValue>? {
+		val grid = channelGrid(model, kind, id, channel) ?: return null
+		val coordinate = coordinate(grid, key) ?: return null
+		return grid.cells.firstOrNull { it.coordinate.contentEquals(coordinate) }
+	}
+
+	/** A channel value as an override records it: one number for a scalar, red, green and blue for a color. */
+	private fun components(value: ChannelValue): FloatArray = when (value) {
+		is ChannelValue.Scalar -> floatArrayOf(value.value)
+		is ChannelValue.Color -> floatArrayOf(value.color.red, value.color.green, value.color.blue)
+		is ChannelValue.Flag -> error("Flags are not overridden")
+	}
+
+	/** What a `set` writes into [channel] from its payload [value], clamped as the set clamps it. */
+	private fun requested(channel: FormChannel, value: JsonElement): FloatArray = when (channel.valueKind) {
+		ChannelValueKind.COLOR -> value.jsonArray.let { rgb -> FloatArray(3) { rgb[it].jsonPrimitive.float.coerceIn(0f, 1f) } }
+		else -> floatArrayOf(value.jsonPrimitive.float.coerceIn(0f, if (channel == FormChannel.DRAW_ORDER) 1000f else 1f))
+	}
+
+	private fun channelOverride(generator: String, kind: String, id: String, key: Map<String, Float>, channel: FormChannel,
+								base: FloatArray, points: FloatArray) = buildJsonObject {
+		put("op", OP); put("generator", generator); put("target", "$kind:$id"); put("channel", wire(channel))
+		put("key", JsonObject(key.mapValues { JsonPrimitive(it.value) }))
+		put("base", JsonArray(base.map(::JsonPrimitive)))
+		put("points", JsonArray(points.map(::JsonPrimitive)))
+	}
+
+	/** Whether [command] is an override of a channel rather than of geometry. */
+	fun isChannelOverride(command: JsonObject) = isOverride(command) && command["channel"] != null
+
+	/** [apply] for an override of [channel]: the generated cell's value merged with the user's, component by component. */
+	private fun applyChannel(model: PuppetModel, kind: String, id: String, generator: String, target: String, key: Map<String, Float>,
+							 channel: FormChannel, base: List<Float>, points: List<Float>): Outcome {
+		val size = if (channel.valueKind == ChannelValueKind.COLOR) 3 else 1
+		require(base.size == size && points.size == size && points.all(Float::isFinite) && base.all(Float::isFinite)) { "Invalid override value" }
+		val wire = wire(channel)
+		val cell = channelCell(model, kind, id, channel, key) ?: return Outcome(model, listOf(GeneratedOverrideIssue(
+			GeneratedOverrideIssueKind.ORPHANED, generator, target, key, size, size, GeneratedOverrideOrphanReason.MISSING_KEYFORM, wire)))
+		fun indexed(values: List<Float>) = values.withIndex().associate { it.index to it.value }
+		val merged = ThreeWayMerge.merge(indexed(base), indexed(components(cell.form).toList()), indexed(points)) { a, b ->
+			a != null && b != null && abs(a - b) <= EPS
+		}
+		val result = FloatArray(size) { merged.merged.getValue(it) }
+		val value = if (size == 3) ChannelValue.Color(ColorRgb(result[0], result[1], result[2])) else ChannelValue.Scalar(result[0])
+		val issues = if (merged.conflicts.isEmpty()) emptyList()
+			else listOf(GeneratedOverrideIssue(GeneratedOverrideIssueKind.CONFLICT, generator, target, key, merged.conflicts.size, size, channel = wire))
+		val (owner, grids) = if (kind == "warp") warp(model, id)!!.let { KeyformOwner.Deformer(it.id) to it.channelGrids }
+			else model.drawables.first { it.id.raw == id }.let { KeyformOwner.Drawable(it.id) to it.channelGrids }
+		val grid = grids[channel]!!
+		val next = KeyformGrid(grid.axes, grid.cells.map { if (it === cell) KeyformCell(it.coordinate, value) else it })
+		return Outcome(model.withReplacedChannelGrids(owner, ChannelGrids(grids.gridsByChannel + (channel to next))), issues)
+	}
+
 	/**
 	 * A replay's model with what its overrides could not apply as recorded. [notes]: journal entries before a
 	 * version 2 split that failed only on the drawables that split supersedes and replayed as no-ops (from the
@@ -274,6 +396,10 @@ internal object GeneratedOverrides {
 		val base = command.getValue("base").jsonArray.map { it.jsonPrimitive.float }
 		val points = command.getValue("points").jsonArray.map { it.jsonPrimitive.float }
 		require(kind == "warp" || kind == "mesh") { "Unknown override target: $target" }
+		command["channel"]?.jsonPrimitive?.content?.let { name ->
+			val channel = requireNotNull(OVERRIDE_CHANNELS[name]) { "Unknown override channel: $name" }
+			return applyChannel(model, kind, id, generator, target, key, channel, base, points)
+		}
 		require(base.size == points.size && points.size % 2 == 0 && points.all(Float::isFinite) && base.all(Float::isFinite)) { "Invalid override form" }
 		fun orphaned(reason: GeneratedOverrideOrphanReason) = Outcome(model, listOf(GeneratedOverrideIssue(GeneratedOverrideIssueKind.ORPHANED, generator, target, key, points.size / 2, points.size / 2, reason)))
 		val current = (if (kind == "warp") warpCell(model, id, key)?.form?.controlPoints else meshCell(model, id, key)?.form?.positionDeltas)

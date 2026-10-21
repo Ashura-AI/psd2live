@@ -13,6 +13,7 @@ internal object WorkspaceQualitySchemas {
         "generator" to s.string(), "key" to s.dictionary(s.number()),
         "points" to s.integer(0), "total" to s.integer(0),
         "reason" to s.choices(*GeneratedOverrideOrphanReason.entries.map { it.wire }.toTypedArray()),
+        "channel" to s.choices("opacity", "draw_order", "multiply_color", "screen_color"),
     ), setOf("kind", "generator", "key", "points", "total"))
     private val skipped = s.obj(mapOf(
         "kind" to s.constant(GeneratedOverrideQuality.SUPERSEDED_KIND), "index" to s.integer(0), "op" to s.string(),

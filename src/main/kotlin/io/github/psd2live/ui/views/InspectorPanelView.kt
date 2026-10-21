@@ -387,8 +387,10 @@ private fun GeneratedOverrideIssueList(issues: List<GeneratedOverrideIssue>, pup
                 ?: puppet.drawables.firstOrNull { it.id.raw == issue.id }?.name ?: issue.id
             val key = issue.key.toSortedMap().entries.joinToString(", ") { (id, value) -> "$id=$value" }
             val text = when (issue.kind) {
-                GeneratedOverrideIssueKind.CONFLICT ->
-                    tr("inspector.overrides.conflict", name, key, issue.points, issue.total, issue.generator)
+                GeneratedOverrideIssueKind.CONFLICT -> issue.channel?.let { channel ->
+                    val label = channel.split('_').let { words -> words.first() + words.drop(1).joinToString("") { it.replaceFirstChar(Char::uppercaseChar) } }
+                    tr("inspector.overrides.channelConflict", name, key, tr("inspector.$label"), issue.generator)
+                } ?: tr("inspector.overrides.conflict", name, key, issue.points, issue.total, issue.generator)
                 GeneratedOverrideIssueKind.ORPHANED -> tr("inspector.overrides.orphaned", name, key, issue.generator,
                     tr("inspector.overrides.reason.${(issue.reason ?: GeneratedOverrideOrphanReason.MISSING_KEYFORM).wire}"))
             }
