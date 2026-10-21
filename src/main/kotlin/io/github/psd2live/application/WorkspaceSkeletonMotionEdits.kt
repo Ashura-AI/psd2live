@@ -5,6 +5,7 @@ import io.github.psd2live.core.BoneEnd
 import io.github.psd2live.core.MotionClip
 import io.github.psd2live.core.MotionClips
 import io.github.psd2live.core.MotionCurve
+import io.github.psd2live.core.MotionEvent
 import io.github.psd2live.core.MotionHandle
 import io.github.psd2live.core.MotionInterpolation
 import io.github.psd2live.core.MotionKey
@@ -103,8 +104,8 @@ internal object WorkspaceSkeletonMotionEdits {
                     duration = duration, fps = request["fps"]?.jsonPrimitive?.float ?: source.fps,
                     fadeIn = request["fade_in"]?.jsonPrimitive?.float ?: source.fadeIn,
                     fadeOut = request["fade_out"]?.jsonPrimitive?.float ?: source.fadeOut,
-                    enabled = request["enabled"]?.jsonPrimitive?.boolean ?: source.enabled,
-                    curves = if (duration != source.duration) MotionKeyEdits.withDuration(source, duration).curves else source.curves)
+                    enabled = request["enabled"]?.jsonPrimitive?.boolean ?: source.enabled)
+                    .let { if (duration != source.duration) MotionKeyEdits.withDuration(it.copy(duration = source.duration), duration) else it }
                 current.map { if (it.id == source.id) updated else it }
             }
             "put" -> {
@@ -154,6 +155,23 @@ internal object WorkspaceSkeletonMotionEdits {
                 val updated = clip.copy(curves = clip.curves.filterNot { it.parameterId == parameter } +
                     if (kept.isEmpty()) emptyList() else listOf(MotionCurve(parameter, kept)))
                 current.map { if (it.id == clip.id) updated else it }
+            }
+            "set_event" -> {
+                val clip = requireClip(current, request.requiredText("id"))
+                val event = MotionEvent(request.getValue("time").jsonPrimitive.float, request.requiredText("value"))
+                require(event.value.isNotEmpty()) { "An event needs a value" }
+                require(event.time <= clip.duration + MotionClips.TIME_EPSILON) { "Event time must lie within the clip" }
+                // Moving an event takes it from its old time first; one at the new time is replaced.
+                val from = request["from_time"]?.jsonPrimitive?.float
+                require(from == null || clip.events.any { abs(it.time - from) < MotionClips.TIME_EPSILON }) { "Motion event not found at $from" }
+                val kept = if (from == null) clip.events else clip.events.filterNot { abs(it.time - from) < MotionClips.TIME_EPSILON }
+                current.map { if (it.id == clip.id) clip.copy(events = MotionClips.normalizedEvents(kept + event.copy(time = event.time.coerceAtMost(clip.duration)))) else it }
+            }
+            "delete_event" -> {
+                val clip = requireClip(current, request.requiredText("id"))
+                val time = request.getValue("time").jsonPrimitive.float
+                require(clip.events.any { abs(it.time - time) < MotionClips.TIME_EPSILON }) { "Motion event not found at $time" }
+                current.map { if (it.id == clip.id) clip.copy(events = clip.events.filterNot { e -> abs(e.time - time) < MotionClips.TIME_EPSILON }) else it }
             }
             "remove_curve" -> {
                 val clip = requireClip(current, request.requiredText("id"))

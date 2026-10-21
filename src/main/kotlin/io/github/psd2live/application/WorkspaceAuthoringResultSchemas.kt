@@ -24,7 +24,7 @@ internal object WorkspaceAuthoringResultSchemas {
         "skeleton_auto", "skeleton_put", "skeleton_enable", "skeleton_bone", "skeleton_move", "skeleton_bind", "skeleton_remove", "skeleton_delete",
         "motion_put", "motion_delete", "motion_seed_builtin", "motion_set_key", "motion_delete_key", "motion_remove_curve",
         "motion_pose", "motion_move_keys", "motion_delete_keys", "motion_paste_keys", "motion_replace_keys", "motion_preset",
-        "motion_create", "motion_duplicate", "motion_rename", "motion_properties", "motion_close_loop",
+        "motion_create", "motion_duplicate", "motion_rename", "motion_properties", "motion_close_loop", "motion_set_event", "motion_delete_event",
     )
     private val normalizedOperations = setOf(
         "parameter_create", "parameter_update", "parameter_delete", "swing_put", "swing_delete", "interior_put", "interior_delete",
@@ -119,10 +119,11 @@ internal object WorkspaceAnimationResultSchemas {
     private val motionKey = s.obj(motionKeyFields, setOf("time", "value"))
     private val motionFields = linkedMapOf("id" to s.handle(), "name" to s.string(), "builtin" to s.string(), "loop" to s.boolean(),
         "duration" to s.number(), "fps" to s.number(), "fade_in" to s.number(), "fade_out" to s.number(), "enabled" to s.boolean(),
-        "curves" to s.array(s.obj(mapOf("parameter" to s.handle(), "keys" to s.array(motionKey)))))
-    private val motion = s.obj(motionFields, motionFields.keys - "builtin")
+        "curves" to s.array(s.obj(mapOf("parameter" to s.handle(), "keys" to s.array(motionKey)))),
+        "events" to s.array(s.obj(mapOf("time" to s.number(0), "value" to s.string()))))
+    private val motion = s.obj(motionFields, motionFields.keys - "builtin" - "events")
     private val motionSummaryFields = mapOf("id" to s.handle(), "name" to s.string(), "builtin" to s.string(),
-        "duration" to s.number(), "enabled" to s.boolean(), "curves" to s.integer(0))
+        "duration" to s.number(), "enabled" to s.boolean(), "curves" to s.integer(0), "events" to s.integer(0))
 
     fun forOperation(id: String): JsonObject? = when (id) {
         "skeleton_get" -> s.obj(mapOf("state" to s.handle(), "spec" to skeleton), setOf("state"))
@@ -130,7 +131,7 @@ internal object WorkspaceAnimationResultSchemas {
         "skeleton_pose" -> s.obj(mapOf("state" to s.handle(), "project_id" to s.handle(), "values" to values))
         "motion_get" -> s.obj(mapOf("state" to s.handle(), "clip" to motion))
         "motion_sample" -> s.obj(mapOf("state" to s.handle(), "id" to s.handle(), "time" to s.number(), "values" to values))
-        "motion_list" -> s.obj(mapOf("state" to s.handle(), "clips" to s.array(s.obj(motionSummaryFields, motionSummaryFields.keys - "builtin")), "builtins" to s.array(s.handle())))
+        "motion_list" -> s.obj(mapOf("state" to s.handle(), "clips" to s.array(s.obj(motionSummaryFields, motionSummaryFields.keys - "builtin" - "events")), "builtins" to s.array(s.handle())))
         else -> null
     }
 }

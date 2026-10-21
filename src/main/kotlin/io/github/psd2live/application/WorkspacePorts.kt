@@ -61,6 +61,8 @@ interface WorkspaceQueries : WorkspaceStatePort {
     /** Solve an FK/IK drag into parameter values without changing the model or preview. */
     fun solveSkeletonPose(request: JsonObject): JsonObject
     fun motionClips(): List<MotionClip>
+    /** The captured model's expressions and pose ([WorkspaceSidecarEdits.sidecars]). */
+    fun modelSidecars(): WorkspaceSidecars
     fun previewSession(): JsonObject
     fun layerMeshSettings(layerId: String): JsonObject
     fun sampleSourceColor(layerId: String, x: Int, y: Int): List<Int>

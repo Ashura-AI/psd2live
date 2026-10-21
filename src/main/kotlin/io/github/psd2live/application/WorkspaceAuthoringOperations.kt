@@ -11,6 +11,7 @@ import io.github.psd2live.core.LayerType
 import io.github.psd2live.core.SemanticTag
 import io.github.psd2live.core.Side
 import io.github.psd2live.core.MotionClips
+import io.github.psd2live.core.MotionEvent
 import io.github.psd2live.core.sim.SimMaterialPreset
 import kotlinx.serialization.json.*
 import java.util.UUID
@@ -855,6 +856,9 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         put("curves", arraySchema(objectSchema(buildJsonObject {
             put("parameter", string()); put("keys", arraySchema(motionKey, 1, 4096))
         }, listOf("parameter", "keys")), 0, 256))
+        put("events", arraySchema(objectSchema(buildJsonObject {
+            put("time", number()); put("value", buildJsonObject { put("type", "string"); put("maxLength", MotionEvent.MAX_VALUE_LENGTH) })
+        }, listOf("time", "value")), 0, MotionEvent.MAX_PER_CLIP))
     }, listOf("id", "name"))
     val motionSelection = arraySchema(objectSchema(buildJsonObject { put("parameter", string()); put("time", number()) }, listOf("parameter", "time")), 1, 4096)
     val copiedKeys = arraySchema(objectSchema(buildJsonObject { put("parameter", string()); put("key", motionKey) }, listOf("parameter", "key")), 1, 4096)
@@ -871,6 +875,8 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         variant("mode", "seed_builtin", buildJsonObject { put("state", string()); put("builtin", choices(*MotionClips.BUILTIN_NAMES.toTypedArray())); put("id", string()) }, listOf("state", "builtin")),
         variant("mode", "set_key", buildJsonObject { put("state", string()); put("id", string()); put("parameter", string()); put("key", motionKey) }, listOf("state", "id", "parameter", "key")),
         variant("mode", "delete_key", buildJsonObject { put("state", string()); put("id", string()); put("parameter", string()); put("time", number()) }, listOf("state", "id", "parameter", "time")),
+        variant("mode", "set_event", buildJsonObject { put("state", string()); put("id", string()); put("time", number()); put("value", buildJsonObject { put("type", "string"); put("minLength", 1); put("maxLength", MotionEvent.MAX_VALUE_LENGTH) }); put("from_time", number()) }, listOf("state", "id", "time", "value")),
+        variant("mode", "delete_event", buildJsonObject { put("state", string()); put("id", string()); put("time", number()) }, listOf("state", "id", "time")),
         variant("mode", "remove_curve", buildJsonObject { put("state", string()); put("id", string()); put("parameter", string()) }, listOf("state", "id", "parameter")),
         variant("mode", "pose", buildJsonObject { put("state", string()); put("id", string()); put("time", number()); put("values", previewValues) }, listOf("state", "id", "time", "values")),
         variant("mode", "move_keys", buildJsonObject { put("state", string()); put("id", string()); put("selection", motionSelection); put("dt", number()); put("dv", number()); put("normalized", boolean()) }, listOf("state", "id", "selection", "dt")),
@@ -880,7 +886,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         variant("mode", "close_loop", buildJsonObject { put("state", string()); put("id", string()); put("parameters", arraySchema(string(), 1, 256)) }, listOf("state", "id")),
         variant("mode", "preset", buildJsonObject { put("state", string()); put("builtin", choices(*MotionClips.BUILTIN_NAMES.toTypedArray())); put("action", choices("update", "reset", "delete", "restore")); put("values", previewValues); put("disabled", boolean()) }, listOf("state", "builtin", "action")),
     )
-    registerJsonOperation("motion", "Read and edit persistent motion clips and parameter timelines. create makes a named blank clip or copies a generated motion with its current knobs; duplicate copies a clip under a unique name; rename resolves name collisions; properties updates playback/export fields, dropping keys after a shortened duration; close_loop makes the listed curves (default all) end where they start - a key at 0 and at the end with the start's value, a repeating parameter's whole turns on, the end easing in at the start's slope - so a loop has no seam. A repeating parameter's keys may run up to 64 turns past its range; the runtime wraps them. sample returns exact interpolated values without authoring a pose. pose keys a parameter map; move_keys/delete_keys/paste_keys/replace_keys preserve timeline interpolation and handles. preset edits generated-motion knobs and lifecycle. preview_pose applies FK/IK and records optional auto keys atomically. Export writes authored clips to motion3.json.",
+    registerJsonOperation("motion", "Read and edit persistent motion clips and parameter timelines. create makes a named blank clip or copies a generated motion with its current knobs; duplicate copies a clip under a unique name; rename resolves name collisions; properties updates playback/export fields, dropping keys after a shortened duration; close_loop makes the listed curves (default all) end where they start - a key at 0 and at the end with the start's value, a repeating parameter's whole turns on, the end easing in at the start's slope - so a loop has no seam. A repeating parameter's keys may run up to 64 turns past its range; the runtime wraps them. sample returns exact interpolated values without authoring a pose. pose keys a parameter map; move_keys/delete_keys/paste_keys/replace_keys preserve timeline interpolation and handles. preset edits generated-motion knobs and lifecycle. set_event puts an event (motion3 UserData: the text a host receives as playback passes the time; from_time moves one) and delete_event removes one; motion_events lists them all with the meshes' user data. preview_pose applies FK/IK and records optional auto keys atomically. Export writes authored clips to motion3.json.",
         buildJsonObject { put("request", oneOf(motionBranches)) }, listOf("request"), true) { a ->
         val input = a.getValue("request").jsonObject
         validateOperationSchema(input, oneOf(motionBranches))
@@ -891,6 +897,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
                 putJsonArray("clips") { requireNotNull(queries).motionClips().forEach { add(buildJsonObject {
                     put("id", it.id); put("name", it.name); it.builtin?.let { builtin -> put("builtin", builtin) }
                     put("duration", it.duration); put("enabled", it.enabled); put("curves", it.curves.size)
+                    if (it.events.isNotEmpty()) put("events", it.events.size)
                 }) } }
                 putJsonArray("builtins") { MotionClips.BUILTIN_NAMES.forEach { add(JsonPrimitive(it)) } }
             }

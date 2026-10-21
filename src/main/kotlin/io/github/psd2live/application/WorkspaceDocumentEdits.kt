@@ -23,11 +23,11 @@ internal object WorkspaceDocumentEdits {
         "rig_edit_structure", "object_edit_appearance", "vertex_group_update", WorkspaceDrawOrderEdits.OP, WorkspaceRasterEdits.REBUILD_MESH, WorkspaceStructureMeshEdits.OP) + WorkspaceLayerTransform.supported +
         WorkspaceRasterCommands.supported + WorkspaceLayerEdits.supported + WorkspaceAssetLayerEdits.supported + WorkspacePartitionCommands.supported + WorkspaceGenerationUpdate.supported + WorkspaceWarpEdits.supported + WorkspaceWarpControlEdits.supported +
         setOf("auto", "put", "enable", "bone", "move", "bind", "remove", "delete").map { "skeleton_$it" } +
-        setOf("put", "delete", "seed_builtin", "set_key", "delete_key", "remove_curve", "pose", "move_keys", "delete_keys", "paste_keys", "replace_keys", "preset", "create", "duplicate", "rename", "properties", "close_loop").map { "motion_$it" } +
+        setOf("put", "delete", "seed_builtin", "set_key", "delete_key", "remove_curve", "pose", "move_keys", "delete_keys", "paste_keys", "replace_keys", "preset", "create", "duplicate", "rename", "properties", "close_loop", "set_event", "delete_event").map { "motion_$it" } +
         setOf("warp", "rotation", "glue", "topology").map { "canvas_$it" } +
         setOf("put", "delete", "deform").map { "path_$it" } +
         setOf("swing_put", "swing_delete", "interior_put", "interior_delete") + WorkspacePhysicsEdits.batchable + WorkspaceSimulationEdits.supported + WorkspaceCanvasWeightEdits.supported + WorkspaceCanvasDeformEdits.supported + WorkspaceTextureEdits.supported +
-        WorkspaceLayoutEdits.supported + WorkspaceMaterialEdits.supported + WorkspaceHitAreaEdits.supported
+        WorkspaceLayoutEdits.supported + WorkspaceMaterialEdits.supported + WorkspaceHitAreaEdits.supported + WorkspaceSidecarEdits.supported
 
     /**
      * [operation] on the complete editing document. Layout generation state only gates automatic semantic rigging;
@@ -71,6 +71,7 @@ internal object WorkspaceDocumentEdits {
             in WorkspaceAssetLayerEdits.supported -> WorkspaceAssetLayerEdits.apply(document, model, operation, assetResources, rasterWork::checkpoint)
             in WorkspaceSimulationEdits.supported -> WorkspaceSimulationEdits.apply(operation, document, model, simulationWork).document
             in WorkspaceHitAreaEdits.supported -> WorkspaceHitAreaEdits.apply(operation, document, model)
+            in WorkspaceSidecarEdits.supported -> WorkspaceSidecarEdits.apply(operation, document, model)
             "settings_update" -> settings(document, model, request.getValue("changes").jsonObject)
             "layer_mesh_update" -> mesh(document, model, request.text("layer_id"), request["changes"]?.jsonObject,
                 request["reset"]?.jsonPrimitive?.boolean ?: false)
@@ -191,6 +192,7 @@ internal object WorkspaceDocumentEdits {
                 "$id belongs to a swing or simulation; remove that instead"
             }
             return appendParameterCommand(document, model, mode, id).withMotionClips { MotionClips.withoutParameter(it, id) }
+                .let { it.copy(rigEdits = ModelSidecars.withoutParameter(it.rigEdits, id)) }
         }
         if (mode == "create") {
             require(Regex("[A-Za-z][A-Za-z0-9_]{0,63}").matches(id)) { "New parameter ID must be 1-64 ASCII letters, digits, or underscores and start with a letter" }
@@ -212,9 +214,13 @@ internal object WorkspaceDocumentEdits {
         if (mode == "update" && current != null && current.name == edit.name && current.min == edit.min &&
             current.max == edit.max && current.default == edit.default && current.kind == edit.kind && current.repeat == edit.repeat) return document
         return appendParameterCommand(document, model, mode, id, edit).withMotionClips { MotionClips.withParameterRange(it, id, edit.min, edit.max, edit.repeat) }
+            .let { it.copy(rigEdits = ModelSidecars.withParameterRange(it.rigEdits, id, edit.min, edit.max)) }
     }
 
-    /** Motions keep playing within the axes they drive: a narrowed or deleted axis takes their keys with it. */
+    /**
+     * Motions keep playing within the axes they drive: a narrowed or deleted axis takes their keys with it, and the
+     * expression entries on it likewise ([ModelSidecars]).
+     */
     private fun WorkspaceDocument.withMotionClips(change: (List<MotionClip>) -> List<MotionClip>): WorkspaceDocument {
         val clips = change(rigEdits.motionClips)
         return if (clips == rigEdits.motionClips) this else copy(rigEdits = rigEdits.copy(motionClips = clips))

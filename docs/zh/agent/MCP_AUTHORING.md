@@ -20,9 +20,9 @@
 
 工具集只决定 `tools/list` 发布哪些工具，所有操作在两种工具集下都能调用，执行与校验相同。
 
-- **精简（默认）**：25 个工具，直接覆盖 98 项操作（输入 schema 与说明约 7 万字符；完整工具集约 45 万字符，另有约 275 万字符的输出 schema）。
+- **精简（默认）**：27 个工具，直接覆盖 123 项操作（输入 schema 与说明约 8.5 万字符；完整工具集约 76 万字符，另有约 426 万字符的输出 schema）。
   - 单项工具：`workspace_overview`、`workspace_inspect`、`workspace_list_operations`、`workspace_get_operation`、`workspace_apply_edits`、`workspace_preview_edits`、`rig_deform`、`keyform_apply`，以及意图工具 `author_axis`、`author_physics`、`author_compile`（见[意图工具](#意图工具)）。
-  - 族工具：`view`、`parameter`、`motion`、`skeleton`、`path`、`physics`、`simulation`、`swing`、`source_paint`、`snapshot`、`history`、`project`、`job`。调用 `{"op":"set_key","request":{...},"wait_ms":20000}` 执行 `<族>_<op>`（此例为 `motion_set_key`），结果的 `operation` 为该操作 ID，`request` 按该操作的完整 schema 校验。成员取注册表中带该前缀的全部操作，私有草稿、试听与实时预览会话（`skeleton_draft_*`、`physics_audition*`、`*_preview*`）、历史注释和全局物理预设库除外。族工具发布各成员字段的扁平并集（不含 `oneOf`、`const`、`$ref`，形状因成员而异的字段只给说明），各 op 的必填字段列在工具说明中。
+  - 族工具：`view`、`parameter`、`motion`、`expression`、`pose`、`skeleton`、`path`、`physics`、`simulation`、`swing`、`source_paint`、`snapshot`、`history`、`project`、`job`。调用 `{"op":"set_key","request":{...},"wait_ms":20000}` 执行 `<族>_<op>`（此例为 `motion_set_key`），结果的 `operation` 为该操作 ID，`request` 按该操作的完整 schema 校验。成员取注册表中带该前缀的全部操作，私有草稿、试听与实时预览会话（`skeleton_draft_*`、`physics_audition*`、`*_preview*`）、历史注释和全局物理预设库除外。族工具发布各成员字段的扁平并集（不含 `oneOf`、`const`、`$ref`，形状因成员而异的字段只给说明），各 op 的必填字段列在工具说明中。
   - 其他操作经 `workspace_call` 调用：`{"operation":"layer_classify","request":{...}}`。操作 ID 同时是 `workspace_apply_edits` 成员名。
   - 不发布 `outputSchema`（结果仍以 `structuredContent` 返回，契约见 `workspace_get_operation`）；原子批量的 `edits` 成员只发布操作名枚举与 `request` 对象，成员字段执行时按单项 schema 严格校验。
   - `request_id` 与 `project_id` 可省略。`project_id` 取当前加载的工程；`state` 仍为必填，属于其他加载的 `state` 照常报 `state_conflict`。`request_id` 由操作与参数（含 `state`）派生，相同参数的重试取回原结果；上次相同调用已失败（含任务 `failed/cancelled`）时，再次调用作为新尝试执行。
@@ -170,6 +170,9 @@
 | `simulation_preview / simulation_preview_step / simulation_preview_get / simulation_preview_render` | 私有实时模拟场景；启动/重启/停止和显式 dt 步进为后台会话，读取/渲染不会推进时钟 |
 | `paint_session_begin / paint_session_list / paint_session_control / paint_session_commit` | 私有多笔触草稿、撤销/重做/跳转/取色/PNG；手势与取色使用画布单位，草稿是图层自身栅格（`width/height` 像素覆盖 `canvas_rect`）；确认前不修改工程像素，确认一次历史提交。`paint_session_begin` 传 `material_id`（代替 `layer_id`）在素材库条目自身像素上绘画：结果带 `material_id`，其他编辑提交不影响会话，只有该素材像素变化才使其失效；提交写成一次 `material_set_pixels`，显示该素材的图层随之更新，`rebuild_mesh` 不适用。`paint_session_control` 的 `select` 动作改变会话选区（`rectangle` / `ellipse` / `lasso` / `wand` 以 `op` 新建、添加、减去或交叉，或 `all` / `none` / `invert` / `feather`），之后的手势与笔画只落在选区内；选区不进笔画历史，`session.selection` 为其栅格包围盒。手势另有 `blur`（`opacity` 为强度）、`fill`（填充选区包围盒内的选区；无选区时填图层原区域与已画区域）、`gradient`（`end_color`、`kind: linear / radial`），油漆桶可传 `contiguous:false`，各手势可传 `lock_alpha` 只改已有像素（`eraser` / `clear` 不接受，请用画笔画背景色）；套索最多 4096 点 |
 | `motion_create / motion_duplicate / motion_rename / motion_properties / motion_pose / motion_move_keys / motion_delete_keys / motion_paste_keys / motion_replace_keys / motion_preset / motion_close_loop` | 动作生命周期、姿态打键、键移动/删除/粘贴/替换及生成预设；全部可参与原子批量；`motion_close_loop` 让所列曲线（默认全部）首尾衔接：0 与结尾各有关键帧，结尾取开头的值（循环参数沿转动方向取整圈，会超过 64 圈时报错），进入结尾的一段缓动时结尾以开头的斜率进入；不带 `id` 的 `motion_create` / `motion_duplicate` 新 ID 跳过仍留有时间轴辅助数据的已删动作 ID；`parameter_create` / `parameter_update` 设 `repeat: true` 的参数，关键帧可超出范围至多 64 圈，导出原值、由运行时绕回（需 Cubism 5.3 目标；更早的目标在损失报告中逐条列出超出范围的动作曲线，运行时会截断）；`cmo3` 写入 `isRepeat` |
+| `motion_set_event / motion_delete_event / motion_events` | 动作 Event（motion3 `UserData`）的写入、移动（`from_time`）与删除；`motion_events` 只读列出全部 Event 与网格用户数据 |
+| `expression_create / expression_put / expression_update / expression_set_entries / expression_capture / expression_delete / expression_duplicate / expression_move / expression_reset / expression_list / expression_get` | 表情（exp3）：从姿态、快照或当前参数新建，条目混合方式 `ADD` / `MULTIPLY` / `OVERWRITE`，淡入淡出与顺序；编辑可参与原子批量 |
+| `pose_put / pose_add_group / pose_set_group / pose_delete_group / pose_update / pose_clear / pose_get` | 姿势（pose3）组、链接部件与切换淡入；编辑可参与原子批量 |
 
 控制请求仍遵守修改去重及工作区令牌规则。会话可另外拥有自己的令牌；全局物理库使用独立库令牌。读取、渲染、播放帧和私有草稿不等同于文档提交；以 `kind/job_backed/batchable` 发现元数据区分执行方式。
 

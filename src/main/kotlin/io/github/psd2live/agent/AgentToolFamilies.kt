@@ -23,7 +23,9 @@ internal val AGENT_TOOL_FAMILIES = listOf(
     AgentToolFamily("view", "Render the actual model for observation: a pose, one layer, a layer in context, a pose sheet, " +
         "coverage of a canvas rectangle, history nodes side by side, or sampled exported motion. Returns PNG images."),
     AgentToolFamily("parameter", "Create, update or delete Cubism parameters. Deleting collapses every keyform axis at its default."),
-    AgentToolFamily("motion", "Read and edit motion clips and their parameter timelines: clips, keys, curves, poses and generated presets."),
+    AgentToolFamily("motion", "Read and edit motion clips and their parameter timelines: clips, keys, curves, poses, events and generated presets."),
+    AgentToolFamily("expression", "Read and edit the model's expressions (exp3): create from a pose or snapshot, set entries with Add/Multiply/Overwrite blends and fades."),
+    AgentToolFamily("pose", "Read and edit the pose (pose3): groups of parts of which one shows at a time, with linked parts and the switch fade."),
     AgentToolFamily("skeleton", "Read, infer and edit the authored skeleton (bones, binding, enable) and solve FK/IK poses.") {
         it.startsWith("draft_")
     },

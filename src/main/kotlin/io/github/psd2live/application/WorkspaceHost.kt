@@ -469,6 +469,8 @@ internal class WorkspaceHost<V>(
 
     override fun motionClips(): List<io.github.psd2live.core.MotionClip> = captureQueries().motionClips()
 
+    override fun modelSidecars(): WorkspaceSidecars = captureQueries().modelSidecars()
+
     override suspend fun editMotion(state: String, request: kotlinx.serialization.json.JsonObject): WorkspaceMutationResult {
         var changed = emptyList<String>()
         val result = mutateModel(state, null, "Edited motion", request["id"]?.jsonPrimitive?.contentOrNull ?: "motion") { document, model ->
