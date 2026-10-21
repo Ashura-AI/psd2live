@@ -6,7 +6,8 @@ import kotlinx.serialization.json.JsonObject
 internal object WorkspaceSettingsDraft {
     fun presetDefaults(): JsonObject {
         val keys = setOf("headStrength", "bodyStrength", "rigTuning", "featureDisplacementEnabled",
-            "mouthOutlineEnabled", "mouthShape", "mouthCurve", "mouthColor", "mouthThickness", "exportMotions",
+            "mouthOutlineEnabled", "mouthShape", "mouthCurve", "mouthColor", "mouthThickness",
+            "seeThroughBrows", "seeThroughEyes", "seeThroughOpacity", "exportMotions",
             "motionBasic", "motionIdle", "motionBlink", "motionNod", "motionShake", "motionSkeleton",
             "generatePhysics", "physicsFrontHair", "physicsBackHair", "physicsEyeJelly")
         return JsonObject(io.github.psd2live.project.WorkspaceSettingsCodec.encode(io.github.psd2live.core.PipelineConfig()).filterKeys { it in keys })
@@ -14,7 +15,7 @@ internal object WorkspaceSettingsDraft {
 
     // These switches can release an authored pose. Keep their transitions, including off then on.
     private val switches = setOf("meshOnly", "motionBasic", "motionIdle", "motionBlink", "generatePhysics",
-        "motionNod", "motionShake", "motionSkeleton", "mouthOutlineEnabled", "featureDisplacementEnabled")
+        "motionNod", "motionShake", "motionSkeleton", "mouthOutlineEnabled", "featureDisplacementEnabled", "seeThroughBrows", "seeThroughEyes")
 
     /** Continuous samples of values become their final patch between ordered switch transitions. */
     fun coalesce(changes: List<JsonObject>): List<JsonObject> = buildList {

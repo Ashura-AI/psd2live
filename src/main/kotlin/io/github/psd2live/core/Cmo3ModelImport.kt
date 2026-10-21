@@ -35,6 +35,7 @@ internal object Cmo3ModelImport {
         if (config.rigEdits.importedCmo3 == null) return config
         val defaults = PipelineConfig()
         return config.copy(mouthOutlineEnabled = defaults.mouthOutlineEnabled, generateDeformers = defaults.generateDeformers,
+            seeThroughBrows = defaults.seeThroughBrows, seeThroughEyes = defaults.seeThroughEyes,
             physicsFrontHair = defaults.physicsFrontHair, physicsBackHair = defaults.physicsBackHair, physicsEyeJelly = defaults.physicsEyeJelly,
             generatePhysics = defaults.generatePhysics, motionBasic = defaults.motionBasic, motionIdle = defaults.motionIdle,
             motionBlink = defaults.motionBlink, motionNod = defaults.motionNod, motionShake = defaults.motionShake,
@@ -186,6 +187,7 @@ internal object Cmo3ModelImport {
         )
         return source to config.copy(rigEdits = overlay, runtimeTarget = decoded.puppet.runtimeTarget,
             mouthOutlineEnabled = false, generateDeformers = false, meshOnly = false,
+            seeThroughBrows = false, seeThroughEyes = false,
             physicsFrontHair = false, physicsBackHair = false, physicsEyeJelly = false,
             generatePhysics = if (replace) config.generatePhysics else true,
             motionBasic = if (replace) config.motionBasic else false,

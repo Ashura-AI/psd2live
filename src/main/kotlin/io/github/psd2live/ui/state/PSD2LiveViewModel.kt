@@ -3610,6 +3610,11 @@ class PSD2LiveViewModel : AutoCloseable {
     }
 
     fun setMouthThickness(thickness: Float) = editPresetSettings(buildJsonObject { put("mouthThickness", thickness.coerceIn(0.5f, 8f)) })
+    fun setSeeThroughBrows(enabled: Boolean) = editPresetSettings(buildJsonObject { put("seeThroughBrows", enabled) })
+    fun setSeeThroughEyes(enabled: Boolean) = editPresetSettings(buildJsonObject { put("seeThroughEyes", enabled) })
+    fun setSeeThroughOpacity(opacity: Float) = editPresetSettings(buildJsonObject {
+        put("seeThroughOpacity", opacity.coerceIn(io.github.psd2live.core.SeeThroughLayers.OPACITY_RANGE))
+    })
 
     fun setMouthColor(color: Int?) {
         require(color == null || color in 0..0xFFFFFF)

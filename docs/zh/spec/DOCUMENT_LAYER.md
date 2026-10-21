@@ -43,10 +43,12 @@
 | `swing:<ID>`（每个未烘焙摆动） | `rig:authored`、该摆动的设置 | 其参数，及其参数在每个目标 Warp 上的关键形 |
 | `simulation:<ID>`（每个已烘焙且启用的模拟） | `rig:authored`、该模拟的设置与烘焙 | 其模式参数，及模式参数在烘焙网格上的关键形 |
 | `overrides`（覆盖合并） | 所有生成的关键形、覆盖、生成器集合 | `rig:final` |
-| `physics`（物理组） | `rig:final`、生成的参数、物理与骨架设置 | `physics` |
-| `motions`（生成动作） | `rig:final`、`physics`、动作设置、骨架定义 | `motions` |
+| `seeThrough`（透过刘海的复制件跟随原件） | `rig:final` | `rig:seeThrough` |
+| `physics`（物理组） | `rig:final`、`rig:seeThrough`、生成的参数、物理与骨架设置 | `physics` |
+| `motions`（生成动作） | `rig:final`、`rig:seeThrough`、`physics`、动作设置、骨架定义 | `motions` |
 
 - 重放（`RigEditOverlay.applyTo`）按图的拓扑顺序运行日志之后的节点：先 `skeleton.skin`，再摆动与模拟，与此前“先全部摆动、再全部模拟”的顺序一致；声明顺序打破平局。
+- 透过刘海的复制件（`SeeThroughLayers`，见[变形器与参数参考](DEFORMER_AND_PARAMETER_SPEC.md#自动形变)）由 `rig` 节点随基础 Rig 生成，ID 为原件 ID 加 `_SeeThrough`，自身拥有蒙版、绘制顺序与不透明度；`seeThrough` 节点在覆盖合并之后（`RigEditOverlay.finish`，图层显隐套用后再跑一次）把父变形器、网格、几何关键形、混合形状、颜色、显隐与纹理从原件同步过来，因此原件的画布编辑与生成结果覆盖都传到复制件；复制件不拥有任何 `keyform:` 对象，在它上面的编辑会被同步覆盖，画布上也不可选取。
 - 文档若让两个生成器声明同一参数，先声明者保留拥有权，后者的声明被丢弃，重建仍可进行，冲突由生成器自身报告。
 - `DocumentGenerators.stale(before, after)` 给出一次文档变化后需要重跑的生成器：读取了变化部分的生成器及其全部下游；被修改或删除的生成器原先拥有的对象也视为变化。例如调整一个摆动只重跑该摆动、覆盖合并、物理与动作，不重跑 Rig 生成、骨架或其他模拟。
 - Rig 生成按阶段登记为节点（见下文[Rig 生成阶段](#rig-生成阶段)）；`graph(overlay, layers)` 给出图层列表时每层一个 `mesh:<图层>` 节点，某层像素变化只让该层网格、组装及其下游过期。

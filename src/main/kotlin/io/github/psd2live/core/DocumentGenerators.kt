@@ -13,7 +13,8 @@ import org.umamo.runtime.model.PuppetModel
  * atlas binding - whose outputs [RigStageCache] keeps under keys of only what each reads; the skeleton stage bakes the authored
  * skeleton into it; the journal replays the user's edits; each swing and each baked simulation then adds the
  * keyforms of its own parameters (and the skeleton skins the meshes the journal placed under deformers of its own,
- * [SKIN]); generated overrides merge the user's edits of those keyforms; physics and
+ * [SKIN]); generated overrides merge the user's edits of those keyforms; the copies over the bangs follow their
+ * originals ([SEE_THROUGH]); physics and
  * the generated motions read the finished rig. Replay runs the swings and simulations in the graph's order,
  * and an edit of a keyform is recorded as an override of the generator that owns it.
  *
@@ -42,6 +43,12 @@ internal object DocumentGenerators {
 	const val PRIMITIVES = "document:primitives"
 	const val JOURNAL = "journal"
 	const val OVERRIDES = "overrides"
+
+	/**
+	 * The copies of features over the bangs ([SeeThroughLayers]): the base rig adds them and owns their masks, draw
+	 * order and opacity; after the overrides each takes the rest - parent, mesh, keyforms, colors - from its original.
+	 */
+	const val SEE_THROUGH = "seeThrough"
 	const val PHYSICS = "physics"
 	const val MOTIONS = "motions"
 	private const val SWING = "swing:"
@@ -144,8 +151,10 @@ internal object DocumentGenerators {
 			parameters += writes.filter { it.startsWith("parameter:") }
 		}
 		nodes += GeneratorNode(OVERRIDES, keyforms + "rig:authored" + "document:overrides" + "document:generators", claim(listOf("rig:final")))
-		nodes += GeneratorNode(PHYSICS, parameters + "rig:final" + "document:physics" + "document:skeleton", claim(listOf("physics")))
-		nodes += GeneratorNode(MOTIONS, setOf("rig:final", "physics", "document:motions", "document:skeleton"), claim(listOf("motions")))
+		// The copies over the bangs the base made take their originals' state from the finished rig.
+		nodes += GeneratorNode(SEE_THROUGH, setOf("rig:final"), claim(listOf("rig:seeThrough")))
+		nodes += GeneratorNode(PHYSICS, parameters + "rig:final" + "rig:seeThrough" + "document:physics" + "document:skeleton", claim(listOf("physics")))
+		nodes += GeneratorNode(MOTIONS, setOf("rig:final", "rig:seeThrough", "physics", "document:motions", "document:skeleton"), claim(listOf("motions")))
 		return GeneratorGraph(nodes)
 	}
 

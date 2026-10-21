@@ -464,6 +464,9 @@ internal object WorkspaceStateCodec {
         } }
         put("mouthColor", state.mouthColor?.let(::JsonPrimitive) ?: JsonNull)
         put("mouthThickness", state.mouthThickness)
+        put("seeThroughBrows", state.seeThroughBrows)
+        put("seeThroughEyes", state.seeThroughEyes)
+        put("seeThroughOpacity", state.seeThroughOpacity)
         put("exportMotions", state.exportMotions)
         put("motionBasic", state.motionBasic)
         put("motionIdle", state.motionIdle)
@@ -600,6 +603,11 @@ internal object WorkspaceStateCodec {
         mouthCurve = decodeMouthCurve(value["mouthCurve"]) ?: base.mouthCurve,
         mouthColor = if ("mouthColor" in value) value["mouthColor"]?.jsonPrimitive?.intOrNull?.takeIf { it in 0..0xFFFFFF } else base.mouthColor,
         mouthThickness = value["mouthThickness"]?.jsonPrimitive?.floatOrNull?.takeIf { it.isFinite() }?.coerceIn(0.5f, 8f) ?: base.mouthThickness,
+        // Complete settings saved before the copies over the bangs make none.
+        seeThroughBrows = value["seeThroughBrows"]?.jsonPrimitive?.booleanOrNull ?: if ("atlasSize" in value) false else base.seeThroughBrows,
+        seeThroughEyes = value["seeThroughEyes"]?.jsonPrimitive?.booleanOrNull ?: if ("atlasSize" in value) false else base.seeThroughEyes,
+        seeThroughOpacity = value["seeThroughOpacity"]?.jsonPrimitive?.floatOrNull?.takeIf { it.isFinite() }
+            ?.coerceIn(io.github.psd2live.core.SeeThroughLayers.OPACITY_RANGE) ?: base.seeThroughOpacity,
         featureDisplacementEnabled = value["featureDisplacementEnabled"]?.jsonPrimitive?.boolean ?: base.featureDisplacementEnabled,
         exportMotions = value["exportMotions"]?.jsonPrimitive?.boolean ?: base.exportMotions,
         motionBasic = value["motionBasic"]?.jsonPrimitive?.boolean ?: base.motionBasic,

@@ -333,6 +333,71 @@ internal fun ModelPresetsSection(
 						)
 					}
 				}
+
+				// Features shown through the bangs: copies over the front hair, clipped to it.
+				Row(
+					modifier = Modifier
+						.fillMaxWidth()
+						.padding(top = 2.dp),
+					verticalAlignment = Alignment.CenterVertically,
+					horizontalArrangement = Arrangement.spacedBy(8.dp),
+				) {
+					CompactCheckbox(
+						checked = state.seeThroughBrows,
+						onCheckedChange = { viewModel.setSeeThroughBrows(it) },
+						label = tr("seeThrough.brows"),
+						enabled = !isBusy && !state.meshOnly,
+						modifier = Modifier.weight(1f),
+					)
+					CompactCheckbox(
+						checked = state.seeThroughEyes,
+						onCheckedChange = { viewModel.setSeeThroughEyes(it) },
+						label = tr("seeThrough.eyes"),
+						enabled = !isBusy && !state.meshOnly,
+						modifier = Modifier.weight(1f),
+					)
+				}
+
+				if (state.seeThroughBrows || state.seeThroughEyes) {
+					Row(
+						modifier = Modifier.fillMaxWidth(),
+						verticalAlignment = Alignment.CenterVertically,
+					) {
+						Text(
+							text = tr("seeThrough.opacity"),
+							style = typography.body.copy(fontSize = 10.5.sp),
+							color = colors.textPrimary,
+							modifier = Modifier.width(76.dp),
+							textAlign = TextAlign.Right,
+						)
+						Spacer(Modifier.width(5.dp))
+						CompactSlider(
+							value = state.seeThroughOpacity,
+							onValueChange = { viewModel.setSeeThroughOpacity(it) },
+							onValueChangeStarted = viewModel::beginEditorGesture,
+							onValueChangeFinished = viewModel::endEditorGesture,
+							valueRange = 0f..1f,
+							enabled = !isBusy && !state.meshOnly,
+							height = 14.dp,
+							modifier = Modifier.weight(1f),
+						)
+						Spacer(Modifier.width(4.dp))
+						CompactNumberSpinner(
+							onEditStart = { viewModel.beginEditorField("setSeeThroughOpacity") },
+							onEditEnd = { viewModel.endEditorField("setSeeThroughOpacity") },
+							value = (state.seeThroughOpacity * 100f).toDouble(),
+							onValueChange = { viewModel.setSeeThroughOpacity(it.toFloat() / 100f) },
+							min = 0.0,
+							max = 100.0,
+							step = 5.0,
+							decimals = 0,
+							unit = "%",
+							enabled = !isBusy && !state.meshOnly,
+							modifier = Modifier.width(60.dp),
+							height = 20.dp,
+						)
+					}
+				}
 			}
 		}
 

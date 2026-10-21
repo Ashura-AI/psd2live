@@ -217,6 +217,15 @@ data class PipelineConfig(
     val mouthCurve: io.github.psd2live.core.MouthCurve = io.github.psd2live.core.MouthCurve.preset("smile"),
     val mouthColor: Int? = null,
     val mouthThickness: Float = 1.5f,
+	/**
+	 * Copy the eyebrows over the bangs, half seen through the hair ([SeeThroughLayers]). A document saved before the
+	 * setting copies nothing.
+	 */
+	val seeThroughBrows: Boolean = true,
+	/** Copy the eye lines (lashes and closed-eye lines) over the bangs as well. */
+	val seeThroughEyes: Boolean = false,
+	/** The opacity of the copies over the bangs. */
+	val seeThroughOpacity: Float = SeeThroughLayers.DEFAULT_OPACITY,
 	val exportMotions: Boolean = true,
 	/** The basic motions (idle, blink, nod, shake) as a group: off, the model has none of them. */
 	val motionBasic: Boolean = true,

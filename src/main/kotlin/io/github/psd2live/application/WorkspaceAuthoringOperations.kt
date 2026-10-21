@@ -208,9 +208,10 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         listOf("atlasSize", "meshSpacing", "texturePadding", "alphaThreshold").forEach { put(it, integer(0)) }
         listOf("meshOuterMargin", "meshEdgeWidth", "meshMaxEdgeDistance", "meshInteriorDensity",
             "headStrength", "bodyStrength", "mouthThickness").forEach { put(it, number()) }
+        put("seeThroughOpacity", buildJsonObject { put("type", "number"); put("minimum", 0); put("maximum", 1) })
         put("exportPixelsPerUnit", oneOf(listOf(number(), buildJsonObject { put("type", "null") })))
         listOf("meshSuppressBoundaryDiagonals", "meshOnly", "generateDeformers", "featureDisplacementEnabled", "mouthOutlineEnabled",
-            "generatePhysics", "physicsFrontHair", "physicsBackHair", "physicsEyeJelly",
+            "seeThroughBrows", "seeThroughEyes", "generatePhysics", "physicsFrontHair", "physicsBackHair", "physicsEyeJelly",
             "exportMotions", "motionBasic", "motionIdle", "motionBlink", "motionNod", "motionShake", "motionSkeleton",
             "exportCmo3", "exportMoc3", "exportJson", "exportCan3", "exportHiddenParts", "exportHiddenDrawables",
             "exportGuideImageParts", "exportIncludePhysics", "exportIncludeUserData", "exportIncludeDisplayInfo").forEach { put(it, boolean()) }

@@ -37,13 +37,13 @@ private val ranges = mapOf(
     "meshMaxEdgeDistance" to (6.0..128.0), "meshInteriorDensity" to (6.0..128.0),
     "texturePadding" to (0.0..32.0), "alphaThreshold" to (0.0..255.0),
     "headStrength" to (0.0..4.0), "bodyStrength" to (0.0..4.0),
-    "mouthThickness" to (0.5..8.0), "exportPixelsPerUnit" to (1.0..1000000.0),
+    "mouthThickness" to (0.5..8.0), "exportPixelsPerUnit" to (1.0..1000000.0), "seeThroughOpacity" to (0.0..1.0),
     "meshWrap" to (0.0..io.github.psd2live.core.MeshWrap.range.endInclusive.toDouble()),
 )
 private val integers = setOf("atlasSize", "meshSpacing", "texturePadding", "alphaThreshold")
 private val booleans = setOf(
     "meshSuppressBoundaryDiagonals", "meshOnly", "generateDeformers", "featureDisplacementEnabled", "mouthOutlineEnabled",
-    "generatePhysics", "physicsFrontHair", "physicsBackHair", "physicsEyeJelly",
+    "seeThroughBrows", "seeThroughEyes", "generatePhysics", "physicsFrontHair", "physicsBackHair", "physicsEyeJelly",
     "exportMotions", "motionBasic", "motionIdle", "motionBlink", "motionNod", "motionShake", "motionSkeleton",
     "exportCmo3", "exportMoc3", "exportJson", "exportCan3", "exportHiddenParts", "exportHiddenDrawables",
     "exportGuideImageParts", "exportIncludePhysics", "exportIncludeUserData", "exportIncludeDisplayInfo",

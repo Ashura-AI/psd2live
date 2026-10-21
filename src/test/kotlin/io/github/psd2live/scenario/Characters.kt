@@ -79,6 +79,22 @@ internal object Characters {
 		return document(420, 420, parts, PipelineConfig(atlasSize = 512, generatePhysics = false, exportMoc3 = false))
 	}
 
+	/**
+	 * [figure] with an eyebrow on each side under the bangs, the hair reaching over both: what the copies over the bangs
+	 * are made for ([SeeThroughLayers]).
+	 */
+	fun browed(): WorkspaceDocument = document(420, 420, figureParts(1f).map {
+		// Lower orders list first, in front: the bangs over the brows over the face over the back hair.
+		when (it.tag) {
+			SemanticTag.FACE -> Part(it.id, 11, it.tag, it.side, it.inside)
+			SemanticTag.BACK_HAIR -> Part(it.id, 12, it.tag, it.side, it.inside)
+			else -> it
+		}
+	} + listOf(
+		Part("brow_r", 9, SemanticTag.EYEBROW, Side.RIGHT, box(184, 50, 204, 56)),
+		Part("brow_l", 10, SemanticTag.EYEBROW, Side.LEFT, box(216, 50, 236, 56)),
+	), PipelineConfig(atlasSize = 512, generatePhysics = false, exportMoc3 = false))
+
 	/** A 64² head: back hair and a face. The smallest document the hair generators and simulation presets act on. */
 	fun head(physics: Boolean = true): WorkspaceDocument = document(64, 64, listOf(
 		Part("hair", 0, SemanticTag.BACK_HAIR, Side.NONE, box(16, 8, 48, 56)),

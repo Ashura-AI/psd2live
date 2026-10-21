@@ -93,12 +93,12 @@ internal object WorkspaceSettingsResultTypes {
     // TextureUpscaleConfig serialization intentionally omits default values.
     private val upscale = s.obj(upscaleFields, emptySet())
     private val booleanFields = listOf("meshSuppressBoundaryDiagonals", "meshOnly", "generateDeformers", "featureDisplacementEnabled", "mouthOutlineEnabled",
-        "exportMotions", "motionBasic", "motionIdle", "motionBlink", "motionNod", "motionShake", "motionSkeleton", "generatePhysics",
+        "seeThroughBrows", "seeThroughEyes", "exportMotions", "motionBasic", "motionIdle", "motionBlink", "motionNod", "motionShake", "motionSkeleton", "generatePhysics",
         "physicsFrontHair", "physicsBackHair", "physicsEyeJelly", "hairSimulationFront", "hairSimulationBack", "exportCmo3", "exportMoc3", "exportJson", "exportCan3",
         "exportHiddenParts", "exportHiddenDrawables", "exportGuideImageParts", "exportIncludePhysics", "exportIncludeUserData", "exportIncludeDisplayInfo")
     private val settingFields = booleanFields.associateWith { s.boolean() } +
         listOf("atlasSize", "meshSpacing", "texturePadding", "alphaThreshold").associateWith { s.integer() } +
-        listOf("meshOuterMargin", "meshEdgeWidth", "meshMaxEdgeDistance", "meshInteriorDensity", "headStrength", "bodyStrength", "mouthThickness").associateWith { s.number() } +
+        listOf("meshOuterMargin", "meshEdgeWidth", "meshMaxEdgeDistance", "meshInteriorDensity", "headStrength", "bodyStrength", "mouthThickness", "seeThroughOpacity").associateWith { s.number() } +
         mapOf("textureUpscale" to upscale, "meshEdgeMode" to meshFields.getValue("edgeMode"), "meshFillAlgorithm" to meshFields.getValue("fillAlgorithm"),
             "meshUnits" to s.choices(*io.github.psd2live.core.MeshUnits.entries.map { it.name }.toTypedArray()),
             "meshFillParameters" to fill, "meshOverrides" to s.dictionary(storedMesh), "drawOrderOverrides" to s.dictionary(s.number()),

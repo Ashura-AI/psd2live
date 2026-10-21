@@ -24,7 +24,8 @@ internal object RigGenerationChange {
         before.meshOnly != after.meshOnly || (!before.meshOnly && before.generateDeformers) != (!after.meshOnly && after.generateDeformers) ||
             before.featureDisplacementEnabled != after.featureDisplacementEnabled || before.mouthOutlineEnabled != after.mouthOutlineEnabled ||
             before.mouthShape != after.mouthShape || before.mouthCurve != after.mouthCurve || before.mouthColor != after.mouthColor ||
-            before.mouthThickness != after.mouthThickness ||
+            before.mouthThickness != after.mouthThickness || before.seeThroughBrows != after.seeThroughBrows ||
+            before.seeThroughEyes != after.seeThroughEyes || before.seeThroughOpacity != after.seeThroughOpacity ||
             ((!before.meshOnly || !after.meshOnly) && (before.headTurnStrength != after.headTurnStrength || before.bodyStrength != after.bodyStrength)) ||
             before.rigTuning != after.rigTuning
 }

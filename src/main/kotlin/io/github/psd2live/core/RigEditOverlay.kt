@@ -522,7 +522,8 @@ data class RigEditOverlay(
 		// Edits of generated keyforms merge with what the generators produce now.
 		val overrides = if (authoringJournal.none(GeneratedOverrides::isOverride)) GeneratedOverrides.Outcome(model, emptyList())
 			else GeneratedOverrides.applyAll(model, authoringJournal, ArtPrimitiveJournal.replacementDrawables(this).keys)
-		model = overrides.model
+		// Copies over the bangs follow their originals as every edit and generator left them.
+		model = SeeThroughLayers.follow(overrides.model)
 		return GeneratedOverrides.Outcome(RigStructureEdits.replay(model, generatedPanelEdits + deferredJournalEdits).withParametersSyncedFromTree(), overrides.issues, notes)
 	}
 
@@ -651,6 +652,8 @@ internal fun AuthoredRig.finished(overlay: RigEditOverlay, layerVisibility: Map<
 		val visible = layerVisibility[layer] ?: continue
 		model = model.copy(drawables = model.drawables.map { if (it.id.raw == id) it.copy(isVisible = visible) else it })
 	}
+	// A copy over the bangs shows as its original does.
+	model = SeeThroughLayers.follow(model)
 	model = ArtPrimitiveJournal.pruneAtlas(model, overlay)
 	return rig.copy(puppet = model, overrideIssues = outcome.issues, supersededEntryNotes = outcome.notes)
 		.withDrawOrderOverrides(drawOrderOverrides)

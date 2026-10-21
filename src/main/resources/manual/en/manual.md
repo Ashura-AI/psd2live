@@ -730,7 +730,7 @@ The **Model presets** panel decides in one place what is generated automatically
 ## Contents of each group
 | Group | Contents |
 |---|---|
-| Deformation and mouth shapes | Facial-feature offset deformer switches, head and body amounts (0–4×), upper and lower lip strokes with their line width and color, mouth shape settings |
+| Deformation and mouth shapes | Facial-feature offset deformer switches, head and body amounts (0–4×), upper and lower lip strokes with their line width and color, mouth shape settings, brows and eye lines through the bangs with their opacity |
 | Rig values | Body X (turning left and right), body Y, body lean forward and back, size change (head-to-body ratio), body Z and breathing, depth and perspective; **Advanced** holds head turning, eyes, eyebrows and mouth |
 | Motions | Two groups, **Basic motions** and **Skeleton motions**; when turned off, that group's motions are removed from the Animation panel, preview and export |
 | Physics and simulation | Front hair and back hair each choose **Simulation** / **Classic sway** / **Off**; **Clothing** simulation (acts only on loose parts); jelly eyes; auto Pin physics weights |
@@ -1360,6 +1360,7 @@ Head turns, blinks, eyeballs, eyebrows, mouth shapes and lip sync are all genera
 - Head X / Y: the end and middle points combine into nine poses, based on the head tilt in the original art, with extra correction for the diagonals.
 - The face is corrected with a lat-long grid and by region; eyes and brows, pupils, mouth and ears each have their own compensation or masking.
 - Mouth: opening and mouth form are generated from the mouth shape settings, and upper and lower lip outlines can optionally be generated.
+- Brows through the bangs: each brow the front hair covers gets a copy drawn just above the bangs at partial opacity and clipped to them, so it shows through the hair as in anime. The copy follows its brow through every deformer, form and edit; edit the brow, not the copy. Eye lines can be copied too. New models have brows on and eye lines off; models made before keep none until you turn it on.
 - Front and back hair are separated from strong face deformation and each outputs its own sway parameter.
 ## Adjust the range
 1. Open the **Rigging & Facial** group in the **Model presets** panel and adjust the **Facial Feature Displacement Deformer** switch and **Head range** and **Body range**.
