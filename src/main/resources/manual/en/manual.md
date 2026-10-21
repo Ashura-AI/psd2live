@@ -988,6 +988,15 @@ References of different angles, such as front, side and looking up, can be stack
 *> The **Pin to Keyform** submenu of the canvas context menu is the same panel. Pins only decide when the editor shows a reference; they are not exported.
 
 @@ hittest | Preparation for Setting Up Collision Detection
+Hit areas tell an app which part of the model was clicked: change the expression when the head is tapped, play a motion when the body is. PSD2Live keeps the hit areas in the project and writes them on export to model3.json's `HitAreas` (the VTube Studio package carries them too) and to the `.p2lrt` runtime model.
+## Setting up hit areas
+- **Inspector**: select an ArtMesh and choose the area it belongs to in **Hit area**, or **New hit area** to start one with it. While there is none, **Set up Head and Body** creates Head and Body from the recognized face and top (the neck or the bottom when there is no top). Once the mesh is in an area, edit its **Hit area name** (what an app asks for; Head and Body are usual) and **Hit area ID**.
+- **Hierarchy**: right-click an ArtMesh and, under **Hit areas**, check or uncheck the areas it belongs to, or choose **New hit area from this mesh**.
+An area can cover several ArtMeshes; areas are tested in list order and the first hit wins. Each change is one history step and can be undone. Without any area, the `.p2lrt` runtime uses automatic Head and Body areas and model3.json gets no hit areas.
+## Checking in the preview
+Click the model on a preview canvas without dragging: the area hit is highlighted in the accent color and the log reads "Hit area: name (ID)"; a miss logs that there is no hit area there. The test is the runtime's: a mesh that is visible, has an opacity above 0 and has the point inside one of its triangles is hit.
+*> A model3.json hit area names a single ArtMesh, so an area of several meshes is written as several entries of the same name, which the export report notes. The Cubism SDK samples test a mesh's bounding rectangle, which can differ slightly from the preview.
+
 @@ blend-mode | Blend mode
 The blend mode decides how an ArtMesh's color combines with what has already been drawn beneath it, and is often used for shadows and highlights. Select an ArtMesh and choose in **Blend Mode** in the **Inspector**:
 | Mode | Effect |

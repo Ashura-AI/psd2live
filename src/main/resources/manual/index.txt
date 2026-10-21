@@ -95,7 +95,7 @@
     - clipping-mask same cubism=clipping-mask
     - reversed-mask same cubism=reversed-mask
     - sketch different cubism=sketch
-    - hittest missing cubism=hittest
+    - hittest different cubism=hittest
     - blend-mode different cubism=blend-mode
     - interior-shape exclusive
   + artpath-folder
