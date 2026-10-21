@@ -60,7 +60,25 @@ internal class InteriorDraft(effect: NativeInteriorEffect?) {
 		version++
 	}
 
+	/** Whether these values are [effect]'s; a blank source asks for a private input, which any saved one answers. */
+	private fun matches(effect: NativeInteriorEffect) =
+		shape == effect.settings && motion == effect.motion && guides == effect.guides &&
+			sources.size == effect.sources.size &&
+			sources.zip(effect.sources).all { (draft, saved) -> draft.isBlank() || draft == saved.id.raw }
+
+	/**
+	 * Clean again once the values are the saved recipe's: a commit that landed after the draft moved on, or a drag put
+	 * back to where it started, leaves nothing unsaved, and the draft follows undo and MCP edits again.
+	 */
+	fun settle(effect: NativeInteriorEffect? = recipe) {
+		if (dirty && effect != null && matches(effect)) {
+			recipe = effect
+			dirty = false
+		}
+	}
+
 	fun sync(effect: NativeInteriorEffect?) {
+		settle(effect)
 		if (dirty || recipe === effect) return
 		recipe = effect
 		shapeValue = effect?.settings ?: InteriorSurfaceSettings()

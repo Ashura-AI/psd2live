@@ -81,7 +81,25 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 	private var alphaKey: Any? = null
 	private var alphaValue: InteriorFrame? = null
 
+	private var sceneKey: List<Any?>? = null
+	private var sceneValue: Scene? = null
+
+	/**
+	 * The effect on the selected mesh, kept while nothing it is built from changes: the overlay, the hover, the press and
+	 * the status bar all ask for it every frame.
+	 */
 	fun scene(): Scene? {
+		val state = editor.state
+		val key = listOf(state.previewModel, editor.preview, state.selectedLayerId, state.rigEdits.interiorEffects, state.parameterValues,
+			state.projectOpenGeneration, state.activeWorkspace.id)
+		if (key != sceneKey) {
+			sceneKey = key
+			sceneValue = buildScene()
+		}
+		return sceneValue
+	}
+
+	private fun buildScene(): Scene? {
 		val state = editor.state
 		val model = state.previewModel ?: return null
 		val layerId = state.selectedLayerId ?: return null
@@ -148,13 +166,13 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 	// ── Raster <-> screen ──────────────────────────────────────────────────────
 
 	private var bindingMap: InteriorCanvasMap? = null
-	private val bindingCache = HashMap<InteriorPoint, DeformPathPoint>()
+	private val bindingCache = HashMap<InteriorPoint, DeformPathPoint?>()
 
 	/**
 	 * Where each raster point sits in the mesh. Binding is the costly step, so it is kept per point for as long as the
 	 * mesh stays: a drag rebinds only the points it moved.
 	 */
-	private fun bindings(scene: Scene, points: Collection<InteriorPoint>): Map<InteriorPoint, DeformPathPoint> {
+	private fun bindings(scene: Scene, points: Collection<InteriorPoint>): Map<InteriorPoint, DeformPathPoint?> {
 		if (bindingMap !== scene.map || bindingCache.size > BINDING_CACHE) {
 			bindingMap = scene.map
 			bindingCache.clear()
@@ -163,31 +181,43 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 		return bindingCache
 	}
 
-	/** [points] on screen, as the mesh is drawn now. */
-	fun screen(scene: Scene, points: List<InteriorPoint>, viewport: CanvasViewport,
-	           bound: Map<InteriorPoint, DeformPathPoint> = emptyMap()): List<Offset> {
+	/** [points] on screen, as the mesh is drawn now; empty when the mesh has no area to carry them. */
+	fun screen(scene: Scene, points: List<InteriorPoint>, viewport: CanvasViewport): List<Offset> {
 		if (points.isEmpty()) return emptyList()
+		val bound = bindings(scene, points)
 		val local = FloatArray(points.size * 2)
 		for ((i, p) in points.withIndex()) {
-			val (x, y) = (bound[p] ?: scene.map.bind(p)).position(scene.mesh.geometry.points)
+			val (x, y) = (bound[p] ?: return emptyList()).position(scene.mesh.geometry.points)
 			local[i * 2] = x; local[i * 2 + 1] = y
 		}
 		return editor.screen(local, scene.mesh, viewport)
 	}
 
-	/** The raster pixel under [pos]. */
-	fun raster(scene: Scene, pos: Offset, viewport: CanvasViewport): InteriorPoint {
-		val placed = editor.screen(scene.mesh.geometry.points, scene.mesh, viewport)
-		val xy = FloatArray(placed.size * 2) { if (it % 2 == 0) placed[it / 2].x else placed[it / 2].y }
-		return scene.map.toRaster(xy, pos.x, pos.y)
+	private var placedPoints: FloatArray? = null
+	private var placedViewport: CanvasViewport? = null
+	private var placedValue = FloatArray(0)
+
+	/** The mesh's vertices on screen, kept for the pose and viewport a gesture is made in. */
+	private fun placed(scene: Scene, viewport: CanvasViewport): FloatArray {
+		if (placedPoints !== scene.mesh.geometry.points || placedViewport != viewport) {
+			placedPoints = scene.mesh.geometry.points
+			placedViewport = viewport
+			val placed = editor.screen(scene.mesh.geometry.points, scene.mesh, viewport)
+			placedValue = FloatArray(placed.size * 2) { if (it % 2 == 0) placed[it / 2].x else placed[it / 2].y }
+		}
+		return placedValue
 	}
 
-	/** Every guide on screen, each point bound once per guide list. */
-	fun guideLines(scene: Scene, viewport: CanvasViewport): List<List<Offset>> {
-		val guides = scene.draft.guides
-		val bound = bindings(scene, guides.flatMap { it.points })
-		return guides.map { screen(scene, it.points, viewport, bound) }
-	}
+	/** The raster pixel under [pos]; null when the mesh is drawn with no area to find it in. */
+	fun raster(scene: Scene, pos: Offset, viewport: CanvasViewport): InteriorPoint? =
+		scene.map.toRaster(placed(scene, viewport), pos.x, pos.y)
+
+	/** Every guide on screen; a guide the mesh cannot carry comes back empty. */
+	fun guideLines(scene: Scene, viewport: CanvasViewport): List<List<Offset>> =
+		scene.draft.guides.map { screen(scene, it.points, viewport) }
+
+	/** Whether [guide]'s points are drawn, and so can be picked: drawn guides always, a found line once selected. */
+	fun pointsShown(scene: Scene, guide: Int): Boolean = scene.draft.guides[guide].detected == null || guide == selectedGuide(scene)
 
 	fun surfaceHandles(scene: Scene, viewport: CanvasViewport): Map<InteriorHandle, Offset> {
 		val frame = scene.surface ?: return emptyMap()
@@ -207,8 +237,8 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 	fun radiusHandle(scene: Scene, viewport: CanvasViewport): Pair<Offset, Offset>? {
 		val g = selectedGuide(scene)?.let { scene.draft.guides[it] }?.takeIf { it.purpose == InteriorGuidePurpose.FOLD } ?: return null
 		val (mid, handle) = InteriorGuideEdits.radiusHandle(g)
-		val (a, b) = screen(scene, listOf(mid, handle), viewport)
-		return a to b
+		val placed = screen(scene, listOf(mid, handle), viewport)
+		return if (placed.size == 2) placed[0] to placed[1] else null
 	}
 
 	// ── Hit testing ────────────────────────────────────────────────────────────
@@ -220,7 +250,7 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 		val guide = selectedGuide(scene)
 		radiusHandle(scene, viewport)?.let { (_, h) -> if ((h - pos).getDistance() <= HANDLE_REACH) return Part.Radius(guide!!) }
 		val lines = guideLines(scene, viewport).map { line -> FloatArray(line.size * 2) { if (it % 2 == 0) line[it / 2].x else line[it / 2].y } }
-		val point = InteriorPolylines.hit(lines, pos.x, pos.y, POINT_REACH)
+		val point = InteriorPolylines.hit(lines, pos.x, pos.y, POINT_REACH) { pointsShown(scene, it) }
 		return when {
 			point == null -> null
 			point.segment -> if (point.distance <= LINE_REACH) Part.Segment(point.line, point.point) else null
@@ -239,11 +269,11 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 
 	fun press(pos: Offset, viewport: CanvasViewport, ctrl: Boolean, alt: Boolean) {
 		val scene = scene() ?: run { editor.error = missing(); return }
-		val at = scene.let { raster(it, pos, viewport) }
+		val at = raster(scene, pos, viewport) ?: return
 		if (drawing.isNotEmpty()) {
 			// A click on the last point drawn ends the line, as Enter does.
-			val last = screen(scene, listOf(drawing.last()), viewport).single()
-			if ((last - pos).getDistance() <= POINT_REACH) finish() else drawing = drawing + at
+			val last = screen(scene, listOf(drawing.last()), viewport).singleOrNull()
+			if (last != null && (last - pos).getDistance() <= POINT_REACH) finish() else drawing = drawing + at
 			return
 		}
 		val draft = scene.draft
@@ -254,9 +284,17 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 				cursor = pos
 			}
 			is Part.Point -> {
-				selected = draft.guides[part.guide].id to part.point
-				if (alt) commit(scene, InteriorGuideEdits.remove(draft.guides, part.guide, part.point).also { if (it.size < draft.guides.size) selected = null })
-				else begin(part, scene, at)
+				val id = draft.guides[part.guide].id
+				if (alt) {
+					// The point is gone either way: the guide stays selected without one, or goes with it.
+					val next = InteriorGuideEdits.remove(draft.guides, part.guide, part.point)
+					selected = if (next.size == draft.guides.size) id to null else null
+					hover = null
+					commit(scene, next)
+				} else {
+					selected = id to part.point
+					begin(part, scene, at)
+				}
 			}
 			is Part.Segment -> {
 				selected = draft.guides[part.guide].id to null
@@ -274,7 +312,6 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 
 	private fun begin(part: Part, scene: Scene, at: InteriorPoint, base: List<InteriorGuide> = scene.draft.guides) {
 		val draft = scene.draft
-		editor.viewModel.beginEditorGesture()
 		drag = Drag(part, scene, at, draft.shape, draft.motion, draft.guides, draft.dirty, base)
 		hover = part
 	}
@@ -283,7 +320,7 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 		val d = drag ?: return
 		val scene = d.scene
 		val draft = scene.draft
-		val at = raster(scene, pos, viewport)
+		val at = raster(scene, pos, viewport) ?: return
 		when (val part = d.part) {
 			is Part.Handle -> if (part.handle.surface) {
 				scene.surface?.let { draft.shape = InteriorHandles.dragSurface(part.handle, it, draft.shape, at) }
@@ -310,27 +347,32 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 	fun release() {
 		val d = drag ?: return
 		drag = null
-		editor.viewModel.endEditorGesture()
 		if (d.changed) commit(d.scene)
 	}
 
+	/** One `interior_put` of the whole draft: one history node, as the panel's commits are. */
 	private fun commit(scene: Scene, guides: List<InteriorGuide>? = null) {
 		guides?.let { scene.draft.guides = it }
 		editor.viewModel.interior.put(scene.draft.request(scene.target, true))
 	}
 
-	/** Ends the line being drawn: two points or more become a fold. */
-	fun finish() {
+	/**
+	 * Ends the line being drawn: two points or more become a fold. False, leaving the line as it is, when there is no
+	 * line of two points to end or the document cannot take an edit now.
+	 */
+	fun finish(): Boolean {
+		if (drawing.size < 2 || !editor.editable) return false
+		val scene = scene() ?: return false
 		val points = drawing
 		drawing = emptyList()
 		cursor = null
-		val scene = scene() ?: return
 		val next = InteriorGuideEdits.add(scene.draft.guides, points) ?: run {
-			if (points.size >= 2) editor.error = tr("interior.canvas.lineRejected")
-			return
+			editor.error = tr("interior.canvas.lineRejected")
+			return true
 		}
 		selected = next.last().id to null
 		commit(scene, next)
+		return true
 	}
 
 	/** Takes back the last point drawn, or removes the selected point (or the whole selected guide). */
@@ -340,6 +382,7 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 			if (drawing.isEmpty()) cursor = null
 			return
 		}
+		if (!editor.editable) return
 		val scene = scene() ?: return
 		val guide = selectedGuide(scene) ?: return
 		val point = selected?.second
@@ -357,10 +400,15 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 		val d = drag
 		if (d != null) {
 			drag = null
-			editor.viewModel.endEditorGesture()
 			val draft = d.scene.draft
+			val saved = editor.state.rigEdits.interiorEffects.singleOrNull { it.target == d.scene.target }
 			if (!d.wasDirty) draft.revert()
-			else { draft.shape = d.shape; draft.motion = d.motion; draft.guides = d.guides }
+			else {
+				draft.shape = d.shape; draft.motion = d.motion; draft.guides = d.guides
+				// Back to values already saved (a commit that has landed since the press): nothing is unsaved.
+				draft.settle(saved)
+			}
+			editor.viewModel.interior.dropDraftPreview(saved)
 			return true
 		}
 		if (drawing.isNotEmpty()) {

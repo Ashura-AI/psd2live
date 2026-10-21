@@ -46,9 +46,10 @@ internal fun DrawScope.drawInteriorHandles(tool: InteriorCanvasTool, viewport: C
 					colors.accent.copy(alpha = if (vertical) 0.3f else 0.55f), 1.2f, dash)
 		}
 		val handles = tool.surfaceHandles(scene, viewport)
-		val center = tool.screen(scene, listOf(InteriorPoint(frame.cx, frame.cy)), viewport).single()
-		drawMeshWires(handles.values.flatMap { listOf(center, it) }, MeshLook.Structure)
-		drawMeshHandle(center, MeshLook.Structure, colors.accent)
+		tool.screen(scene, listOf(InteriorPoint(frame.cx, frame.cy)), viewport).singleOrNull()?.let { center ->
+			drawMeshWires(handles.values.flatMap { listOf(center, it) }, MeshLook.Structure)
+			drawMeshHandle(center, MeshLook.Structure, colors.accent)
+		}
 		for ((handle, o) in handles) {
 			val shape = if (handle == InteriorHandle.HORIZONTAL || handle == InteriorHandle.VERTICAL) HandleShape.SQUARE else HandleShape.ROUND
 			drawMeshHandle(o, MeshLook.Structure, colors.accent, selected = lit == Part.Handle(handle) && tool.dragging,
@@ -90,16 +91,18 @@ internal fun DrawScope.drawInteriorHandles(tool: InteriorCanvasTool, viewport: C
 		if (fold && points.size >= 2) {
 			// The reach as a band: the radius is in raster pixels, so measure it on screen along the line.
 			val (mid, edge) = InteriorGuideEdits.radiusHandle(g)
-			val (a, b) = tool.screen(scene, listOf(mid, edge), viewport)
-			val band = 2f * hypot(b.x - a.x, b.y - a.y)
-			drawPoints(points, PointMode.Polygon, tone.copy(alpha = 0.14f), band, StrokeCap.Round)
+			val ends = tool.screen(scene, listOf(mid, edge), viewport)
+			if (ends.size == 2) {
+				val band = 2f * hypot(ends[1].x - ends[0].x, ends[1].y - ends[0].y)
+				drawPoints(points, PointMode.Polygon, tone.copy(alpha = 0.14f), band, StrokeCap.Round)
+			}
 		}
 		val hot = (lit as? Part.Segment)?.guide == i || (lit as? Part.Point)?.guide == i
 		if (i == selected) drawSelectedWires(points.zipWithNext().flatMap { listOf(it.first, it.second) }, colors.accent)
 		val alpha = if (fold || g.detected == null || hot) 1f else StructureLook.UNFOLLOWED_ALPHA
 		polyline(points, tone.copy(alpha = alpha), if (hot) StructureLook.LINE * 1.5f else StructureLook.LINE)
 		// Points show where they can be picked without crowding: on drawn guides, and on any guide in hand.
-		if (g.detected == null || i == selected || hot) for ((j, o) in points.withIndex()) {
+		if (tool.pointsShown(scene, i)) for ((j, o) in points.withIndex()) {
 			val picked = i == selected && tool.selected?.second == j
 			drawMeshHandle(o, tone, colors.accent, selected = picked, hovered = lit == Part.Point(i, j))
 		}
@@ -114,7 +117,7 @@ internal fun DrawScope.drawInteriorHandles(tool: InteriorCanvasTool, viewport: C
 	if (tool.drawing.isNotEmpty()) {
 		val drawn = tool.screen(scene, tool.drawing, viewport)
 		polyline(drawn, StructureLook.Fold, StructureLook.LINE)
-		tool.cursor?.let { polyline(listOf(drawn.last(), it), StructureLook.Fold.copy(alpha = 0.6f), StructureLook.LINE, dash) }
+		drawn.lastOrNull()?.let { last -> tool.cursor?.let { polyline(listOf(last, it), StructureLook.Fold.copy(alpha = 0.6f), StructureLook.LINE, dash) } }
 		for ((j, o) in drawn.withIndex()) drawMeshHandle(o, StructureLook.Fold, colors.accent, selected = j == drawn.lastIndex)
 	}
 }

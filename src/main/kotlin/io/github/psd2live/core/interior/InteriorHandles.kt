@@ -247,11 +247,12 @@ internal data class InteriorPolylineHit(val line: Int, val point: Int, val segme
 internal object InteriorPolylines {
 	/**
 	 * The nearest point within [tolerance] of ([x], [y]); failing that the nearest segment, with [InteriorPolylineHit.point]
-	 * the index the segment starts at. Points win over segments so a point on a line can always be grabbed.
+	 * the index the segment starts at. Points win over segments so a point on a line can always be grabbed. Only the
+	 * lines [pointsShown] accepts offer their points, as only those are drawn; every line offers its segments.
 	 */
-	fun hit(lines: List<FloatArray>, x: Float, y: Float, tolerance: Float): InteriorPolylineHit? {
+	fun hit(lines: List<FloatArray>, x: Float, y: Float, tolerance: Float, pointsShown: (Int) -> Boolean = { true }): InteriorPolylineHit? {
 		var best: InteriorPolylineHit? = null
-		for ((l, line) in lines.withIndex()) for (i in 0 until line.size / 2) {
+		for ((l, line) in lines.withIndex()) if (pointsShown(l)) for (i in 0 until line.size / 2) {
 			val d = hypot(line[i * 2] - x, line[i * 2 + 1] - y)
 			if (d <= tolerance && (best == null || d < best.distance)) best = InteriorPolylineHit(l, i, false, d)
 		}
@@ -280,17 +281,20 @@ internal class InteriorCanvasMap(val raster: FloatArray, val indices: IntArray) 
 
 	val vertexCount get() = raster.size / 2
 
-	/** Where [p] sits in the mesh, for placing it over [position]'s vertices. */
-	fun bind(p: InteriorPoint): DeformPathPoint = DeformPathTools.bind(raster, indices, p.x, p.y)
+	/** Where [p] sits in the mesh, for placing it over other positions of its vertices; null on a mesh with no area. */
+	fun bind(p: InteriorPoint): DeformPathPoint? = runCatching { DeformPathTools.bind(raster, indices, p.x, p.y) }.getOrNull()
 
 	fun place(binding: DeformPathPoint, positions: FloatArray): Pair<Float, Float> = binding.position(positions)
 
-	/** The raster point under ([x], [y]) where the vertices sit at [positions]. */
-	fun toRaster(positions: FloatArray, x: Float, y: Float): InteriorPoint {
+	/**
+	 * The raster point under ([x], [y]) where the vertices sit at [positions]; null when the placed mesh has no area
+	 * left (collapsed by a pose or a far zoom), so there is no point under the pointer to name.
+	 */
+	fun toRaster(positions: FloatArray, x: Float, y: Float): InteriorPoint? {
 		require(positions.size == raster.size)
-		val w = DeformPathTools.bind(positions, indices, x, y)
+		val w = runCatching { DeformPathTools.bind(positions, indices, x, y) }.getOrNull() ?: return null
 		val (rx, ry) = w.position(raster)
-		return InteriorPoint(rx, ry)
+		return if (rx.isFinite() && ry.isFinite()) InteriorPoint(rx, ry) else null
 	}
 
 	companion object {
@@ -303,7 +307,9 @@ internal class InteriorCanvasMap(val raster: FloatArray, val indices: IntArray) 
 				val p = texture.rasterOfUv(mesh.uvs[i * 2], mesh.uvs[i * 2 + 1])
 				xy[i * 2] = p[0]; xy[i * 2 + 1] = p[1]
 			}
-			return if (mesh.indices.isEmpty()) null else InteriorCanvasMap(xy, mesh.indices)
+			if (mesh.indices.isEmpty()) return null
+			// A mesh whose texture coordinates span no area cannot carry a raster point anywhere.
+			return InteriorCanvasMap(xy, mesh.indices).takeIf { it.bind(InteriorPoint(xy[0], xy[1])) != null }
 		}
 	}
 }

@@ -141,6 +141,18 @@ internal class InteriorController(
 		}
 	}
 
+	/**
+	 * Withdraws a draft preview that was never committed - a canvas drag cancelled with Esc - so the audition shows
+	 * [effect] as saved again rather than the abandoned values.
+	 */
+	internal fun dropDraftPreview(effect: NativeInteriorEffect?) {
+		previewJob?.cancel()
+		previewJob = null
+		if (draftProjection == null) return
+		draftProjection = null
+		if (effect != null && effect.enabled && poseTarget != null) startTrial(effect)
+	}
+
 	private val drafts = mutableMapOf<String, InteriorDraft>()
 
 	private fun draftKey(target: String) =

@@ -321,8 +321,10 @@ fun CanvasViewportComposable(
         if (mode == CanvasMode.EDIT) {
             // A pose drag is the one gesture whose whole output is parameter values, so its own writes
             // must not read as the document changing under it.
-            // A swing handle drag patches the preview on every move for the same reason.
-            if (!editor.busy && editor.inGesture && editor.poseDrag == null && !editor.swingDragging) editor.cancel()
+            // A swing handle drag patches the preview on every move for the same reason; an interior handle drag
+            // edits a draft that its earlier release's commit, landing now, must not take back.
+            if (!editor.busy && editor.inGesture && editor.poseDrag == null && !editor.swingDragging && !editor.interiorTool.dragging)
+                editor.cancel()
             editor.reconcileWithDocument()
             if (!editor.busy && canvasState.previewModel != null) editor.target()?.let { t -> editor.vertices=editor.vertices.filter { it in 0 until t.count }.toSet() }
         }
@@ -809,7 +811,7 @@ fun CanvasViewportComposable(
 				when {
 					viewModel.swingSession != null -> { viewModel.commitSwing(); true }
 					editor.tool == CanvasTool.KNIFE -> { editor.finishKnife(); true }
-					editor.tool == CanvasTool.INTERIOR -> { editor.interiorTool.finish(); true }
+					editor.tool == CanvasTool.INTERIOR -> editor.interiorTool.finish()
 					editor.placement != null && editor.placement?.kind != CreatePlacementKind.PATH -> {
 						editor.confirmPlacement(); true
 					}

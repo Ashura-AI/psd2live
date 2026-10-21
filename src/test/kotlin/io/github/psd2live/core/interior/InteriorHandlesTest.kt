@@ -120,6 +120,36 @@ class InteriorHandlesTest {
 		val segment = InteriorPolylines.hit(lines, 20f, 2f, 7f)!!
 		assertEquals(0, segment.line); assertEquals(0, segment.point); assertTrue(segment.segment)
 		assertNull(InteriorPolylines.hit(lines, 20f, 20f, 7f))
+		// A line whose points are not drawn offers only its segments, as it looks.
+		val hidden = InteriorPolylines.hit(lines, 50f, 4f, 7f) { it != 1 }!!
+		assertTrue(hidden.segment)
+		assertEquals(1, hidden.line)
+	}
+
+	@Test
+	fun aDraftBackAtTheSavedValuesIsCleanAndFollowsTheDocumentAgain() {
+		val p = preview()
+		val target = p.authored.rig.puppet.drawables.first { it.mesh != null }.id.raw
+		val overlay = NativeInteriorAuthoring.put(p, RigEditOverlay(), buildJsonObject {
+			put("target", target)
+			put("motion", InteriorMotionSettings(enabled = false).toJson())
+		})
+		val saved = overlay.interiorEffects.single()
+		val guide = guide("fold0", 30f, 30f, 50f, 100f)
+		val draft = io.github.psd2live.ui.state.InteriorDraft(saved)
+		// A released drag whose commit has not landed yet, then another drag cancelled back to it.
+		draft.guides = listOf(guide)
+		assertTrue(draft.dirty)
+		draft.settle(saved)
+		assertTrue(draft.dirty, "values not saved yet stay unsaved")
+		val landed = NativeInteriorAuthoring.put(p, overlay, NativeInteriorAuthoring.request(target, true, saved.settings, saved.motion,
+			saved.sources.map { it.id.raw }, listOf(guide))).interiorEffects.single()
+		draft.sync(landed)
+		assertFalse(draft.dirty, "the commit landed with these values")
+		// Clean again, it follows an undo.
+		draft.sync(saved)
+		assertEquals(emptyList(), draft.guides)
+		assertFalse(draft.dirty)
 	}
 
 	@Test
@@ -132,11 +162,14 @@ class InteriorHandlesTest {
 			if (i % 2 == 0) 300f - y * .5f else 40f + x * .5f
 		}
 		for (p in listOf(InteriorPoint(25f, 75f), InteriorPoint(90f, 10f), InteriorPoint(130f, 50f))) {
-			val (x, y) = map.place(map.bind(p), placed)
+			val (x, y) = map.place(map.bind(p)!!, placed)
 			near(300f - p.y * .5f, x, .001f); near(40f + p.x * .5f, y, .001f)
-			val back = map.toRaster(placed, x, y)
+			val back = map.toRaster(placed, x, y)!!
 			near(p.x, back.x, .01f); near(p.y, back.y, .01f)
 		}
+		// A mesh drawn with no area left names no raster point, rather than failing the hover or press.
+		assertNull(map.toRaster(FloatArray(raster.size) { 7f }, 7f, 7f))
+		assertNull(InteriorCanvasMap(FloatArray(raster.size), intArrayOf(0, 1, 2, 0, 2, 3)).bind(InteriorPoint(1f, 1f)))
 	}
 
 	@Test
