@@ -68,6 +68,7 @@ internal object WorkspaceSkeletonMotionEdits {
         /** The values keys may hold: [ranges], widened for repeating parameters. */
         limits: Map<String, ClosedFloatingPointRange<Float>> = ranges,
         parameters: List<org.umamo.runtime.model.Parameter> = emptyList(),
+        renames: Map<String, String> = emptyMap(),
     ): List<MotionClip> {
         val mode = request.requiredText("mode")
         val next = when (mode) {
@@ -77,7 +78,7 @@ internal object WorkspaceSkeletonMotionEdits {
                 val builtin = request["from_builtin"]?.jsonPrimitive?.content
                 require(builtin == null || builtin in MotionClips.BUILTIN_NAMES) { "Unknown generated motion" }
                 val source = builtin?.let { MotionClips.overrideOf(current, it) ?: MotionPresets.clip(id, it, skeleton,
-                    (presets[it] ?: MotionPresetSettings()).copy(deleted = false)) }
+                    (presets[it] ?: MotionPresetSettings()).copy(deleted = false), renames) }
                 val name = request["name"]?.jsonPrimitive?.content ?: builtin ?: "New motion"
                 val clip = source?.copy(id = id, name = MotionClips.uniqueName(current, name), builtin = null, enabled = true)
                     ?: MotionClip(id, MotionClips.uniqueName(current, name))

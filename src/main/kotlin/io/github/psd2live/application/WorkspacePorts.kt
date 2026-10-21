@@ -69,6 +69,8 @@ interface WorkspaceQueries : WorkspaceStatePort {
     fun sourceMeshComponents(layerId: String): JsonObject
     /** [WorkspaceStructureMeshEdits.preview] on the captured version. */
     fun structureMeshPreview(request: JsonObject, checkpoint: () -> Unit = {}): JsonObject
+    /** [WorkspaceObjectEdits.find] on the captured version: the objects a find matches and what a replace makes of them. */
+    fun findObjects(request: JsonObject): JsonObject
     fun projectSettings(): JsonObject
     fun listRigObjectSummaries(): List<JsonObject>
     fun inspectRigGeometry(arguments: JsonObject): JsonObject

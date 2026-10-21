@@ -74,6 +74,16 @@ internal class WorkspaceReadSession(
         }
     }
 
+    override fun findObjects(request: JsonObject): JsonObject {
+        val captured = capture()
+        val offset = request["offset"]?.jsonPrimitive?.int ?: 0
+        val limit = request["limit"]?.jsonPrimitive?.int ?: 64
+        return buildJsonObject {
+            put("project_id", captured.projectId); put("state", captured.state); put("revision", captured.revision)
+            WorkspaceObjectEdits.findResult(WorkspaceObjectEdits.find(captured.model.rig.puppet, request), offset, limit).forEach { (k, v) -> put(k, v) }
+        }
+    }
+
     private fun buildSnapshot(): WorkspaceProjectSnapshot {
         val captured = read.runtime.capture
         val document = captured?.document

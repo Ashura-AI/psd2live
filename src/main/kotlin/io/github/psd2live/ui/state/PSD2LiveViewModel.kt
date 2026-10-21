@@ -3824,7 +3824,8 @@ class PSD2LiveViewModel : AutoCloseable {
 		return state.rigEdits.motionClips.firstOrNull { it.id == id }
 	}
 
-	private class PresetClip(val name: String, val skeleton: io.github.psd2live.core.SkeletonSpec?, val settings: MotionPresetSettings, val clip: MotionClip)
+	private class PresetClip(val name: String, val skeleton: io.github.psd2live.core.SkeletonSpec?, val settings: MotionPresetSettings, val clip: MotionClip,
+		val renames: Map<String, String>)
 	@Volatile private var presetClipCache: PresetClip? = null
 
 	/** [name] as the editor and the playback see it; null once deleted or when the rig cannot play it. */
@@ -3834,9 +3835,10 @@ class PSD2LiveViewModel : AutoCloseable {
 		MotionClips.overrideOf(state.rigEdits.motionClips, name)?.let { return it }
 		val skeleton = state.rigEdits.skeleton
 		// The idle expands its poses onto the bones; the editor reads it every frame while it plays.
-		presetClipCache?.takeIf { it.name == name && it.skeleton === skeleton && it.settings == settings }?.let { return it.clip }
-		val clip = MotionPresets.clip(MotionEditorState.presetClipId(name), name, skeleton, settings).takeIf { it.curves.isNotEmpty() }
-		if (clip != null) presetClipCache = PresetClip(name, skeleton, settings, clip)
+		val renames = state.rigEdits.idRenames.parameters
+		presetClipCache?.takeIf { it.name == name && it.skeleton === skeleton && it.settings == settings && it.renames == renames }?.let { return it.clip }
+		val clip = MotionPresets.clip(MotionEditorState.presetClipId(name), name, skeleton, settings, renames).takeIf { it.curves.isNotEmpty() }
+		if (clip != null) presetClipCache = PresetClip(name, skeleton, settings, clip, renames)
 		return clip
 	}
 

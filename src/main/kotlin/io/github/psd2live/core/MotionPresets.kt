@@ -151,9 +151,17 @@ object MotionPresets {
 		if (name.equals("Idle", ignoreCase = true)) SkeletonMotions.IDLE_DURATION / settings.of(name, SPEED)
 		else tracks.maxOfOrNull { it.keys.last().time } ?: 0f
 
-	/** [name] as a clip, as the editor shows a generated motion before it is edited. */
-	fun clip(id: String, name: String, skeleton: SkeletonSpec?, settings: MotionPresetSettings = MotionPresetSettings()): MotionClip {
-		val tracks = tracks(name, skeleton, settings)
+	/**
+	 * [tracks] on the parameters [renames] (an ID conversion's, by standard ID) gave other IDs: generated tracks name
+	 * the standard parameters by their standard IDs.
+	 */
+	fun renamed(tracks: List<MotionTrack>, renames: Map<String, String>): List<MotionTrack> =
+		if (renames.isEmpty()) tracks else tracks.map { track -> renames[track.parameterId]?.let { track.copy(parameterId = it) } ?: track }
+
+	/** [name] as a clip, as the editor shows a generated motion before it is edited; [renames] as [renamed] takes them. */
+	fun clip(id: String, name: String, skeleton: SkeletonSpec?, settings: MotionPresetSettings = MotionPresetSettings(),
+			 renames: Map<String, String> = emptyMap()): MotionClip {
+		val tracks = renamed(tracks(name, skeleton, settings), renames)
 		return MotionClips.fromTracks(id, name, builtin = name, loop = loops(name), tracks = tracks, duration = duration(name, tracks, settings))
 	}
 

@@ -65,7 +65,7 @@ internal class WorkspacePoseCommands(private val runtime: WorkspaceRuntime<RigPr
                 ?: id.takeIf { it.startsWith("preset:") }?.removePrefix("preset:")?.let { builtin ->
                     require(builtin in MotionClips.BUILTIN_NAMES) { "Unknown generated motion" }
                     MotionClips.overrideOf(document.rigEdits.motionClips, builtin) ?: MotionPresets.clip(id, builtin,
-                        document.rigEdits.skeleton, document.rigEdits.motionPresets[builtin] ?: MotionPresetSettings())
+                        document.rigEdits.skeleton, document.rigEdits.motionPresets[builtin] ?: MotionPresetSettings(), document.rigEdits.idRenames.parameters)
                 }) { "Motion not found: $id" }
             val requestedTime = record.getValue("time").jsonPrimitive.float
             require(requestedTime.isFinite() && requestedTime in 0f..clip.duration) { "Time must lie within the clip" }

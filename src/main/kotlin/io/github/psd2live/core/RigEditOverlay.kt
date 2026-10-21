@@ -345,6 +345,12 @@ data class RigEditOverlay(
 		}
 	}
 
+	/**
+	 * Where the journal's ID conversions took each object: what generators naming standard parameters by their
+	 * standard IDs (physics presets, motion presets, expressions) look them up through.
+	 */
+	internal val idRenames: RigIdConversion.Renames by lazy { RigIdConversion.renames(authoringJournal) }
+
 	/** Generated axes do not exist until swing/simulation materialization: panel moves and links that name them. */
 	private val generatedIds: Set<String> by lazy { swingEdits.flatMap { it.parameterIds }.toSet() + simEdits.flatMap { it.outputParameters } + interiorEffects.flatMap { it.parameterIds } }
 
@@ -512,16 +518,23 @@ data class RigEditOverlay(
 	internal fun finish(authored: PuppetModel, notes: List<SupersededEntryNote> = emptyList()): GeneratedOverrides.Outcome {
 		// Generated axes exist only now: their panel placement and links replay afterwards, including moves of
 		// another parameter relative to them.
-		val generatedPanelEdits = structureEdits.filter(::generatedPanelEdit)
+		// They replay after the whole journal, so they name what its ID conversions after them made of their objects.
+		val forwarded = RigIdConversion.forwarded(authoringJournal)
+		val generatedPanelEdits = structureEdits.filter(::generatedPanelEdit).let { edits ->
+			if (edits.isEmpty() || forwarded === authoringJournal) edits
+			else RigIdConversion.forwarded(listOf(kotlinx.serialization.json.buildJsonObject {
+				put("op", kotlinx.serialization.json.JsonPrimitive("structure")); put("edits", kotlinx.serialization.json.JsonArray(edits))
+			}) + authoringJournal).first().getValue("edits").jsonArray.map { it.jsonObject }
+		}
 		val deferredJournalEdits = mutableListOf<kotlinx.serialization.json.JsonObject>()
-		for (command in authoringJournal) if (command["op"]?.jsonPrimitive?.contentOrNull == "structure")
+		for (command in forwarded) if (command["op"]?.jsonPrimitive?.contentOrNull == "structure")
 			deferredJournalEdits += command.getValue("edits").jsonArray.map { it.jsonObject }.filter(::generatedPanelEdit)
 		var model = authored
 		// Swings and simulations write their keyforms onto the replayed rig, in the document graph's order.
 		model = DocumentGenerators.generate(model, this)
 		// Edits of generated keyforms merge with what the generators produce now.
 		val overrides = if (authoringJournal.none(GeneratedOverrides::isOverride)) GeneratedOverrides.Outcome(model, emptyList())
-			else GeneratedOverrides.applyAll(model, authoringJournal, ArtPrimitiveJournal.replacementDrawables(this).keys)
+			else GeneratedOverrides.applyAll(model, forwarded, ArtPrimitiveJournal.replacementDrawables(this).keys)
 		model = overrides.model
 		return GeneratedOverrides.Outcome(RigStructureEdits.replay(model, generatedPanelEdits + deferredJournalEdits).withParametersSyncedFromTree(), overrides.issues, notes)
 	}
@@ -592,6 +605,24 @@ internal fun AuthoredRig.withJournalMeshes(commands: List<JsonObject>): Authored
 			for (id in LayerDeletionJournal.meshes(command)) {
 				layers -= id; bounds -= id; pages -= id
 				visible.removeAll { it.first == id }
+			}
+			continue
+		}
+		// A pasted mesh shows its original's layer; a converted one keeps its layer under the new ID.
+		if (op == RigObjectPaste.OP) {
+			for (copy in RigObjectPaste.copies(command)) if (copy.kind == "mesh") {
+				layers[copy.id]?.let { layers[copy.newId] = it; visible += copy.newId to it }
+				bounds[copy.id]?.let { bounds[copy.newId] = it }
+				pages[copy.id]?.let { pages[copy.newId] = it }
+			}
+			continue
+		}
+		if (op == RigIdConversion.OP) {
+			for (rename in RigIdConversion.renames(command)) if (rename.kind == "mesh") {
+				layers.remove(rename.from)?.let { layers[rename.to] = it }
+				bounds.remove(rename.from)?.let { bounds[rename.to] = it }
+				pages.remove(rename.from)?.let { pages[rename.to] = it }
+				visible.replaceAll { if (it.first == rename.from) rename.to to it.second else it }
 			}
 			continue
 		}

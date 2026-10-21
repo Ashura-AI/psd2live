@@ -208,7 +208,7 @@ internal class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<R
             ?: id.takeIf { it.startsWith("preset:") }?.removePrefix("preset:")?.let { name ->
                 if (name !in MotionClips.BUILTIN_NAMES || !enabled(capture, name)) null
                 else MotionClips.overrideOf(document.rigEdits.motionClips, name) ?: MotionPresets.clip(id, name,
-                    document.rigEdits.skeleton, document.rigEdits.motionPresets[name] ?: MotionPresetSettings())
+                    document.rigEdits.skeleton, document.rigEdits.motionPresets[name] ?: MotionPresetSettings(), document.rigEdits.idRenames.parameters)
             }
     }
 
@@ -222,7 +222,8 @@ internal class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<R
 
     private fun motionId(capture: WorkspaceCapture<RigPreviewModel>, name: String): String {
         val clips = capture.document.rigEdits.motionClips
-        return OneShotMotionPlayer.clipOf(name, capture.document.rigEdits.skeleton, clips, capture.document.rigEdits.motionPresets)
+        return OneShotMotionPlayer.clipOf(name, capture.document.rigEdits.skeleton, clips, capture.document.rigEdits.motionPresets,
+            capture.document.rigEdits.idRenames.parameters)
             ?.takeIf { resolved -> clips.any { it.id == resolved.id } }?.id
             ?: clips.firstOrNull { it.id == name }?.id
             ?: MotionClips.BUILTIN_NAMES.firstOrNull { it.equals(name, true) }?.let { "preset:$it" }

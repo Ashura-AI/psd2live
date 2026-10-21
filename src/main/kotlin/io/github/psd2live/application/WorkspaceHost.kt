@@ -1179,6 +1179,8 @@ internal class WorkspaceHost<V>(
     override fun structureMeshPreview(request: JsonObject, checkpoint: () -> Unit): JsonObject =
         captureQueries().structureMeshPreview(request, checkpoint)
 
+    override fun findObjects(request: JsonObject): JsonObject = captureQueries().findObjects(request)
+
     private suspend fun partitionSource(expectedState: String, operations: List<WorkspaceDocumentOperation>, author: MutationAuthor): WorkspaceMutationResult = editMutex.withLock {
         val before = captureForMutation()
         requireExpected(expectedState, before)

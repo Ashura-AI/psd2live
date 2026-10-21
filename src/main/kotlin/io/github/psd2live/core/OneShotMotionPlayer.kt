@@ -67,6 +67,7 @@ internal class OneShotMotionPlayer {
 			skeleton: SkeletonSpec?,
 			clips: List<MotionClip>,
 			presets: Map<String, MotionPresetSettings> = emptyMap(),
+			renames: Map<String, String> = emptyMap(),
 		): MotionClip? {
 			MotionClips.overrideOf(clips, name)?.let { return it }
 			val stems = MotionClips.exportStems(clips)
@@ -74,7 +75,7 @@ internal class OneShotMotionPlayer {
 			if (name.equals("Idle", ignoreCase = true)) return null
 			val settings = presets.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value ?: MotionPresetSettings()
 			if (settings.deleted) return null
-			val tracks = MotionClips.builtinTracks(name, skeleton, settings = settings).takeIf { it.isNotEmpty() } ?: return null
+			val tracks = MotionPresets.renamed(MotionClips.builtinTracks(name, skeleton, settings = settings), renames).takeIf { it.isNotEmpty() } ?: return null
 			return MotionClips.fromTracks("preview", name, builtin = null, loop = false, tracks = tracks)
 		}
 	}

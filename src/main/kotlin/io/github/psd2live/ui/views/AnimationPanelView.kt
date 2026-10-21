@@ -135,11 +135,12 @@ internal fun AnimationPanelView(
 	val skeletonPresets = state.motionSkeleton
 	// Generating the idle expands its poses onto the bones: only when what it is made from changes. A group
 	// the model presets switch off is not in the model, so it is not listed.
-	val generated = remember(skeleton, presets, clips, basic, skeletonPresets) {
+	val renames = state.rigEdits.idRenames.parameters
+	val generated = remember(skeleton, presets, clips, basic, skeletonPresets, renames) {
 		MotionClips.BUILTIN_NAMES.associateWith { name ->
 			val settings = presets[name] ?: MotionPresetSettings()
 			if (settings.deleted || !(if (MotionClips.isSkeletonPreset(name)) skeletonPresets else basic)) null
-			else MotionClips.overrideOf(clips, name) ?: MotionPresets.clip(name, name, skeleton, settings).takeIf { it.curves.isNotEmpty() }
+			else MotionClips.overrideOf(clips, name) ?: MotionPresets.clip(name, name, skeleton, settings, renames).takeIf { it.curves.isNotEmpty() }
 		}
 	}
 	val builtins = builtinEntries(viewModel, previewState, generated)

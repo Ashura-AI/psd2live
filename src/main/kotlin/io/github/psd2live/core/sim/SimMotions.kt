@@ -19,9 +19,9 @@ internal object SimMotions {
     /** The motion [name] names in [overlay]: a clip by its ID or export name, or a built-in one; null when none does. */
     fun resolve(overlay: RigEditOverlay, name: String): MotionClip? =
         overlay.motionClips.firstOrNull { it.id == name }
-            ?: OneShotMotionPlayer.clipOf(name, overlay.skeleton, overlay.motionClips, overlay.motionPresets)
+            ?: OneShotMotionPlayer.clipOf(name, overlay.skeleton, overlay.motionClips, overlay.motionPresets, overlay.idRenames.parameters)
             ?: if (name.equals("Idle", ignoreCase = true))
-                runCatching { MotionPresets.clip(name, name, overlay.skeleton, overlay.motionPresets[name] ?: MotionPresetSettings()) }.getOrNull()
+                runCatching { MotionPresets.clip(name, name, overlay.skeleton, overlay.motionPresets[name] ?: MotionPresetSettings(), overlay.idRenames.parameters) }.getOrNull()
             else null
 
     /**

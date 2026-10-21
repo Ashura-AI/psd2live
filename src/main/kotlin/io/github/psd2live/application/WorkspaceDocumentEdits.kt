@@ -27,7 +27,7 @@ internal object WorkspaceDocumentEdits {
         setOf("warp", "rotation", "glue", "topology").map { "canvas_$it" } +
         setOf("put", "delete", "deform").map { "path_$it" } +
         setOf("swing_put", "swing_delete", "interior_put", "interior_delete") + WorkspacePhysicsEdits.batchable + WorkspaceSimulationEdits.supported + WorkspaceCanvasWeightEdits.supported + WorkspaceCanvasDeformEdits.supported + WorkspaceTextureEdits.supported +
-        WorkspaceLayoutEdits.supported + WorkspaceMaterialEdits.supported + WorkspaceHitAreaEdits.supported + WorkspaceSidecarEdits.supported
+        WorkspaceLayoutEdits.supported + WorkspaceMaterialEdits.supported + WorkspaceHitAreaEdits.supported + WorkspaceSidecarEdits.supported + WorkspaceObjectEdits.supported
 
     /**
      * [operation] on the complete editing document. Layout generation state only gates automatic semantic rigging;
@@ -74,6 +74,7 @@ internal object WorkspaceDocumentEdits {
             in WorkspaceSimulationEdits.supported -> WorkspaceSimulationEdits.apply(operation, document, model, simulationWork).document
             in WorkspaceHitAreaEdits.supported -> WorkspaceHitAreaEdits.apply(operation, document, model)
             in WorkspaceSidecarEdits.supported -> WorkspaceSidecarEdits.apply(operation, document, model)
+            in WorkspaceObjectEdits.supported -> WorkspaceObjectEdits.apply(operation, document, model)
             "settings_update" -> settings(document, model, request.getValue("changes").jsonObject)
             "layer_mesh_update" -> mesh(document, model, request.text("layer_id"), request["changes"]?.jsonObject,
                 request["reset"]?.jsonPrimitive?.boolean ?: false)
@@ -341,7 +342,7 @@ internal object WorkspaceDocumentEdits {
         val ranges = parameters.associate { it.id.raw to (it.min..it.max) }
         return document.copy(rigEdits = document.rigEdits.copy(motionClips = WorkspaceSkeletonMotionEdits.motion(
             document.rigEdits.motionClips, request, ranges, document.rigEdits.skeleton, document.rigEdits.motionPresets,
-            MotionLoops.keyLimits(parameters), parameters)))
+            MotionLoops.keyLimits(parameters), parameters, document.rigEdits.idRenames.parameters)))
     }
 
     fun swing(document: WorkspaceDocument, puppet: org.umamo.runtime.model.PuppetModel, edit: RigSwingEdit, estimatePhysics: Boolean): WorkspaceDocument {

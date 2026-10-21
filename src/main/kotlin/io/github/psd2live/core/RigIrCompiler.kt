@@ -31,17 +31,20 @@ internal object RigIrCompiler {
 		val puppet = io.github.psd2live.core.interior.InteriorLifecycle.exportModel(rig.puppet, config.rigEdits, physicsGroups)
 		val exportedRig = rig.copy(puppet = puppet)
 		val parameterIds = puppet.parameters.mapTo(linkedSetOf()) { it.id.raw }
+		// A standard parameter an ID conversion renamed keeps its role under its new ID.
+		val renames = config.rigEdits.idRenames.parameters
+		fun standard(id: String) = renames[id] ?: id
 		val base = PuppetIr.toIr(
 			puppet,
 			physics = Physics(physicsGroups.map(Physics3Json::group), config.rigEdits.physicsFps.toFloat()),
 			clips = clips(exportedRig, config, physicsGroups, parameterIds),
 			parameterRoles = buildList {
-				if (config.motionBasic && config.motionBlink && !config.meshOnly) add(ParameterRole("EyeBlink", listOf("ParamEyeLOpen", "ParamEyeROpen")))
-				add(ParameterRole("LipSync", listOf("ParamMouthOpenY")))
+				if (config.motionBasic && config.motionBlink && !config.meshOnly) add(ParameterRole("EyeBlink", listOf(standard("ParamEyeLOpen"), standard("ParamEyeROpen"))))
+				add(ParameterRole("LipSync", listOf(standard("ParamMouthOpenY"))))
 				// What a runtime's breathing and gaze drive, when the rig has them.
 				for ((role, id) in listOf("Breath" to "ParamBreath", "AngleX" to "ParamAngleX", "AngleY" to "ParamAngleY", "AngleZ" to "ParamAngleZ",
 						"BodyAngleX" to "ParamBodyAngleX", "EyeBallX" to "ParamEyeBallX", "EyeBallY" to "ParamEyeBallY")) {
-					if (id in parameterIds) add(ParameterRole(role, listOf(id)))
+					if (standard(id) in parameterIds) add(ParameterRole(role, listOf(standard(id))))
 				}
 			},
 		)
@@ -54,7 +57,7 @@ internal object RigIrCompiler {
 				TileArt(tile.raw, raster.width, raster.height, Bytes.wrap(raster.rgba))
 			}),
 			// The open mouth keeps its texture coordinates over the whole artwork in a canvas-space base mesh.
-			restPose = if (config.rigEdits.importedCmo3 != null) emptyMap() else mapOf(StandardParameters.MOUTH_OPEN.raw to 1f),
+			restPose = if (config.rigEdits.importedCmo3 != null) emptyMap() else mapOf(standard(StandardParameters.MOUTH_OPEN.raw) to 1f),
 			advanced = advanced(exportedRig, config, base, simulations).copy(
 				expressions = if (config.meshOnly) emptyList() else RuntimeExtras.expressions(config.rigEdits, parameterIds),
 				hitAreas = RuntimeExtras.hitAreas(puppet, analysis, rig.layerIdByDrawableId),
@@ -92,7 +95,8 @@ internal object RigIrCompiler {
 		if (!config.exportMotions || config.meshOnly) return emptyList()
 		val physicsDriven = if (config.exportIncludePhysics) physicsGroups.flatMapTo(HashSet()) { it.outputParameters } else emptySet()
 		val key = ClipsKey(config.rigEdits.motionClips, rig.puppet.parameters, config.rigEdits.skeleton, config.rigEdits.motionPresets,
-			listOf(config.motionBasic, config.motionIdle, config.motionBlink, config.motionNod, config.motionShake, config.motionSkeleton), physicsDriven)
+			listOf(config.motionBasic, config.motionIdle, config.motionBlink, config.motionNod, config.motionShake, config.motionSkeleton), physicsDriven,
+			config.rigEdits.idRenames.parameters)
 		synchronized(clipCache) { clipCache[key] }?.let { return it }
 		return compileClips(rig, config, physicsDriven, parameterIds).also { synchronized(clipCache) { clipCache[key] = it } }
 	}
@@ -101,6 +105,7 @@ internal object RigIrCompiler {
 	private data class ClipsKey(
 		val clips: List<MotionClip>, val parameters: List<org.umamo.runtime.model.Parameter>, val skeleton: SkeletonSpec?,
 		val presets: Map<String, MotionPresetSettings>, val switches: List<Boolean>, val physicsDriven: Set<String>,
+		val renames: Map<String, String>,
 	)
 
 	/**
@@ -115,6 +120,8 @@ internal object RigIrCompiler {
 	private fun compileClips(rig: BuiltRig, config: PipelineConfig, physicsDriven: Set<String>, parameterIds: Set<String>): List<Clip> {
 		val clips = MotionClips.reconcileParameters(config.rigEdits.motionClips, rig.puppet.parameters)
 		val skeleton = config.rigEdits.skeleton
+		val renames = config.rigEdits.idRenames.parameters
+		val original = renames.entries.associate { it.value to it.key }
 		val result = ArrayList<Clip>()
 		fun add(clip: Clip?) {
 			if (clip != null && clip.curves.any { it.parameter in parameterIds }) result += clip.copy(curves = clip.curves.filter { it.parameter in parameterIds })
@@ -127,7 +134,8 @@ internal object RigIrCompiler {
 			val file = name.replaceFirstChar(Char::lowercase)
 			val override = MotionClips.overrideOf(clips, name)
 			if (override != null) return add(authored(group, file, override))
-			val tracks = MotionPresets.tracks(name, skeleton, settings, exclude)
+			// Generated tracks name the standard parameters by their standard IDs.
+			val tracks = MotionPresets.renamed(MotionPresets.tracks(name, skeleton, settings, exclude.mapTo(HashSet()) { original[it] ?: it }), renames)
 			if (tracks.isEmpty()) return
 			add(Clip(name, name, group, file, MotionPresets.duration(name, tracks, settings), 30f, MotionPresets.loops(name),
 				curves = tracks.map(MotionGenerator::curve)))

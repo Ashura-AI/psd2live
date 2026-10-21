@@ -43,6 +43,8 @@ internal object GeneratedParameterAdoption {
 			"set" -> keys("key")
 			"copy" -> keys("from") + keys("key")
 			"delete", "parameter_keys" -> setOfNotNull(text("parameter"))
+			// A copied generator parameter is copied from the document's own.
+			RigObjectPaste.OP -> RigObjectPaste.copies(command).filter { it.kind == "parameter" }.mapTo(LinkedHashSet()) { it.id }
 			"structure" -> (command["edits"] as? JsonArray).orEmpty().mapNotNullTo(LinkedHashSet()) { element ->
 				val edit = element as? JsonObject ?: return@mapNotNullTo null
 				edit["id"]?.jsonPrimitive?.contentOrNull?.takeIf {

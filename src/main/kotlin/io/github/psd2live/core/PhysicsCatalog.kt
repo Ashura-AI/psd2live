@@ -19,11 +19,18 @@ object PhysicsCatalog {
 		val inactiveInteriorGroups = overlay.interiorEffects.filter { effect ->
 			!effect.enabled || (model != null && effect.issue(model) != null) || effect.parameterIds.any { it !in available }
 		}.flatMapTo(HashSet()) { effect -> effect.groups.map { it.id } }
-		val generated = PhysicsGenerator.presetRules(present, available).map { it to PhysicsOrigin.PRESET } +
-			PhysicsGenerator.skeletonRules(overlay.skeleton, available).map { it to PhysicsOrigin.SKELETON } +
-			PhysicsGenerator.swingRules(overlay.swingEdits, available).map { it to PhysicsOrigin.SWING } +
-			io.github.psd2live.core.sim.SimGenerator.physicsRules(overlay.simEdits, available).map { it to PhysicsOrigin.SIMULATION } +
-            overlay.interiorEffects.filter { it.enabled }.flatMap { it.groups }.filterNot { it.id in inactiveInteriorGroups }.map { it to PhysicsOrigin.INTERIOR }
+		// Generators name standard parameters by their standard IDs; an ID conversion gave them others.
+		val renames = overlay.idRenames.parameters
+		val standard = if (renames.isEmpty()) available else {
+			val original = renames.entries.associate { it.value to it.key }
+			available.mapTo(HashSet()) { original[it] ?: it }
+		}
+		val generated = (PhysicsGenerator.presetRules(present, standard).map { it to PhysicsOrigin.PRESET } +
+			PhysicsGenerator.skeletonRules(overlay.skeleton, standard).map { it to PhysicsOrigin.SKELETON } +
+			PhysicsGenerator.swingRules(overlay.swingEdits, standard).map { it to PhysicsOrigin.SWING } +
+			io.github.psd2live.core.sim.SimGenerator.physicsRules(overlay.simEdits, standard).map { it to PhysicsOrigin.SIMULATION } +
+            overlay.interiorEffects.filter { it.enabled }.flatMap { it.groups }.filterNot { it.id in inactiveInteriorGroups }.map { it to PhysicsOrigin.INTERIOR })
+			.map { (rule, origin) -> RigIdConversion.forward(rule, renames) to origin }
 		val generatedIds = generated.mapTo(HashSet()) { it.first.id }
 		val authored = overlay.physicsEdits.associateBy { it.id }
 		fun enabled(id: String, origin: PhysicsOrigin) =
