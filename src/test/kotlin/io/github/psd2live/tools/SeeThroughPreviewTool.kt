@@ -19,7 +19,7 @@ class SeeThroughPreviewTool {
 		val off = with(on.config.copy(seeThroughBrows = false))
 		val full = with(on.config.copy(seeThroughOpacity = 1f))
 		val eyes = with(on.config.copy(seeThroughEyes = true))
-		for ((label, model) in listOf("brows" to on, "eyes" to eyes)) for (copy in model.rig.puppet.drawables.filter { SeeThroughLayers.isCopy(it.id) })
+		for ((label, model) in listOf("brows" to on, "eyes" to eyes)) for (copy in model.rig.puppet.drawables.filter { it.id.raw in model.rig.seeThroughCopies })
 			println("$label ${copy.id.raw}: order ${copy.drawOrder}, opacity ${copy.opacity}, masks ${copy.maskedBy.map { it.raw }}")
 		val rig = on.rig
 		val rect = Bounds(rig.faceCenterX - rig.faceRadiusX * 1.7f, rig.faceCenterY - rig.faceRadiusY * 1.9f,

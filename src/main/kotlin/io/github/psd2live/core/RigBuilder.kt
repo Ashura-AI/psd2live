@@ -120,6 +120,15 @@ data class BuiltRig(
 	val supersededEntryNotes: List<SupersededEntryNote> = emptyList(),
 	/** Split parts the skeleton skinned with this base rig, which their journal records place (see [PrimitiveSkins]). */
 	val primitiveSkins: PrimitiveSkins = PrimitiveSkins.None,
+	/**
+	 * The brows and eye lines the bangs cover, as the generated base found them ([SeeThroughLayers.candidates]); null
+	 * when not known - an imported model, or an authored rig stored before they were recorded.
+	 */
+	val seeThrough: List<SeeThroughLayers.Candidate>? = null,
+	/** The copies over the bangs the finished rig holds, copy id to original id ([withSeeThrough]). */
+	val seeThroughCopies: Map<String, String> = emptyMap(),
+	/** The candidates the finished rig made no copy of although asked to, and why. */
+	val seeThroughNotes: List<SeeThroughLayers.Note> = emptyList(),
 ) {
 	/**
 	 * The puppet with v2 stubs removed and side-channel parts spliced in: what the document shows once every
@@ -1397,18 +1406,9 @@ object RigBuilder {
 		val canvasSkinned = skeleton?.let { SkeletonCanvasSkin.placedByRecords(config.rigEdits) }.orEmpty()
 		val faceCenterCanvas = faceRig.coordinateSpace.toCanvas(faceRig.centerX, faceRig.centerY)
 		var skeletonKey: String? = null
-		// The bound rig with the copies of the features the bangs cover ([SeeThroughLayers]), each on its original's page.
-		fun seeThrough(puppet: PuppetModel): Pair<PuppetModel, Map<String, Int>> {
-			val withCopies = SeeThroughLayers.add(puppet, config) { id ->
-				classifiedByDrawable[id]?.takeIf { inferredGroup(it, analysis.anchors) == LayerGroup.HEAD }
-			}
-			if (withCopies === puppet) return puppet to pageByDrawable
-			val pages = LinkedHashMap(pageByDrawable)
-			for (drawable in withCopies.drawables) {
-				val original = SeeThroughLayers.originalOf(drawable.id) ?: continue
-				pageByDrawable[original.raw]?.let { pages[drawable.id.raw] = it }
-			}
-			return withCopies to pages
+		// The brows and eye lines the bangs cover, recorded whatever the settings: the finished rig makes the copies.
+		fun seeThrough(puppet: PuppetModel) = SeeThroughLayers.candidates(puppet, config.alphaThreshold) { id ->
+			classifiedByDrawable[id]?.takeIf { inferredGroup(it, analysis.anchors) == LayerGroup.HEAD }
 		}
 		fun finish(): BuiltRig {
 			val unbound = assembled.withDerivedRenderRoot().let { withoutLegacyHairSway(it, config) }
@@ -1433,11 +1433,12 @@ object RigBuilder {
 				} } ?: withParts
 				val (skinnedBase, skins) = parked(skeletal, parts.mapTo(HashSet()) { it.id }, v2Parts, deferredParts, resolution,
 					generatedMasks, partSlots, partLayerById, partNeutralBounds)
-				val (skeletonPuppet, pages) = seeThrough(RigBuildProfile.stage("binding: UvBinding.bind") {
+				val skeletonPuppet = RigBuildProfile.stage("binding: UvBinding.bind") {
 					UvBinding.bind(skinnedBase, inputAnalysis, atlas) { classifiedByDrawable[it.id] }.puppet
-				})
-				return BuiltRig(skeletonPuppet, pages, sourceBoundsByDrawable, layerIdByDrawable, faceCenterCanvas.first,
-					faceCenterCanvas.second, faceRig.radiusX, faceRig.radiusY, warnings, faceRig.initialAngleZ, unbound, primitiveSkins = skins)
+				}
+				return BuiltRig(skeletonPuppet, pageByDrawable, sourceBoundsByDrawable, layerIdByDrawable, faceCenterCanvas.first,
+					faceCenterCanvas.second, faceRig.radiusX, faceRig.radiusY, warnings, faceRig.initialAngleZ, unbound, primitiveSkins = skins,
+					seeThrough = seeThrough(skeletonPuppet))
 			}
 			val skeletal = skeleton
 				?.let { RigBuildProfile.stage("skeleton") {
@@ -1448,12 +1449,12 @@ object RigBuilder {
 						.also { skeletonKey = SkeletonRig.takeLastKey() }
 				} } ?: unbound
 			val (skinnedBase, skins) = withoutSkinnedPrimitives(skeletal, parts.mapTo(HashSet()) { it.id })
-			val (skeletonPuppet, pages) = seeThrough(RigBuildProfile.stage("binding: UvBinding.bind") {
+			val skeletonPuppet = RigBuildProfile.stage("binding: UvBinding.bind") {
 				UvBinding.bind(skinnedBase, inputAnalysis, atlas) { classifiedByDrawable[it.id] }.puppet
-			})
+			}
 			return BuiltRig(
 				skeletonPuppet,
-				pages,
+				pageByDrawable,
 				sourceBoundsByDrawable,
 				layerIdByDrawable,
 				faceCenterCanvas.first,
@@ -1464,6 +1465,7 @@ object RigBuilder {
 				faceRig.initialAngleZ,
 				unbound,
 				primitiveSkins = skins,
+				seeThrough = seeThrough(skeletonPuppet),
 			)
 		}
 		if (stages == null) return finish()
@@ -1474,7 +1476,7 @@ object RigBuilder {
 			classifiedByDrawable.entries.associate { it.key.raw to it.value.source.id.raw },
 			skeleton?.let { listOf(it, context.bodyFrame, context.stance.contentKey, SkeletonRig.clears, skeletonJournalInputs(config)) },
 			listOf(pageByDrawable, sourceBoundsByDrawable, layerIdByDrawable, warnings.toList(), faceCenterCanvas,
-				faceRig.radiusX, faceRig.radiusY, faceRig.initialAngleZ, config.seeThroughBrows, config.seeThroughEyes, config.seeThroughOpacity),
+				faceRig.radiusX, faceRig.radiusY, faceRig.initialAngleZ),
 			io.github.psd2live.i18n.I18n.currentLanguage.tag,
 			if (!v2) null else listOf(resolution.resolved.contentKey, maskedParts, deferredParts, generatedMasks, partSlots,
 				partNeutralBounds, ghostIds))

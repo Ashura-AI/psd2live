@@ -1330,6 +1330,7 @@ internal class WorkspaceHost<V>(
 
     override fun generatedOverrideIssues() = captureQueries().generatedOverrideIssues()
     override fun supersededEntryNotes() = captureQueries().supersededEntryNotes()
+    override fun seeThroughNotes() = captureQueries().seeThroughNotes()
     override fun regenerationIssues() = captureQueries().regenerationIssues()
     override fun skeletonBindingIssues() = captureQueries().skeletonBindingIssues()
     override fun staleRegenerations() = captureQueries().staleRegenerations()

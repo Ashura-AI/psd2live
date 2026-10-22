@@ -522,8 +522,7 @@ data class RigEditOverlay(
 		// Edits of generated keyforms merge with what the generators produce now.
 		val overrides = if (authoringJournal.none(GeneratedOverrides::isOverride)) GeneratedOverrides.Outcome(model, emptyList())
 			else GeneratedOverrides.applyAll(model, authoringJournal, ArtPrimitiveJournal.replacementDrawables(this).keys)
-		// Copies over the bangs follow their originals as every edit and generator left them.
-		model = SeeThroughLayers.follow(overrides.model)
+		model = overrides.model
 		return GeneratedOverrides.Outcome(RigStructureEdits.replay(model, generatedPanelEdits + deferredJournalEdits).withParametersSyncedFromTree(), overrides.issues, notes)
 	}
 
@@ -554,9 +553,10 @@ data class RigEditOverlay(
 }
 
 internal fun BuiltRig.withRigEdits(overlay: RigEditOverlay, layerVisibility: Map<String, Boolean> = emptyMap(),
-                                 drawOrderOverrides: Map<String, Float> = emptyMap()): BuiltRig {
-	if (overlay == RigEditOverlay.Empty) return withDrawOrderOverrides(drawOrderOverrides)
-	return authoredRig(overlay).finished(overlay, layerVisibility, drawOrderOverrides)
+                                 drawOrderOverrides: Map<String, Float> = emptyMap(),
+                                 seeThrough: SeeThroughLayers.Settings = SeeThroughLayers.Settings.OFF): BuiltRig {
+	if (overlay == RigEditOverlay.Empty) return withDrawOrderOverrides(drawOrderOverrides).withSeeThrough(seeThrough)
+	return authoredRig(overlay).finished(overlay, layerVisibility, drawOrderOverrides, seeThrough)
 }
 
 /**
@@ -573,7 +573,8 @@ internal fun BuiltRig.authoredRig(overlay: RigEditOverlay): AuthoredRig {
 	// After a checkpoint its rig's maps hold every mesh up to it; the base's would miss what it stores.
 	val start = if (overlay.checkpointIndex < 0) AuthoredRig(this, emptyList()) else
 		RigCheckpoint.decode(overlay.authoringJournal[overlay.checkpointIndex]).authored.reboundTo(puppet.atlas, puppet.sources)
-			.let { it.copy(rig = it.rig.copy(primitiveSkins = primitiveSkins)) }
+			// What the bangs cover is the base's: a checkpoint stored before it was recorded has none.
+			.let { it.copy(rig = it.rig.copy(primitiveSkins = primitiveSkins, seeThrough = seeThrough ?: it.rig.seeThrough)) }
 	return AuthoredRig(start.rig.copy(puppet = replayed.model, supersededEntryNotes = replayed.notes), start.visibilityTargets)
 		.withJournalMeshes(overlay.afterCheckpoint)
 }
@@ -641,22 +642,24 @@ internal fun AuthoredRig.withJournalMeshes(commands: List<JsonObject>): Authored
 	return AuthoredRig(rig.copy(sourceBoundsByDrawableId = bounds, layerIdByDrawableId = layers, pageByDrawableId = pages), visible)
 }
 
-/** The finished rig: [overlay]'s generators, overrides and deferred panel edits on the authored state, then layer visibility and draw orders. */
+/**
+ * The finished rig: [overlay]'s generators, overrides and deferred panel edits on the authored state, then layer
+ * visibility and draw orders, then the copies over the bangs [seeThrough] asks for, made from all of that.
+ */
 internal fun AuthoredRig.finished(overlay: RigEditOverlay, layerVisibility: Map<String, Boolean> = emptyMap(),
-                                  drawOrderOverrides: Map<String, Float> = emptyMap()): BuiltRig {
+                                  drawOrderOverrides: Map<String, Float> = emptyMap(),
+                                  seeThrough: SeeThroughLayers.Settings = SeeThroughLayers.Settings.OFF): BuiltRig {
 	// Without edits the base is the rig: no generator runs (as [withRigEdits] has it).
-	if (overlay == RigEditOverlay.Empty) return rig.withDrawOrderOverrides(drawOrderOverrides)
+	if (overlay == RigEditOverlay.Empty) return rig.withDrawOrderOverrides(drawOrderOverrides).withSeeThrough(seeThrough)
 	val outcome = overlay.finish(rig.puppet, rig.supersededEntryNotes)
 	var model = outcome.model
 	for ((id, layer) in visibilityTargets) {
 		val visible = layerVisibility[layer] ?: continue
 		model = model.copy(drawables = model.drawables.map { if (it.id.raw == id) it.copy(isVisible = visible) else it })
 	}
-	// A copy over the bangs shows as its original does.
-	model = SeeThroughLayers.follow(model)
 	model = ArtPrimitiveJournal.pruneAtlas(model, overlay)
 	return rig.copy(puppet = model, overrideIssues = outcome.issues, supersededEntryNotes = outcome.notes)
-		.withDrawOrderOverrides(drawOrderOverrides)
+		.withDrawOrderOverrides(drawOrderOverrides).withSeeThrough(seeThrough)
 }
 
 /**

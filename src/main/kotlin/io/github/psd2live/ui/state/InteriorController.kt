@@ -104,6 +104,7 @@ internal class InteriorController(
 						overlay,
 						preview.config.layerVisibility,
 						preview.config.drawOrderOverrides,
+						io.github.psd2live.core.SeeThroughLayers.Settings.of(preview.config),
 					)
 					.puppet
 			}

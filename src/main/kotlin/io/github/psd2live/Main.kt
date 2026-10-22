@@ -89,6 +89,10 @@ fun main(arguments: Array<String>) {
 		bodyStrength = options.float("--body-strength", 1f),
 		meshOnly = options.flags.contains("--mesh-only"),
 		generateDeformers = !options.flags.contains("--no-deformers"),
+		seeThroughBrows = !options.flags.contains("--no-see-through"),
+		seeThroughEyes = options.flags.contains("--see-through-eyes"),
+		seeThroughOpacity = options.float("--see-through-opacity", io.github.psd2live.core.SeeThroughLayers.DEFAULT_OPACITY)
+			.takeIf { it.isFinite() }?.coerceIn(io.github.psd2live.core.SeeThroughLayers.OPACITY_RANGE) ?: io.github.psd2live.core.SeeThroughLayers.DEFAULT_OPACITY,
 		exportMotions = !options.flags.contains("--no-motions"),
 		generatePhysics = !options.flags.contains("--no-physics"),
 		exportCmo3 = !options.flags.contains("--no-cmo3"),
@@ -328,8 +332,10 @@ internal data class CliOptions(val values: Map<String, String>, val flags: Set<S
 	fun float(name: String, default: Float): Float = value(name)?.let { it.toFloatOrNull() ?: error(tr("cli.invalidNumber", name, it)) } ?: default
 
 	companion object {
-		internal val flagNames = setOf("--no-upscale-neural-alpha", "--upscale-neural-alpha", "--mesh-pixels", "--no-physics", "--no-cmo3", "--no-moc3", "--mesh-only", "--no-deformers", "--no-motions", "--no-json")
-		internal val valueNames = setOf("--upscale", "--upscale-noise", "--upscale-python", "--nunif-dir", "--upscale-model", "--upscale-tile", "--input", "--output", "--lang", "--atlas", "--mesh-spacing", "--mesh-wrap", "--head-strength", "--body-strength")
+		internal val flagNames = setOf("--no-upscale-neural-alpha", "--upscale-neural-alpha", "--mesh-pixels", "--no-physics", "--no-cmo3", "--no-moc3", "--mesh-only", "--no-deformers", "--no-motions", "--no-json",
+			"--no-see-through", "--see-through-eyes")
+		internal val valueNames = setOf("--upscale", "--upscale-noise", "--upscale-python", "--nunif-dir", "--upscale-model", "--upscale-tile", "--input", "--output", "--lang", "--atlas", "--mesh-spacing", "--mesh-wrap", "--head-strength", "--body-strength",
+			"--see-through-opacity")
 		fun parse(arguments: Array<String>): CliOptions {
 			val values = linkedMapOf<String, String>()
 			val flags = linkedSetOf<String>()

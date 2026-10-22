@@ -37,6 +37,9 @@ Windows ではリポジトリ直下の `run-gui.bat` でも GUI を起動でき�
 | `--body-strength <value>` | 1.0 | 体の変形の強さ |
 | `--mesh-only` | オフ | メッシュのみ生成 |
 | `--no-deformers` | オフ | デフォーマを生成しない |
+| `--no-see-through` | オフ | 前髪に隠れる眉を前髪の上に複製しない（既定では複製するため、以前の版より出力にこれらのメッシュが増える） |
+| `--see-through-eyes` | オフ | 目線も前髪の上に複製する |
+| `--see-through-opacity <0..1>` | 0.5 | 前髪の上の複製の不透明度 |
 | `--no-motions` | オフ | モーションを出力しない |
 | `--no-physics` | オフ | 物理を生成しない |
 | `--no-cmo3` | オフ | CMO3 を出力しない |

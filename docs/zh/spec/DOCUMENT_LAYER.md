@@ -43,12 +43,12 @@
 | `swing:<ID>`（每个未烘焙摆动） | `rig:authored`、该摆动的设置 | 其参数，及其参数在每个目标 Warp 上的关键形 |
 | `simulation:<ID>`（每个已烘焙且启用的模拟） | `rig:authored`、该模拟的设置与烘焙 | 其模式参数，及模式参数在烘焙网格上的关键形 |
 | `overrides`（覆盖合并） | 所有生成的关键形、覆盖、生成器集合 | `rig:final` |
-| `seeThrough`（透过刘海的复制件跟随原件） | `rig:final` | `rig:seeThrough` |
+| `seeThrough`（透过刘海的复制件） | `rig:final`、设置 | `rig:seeThrough` |
 | `physics`（物理组） | `rig:final`、`rig:seeThrough`、生成的参数、物理与骨架设置 | `physics` |
 | `motions`（生成动作） | `rig:final`、`rig:seeThrough`、`physics`、动作设置、骨架定义 | `motions` |
 
 - 重放（`RigEditOverlay.applyTo`）按图的拓扑顺序运行日志之后的节点：先 `skeleton.skin`，再摆动与模拟，与此前“先全部摆动、再全部模拟”的顺序一致；声明顺序打破平局。
-- 透过刘海的复制件（`SeeThroughLayers`，见[变形器与参数参考](DEFORMER_AND_PARAMETER_SPEC.md#自动形变)）由 `rig` 节点随基础 Rig 生成，ID 为原件 ID 加 `_SeeThrough`，自身拥有蒙版、绘制顺序与不透明度；`seeThrough` 节点在覆盖合并之后（`RigEditOverlay.finish`，图层显隐套用后再跑一次）把父变形器、网格、几何关键形、混合形状、颜色、显隐与纹理从原件同步过来，因此原件的画布编辑与生成结果覆盖都传到复制件；复制件不拥有任何 `keyform:` 对象，在它上面的编辑会被同步覆盖，画布上也不可选取。
+- 透过刘海的复制件（`SeeThroughLayers`，见[变形器与参数参考](DEFORMER_AND_PARAMETER_SPEC.md#自动形变)）：`rig` 节点只记录候选（被刘海覆盖的眉毛与眼线及其刘海），`seeThrough` 节点在覆盖合并、图层显隐与绘制顺序覆盖之后（`AuthoredRig.finished` 末尾，`withSeeThrough`）按设置从原件制作复制件，蒙版、绘制顺序与不透明度都由当时的原件与刘海得出；复制件不在作者态 Rig 中，不拥有任何 `keyform:` 对象，点名它的编辑由 `WorkspaceDocumentEdits.journal` 与 `layer_draw_order` 以 `WorkspaceGeneratedCopyEdit`（`generated_copy`）拒绝；三项设置只触发重放，不算生成设置。
 - 文档若让两个生成器声明同一参数，先声明者保留拥有权，后者的声明被丢弃，重建仍可进行，冲突由生成器自身报告。
 - `DocumentGenerators.stale(before, after)` 给出一次文档变化后需要重跑的生成器：读取了变化部分的生成器及其全部下游；被修改或删除的生成器原先拥有的对象也视为变化。例如调整一个摆动只重跑该摆动、覆盖合并、物理与动作，不重跑 Rig 生成、骨架或其他模拟。
 - Rig 生成按阶段登记为节点（见下文[Rig 生成阶段](#rig-生成阶段)）；`graph(overlay, layers)` 给出图层列表时每层一个 `mesh:<图层>` 节点，某层像素变化只让该层网格、组装及其下游过期。
@@ -117,7 +117,7 @@
 - 在其他对象上使用生成参数（打键、通道关键形、改名、改范围）时，先在日志中按生成器当前定义创建该参数（`GeneratedParameterAdoption`），之后参数属于文档，生成器沿用它；见[固化 Rig](MATERIALIZED_RIG.md#41-记录层与作用层)。
 - 覆盖不影响基础 Rig 生成：生成几何缓存的键忽略覆盖命令，增删覆盖不会让基础 Rig 重新生成。
 - **问题报告**：每次重放把未按记录生效的覆盖作为结构化记录（`GeneratedOverrideIssue`：类型 `conflict` / `orphaned`、生成器 ID、目标、完整键、冲突点数或孤立覆盖的点数、形状总点数，孤立时附原因 `missing_keyform` / `shape_mismatch` / `superseded`）存入 `BuiltRig.overrideIssues`，按日志顺序排列，不改变合并语义。被拆分取代的网格上的覆盖原因为 `superseded`。
-- `core/quality/GeneratedOverrideQuality` 把这些记录转为观察报告（版本 3，领域 `overrides`，两项检查：`generated_overrides`，以及 `superseded_entries`——版本 2 拆分之前、只因其取代的网格失败而按空操作重放的条目，等级 info）：冲突为 `GENERATED_OVERRIDE_CONFLICT`，孤立为 `GENERATED_OVERRIDE_ORPHANED`，等级由规则枚举唯一决定（均为 warning，`can_proceed` 恒为 true），不从文本推断；没有问题时报告完整且 findings 为空。MCP `workspace_inspect`（scope `project`，工程已加载时）返回 `quality.overrides`；严格结构见 `WorkspaceQualitySchemas`。
+- `core/quality/GeneratedOverrideQuality` 把这些记录转为观察报告（版本 4，领域 `overrides`，三项检查：`generated_overrides`；`superseded_entries`——版本 2 拆分之前、只因其取代的网格失败而按空操作重放的条目，等级 info；`see_through`——设置要求却没能制作的透过刘海复制件，`SEE_THROUGH_DROPPED`，等级 info）：冲突为 `GENERATED_OVERRIDE_CONFLICT`，孤立为 `GENERATED_OVERRIDE_ORPHANED`，等级由规则枚举唯一决定（均为 warning，`can_proceed` 恒为 true），不从文本推断；没有问题时报告完整且 findings 为空。MCP `workspace_inspect`（scope `project`，工程已加载时）返回 `quality.overrides`；严格结构见 `WorkspaceQualitySchemas`。
 - 检查器工具栏在有问题时显示计数徽标，选中对象的问题在检查器顶部列出；点击徽标切换为列出全部问题。文案按类型与原因代码本地化（中/英/日）。
 
 骨架烘焙的修正关键形没有改为覆盖（`skeleton.skin` 写在日志安放网格上的关键形除外，见[日志安放的网格](#日志安放的网格)）：骨架在编辑日志之前运行，日志中的画布编辑本来就在骨架之后重放，并会随网格重建一起迁移到新拓扑；改为覆盖反而会在重新划分网格后变成孤立。物理组与生成动作沿用已有的整体覆盖（同 ID 的用户物理组取代生成组，`builtin` 动作片段取代生成动作）。

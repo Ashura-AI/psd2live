@@ -18,6 +18,8 @@ internal object WorkspaceDrawOrderEdits {
         val drawable = model.rig.puppet.drawables.singleOrNull { it.id.raw == raw }
             ?: model.rig.puppet.drawables.singleOrNull { model.rig.layerIdByDrawableId[it.id.raw] == raw }
             ?: throw IllegalArgumentException("Draw-order target not found: $raw")
+        // A copy over the bangs draws where its bangs are: an override would not last.
+        model.rig.seeThroughCopies[drawable.id.raw]?.let { throw WorkspaceGeneratedCopyEdit(drawable.id.raw, it) }
         val layer = model.rig.layerIdByDrawableId[drawable.id.raw] ?: drawable.id.raw
         val before = document.settings["drawOrderOverrides"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float }
             ?: model.config.drawOrderOverrides

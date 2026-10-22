@@ -9,6 +9,12 @@ internal class WorkspaceUnsavedChanges : IllegalStateException("Current workspac
 internal class WorkspaceBusy : IllegalStateException("Workspace is busy")
 /** An edit of the rig, or an export, on a project whose rig is not generated yet, or on a layer waiting for generation. */
 internal class WorkspaceNotGenerated(message: String = "The project is not generated yet; generate the rig first (rig_generate)") : IllegalStateException(message)
+/**
+ * An edit naming a copy over the bangs ([io.github.psd2live.core.SeeThroughLayers]): the finished rig makes it from its
+ * original and the settings, so nothing recorded on it would last. Edit [original], or the see-through settings.
+ */
+internal class WorkspaceGeneratedCopyEdit(val copy: String, val original: String) : IllegalArgumentException(
+    "$copy is the copy of $original over the bangs, made anew on every build; edit $original, or the settings seeThroughBrows, seeThroughEyes and seeThroughOpacity")
 internal class WorkspaceCheckTimeout : IllegalStateException("Disconnected mesh check timed out")
 internal class WorkspaceOutputContractFailure(val operation: String, val validation: WorkspaceValidationException) :
     IllegalStateException("Operation $operation returned an invalid result: ${validation.message}", validation)
@@ -47,6 +53,11 @@ internal data class WorkspaceFailure private constructor(
             if (notGenerated != null) return WorkspaceFailure("not_generated", notGenerated.message ?: "Not generated",
                 if (failure is WorkspaceBatchEditException) buildJsonObject { put("edit_index", failure.index); put("edit_operation", failure.editOperation) }
                 else JsonObject(emptyMap()))
+            val copyEdit = generateSequence(failure) { it.cause }.take(8).firstOrNull { it is WorkspaceGeneratedCopyEdit } as WorkspaceGeneratedCopyEdit?
+            if (copyEdit != null) return WorkspaceFailure("generated_copy", copyEdit.message ?: "Generated copy", buildJsonObject {
+                put("target", copyEdit.copy); put("original", copyEdit.original)
+                if (failure is WorkspaceBatchEditException) { put("edit_index", failure.index); put("edit_operation", failure.editOperation) }
+            })
             val code = when (failure) {
                 is io.github.psd2live.core.GeometrySafetyRejectedException -> "geometry_unsafe"
                 is WorkspaceBatchEditException -> "invalid_edit"

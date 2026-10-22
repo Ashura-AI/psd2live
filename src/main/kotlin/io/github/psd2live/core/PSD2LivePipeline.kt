@@ -70,7 +70,7 @@ class PSD2LivePipeline {
         if (config.rigEdits.importedCmo3 != null) {
             val importedAnalysis = Cmo3ModelImport.analysis(analysis.source, config)
             val (atlas, baseRig) = Cmo3ModelImport.baseRig(analysis.source, config)
-            val rig = baseRig.withRigEdits(config.rigEdits, config.layerVisibility, config.drawOrderOverrides)
+            val rig = baseRig.withRigEdits(config.rigEdits, config.layerVisibility, config.drawOrderOverrides, SeeThroughLayers.Settings.of(config))
             val bundle = buildRuntimeBundle("psd2live-preview", importedAnalysis, atlas, rig, config).first
             return RigPreviewModel(importedAnalysis, atlas, rig, config, bundle, PreviewRigSources.of(baseRig))
         }
@@ -79,7 +79,7 @@ class PSD2LivePipeline {
 		// The base packs superseded layers (the originals of a split) too; once no mesh samples them the model
 		// packs only the layers it shows, as exports do.
 		val (atlas, rig) = RigLayerDeletion.compact(fullAtlas, effectiveAnalysis, effectiveAnalysis,
-			baseRig.withRigEdits(config.rigEdits, config.layerVisibility, config.drawOrderOverrides), config, previousAtlas)
+			baseRig.withRigEdits(config.rigEdits, config.layerVisibility, config.drawOrderOverrides, SeeThroughLayers.Settings.of(config)), config, previousAtlas)
 		val runtimeBundle = buildRuntimeBundle("psd2live-preview", effectiveAnalysis, atlas, rig, config).first
 		return RigPreviewModel(effectiveAnalysis, atlas, rig, config, runtimeBundle, PreviewRigSources.of(baseRig, inputs.bindingKey),
 			generationAtlas = fullAtlas.takeIf { it !== atlas })
@@ -117,12 +117,14 @@ class PSD2LivePipeline {
 		val inputs = generationInputs(analysis, config, progress, previousAtlas)
 		// Another atlas: [rebind] moves the texture coordinates onto it through the canvas (the data is the authored rig);
 		// otherwise the caller builds by generation, which binds exactly.
+		// An authored rig stored before the base recorded what the bangs cover cannot make the copies: generate.
+		if (authored.rig.seeThrough == null && SeeThroughLayers.Settings.of(config).enabled) return null
 		@Suppress("NAME_SHADOWING")
 		val authored = if (inputs.bindingKey != bindingKey && !rebind) return null else
 			// Older stored rigs can carry placeholder tile sizes even under the correct binding key.
 			PuppetSourceAtlas.build(inputs.analyses.textures, inputs.atlas).let { (atlas, sources) -> authored.reboundTo(atlas, sources) }
 		val (atlas, rig) = RigLayerDeletion.compact(inputs.atlas, inputs.visible, inputs.visible,
-			authored.finished(config.rigEdits, config.layerVisibility, config.drawOrderOverrides), config, previousAtlas)
+			authored.finished(config.rigEdits, config.layerVisibility, config.drawOrderOverrides, SeeThroughLayers.Settings.of(config)), config, previousAtlas)
 		val runtimeBundle = buildRuntimeBundle("psd2live-preview", inputs.visible, atlas, rig, config).first
 		return RigPreviewModel(inputs.visible, atlas, rig, config, runtimeBundle,
 			PreviewRigSources.materialized(config.rigEdits, authored, inputs.bindingKey) { generatedBase(inputs, config, ProgressListener { _, _ -> }).rig },
@@ -268,7 +270,7 @@ class PSD2LivePipeline {
 			deformers = current.baseRig.puppet.deformers,
 			parameters = (generated.puppet.parameters + current.baseRig.puppet.parameters).distinctBy { it.id },
 		))
-		val replayed = baseRig.withRigEdits(committedConfig.rigEdits, committedConfig.layerVisibility, committedConfig.drawOrderOverrides)
+		val replayed = baseRig.withRigEdits(committedConfig.rigEdits, committedConfig.layerVisibility, committedConfig.drawOrderOverrides, SeeThroughLayers.Settings.of(committedConfig))
 		val rig = replayed.copy(puppet = replayed.puppet.copy(
 			deformers = current.rig.puppet.deformers,
 			parameters = (replayed.puppet.parameters + current.rig.puppet.parameters).distinctBy { it.id },
@@ -318,11 +320,13 @@ class PSD2LivePipeline {
         }
         if (config.rigEdits.importedCmo3 != null) return buildPreview(current.analysis, config, progress)
 		if (MeshGenerationBaseline.present(config.rigEdits)) return buildPreview(current.analysis.source, config, progress, current.atlas)
+		// The copies over the bangs are made on the finished rig: their settings only replay.
 		if (current.config.copy(parentOverrides = config.parentOverrides, rigEdits = config.rigEdits, drawOrderOverrides = config.drawOrderOverrides,
-				hairSimulationFront = config.hairSimulationFront, hairSimulationBack = config.hairSimulationBack) == config) {
+				hairSimulationFront = config.hairSimulationFront, hairSimulationBack = config.hairSimulationBack,
+				seeThroughBrows = config.seeThroughBrows, seeThroughEyes = config.seeThroughEyes, seeThroughOpacity = config.seeThroughOpacity) == config) {
 			val baseRig = if (config.generationSource == null) RigBuilder.build(current.analysis, current.atlas, config, meshCache)
 				else generatedBase(current.analysis, config, progress, current.atlas).rig
-			val rig = baseRig.withRigEdits(config.rigEdits, config.layerVisibility, config.drawOrderOverrides)
+			val rig = baseRig.withRigEdits(config.rigEdits, config.layerVisibility, config.drawOrderOverrides, SeeThroughLayers.Settings.of(config))
 			val bundle = buildRuntimeBundle("psd2live-preview", current.analysis, current.atlas, rig, config).first
 			return current.copy(rig = rig, config = config, runtimeBundle = bundle, sources = PreviewRigSources.of(baseRig))
 		}
@@ -418,7 +422,7 @@ class PSD2LivePipeline {
 				meshSettingsChanged = true,
 			)
 		}
-		val retainedRig = baseRig.withRigEdits(retainedEdits, config.layerVisibility, config.drawOrderOverrides)
+		val retainedRig = baseRig.withRigEdits(retainedEdits, config.layerVisibility, config.drawOrderOverrides, SeeThroughLayers.Settings.of(config))
 		val replacementBasePaths = retainedRig.puppet.deformPaths.mapTo(HashSet()) { it.id }
 		val deleteCommands = pathDeletes
 			.distinctBy { it["id"]?.jsonPrimitive?.content }
@@ -444,7 +448,7 @@ class PSD2LivePipeline {
 			if (groups.isEmpty()) edits else VertexGroupJournal.replaceMeshGroups(edits, drawableId, groups)
 		}
 		val rebasedConfig = config.copy(rigEdits = rebasedEdits)
-		val rig = baseRig.withRigEdits(rebasedEdits, config.layerVisibility, config.drawOrderOverrides)
+		val rig = baseRig.withRigEdits(rebasedEdits, config.layerVisibility, config.drawOrderOverrides, SeeThroughLayers.Settings.of(config))
 		val runtimeBundle = buildRuntimeBundle(
 			"psd2live-preview",
 			effectiveAnalysis,
@@ -522,8 +526,8 @@ class PSD2LivePipeline {
 			val previous = current.sources
 			PreviewRigSources.materialized(config.rigEdits, authored, previous.bindingKey) { previous.base }
 		} ?: current.sources
-		val finished = appended?.finished(config.rigEdits, config.layerVisibility, config.drawOrderOverrides)
-			?: current.baseRig.withRigEdits(config.rigEdits, config.layerVisibility, config.drawOrderOverrides)
+		val finished = appended?.finished(config.rigEdits, config.layerVisibility, config.drawOrderOverrides, SeeThroughLayers.Settings.of(config))
+			?: current.baseRig.withRigEdits(config.rigEdits, config.layerVisibility, config.drawOrderOverrides, SeeThroughLayers.Settings.of(config))
 		val replayed = RigLayerDeletion.rig(finished, current.analysis, config)
 		val rig = current.generationAtlas?.let { full ->
 			RigLayerDeletion.rebind(replayed, current.analysis, full, current.analysis, current.atlas) ?: return buildPreview(current.analysis.source, config)

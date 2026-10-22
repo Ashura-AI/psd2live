@@ -72,7 +72,7 @@ internal fun WorkspaceQueries.inspect(a: JsonObject): JsonObject {
                 put("layers", snapshot.layers.count { !it.deleted }); put("parameters", snapshot.parameters.size)
                 snapshot.persistenceError?.let { put("persistenceError", it) }
                 if (snapshot.loaded) putJsonObject("quality") {
-                    put("overrides", io.github.psd2live.core.quality.GeneratedOverrideQuality.report(queries.generatedOverrideIssues(), queries.supersededEntryNotes()))
+                    put("overrides", io.github.psd2live.core.quality.GeneratedOverrideQuality.report(queries.generatedOverrideIssues(), queries.supersededEntryNotes(), queries.seeThroughNotes()))
                     put("regeneration", io.github.psd2live.core.quality.RegenerationQuality.report(queries.regenerationIssues(), queries.staleRegenerations()))
                     put("skeleton", io.github.psd2live.core.quality.SkeletonBindingQuality.report(queries.skeletonBindingIssues()))
                 }

@@ -9,7 +9,8 @@ import io.github.psd2live.core.legacy.SupersededEntryNote
 /**
  * An [AuthoredRig] as a revision stores it: the authored puppet as [RigIrObjects] (frame, deformers, meshes) and a
  * JSON header with the rest of the rig - the maps from meshes to source layers, pages and neutral bounds, the face
- * frame, the warnings, the entries the replay skipped, the meshes whose layer visibility applies - and the binding key
+ * frame, the warnings, the entries the replay skipped, the meshes whose layer visibility applies, the features the bangs
+ * cover ([SeeThroughLayers.Candidate]) - and the binding key
  * of the atlas its texture coordinates address ([PSD2LivePipeline.materializedPreview]).
  *
  * The base's split-part side channel and unbound rig are not stored: nothing after the journal reads them.
@@ -37,6 +38,10 @@ internal object MaterializedRigCodec {
 				put("index", note.index); put("op", note.op); put("targets", JsonArray(note.targets.map(::JsonPrimitive))); put("detail", note.detail)
 			} }))
 			put("visibility", JsonArray(authored.visibilityTargets.map { (id, layer) -> JsonArray(listOf(JsonPrimitive(id), JsonPrimitive(layer))) }))
+			// Absent in rigs stored before the base recorded them: unknown, not none.
+			rig.seeThrough?.let { candidates -> put("see_through", JsonArray(candidates.map { candidate -> buildJsonObject {
+				put("original", candidate.original); put("eyes", candidate.eyes); put("bangs", JsonArray(candidate.bangs.map(::JsonPrimitive)))
+			} })) }
 		}
 		return Encoded(header, RigIrObjects.split(PuppetIr.toIr(rig.puppet)))
 	}
@@ -62,6 +67,11 @@ internal object MaterializedRigCodec {
 				val note = element.jsonObject
 				SupersededEntryNote(note.getValue("index").jsonPrimitive.int, note.getValue("op").jsonPrimitive.content,
 					note.getValue("targets").jsonArray.map { it.jsonPrimitive.content }, note.getValue("detail").jsonPrimitive.content)
+			},
+			seeThrough = header["see_through"]?.jsonArray?.map { element ->
+				val candidate = element.jsonObject
+				SeeThroughLayers.Candidate(candidate.getValue("original").jsonPrimitive.content, candidate.getValue("eyes").jsonPrimitive.boolean,
+					candidate.getValue("bangs").jsonArray.map { it.jsonPrimitive.content })
 			},
 		)
 		val visibility = header.getValue("visibility").jsonArray.map { element ->

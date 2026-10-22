@@ -303,7 +303,9 @@ internal class WorkspacePreviewBuilder {
                 current != null && (current.analysis.source === document.source || current.analysis.source == document.source) &&
                     current.config.copy(parentOverrides = config.parentOverrides, rigEdits = config.rigEdits,
                         drawOrderOverrides = config.drawOrderOverrides, hairSimulationFront = config.hairSimulationFront,
-                        hairSimulationBack = config.hairSimulationBack) == config -> pipeline.rebuildPreview(current, config, progress)
+                        hairSimulationBack = config.hairSimulationBack, seeThroughBrows = config.seeThroughBrows,
+                        seeThroughEyes = config.seeThroughEyes, seeThroughOpacity = config.seeThroughOpacity) == config ->
+                    pipeline.rebuildPreview(current, config, progress)
                 // A source edit (paint, image replace, their undo) rebuilds in full; the current atlas only lends
                 // the pages and preview PNG strips its pixels did not change.
                 else -> pipeline.buildPreview(document.source, config, progress, current?.atlas)

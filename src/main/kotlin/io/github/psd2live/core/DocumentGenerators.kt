@@ -45,8 +45,9 @@ internal object DocumentGenerators {
 	const val OVERRIDES = "overrides"
 
 	/**
-	 * The copies of features over the bangs ([SeeThroughLayers]): the base rig adds them and owns their masks, draw
-	 * order and opacity; after the overrides each takes the rest - parent, mesh, keyforms, colors - from its original.
+	 * The copies of features over the bangs ([SeeThroughLayers]): the base rig records which features the bangs cover;
+	 * after the overrides, layer visibility and draw-order overrides the copies are made from their originals as the
+	 * settings ask. They own nothing an edit could write: no edit reaches them.
 	 */
 	const val SEE_THROUGH = "seeThrough"
 	const val PHYSICS = "physics"
@@ -151,8 +152,8 @@ internal object DocumentGenerators {
 			parameters += writes.filter { it.startsWith("parameter:") }
 		}
 		nodes += GeneratorNode(OVERRIDES, keyforms + "rig:authored" + "document:overrides" + "document:generators", claim(listOf("rig:final")))
-		// The copies over the bangs the base made take their originals' state from the finished rig.
-		nodes += GeneratorNode(SEE_THROUGH, setOf("rig:final"), claim(listOf("rig:seeThrough")))
+		// The copies over the bangs are made from their originals on the finished rig.
+		nodes += GeneratorNode(SEE_THROUGH, setOf("rig:final", "document:settings"), claim(listOf("rig:seeThrough")))
 		nodes += GeneratorNode(PHYSICS, parameters + "rig:final" + "rig:seeThrough" + "document:physics" + "document:skeleton", claim(listOf("physics")))
 		nodes += GeneratorNode(MOTIONS, setOf("rig:final", "rig:seeThrough", "physics", "document:motions", "document:skeleton"), claim(listOf("motions")))
 		return GeneratorGraph(nodes)

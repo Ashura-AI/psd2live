@@ -173,6 +173,8 @@ internal class WorkspaceReadSession(
     }
     override fun generatedOverrideIssues(): List<GeneratedOverrideIssue> = read.runtime.capture?.model?.rig?.overrideIssues.orEmpty()
     override fun supersededEntryNotes(): List<SupersededEntryNote> = read.runtime.capture?.model?.rig?.supersededEntryNotes.orEmpty()
+    override fun seeThroughNotes(): List<Pair<String, String>> =
+        read.runtime.capture?.model?.rig?.seeThroughNotes.orEmpty().map { it.original to it.reason.wire }
     override fun regenerationIssues(): List<io.github.psd2live.core.RigRegeneration.Issue> =
         read.runtime.capture?.document?.rigEdits?.authoringJournal?.lastOrNull(io.github.psd2live.core.RigCheckpoint::isRecord)
             ?.let(io.github.psd2live.core.RigCheckpoint::issues).orEmpty()
@@ -337,8 +339,10 @@ internal class WorkspaceReadSession(
                     "type" to "art_mesh",
                     "vertexCount" to (drawable.mesh?.vertexCount ?: 0).toString(),
                     "triangleCount" to (drawable.mesh?.triangleCount ?: 0).toString(),
-                    "layerId" to (rig.layerIdByDrawableId[drawable.id.raw] ?: ""),
-                )
+                    // A copy over the bangs reports its original's layer, and the original it copies.
+                    "layerId" to (rig.layerIdByDrawableId[drawable.id.raw]
+                        ?: rig.seeThroughCopies[drawable.id.raw]?.let(rig.layerIdByDrawableId::get) ?: ""),
+                ) + (rig.seeThroughCopies[drawable.id.raw]?.let { mapOf("seeThroughOf" to it) } ?: emptyMap())
                 val geoSnapshot = grid?.let { g ->
                     WorkspaceObjectGeometrySnapshot(
                         axes = g.axes.map { WorkspaceObjectAxisSnapshot(it.parameterId.raw, it.keys.toList()) },

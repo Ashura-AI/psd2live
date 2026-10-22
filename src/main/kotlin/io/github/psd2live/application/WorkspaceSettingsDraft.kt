@@ -15,7 +15,7 @@ internal object WorkspaceSettingsDraft {
 
     // These switches can release an authored pose. Keep their transitions, including off then on.
     private val switches = setOf("meshOnly", "motionBasic", "motionIdle", "motionBlink", "generatePhysics",
-        "motionNod", "motionShake", "motionSkeleton", "mouthOutlineEnabled", "featureDisplacementEnabled", "seeThroughBrows", "seeThroughEyes")
+        "motionNod", "motionShake", "motionSkeleton", "mouthOutlineEnabled", "featureDisplacementEnabled")
 
     /** Continuous samples of values become their final patch between ordered switch transitions. */
     fun coalesce(changes: List<JsonObject>): List<JsonObject> = buildList {

@@ -247,6 +247,7 @@ internal object WorkspaceDocumentEdits {
     }
 
     fun journal(document: WorkspaceDocument, model: RigPreviewModel, edits: JsonArray): WorkspaceDocument {
+        refuseCopies(model, edits)
         // Recorded on the shown rig, they replay on the authored one, before the generators.
         val journal = JournalRecording.record(model.rig.puppet, model.authored.rig.puppet, document.rigEdits, edits, model.primitiveSkins)
         // A deleted Warp leaves the swings that moved it in the same step.
@@ -293,6 +294,28 @@ internal object WorkspaceDocumentEdits {
             }
         }
         return document.copy(rigEdits = overlay)
+    }
+
+    /**
+     * Refuses [edits] naming a copy over the bangs the shown rig holds - as an id, or as `<kind>:<id>` - with
+     * [WorkspaceGeneratedCopyEdit]: the authored rig has no such mesh, and the finished one would make it anew.
+     */
+    private fun refuseCopies(model: RigPreviewModel, edits: JsonElement) {
+        val copies = model.rig.seeThroughCopies
+        if (copies.isEmpty()) return
+        fun visit(element: JsonElement) {
+            when (element) {
+                is JsonObject -> element.values.forEach(::visit)
+                is JsonArray -> element.forEach(::visit)
+                is JsonPrimitive -> if (element.isString) {
+                    val text = element.content
+                    val id = if (text in copies) text else text.substringAfter(':', "").takeIf { it in copies }
+                    if (id != null) throw WorkspaceGeneratedCopyEdit(id, copies.getValue(id))
+                }
+                else -> Unit
+            }
+        }
+        visit(edits)
     }
 
     fun paint(document: WorkspaceDocument, model: RigPreviewModel, request: JsonObject,

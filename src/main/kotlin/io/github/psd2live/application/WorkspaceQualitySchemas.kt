@@ -19,14 +19,19 @@ internal object WorkspaceQualitySchemas {
         "kind" to s.constant(GeneratedOverrideQuality.SUPERSEDED_KIND), "index" to s.integer(0), "op" to s.string(),
         "targets" to s.array(s.handle()), "detail" to s.string(),
     ))
+    private val seeThrough = s.obj(mapOf(
+        "kind" to s.constant(GeneratedOverrideQuality.SEE_THROUGH_KIND),
+        "reason" to s.choices(*GeneratedOverrideQuality.SEE_THROUGH_REASONS.toTypedArray()),
+    ))
     private fun finding(codes: List<GeneratedOverrideRule>, evidence: kotlinx.serialization.json.JsonObject) = s.obj(mapOf(
         "code" to s.choices(*codes.map { it.name }.toTypedArray()),
         "severity" to s.choices("info", "warning", "error"), "category" to s.choices("quality", "validity", "coverage"),
         "domain" to s.constant(GeneratedOverrideQuality.DOMAIN), "target" to s.handle(), "evidence" to evidence,
     ))
     private val finding = s.union(listOf(
-        finding(GeneratedOverrideRule.entries - GeneratedOverrideRule.SUPERSEDED_ENTRY_SKIPPED, evidence),
+        finding(GeneratedOverrideRule.entries - GeneratedOverrideRule.SUPERSEDED_ENTRY_SKIPPED - GeneratedOverrideRule.SEE_THROUGH_DROPPED, evidence),
         finding(listOf(GeneratedOverrideRule.SUPERSEDED_ENTRY_SKIPPED), skipped),
+        finding(listOf(GeneratedOverrideRule.SEE_THROUGH_DROPPED), seeThrough),
     ))
     private val check = s.obj(mapOf("id" to s.handle(), "scope" to s.string(), "complete" to s.boolean()))
 
@@ -66,6 +71,6 @@ internal object WorkspaceQualitySchemas {
         "version" to s.integer(GeneratedOverrideQuality.VERSION, GeneratedOverrideQuality.VERSION),
         "domain" to s.constant(GeneratedOverrideQuality.DOMAIN), "fence" to s.constant("observation"),
         "decision" to s.choices("accept", "accept_with_diagnostics"), "can_proceed" to s.constant(true),
-        "complete" to s.boolean(), "scope" to s.string(), "checks" to s.array(check, 2, 2), "findings" to s.array(finding),
+        "complete" to s.boolean(), "scope" to s.string(), "checks" to s.array(check, 3, 3), "findings" to s.array(finding),
     ))
 }
