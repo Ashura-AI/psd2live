@@ -2225,6 +2225,10 @@ fun CanvasViewportComposable(
 				order = 3, clear = false, layer = gpuKey, onDraw = drawAids)
 		}
 		if (mode == CanvasMode.PREVIEW && previewModel != null) {
+			MotionTrajectoryOverlay(viewModel, previewModel, canvasState.parameterValues,
+				canvasState.selectedLayerIds.ifEmpty { setOfNotNull(canvasState.selectedLayerId) }, canvasState.selectedDeformerId) {
+				currentViewportFor(viewSize)
+			}
 			// The same mode menu as the edit canvas, on Preview: any other row goes back to editing.
 			PreviewModeBar(editor) { focusRequester.requestFocus() }
 			CanvasPreviewToolbar(

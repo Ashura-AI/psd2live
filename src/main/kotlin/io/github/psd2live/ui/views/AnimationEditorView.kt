@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -79,6 +80,15 @@ import io.github.psd2live.core.MotionClips
 import io.github.psd2live.core.MotionCurve
 import io.github.psd2live.core.MotionHandle
 import io.github.psd2live.core.MotionInterpolation
+import io.github.psd2live.core.MotionLoops
+import io.github.psd2live.project.MotionTimelineAids
+import io.github.psd2live.project.TimelineMarker
+import io.github.psd2live.ui.components.IconBookmark
+import io.github.psd2live.ui.components.IconCloseLoop
+import io.github.psd2live.ui.components.IconFreeze
+import io.github.psd2live.ui.components.IconMarker
+import io.github.psd2live.ui.components.IconShy
+import io.github.psd2live.ui.components.IconTrajectory
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.MotionTimelineGeometry
 import io.github.psd2live.ui.TimelineViewport
@@ -110,6 +120,7 @@ import io.github.psd2live.ui.state.wheelBindingOf
 import io.github.psd2live.ui.tutorial.expandShortcutMarkup
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
+import io.github.psd2live.ui.theme.handCursor
 import java.awt.Cursor
 
 private val ROW_HEIGHT = 22.dp
@@ -147,11 +158,20 @@ internal fun AnimationEditorView(state: PSD2LiveState, viewModel: PSD2LiveViewMo
 			EmptyEditor(viewModel, hasModel = state.previewModel != null)
 			return@Column
 		}
+		val aids = viewModel.openMotionAids(state)
+		val bookmarks = state.timelineAids.bookmarks
+		// The tracks shown: shy ones hidden while Hide Shy is on, only bookmarked ones while Bookmarks is.
+		val rows = remember(clip, aids.shy, bookmarks, editor.hideShy, editor.bookmarksOnly) {
+			clip.curves.filter { curve ->
+				!(editor.hideShy && curve.parameterId in aids.shy) && (!editor.bookmarksOnly || curve.parameterId in bookmarks)
+			}
+		}
+		val seams = remember(clip, parameters) { if (clip.loop) MotionLoops.seams(clip, parameters) else emptySet() }
 		val trackScroll = rememberScrollState()
 		var trackWidth by remember { mutableStateOf(200f) }
 		val density = LocalDensity.current
 		Row(Modifier.weight(1f).fillMaxWidth()) {
-			TrackList(viewModel, clip, parameters, trackScroll, Modifier.width(trackWidth.dp).fillMaxHeight())
+			TrackList(viewModel, clip, rows, aids, bookmarks.toSet(), seams, parameters, trackScroll, Modifier.width(trackWidth.dp).fillMaxHeight())
 			Box(
 				Modifier.width(4.dp).fillMaxHeight().background(colors.divider)
 					.pointerHoverIcon(PointerIcon(Cursor.getPredefinedCursor(Cursor.E_RESIZE_CURSOR)))
@@ -162,7 +182,7 @@ internal fun AnimationEditorView(state: PSD2LiveState, viewModel: PSD2LiveViewMo
 						}
 					},
 			)
-			Timeline(viewModel, clip, parameters, trackScroll, Modifier.weight(1f).fillMaxHeight())
+			Timeline(viewModel, clip, rows, aids, seams, parameters, trackScroll, Modifier.weight(1f).fillMaxHeight())
 		}
 		KeyInspector(viewModel, clip, parameters, state.keymap)
 		// An undo can leave the selection pointing at keys that are gone.
@@ -325,6 +345,8 @@ private fun EditorToolbar(state: PSD2LiveState, viewModel: PSD2LiveViewModel, cl
 				showCheckWhenSelected = false,
 				height = 22.dp,
 			)
+			PanelToolbarSeparator()
+			TimelineAidControls(viewModel, clip, state)
 		}
 	}
 }
@@ -360,11 +382,23 @@ private fun AddTrackButton(viewModel: PSD2LiveViewModel, clip: MotionClip, state
 				height = 22.dp,
 			)
 			val used = clip.curves.mapTo(HashSet()) { it.parameterId }
+			val bookmarks = state.timelineAids.bookmarks.toSet()
+			// Bookmarked parameters lead the list.
 			val matches = parameters.filter { parameter ->
 				parameter.id.raw !in used && (query.isBlank() ||
 					parameter.id.raw.contains(query, ignoreCase = true) || parameter.name.contains(query, ignoreCase = true))
-			}
+			}.sortedBy { it.id.raw !in bookmarks }
 			Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+				val unusedBookmarks = parameters.filter { it.id.raw in bookmarks && it.id.raw !in used }.map { it.id.raw }
+				if (query.isBlank() && unusedBookmarks.isNotEmpty()) {
+					CompactMenuItem(
+						text = tr("animation.editor.addBookmarked", unusedBookmarks.size),
+						onClick = {
+							open = false
+							viewModel.addMotionCurves(unusedBookmarks)
+						},
+					)
+				}
 				if (matches.isEmpty()) {
 					Text(
 						tr("animation.editor.noParameter"),
@@ -375,7 +409,7 @@ private fun AddTrackButton(viewModel: PSD2LiveViewModel, clip: MotionClip, state
 				}
 				for (parameter in matches) {
 					CompactMenuItem(
-						text = parameter.name.ifBlank { parameter.id.raw },
+						text = (if (parameter.id.raw in bookmarks) "★ " else "") + parameter.name.ifBlank { parameter.id.raw },
 						trailingText = parameter.id.raw.takeIf { it != parameter.name },
 						onClick = {
 							open = false
@@ -411,6 +445,10 @@ private fun EmptyEditor(viewModel: PSD2LiveViewModel, hasModel: Boolean) {
 private fun TrackList(
 	viewModel: PSD2LiveViewModel,
 	clip: MotionClip,
+	rows: List<MotionCurve>,
+	aids: MotionTimelineAids,
+	bookmarks: Set<String>,
+	seams: Set<String>,
 	parameters: List<org.umamo.runtime.model.Parameter>,
 	scroll: androidx.compose.foundation.ScrollState,
 	modifier: Modifier,
@@ -425,9 +463,12 @@ private fun TrackList(
 			verticalAlignment = Alignment.CenterVertically,
 		) {
 			Text(
-				tr("animation.editor.tracks", clip.curves.size),
+				tr("animation.editor.tracks", clip.curves.size) +
+					(clip.curves.size - rows.size).takeIf { it > 0 }?.let { " · " + tr("animation.editor.hiddenTracks", it) }.orEmpty(),
 				color = colors.textMuted,
 				style = typography.caption.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
 				modifier = Modifier.weight(1f),
 			)
 			if (editor.focusedCurve != null) {
@@ -440,8 +481,10 @@ private fun TrackList(
 			}
 		}
 		Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll)) {
-			clip.curves.forEachIndexed { index, curve ->
-				TrackRow(viewModel, clip, curve, index, byId[curve.parameterId])
+			val colorIndex = clip.curves.withIndex().associate { it.value.parameterId to it.index }
+			rows.forEachIndexed { row, curve ->
+				TrackRow(viewModel, clip, curve, row, colorIndex[curve.parameterId] ?: row, byId[curve.parameterId],
+					TrackAids(curve.parameterId in bookmarks, curve.parameterId in aids.shy, aids.frozen[curve.parameterId], curve.parameterId in seams))
 			}
 			if (clip.curves.isEmpty()) {
 				Text(
@@ -455,13 +498,18 @@ private fun TrackList(
 	}
 }
 
+/** What the timeline aids say about one track. */
+private data class TrackAids(val bookmarked: Boolean, val shy: Boolean, val frozen: Float?, val seam: Boolean)
+
 @Composable
 private fun TrackRow(
 	viewModel: PSD2LiveViewModel,
 	clip: MotionClip,
 	curve: MotionCurve,
+	row: Int,
 	index: Int,
 	parameter: org.umamo.runtime.model.Parameter?,
+	trackAids: TrackAids,
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
@@ -477,7 +525,7 @@ private fun TrackRow(
 					focused -> colors.selection
 					hasSelection -> colors.accent.copy(alpha = 0.08f)
 					hovered -> colors.controlHover.copy(alpha = 0.5f)
-					index % 2 == 1 -> colors.windowBackground.copy(alpha = 0.25f)
+					row % 2 == 1 -> colors.windowBackground.copy(alpha = 0.25f)
 					else -> Color.Transparent
 				},
 			)
@@ -507,6 +555,7 @@ private fun TrackRow(
 			color = when {
 				parameter == null -> colors.warning
 				focused -> colors.selectionText
+				trackAids.frozen != null -> colors.textMuted
 				else -> colors.textPrimary
 			},
 			style = typography.caption.copy(fontSize = 10.5.sp),
@@ -515,14 +564,31 @@ private fun TrackRow(
 			modifier = Modifier.weight(1f),
 		)
 		Text(
-			"%.2f".format(MotionClips.sample(curve, editor.playhead.coerceIn(0f, clip.duration))),
-			color = colors.textMuted,
+			"%.2f".format(trackAids.frozen ?: MotionClips.sample(curve, editor.playhead.coerceIn(0f, clip.duration))),
+			color = if (trackAids.seam) colors.warning else colors.textMuted,
 			style = typography.monoSmall.copy(fontSize = 9.5.sp),
 			maxLines = 1,
 		)
+		CompactIconButton(
+			onClick = { viewModel.toggleMotionBookmark(curve.parameterId) },
+			tooltip = tr(if (trackAids.bookmarked) "animation.editor.unbookmark" else "animation.editor.bookmark"),
+			size = 16.dp,
+		) { IconBookmark(trackAids.bookmarked, tint = if (trackAids.bookmarked) colors.accent else colors.textMuted) }
+		CompactIconButton(
+			onClick = { viewModel.toggleMotionShy(curve.parameterId) },
+			tooltip = tr(if (trackAids.shy) "animation.editor.unshy" else "animation.editor.shy"),
+			size = 16.dp,
+		) { IconShy(trackAids.shy, tint = if (trackAids.shy) colors.accent else colors.textMuted) }
+		CompactIconButton(
+			onClick = { viewModel.toggleMotionFreeze(curve.parameterId) },
+			tooltip = trackAids.frozen?.let { tr("animation.editor.thaw") + " · " + tr("animation.editor.frozen", "%.2f".format(it)) }
+				?: tr("animation.editor.freeze"),
+			size = 16.dp,
+		) { IconFreeze(trackAids.frozen != null, tint = if (trackAids.frozen != null) colors.accent else colors.textMuted) }
 		// Key the curve at the playhead with its current value.
 		CompactIconButton(
 			onClick = { viewModel.setMotionKey(curve.parameterId, editor.playhead) },
+			enabled = trackAids.frozen == null,
 			tooltip = tr("animation.editor.addKey"),
 			size = 18.dp,
 		) { KeyGlyph(MotionInterpolation.BEZIER, colors.textMuted, 7.dp) }
@@ -569,6 +635,10 @@ private sealed interface TimelinePress {
 	data class Key(val ref: MotionKeyRef) : TimelinePress
 	data class Handle(val ref: MotionKeyRef, val outgoing: Boolean) : TimelinePress
 	data object Empty : TimelinePress
+	/** A marker on the ruler: a drag moves it, a click edits it. */
+	data class Marker(val marker: TimelineMarker) : TimelinePress
+	/** The clip's end on the ruler: a drag sets the loop length. */
+	data object LoopEnd : TimelinePress
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -576,6 +646,9 @@ private sealed interface TimelinePress {
 private fun Timeline(
 	viewModel: PSD2LiveViewModel,
 	clip: MotionClip,
+	rows: List<MotionCurve>,
+	aids: MotionTimelineAids,
+	seams: Set<String>,
 	parameters: List<org.umamo.runtime.model.Parameter>,
 	trackScroll: androidx.compose.foundation.ScrollState,
 	modifier: Modifier,
@@ -604,13 +677,19 @@ private fun Timeline(
 		val curvesMode = editor.view == MotionEditorView.CURVES
 		val curveIndex = clip.curves.withIndex().associate { it.value.parameterId to it.index }
 		val visibleCurves = if (curvesMode) {
-			editor.focusedCurve?.let { id -> clip.curves.filter { it.parameterId == id } }?.ifEmpty { null } ?: clip.curves
-		} else clip.curves
+			editor.focusedCurve?.let { id -> rows.filter { it.parameterId == id } }?.ifEmpty { null } ?: rows
+		} else rows
 		val plotTop = rulerPx
 		val plotHeight = (heightPx - rulerPx).coerceAtLeast(1f)
+		val frozen = aids.frozen
+		var markerDrag by remember(clip.id) { mutableStateOf<TimelineMarker?>(null) }
+		var loopEndDrag by remember(clip.id) { mutableStateOf<Float?>(null) }
+		var editingMarker by remember(clip.id) { mutableStateOf<TimelineMarker?>(null) }
+		val markers = aids.markers.map { marker -> markerDrag?.takeIf { it.id == marker.id } ?: marker }
 
+		// A frozen track's keys stay where they are: they cannot be picked.
 		fun keyPoints(): List<Pair<MotionKeyRef, Offset>> = if (curvesMode) {
-			visibleCurves.flatMap { curve ->
+			visibleCurves.filter { it.parameterId !in frozen }.flatMap { curve ->
 				val range = ranges[curve.parameterId]
 				curve.keys.map { key ->
 					MotionKeyRef(curve.parameterId, key.time) to Offset(
@@ -620,7 +699,8 @@ private fun Timeline(
 				}
 			}
 		} else {
-			clip.curves.flatMapIndexed { index, curve ->
+			rows.flatMapIndexed { index, curve ->
+				if (curve.parameterId in frozen) return@flatMapIndexed emptyList()
 				val y = rulerPx + index * rowPx + rowPx / 2f - trackScroll.value
 				curve.keys.map { key -> MotionKeyRef(curve.parameterId, key.time) to Offset(viewport.x(key.time), y) }
 			}
@@ -629,7 +709,7 @@ private fun Timeline(
 		/** Bezier handles of the selected keys, as (ref, outgoing) to position. */
 		fun handlePoints(): List<Pair<Pair<MotionKeyRef, Boolean>, Offset>> {
 			if (!curvesMode) return emptyList()
-			return visibleCurves.flatMap { curve ->
+			return visibleCurves.filter { it.parameterId !in frozen }.flatMap { curve ->
 				val range = ranges[curve.parameterId]
 				fun point(time: Float, value: Float) = Offset(
 					viewport.x(time),
@@ -661,6 +741,9 @@ private fun Timeline(
 		val latestHandles by rememberUpdatedState(handlePoints())
 		val latestCurvesMode by rememberUpdatedState(curvesMode)
 		val latestVisible by rememberUpdatedState(visibleCurves)
+		val latestRows by rememberUpdatedState(rows)
+		val latestFrozen by rememberUpdatedState(frozen)
+		val latestMarkers by rememberUpdatedState(aids.markers)
 		var lastClickNanos by remember { mutableStateOf(0L) }
 		var lastClickPosition by remember { mutableStateOf(Offset.Zero) }
 
@@ -681,8 +764,8 @@ private fun Timeline(
 				ShortcutAction.MOTION_DELETE_KEYS -> viewModel.deleteSelectedMotionKeys()
 				ShortcutAction.MOTION_COPY_KEYS -> viewModel.copySelectedMotionKeys()
 				ShortcutAction.MOTION_PASTE_KEYS -> viewModel.pasteMotionKeys()
-				ShortcutAction.MOTION_SELECT_ALL ->
-					editor.selection = latestClip.curves.flatMapTo(HashSet()) { curve -> curve.keys.map { MotionKeyRef(curve.parameterId, it.time) } }
+				ShortcutAction.MOTION_SELECT_ALL -> editor.selection = latestRows.filter { it.parameterId !in latestFrozen }
+					.flatMapTo(HashSet()) { curve -> curve.keys.map { MotionKeyRef(curve.parameterId, it.time) } }
 				ShortcutAction.MOTION_PLAY_PAUSE -> viewModel.setMotionEditorPlaying(!editor.playing)
 				ShortcutAction.MOTION_TOGGLE_AUTO_KEY -> viewModel.toggleMotionAutoKey()
 				ShortcutAction.MOTION_KEY_POSE -> viewModel.keyCurrentPose()
@@ -691,6 +774,15 @@ private fun Timeline(
 				ShortcutAction.MOTION_GO_END -> viewModel.setMotionPlayhead(latestClip.duration)
 				ShortcutAction.MOTION_PREV_FRAME -> viewModel.setMotionPlayhead(editor.playhead - 1f / latestClip.fps)
 				ShortcutAction.MOTION_NEXT_FRAME -> viewModel.setMotionPlayhead(editor.playhead + 1f / latestClip.fps)
+				ShortcutAction.MOTION_ADD_MARKER -> viewModel.addMotionMarker()
+				ShortcutAction.MOTION_PREV_MARKER -> viewModel.jumpToMotionMarker(forward = false)
+				ShortcutAction.MOTION_NEXT_MARKER -> viewModel.jumpToMotionMarker(forward = true)
+				ShortcutAction.MOTION_HIDE_SHY -> editor.hideShy = !editor.hideShy
+				ShortcutAction.MOTION_CLOSE_LOOP -> viewModel.closeMotionLoop()
+				// The track commands act on the focused track.
+				ShortcutAction.MOTION_TOGGLE_BOOKMARK -> editor.focusedCurve?.let(viewModel::toggleMotionBookmark)
+				ShortcutAction.MOTION_TOGGLE_SHY -> editor.focusedCurve?.let(viewModel::toggleMotionShy)
+				ShortcutAction.MOTION_TOGGLE_FREEZE -> editor.focusedCurve?.let(viewModel::toggleMotionFreeze)
 				else -> return false
 			}
 			return true
@@ -753,7 +845,17 @@ private fun Timeline(
 						val start = down.position
 						val slop = viewConfiguration.touchSlop
 						val press = when {
-							start.y < rulerPx -> TimelinePress.Ruler
+							start.y < rulerPx -> {
+								val vp = latestViewport
+								val reach = 5.dp.toPx()
+								val marker = latestMarkers.filter { kotlin.math.abs(vp.x(it.time) - start.x) <= reach }
+									.minByOrNull { kotlin.math.abs(vp.x(it.time) - start.x) }
+								when {
+									marker != null -> TimelinePress.Marker(marker)
+									kotlin.math.abs(vp.x(latestClip.duration) - start.x) <= reach -> TimelinePress.LoopEnd
+									else -> TimelinePress.Ruler
+								}
+							}
 							else -> MotionTimelineGeometry.hit(latestHandles, start, 7.dp.toPx())
 								?.let { (ref, outgoing) -> TimelinePress.Handle(ref, outgoing) }
 								?: MotionTimelineGeometry.hit(latestKeyPoints, start, 7.dp.toPx())?.let { TimelinePress.Key(it) }
@@ -816,6 +918,9 @@ private fun Timeline(
 									viewModel.dragMotionHandle(press.ref, press.outgoing, MotionHandle(x.coerceIn(0f, 1f), value - key.value))
 								}
 								TimelinePress.Empty -> box = start to position
+								is TimelinePress.Marker -> markerDrag = press.marker.copy(
+									time = snapTime(viewportAtPress.time(position.x)).coerceIn(0f, clipAtPress.duration))
+								TimelinePress.LoopEnd -> loopEndDrag = snapTime(viewportAtPress.time(position.x)).coerceIn(0.1f, 600f)
 							}
 						}
 
@@ -837,7 +942,7 @@ private fun Timeline(
 										editor.focusedCurve ?: latestVisible.singleOrNull()?.parameterId
 									} else {
 										val row = ((start.y - rulerPx + trackScroll.value) / rowPx).toInt()
-										latestClip.curves.getOrNull(row)?.parameterId
+										latestRows.getOrNull(row)?.parameterId
 									}
 									if (doubleClick && rowCurve != null) {
 										val time = snapTime(viewportAtPress.time(start.x))
@@ -852,12 +957,27 @@ private fun Timeline(
 								}
 							}
 							TimelinePress.Ruler -> Unit
+							is TimelinePress.Marker -> {
+								val moved = markerDrag
+								markerDrag = null
+								if (dragging && moved != null) viewModel.updateMotionMarker(moved)
+								else {
+									viewModel.setMotionPlayhead(press.marker.time)
+									editingMarker = press.marker
+								}
+							}
+							TimelinePress.LoopEnd -> {
+								val length = loopEndDrag
+								loopEndDrag = null
+								if (dragging && length != null && length != clipAtPress.duration)
+									viewModel.updateMotionClipProperties(clipAtPress.id) { it.copy(duration = length) }
+							}
 						}
 					}
 				},
 		) {
 			val vp = viewport
-			val endX = vp.x(clip.duration)
+			val endX = vp.x(loopEndDrag ?: clip.duration)
 			val zeroX = vp.x(0f)
 			// Outside the clip's span.
 			if (zeroX > 0f) drawRect(colors.windowBackground.copy(alpha = 0.55f), Offset(0f, rulerPx), Size(zeroX, size.height))
@@ -879,8 +999,17 @@ private fun Timeline(
 			}
 
 			clipRect(top = rulerPx) {
-				if (curvesMode) drawCurves(clip, visibleCurves, curveIndex, ranges, vp, valueViewport, plotTop, plotHeight, editor.selection, colors.textPrimary, colors.divider)
-				else drawDopesheet(clip, curveIndex, vp, rulerPx, rowPx, trackScroll.value.toFloat(), editor.selection, editor.focusedCurve, colors.textPrimary, colors.textMuted, colors.selection)
+				val ghost = clip.duration.takeIf { clip.loop }
+				if (curvesMode) drawCurves(clip, visibleCurves, curveIndex, ranges, vp, valueViewport, plotTop, plotHeight, editor.selection, colors.textPrimary, colors.divider,
+					frozen, ghost, parameters.any { it.repeat && ranges.containsKey(it.id.raw) && visibleCurves.any { c -> c.parameterId == it.id.raw } })
+				else drawDopesheet(rows, curveIndex, vp, rulerPx, rowPx, trackScroll.value.toFloat(), editor.selection, editor.focusedCurve, colors.textPrimary, colors.textMuted, colors.selection,
+					frozen.keys, seams, ghost, colors.warning)
+				// Markers run down the plot as faint rules.
+				for (marker in markers) {
+					val x = vp.x(marker.time)
+					if (x in 0f..size.width) drawLine(motionCurveColor(marker.color).copy(alpha = 0.45f), Offset(x, rulerPx), Offset(x, size.height), 1f,
+						pathEffect = PathEffect.dashPathEffect(floatArrayOf(2f, 3f)))
+				}
                 if (curvesMode) for (curve in visibleCurves) {
                     val marks = keyMarks[org.umamo.runtime.model.ParameterId(curve.parameterId)]?.allKeys.orEmpty()
                     val color = motionCurveColor(curveIndex[curve.parameterId] ?: 0)
@@ -924,7 +1053,30 @@ private fun Timeline(
 				val layout = textMeasurer.measure(MotionTimelineGeometry.formatTime(t, major), labelStyle)
 				drawText(layout, topLeft = Offset(x + 3.dp.toPx(), 1.dp.toPx()))
 			}
-			if (endX in 0f..size.width) drawLine(colors.warning, Offset(endX, 0f), Offset(endX, size.height), 1.5f)
+			// A loop's span: a band along the ruler's foot from the start to the end it wraps at.
+			if (clip.loop) drawRect(colors.accent.copy(alpha = 0.26f), Offset(zeroX.coerceAtLeast(0f), rulerPx - 3.dp.toPx()),
+				Size((endX.coerceAtMost(size.width) - zeroX.coerceAtLeast(0f)).coerceAtLeast(0f), 3.dp.toPx()))
+			if (endX in 0f..size.width) {
+				drawLine(colors.warning, Offset(endX, 0f), Offset(endX, size.height), if (loopEndDrag != null) 2.5f else 1.5f)
+				// The grip that drags the end.
+				drawRect(colors.warning, Offset(endX - 2.dp.toPx(), 2.dp.toPx()), Size(4.dp.toPx(), rulerPx - 6.dp.toPx()))
+			}
+			// Markers: a flag on the ruler, its label beside it.
+			for (marker in markers) {
+				val x = vp.x(marker.time)
+				if (x < -40f || x > size.width) continue
+				val tint = motionCurveColor(marker.color)
+				val flag = Path().apply {
+					moveTo(x, 2.dp.toPx()); lineTo(x + 7.dp.toPx(), 5.dp.toPx()); lineTo(x, 8.dp.toPx()); close()
+				}
+				drawLine(tint, Offset(x, 2.dp.toPx()), Offset(x, rulerPx), 1.5f)
+				drawPath(flag, tint)
+				if (marker.label.isNotEmpty()) {
+					val layout = textMeasurer.measure(marker.label, typography.monoSmall.copy(fontSize = 9.sp, color = colors.textPrimary), maxLines = 1)
+					drawRect(colors.panelElevated, Offset(x + 8.dp.toPx(), 1.dp.toPx()), Size(layout.size.width + 2f, layout.size.height.toFloat()))
+					drawText(layout, topLeft = Offset(x + 9.dp.toPx(), 1.dp.toPx()))
+				}
+			}
 
 			// Playhead.
 			val px = vp.x(editor.playhead)
@@ -937,11 +1089,131 @@ private fun Timeline(
 				drawPath(head, colors.accent)
 			}
 		}
+		editingMarker?.let { marker ->
+			Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(viewport.x(marker.time).toInt(), rulerPx.toInt()) }) {
+				MarkerEditor(viewModel, marker, clip) {
+					editingMarker = null
+					focusRequester.requestFocus()
+				}
+			}
+		}
 	}
 }
 
+/** A marker's label, colour and time, and its deletion; each change saves at once. */
+@Composable
+private fun MarkerEditor(viewModel: PSD2LiveViewModel, marker: TimelineMarker, clip: MotionClip, onDismiss: () -> Unit) {
+	val colors = LocalToolColors.current
+	var label by remember(marker.id) { mutableStateOf(marker.label) }
+	var shown by remember(marker.id) { mutableStateOf(marker) }
+	fun save(next: TimelineMarker) {
+		shown = next
+		viewModel.updateMotionMarker(next)
+	}
+	TreeContextMenu(expanded = true, onDismissRequest = { if (label != shown.label) save(shown.copy(label = label)); onDismiss() },
+		minWidth = 200.dp, maxWidth = 240.dp) {
+		Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+				ToolbarLabel(tr("animation.editor.marker.label"))
+				CompactTextField(
+					value = label,
+					onValueChange = { label = it.take(io.github.psd2live.project.TimelineAidsEdits.MAX_LABEL).filterNot(Char::isISOControl) },
+					placeholder = tr("animation.editor.marker.untitled"),
+					onCommit = { save(shown.copy(label = label)) },
+					modifier = Modifier.weight(1f),
+					height = 22.dp,
+				)
+			}
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+				ToolbarLabel(tr("animation.editor.time"))
+				CompactNumberSpinner(
+					value = shown.time.toDouble(),
+					onValueChange = { save(shown.copy(time = it.toFloat().coerceIn(0f, clip.duration))) },
+					min = 0.0,
+					max = clip.duration.toDouble(),
+					step = 1.0 / clip.fps,
+					decimals = 3,
+					unit = "s",
+					height = 22.dp,
+					modifier = Modifier.width(88.dp),
+				)
+			}
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+				ToolbarLabel(tr("animation.editor.marker.color"))
+				for (index in 0 until io.github.psd2live.project.TimelineAidsEdits.COLORS) {
+					val chosen = index == shown.color
+					Box(
+						Modifier.size(14.dp).clip(CircleShape).background(motionCurveColor(index))
+							.border(BorderStroke(if (chosen) 2.dp else 0.dp, if (chosen) colors.textPrimary else Color.Transparent), CircleShape)
+							.handCursor()
+							.clickable(interactionSource = null, indication = null) { save(shown.copy(color = index)) },
+					)
+				}
+			}
+			CompactButton(
+				text = tr("animation.editor.marker.delete"),
+				onClick = { viewModel.deleteMotionMarker(marker.id); onDismiss() },
+				danger = true,
+				height = 22.dp,
+			)
+		}
+	}
+}
+
+/** The toolbar's timeline aids: hide shy tracks, bookmarks only, the trajectory, a marker and closing the loop. */
+@Composable
+private fun TimelineAidControls(viewModel: PSD2LiveViewModel, clip: MotionClip?, state: PSD2LiveState) {
+	val colors = LocalToolColors.current
+	val editor = viewModel.motionEditor
+	val enabled = clip != null
+	val keymap = state.keymap
+	fun hint(text: String, action: ShortcutAction) = keymap.labelFor(action)?.let { "$text ($it)" } ?: text
+	CompactToggleChip(
+		text = tr("animation.editor.hideShy"),
+		selected = editor.hideShy,
+		onToggle = { editor.hideShy = !editor.hideShy },
+		enabled = enabled,
+		leadingIcon = { IconShy(true, tint = if (editor.hideShy) colors.accent else colors.textMuted) },
+		showCheckWhenSelected = false,
+		tooltip = hint(tr("animation.editor.hideShyTooltip"), ShortcutAction.MOTION_HIDE_SHY),
+		height = 22.dp,
+	)
+	CompactToggleChip(
+		text = tr("animation.editor.bookmarksOnly"),
+		selected = editor.bookmarksOnly,
+		onToggle = { editor.bookmarksOnly = !editor.bookmarksOnly },
+		enabled = enabled,
+		leadingIcon = { IconBookmark(true, tint = if (editor.bookmarksOnly) colors.accent else colors.textMuted) },
+		showCheckWhenSelected = false,
+		tooltip = tr("animation.editor.bookmarksOnlyTooltip"),
+		height = 22.dp,
+	)
+	CompactToggleChip(
+		text = tr("animation.editor.trajectory"),
+		selected = editor.showTrajectory,
+		onToggle = { editor.showTrajectory = !editor.showTrajectory },
+		enabled = enabled,
+		leadingIcon = { IconTrajectory(tint = if (editor.showTrajectory) colors.accent else colors.textMuted) },
+		showCheckWhenSelected = false,
+		tooltip = tr("animation.editor.trajectoryTooltip"),
+		height = 22.dp,
+	)
+	CompactIconButton(
+		onClick = { viewModel.addMotionMarker() },
+		enabled = enabled,
+		tooltip = hint(tr("animation.editor.addMarker"), ShortcutAction.MOTION_ADD_MARKER),
+		size = 22.dp,
+	) { IconMarker(tint = colors.textPrimary) }
+	CompactIconButton(
+		onClick = { viewModel.closeMotionLoop() },
+		enabled = enabled && clip?.curves?.isNotEmpty() == true,
+		tooltip = hint(tr("animation.editor.closeLoopTooltip"), ShortcutAction.MOTION_CLOSE_LOOP),
+		size = 22.dp,
+	) { IconCloseLoop(tint = colors.textPrimary) }
+}
+
 private fun DrawScope.drawDopesheet(
-	clip: MotionClip,
+	curves: List<MotionCurve>,
 	curveIndex: Map<String, Int>,
 	vp: TimelineViewport,
 	rulerPx: Float,
@@ -952,24 +1224,49 @@ private fun DrawScope.drawDopesheet(
 	selectedColor: Color,
 	idleColor: Color,
 	focusFill: Color,
+	frozen: Set<String>,
+	seams: Set<String>,
+	/** A looping clip's duration: the keys of the cycles either side show faintly. */
+	ghost: Float?,
+	warning: Color,
 ) {
 	val radius = 5.dp.toPx()
-	clip.curves.forEachIndexed { index, curve ->
+	curves.forEachIndexed { index, curve ->
 		val top = rulerPx + index * rowPx - scroll
 		if (top > size.height || top + rowPx < rulerPx) return@forEachIndexed
 		if (curve.parameterId == focused) drawRect(focusFill.copy(alpha = 0.45f), Offset(0f, top), Size(size.width, rowPx))
 		else if (index % 2 == 1) drawRect(Color.Black.copy(alpha = 0.06f), Offset(0f, top), Size(size.width, rowPx))
 		drawLine(Color.Black.copy(alpha = 0.12f), Offset(0f, top + rowPx), Offset(size.width, top + rowPx), 1f)
 		val y = top + rowPx / 2f
-		val color = motionCurveColor(curveIndex[curve.parameterId] ?: index)
+		val isFrozen = curve.parameterId in frozen
+		val color = motionCurveColor(curveIndex[curve.parameterId] ?: index).let { if (isFrozen) it.copy(alpha = 0.4f) else it }
+		// A frozen track is hatched: it holds one value whatever its keys say.
+		if (isFrozen) {
+			var x = -rowPx
+			while (x < size.width) {
+				drawLine(idleColor.copy(alpha = 0.18f), Offset(x, top + rowPx), Offset(x + rowPx, top), 1f)
+				x += 6.dp.toPx()
+			}
+		}
 		// A bar where the value changes between keys, none where it holds.
 		for ((a, b) in curve.keys.zipWithNext()) {
 			if (a.value == b.value) continue
-			drawLine(color.copy(alpha = 0.45f), Offset(vp.x(a.time), y), Offset(vp.x(b.time), y), 3.dp.toPx())
+			drawLine(color.copy(alpha = color.alpha * 0.45f), Offset(vp.x(a.time), y), Offset(vp.x(b.time), y), 3.dp.toPx())
+		}
+		if (ghost != null) for (shift in listOf(-ghost, ghost)) for (key in curve.keys) {
+			val at = key.time + shift
+			// The clip's own span shows its own keys.
+			if (at > -1e-4f && at < ghost + 1e-4f) continue
+			drawKey(key.interpolation, Offset(vp.x(at), y), radius * 0.8f, color.copy(alpha = color.alpha * 0.3f), null)
 		}
 		for (key in curve.keys) {
 			val selected = selection.any { it.parameterId == curve.parameterId && it.matches(key) }
 			drawKey(key.interpolation, Offset(vp.x(key.time), y), radius, if (selected) selectedColor else color, if (selected) color else idleColor.copy(alpha = 0.6f))
+		}
+		// A loop that jumps at its seam: a warning tick where it wraps.
+		if (ghost != null && curve.parameterId in seams) {
+			val x = vp.x(ghost)
+			drawLine(warning, Offset(x - 3.dp.toPx(), y - 4.dp.toPx()), Offset(x + 3.dp.toPx(), y + 4.dp.toPx()), 2.dp.toPx())
 		}
 	}
 }
@@ -986,6 +1283,11 @@ private fun DrawScope.drawCurves(
 	selection: Set<MotionKeyRef>,
 	selectedColor: Color,
 	gridColor: Color,
+	frozen: Map<String, Float>,
+	/** A looping clip's duration: the cycles either side show faintly. */
+	ghost: Float?,
+	/** A repeating parameter is shown: each whole turn of its range gets a rule. */
+	turns: Boolean,
 ) {
 	// Parameter minimum, middle and maximum.
 	for (level in listOf(0f, 0.5f, 1f)) {
@@ -993,10 +1295,37 @@ private fun DrawScope.drawCurves(
 		drawLine(gridColor, Offset(0f, y), Offset(size.width, y), 1f,
 			pathEffect = if (level == 0.5f) PathEffect.dashPathEffect(floatArrayOf(4f, 4f)) else null)
 	}
+	if (turns) for (level in kotlin.math.floor(values.low).toInt()..kotlin.math.ceil(values.high).toInt()) {
+		if (level == 0 || level == 1) continue
+		val y = values.y(level.toFloat(), top, height)
+		drawLine(gridColor.copy(alpha = 0.6f), Offset(0f, y), Offset(size.width, y), 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(2f, 4f)))
+	}
 	val step = 2f
 	for (curve in curves) {
 		val range = ranges[curve.parameterId]
-		val color = motionCurveColor(curveIndex[curve.parameterId] ?: 0)
+		val frozenValue = frozen[curve.parameterId]
+		val color = motionCurveColor(curveIndex[curve.parameterId] ?: 0).let { if (frozenValue != null) it.copy(alpha = 0.4f) else it }
+		if (frozenValue != null) {
+			val y = values.y(MotionTimelineGeometry.normalize(frozenValue, range), top, height)
+			drawLine(color.copy(alpha = 1f), Offset(0f, y), Offset(size.width, y), 1.4.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 3f)))
+		}
+		if (ghost != null) {
+			// The neighbouring cycles, where the loop wraps.
+			val ghostPath = Path()
+			var x = 0f
+			var pen = false
+			while (x <= size.width + step) {
+				val t = vp.time(x)
+				if (t < 0f || t > ghost) {
+					val wrapped = ((t % ghost) + ghost) % ghost
+					val y = values.y(MotionTimelineGeometry.normalize(MotionClips.sample(curve, wrapped), range), top, height)
+					if (pen) ghostPath.lineTo(x, y) else ghostPath.moveTo(x, y)
+					pen = true
+				} else pen = false
+				x += step
+			}
+			drawPath(ghostPath, color.copy(alpha = color.alpha * 0.3f), style = Stroke(1.2.dp.toPx()))
+		}
 		val path = Path()
 		val from = vp.time(0f).coerceAtLeast(0f)
 		val to = vp.time(size.width).coerceAtMost(clip.duration)
@@ -1090,8 +1419,9 @@ private fun KeyInspector(
 			CompactNumberSpinner(
 				value = key.value.toDouble(),
 				onValueChange = { value -> viewModel.updateSelectedMotionKeys { _, k -> k.copy(value = value.toFloat()) } },
-				min = (parameter?.min ?: -100000f).toDouble(),
-				max = (parameter?.max ?: 100000f).toDouble(),
+				// A repeating parameter's keys may run turns past its range.
+				min = (parameter?.let { MotionLoops.keyLimits(it).start } ?: -100000f).toDouble(),
+				max = (parameter?.let { MotionLoops.keyLimits(it).endInclusive } ?: 100000f).toDouble(),
 				step = if (span > 5f) 1.0 else 0.05,
 				decimals = if (span > 5f) 1 else 2,
 				height = 22.dp,

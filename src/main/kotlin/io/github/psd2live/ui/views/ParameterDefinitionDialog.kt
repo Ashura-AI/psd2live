@@ -71,6 +71,7 @@ internal fun ParameterDefinitionDialog(
     var default by remember { mutableStateOf((parameter?.default ?: 0f).toString()) }
     var max by remember { mutableStateOf((parameter?.max ?: 1f).toString()) }
     var kind by remember { mutableStateOf(parameter?.kind ?: ParameterKind.NORMAL) }
+    var repeat by remember { mutableStateOf(parameter?.repeat ?: false) }
     var deleting by remember { mutableStateOf(parameter != null && initialAction == ParameterDefinitionInitialAction.DELETE) }
     var failure by remember { mutableStateOf<String?>(null) }
     var keyEdits by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
@@ -132,6 +133,7 @@ internal fun ParameterDefinitionDialog(
             neutral ?: 0f,
             high ?: 1f,
             parameterKind = kind,
+            repeat = repeat,
             keyEdits = if (action == "delete") emptyList() else normalizedKeyEdits,
             expectedState = expectedState,
             parentGroupId = if (creating) parentGroupId else null,
@@ -214,6 +216,18 @@ internal fun ParameterDefinitionDialog(
                                 }
                             }, enabled = !busy, isPrimary = kind == ParameterKind.BLEND_SHAPE, height = 22.dp)
                         }
+                    }
+                    if (kind == ParameterKind.NORMAL) {
+                        // Part of the definition: the value wraps, and motions may key it turns past its range.
+                        CompactCheckbox(
+                            checked = repeat,
+                            onCheckedChange = { repeat = it },
+                            label = tr("parameters.repeat"),
+                            enabled = !busy,
+                        )
+                        // A target before Cubism 5.3 drops the setting on export: the hint warns then.
+                        val carried = baseModel?.runtimeTarget?.supports(org.umamo.runtime.model.RuntimeFeature.ParameterRepeat) != false
+                        if (repeat) Text(tr("parameters.repeatHint"), style = typography.caption, color = if (carried) colors.textMuted else colors.warning)
                     }
                     if (copying) {
                         Text(tr("parameters.duplicateHint"), style = typography.caption, color = colors.textMuted)

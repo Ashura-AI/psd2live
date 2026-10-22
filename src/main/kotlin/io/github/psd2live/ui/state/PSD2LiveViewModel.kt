@@ -2175,6 +2175,8 @@ class PSD2LiveViewModel : AutoCloseable {
 		default: Float,
 		max: Float,
 		parameterKind: org.umamo.runtime.model.ParameterKind = org.umamo.runtime.model.ParameterKind.NORMAL,
+		/** Whether the value wraps from its maximum back to its minimum (Cubism's parameter repeat). */
+		repeat: Boolean = false,
 		keyEdits: List<kotlinx.serialization.json.JsonObject> = emptyList(),
 		expectedState: String? = null,
 		parentGroupId: String? = null,
@@ -2190,6 +2192,7 @@ class PSD2LiveViewModel : AutoCloseable {
                 if (action != "delete") {
                     put("name", name); put("min", min); put("default", default); put("max", max)
                     put("kind", parameterKind.name)
+                    put("repeat", repeat && parameterKind == org.umamo.runtime.model.ParameterKind.NORMAL)
                 }
             })
         val trailing = if (action == "delete") emptyList() else buildList {
@@ -2484,6 +2487,7 @@ class PSD2LiveViewModel : AutoCloseable {
             historySnapshot = if (replacing) current.historySnapshot else null,
             historyAnnotations = if (replacing) current.historyAnnotations else emptyMap(),
             canvasGuides = if (replacing) current.canvasGuides else emptyList(),
+            timelineAids = if (replacing) current.timelineAids else io.github.psd2live.project.TimelineAids(),
             projectDirty = true, projectEditVersion = current.projectEditVersion + 1,
             showProjectLocationDialog = false, statusText = status, errorMessage = null,
         )
@@ -2917,7 +2921,7 @@ class PSD2LiveViewModel : AutoCloseable {
             "Saved project data changed while the operation was being prepared"
         }
         updateState { it.copy(parameterSnapshots = next.parameterSnapshots, historyAnnotations = next.historyAnnotations,
-            canvasGuides = next.canvasGuides, projectDirty = it.projectDirty || it.analysis != null, projectEditVersion = it.projectEditVersion + 1,
+            canvasGuides = next.canvasGuides, timelineAids = next.timelineAids, projectDirty = it.projectDirty || it.analysis != null, projectEditVersion = it.projectEditVersion + 1,
             projectAuxiliaryVersion = it.projectAuxiliaryVersion + 1) }
     }
 
@@ -2932,7 +2936,7 @@ class PSD2LiveViewModel : AutoCloseable {
             val next = io.github.psd2live.application.WorkspaceAuxiliaryEdits.apply(before, edit,
                 current.previewModel?.rig?.puppet?.parameters.orEmpty(), current.historySnapshot?.nodes.orEmpty().mapTo(HashSet()) { it.id })
             if (next == before) current else current.copy(parameterSnapshots = next.parameterSnapshots,
-                historyAnnotations = next.historyAnnotations, canvasGuides = next.canvasGuides, projectDirty = current.projectDirty || current.analysis != null,
+                historyAnnotations = next.historyAnnotations, canvasGuides = next.canvasGuides, timelineAids = next.timelineAids, projectDirty = current.projectDirty || current.analysis != null,
                 projectEditVersion = current.projectEditVersion + 1, projectAuxiliaryVersion = current.projectAuxiliaryVersion + 1)
         }
     }
@@ -3868,6 +3872,10 @@ class PSD2LiveViewModel : AutoCloseable {
 	internal fun motionParameterRanges(): Map<String, ClosedFloatingPointRange<Float>> =
 		_state.value.previewModel?.rig?.puppet?.parameters?.associate { it.id.raw to it.min..it.max }.orEmpty()
 
+	/** The values a key may hold: the range, or a repeating parameter's turns past it. */
+	internal fun motionKeyLimits(): Map<String, ClosedFloatingPointRange<Float>> =
+		io.github.psd2live.core.MotionLoops.keyLimits(_state.value.previewModel?.rig?.puppet?.parameters.orEmpty())
+
 	/** A transient drag projection; completed edits use the application timeline commands. */
 	private fun previewMotionClips(transform: (List<MotionClip>) -> List<MotionClip>) {
 		val current = _state.value
@@ -4031,6 +4039,17 @@ class PSD2LiveViewModel : AutoCloseable {
 		motionEditor.selection = setOf(MotionKeyRef(parameterId, time))
 	}
 
+	/** Curves for each of [parameterIds] the clip lacks, keyed at the playhead with the pose shown, in one edit. */
+	fun addMotionCurves(parameterIds: List<String>) {
+		val clip = editingMotionClip() ?: return
+		val missing = parameterIds.filter { clip.curve(it) == null }.ifEmpty { return }
+		val time = motionEditor.playhead.coerceIn(0f, clip.duration)
+		editTimeline("pose", kotlinx.serialization.json.buildJsonObject {
+			put("time", time); putJsonObject("values") { missing.forEach { put(it, currentMotionParameterValue(it)) } }
+		})
+		motionEditor.selection = missing.mapTo(HashSet()) { MotionKeyRef(it, time) }
+	}
+
 	fun removeMotionCurve(parameterId: String) {
 		editTimeline("remove_curve", kotlinx.serialization.json.buildJsonObject { put("parameter", parameterId) })
 		motionEditor.selection = motionEditor.selection.filterTo(HashSet()) { it.parameterId != parameterId }
@@ -4048,6 +4067,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	/** A key at [time] on [parameterId], at [value] or the curve's value there. */
 	fun setMotionKey(parameterId: String, time: Float, value: Float? = null) {
 		val clip = editingMotionClip() ?: return
+		if (parameterId in openMotionAids().frozen) return
 		val at = time.coerceIn(0f, clip.duration)
 		val ref = MotionKeyRef(parameterId, at)
 		val curve = clip.curve(parameterId)
@@ -4061,10 +4081,12 @@ class PSD2LiveViewModel : AutoCloseable {
 	fun keyCurrentPose() {
 		val clip = editingMotionClip() ?: return
 		val time = motionEditor.playhead.coerceIn(0f, clip.duration)
+		val frozen = openMotionAids().frozen
+		val curves = clip.curves.filter { it.parameterId !in frozen }.ifEmpty { return }
 		editTimeline("pose", kotlinx.serialization.json.buildJsonObject {
-			put("time", time); putJsonObject("values") { clip.curves.forEach { curve -> put(curve.parameterId, currentMotionParameterValue(curve.parameterId)) } }
+			put("time", time); putJsonObject("values") { curves.forEach { curve -> put(curve.parameterId, currentMotionParameterValue(curve.parameterId)) } }
 		})
-		motionEditor.selection = clip.curves.mapTo(HashSet()) { MotionKeyRef(it.parameterId, time) }
+		motionEditor.selection = curves.mapTo(HashSet()) { MotionKeyRef(it.parameterId, time) }
 	}
 
 	fun insertSavedSkeletonPose(name: String) {
@@ -4088,7 +4110,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	fun updateSelectedMotionKeys(transform: (String, MotionKey) -> MotionKey) {
 		val clip = editingMotionClip() ?: return
 		val selection = motionEditor.selection.takeIf { it.isNotEmpty() } ?: return
-		val ranges = motionParameterRanges()
+		val ranges = motionKeyLimits()
 		val moved = mutableSetOf<MotionKeyRef>()
 		val replacements = mutableListOf<kotlinx.serialization.json.JsonObject>()
 		MotionKeyEdits.mapKeys(clip, selection) { id, key ->
@@ -4132,7 +4154,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	fun dragMotionKeys(dt: Float, dv: Float = 0f, normalized: Boolean = false) {
 		val origin = motionEditor.dragOrigin ?: return
-		val (next, moved) = MotionKeyEdits.move(origin, motionEditor.dragSelection, dt, dv, motionParameterRanges(), normalized)
+		val (next, moved) = MotionKeyEdits.move(origin, motionEditor.dragSelection, dt, dv, motionParameterRanges(), normalized, motionKeyLimits())
 		previewMotionClip(origin.id) { next }
 		motionEditor.dragMode = "move_keys"
 		motionEditor.dragRequest = kotlinx.serialization.json.buildJsonObject { put("selection", motionSelectionJson(motionEditor.dragSelection)); put("dt", dt); put("dv", dv); put("normalized", normalized) }
@@ -4292,6 +4314,80 @@ class PSD2LiveViewModel : AutoCloseable {
 		} else configurePlayback("pause")
 	}
 	fun stopMotionEditorPlayback() = configurePlayback("stop")
+
+	// Timeline aids: saved project data on the auxiliary CAS (the timeline_* operations), never rig history.
+	/** Bookmarks aside, the aids of the motion open in the editor. */
+	fun openMotionAids(state: PSD2LiveState = _state.value): io.github.psd2live.project.MotionTimelineAids =
+		state.timelineAids.clip(motionEditor.clipId)
+
+	private fun editTimelineAids(edit: io.github.psd2live.project.TimelineAidsEdit) {
+		try {
+			editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.EditTimeline(edit))
+		} catch (failure: Exception) {
+			if (failure is kotlinx.coroutines.CancellationException) throw failure
+			updateState { it.copy(statusText = failure.message ?: "Could not change the timeline") }
+		}
+	}
+
+	fun toggleMotionBookmark(parameterId: String) {
+		val marked = parameterId in _state.value.timelineAids.bookmarks
+		editTimelineAids(io.github.psd2live.project.TimelineAidsEdit.Bookmark(parameterId, !marked))
+	}
+
+	fun toggleMotionShy(parameterId: String) {
+		val clipId = motionEditor.clipId ?: return
+		editTimelineAids(io.github.psd2live.project.TimelineAidsEdit.Shy(clipId, parameterId, parameterId !in openMotionAids().shy))
+	}
+
+	/** Freezes the track at its value at the playhead, or thaws it. A frozen track's keys cannot be selected or keyed. */
+	fun toggleMotionFreeze(parameterId: String) {
+		val clipId = motionEditor.clipId ?: return
+		val clip = editingMotionClip() ?: return
+		val frozen = parameterId in openMotionAids().frozen
+		val value = if (frozen) null
+			else clip.curve(parameterId)?.let { MotionClips.sample(it, motionEditor.playhead.coerceIn(0f, clip.duration)) } ?: return
+		editTimelineAids(io.github.psd2live.project.TimelineAidsEdit.Freeze(clipId, parameterId, value))
+		if (!frozen) motionEditor.selection = motionEditor.selection.filterTo(HashSet()) { it.parameterId != parameterId }
+		// The paused session poses again with the track held (or released).
+		if (!motionEditor.playing) setMotionPlayhead(motionEditor.playhead)
+	}
+
+	/** A marker at [time] (the playhead), on the frame grid while snapping; none where one already is. */
+	fun addMotionMarker(time: Float = motionEditor.playhead) {
+		val clipId = motionEditor.clipId ?: return
+		val clip = editingMotionClip() ?: return
+		val aids = openMotionAids()
+		val at = io.github.psd2live.ui.MotionTimelineGeometry.snap(time.coerceIn(0f, clip.duration), clip.fps, motionEditor.snapToFrames)
+		if (aids.markers.any { kotlin.math.abs(it.time - at) < MotionClips.TIME_EPSILON }) return
+		editTimelineAids(io.github.psd2live.project.TimelineAidsEdit.PutMarker(clipId, io.github.psd2live.project.TimelineMarker(
+			io.github.psd2live.project.TimelineAidsEdits.nextMarkerId(aids), at, color = aids.markers.size % io.github.psd2live.project.TimelineAidsEdits.COLORS)))
+	}
+
+	fun updateMotionMarker(marker: io.github.psd2live.project.TimelineMarker) {
+		val clipId = motionEditor.clipId ?: return
+		if (openMotionAids().markers.none { it == marker }) editTimelineAids(io.github.psd2live.project.TimelineAidsEdit.PutMarker(clipId, marker))
+	}
+
+	fun deleteMotionMarker(id: String) {
+		val clipId = motionEditor.clipId ?: return
+		editTimelineAids(io.github.psd2live.project.TimelineAidsEdit.DeleteMarker(clipId, id))
+	}
+
+	/** The playhead to the next marker after it, or the last one before it. */
+	fun jumpToMotionMarker(forward: Boolean) {
+		val now = motionEditor.playhead
+		val times = openMotionAids().markers.map { it.time }
+		val target = if (forward) times.filter { it > now + MotionClips.TIME_EPSILON }.minOrNull()
+			else times.filter { it < now - MotionClips.TIME_EPSILON }.maxOrNull()
+		target?.let(::setMotionPlayhead)
+	}
+
+	/** Every curve of the open motion ends where it starts, so its loop has no seam (one history edit). */
+	fun closeMotionLoop() {
+		val clip = editingMotionClip() ?: return
+		if (clip.curves.isEmpty()) return
+		editTimeline("close_loop", kotlinx.serialization.json.JsonObject(emptyMap()))
+	}
 	// endregion
 
 	/** Commit an edited armature as one undoable project change and rebuild its derived rig. */

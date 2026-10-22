@@ -208,6 +208,14 @@ enum class ShortcutAction(
     MOTION_GO_END(ShortcutCategory.TIMELINE, "shortcut.motion.goEnd"),
     MOTION_PREV_FRAME(ShortcutCategory.TIMELINE, "shortcut.motion.prevFrame"),
     MOTION_NEXT_FRAME(ShortcutCategory.TIMELINE, "shortcut.motion.nextFrame"),
+    MOTION_ADD_MARKER(ShortcutCategory.TIMELINE, "shortcut.motion.addMarker"),
+    MOTION_PREV_MARKER(ShortcutCategory.TIMELINE, "shortcut.motion.prevMarker"),
+    MOTION_NEXT_MARKER(ShortcutCategory.TIMELINE, "shortcut.motion.nextMarker"),
+    MOTION_TOGGLE_BOOKMARK(ShortcutCategory.TIMELINE, "shortcut.motion.bookmark"),
+    MOTION_TOGGLE_SHY(ShortcutCategory.TIMELINE, "shortcut.motion.shy"),
+    MOTION_HIDE_SHY(ShortcutCategory.TIMELINE, "shortcut.motion.hideShy"),
+    MOTION_TOGGLE_FREEZE(ShortcutCategory.TIMELINE, "shortcut.motion.freeze"),
+    MOTION_CLOSE_LOOP(ShortcutCategory.TIMELINE, "shortcut.motion.closeLoop"),
     ;
 
     val scope: ShortcutScope get() = category.scope
@@ -412,6 +420,14 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.MOTION_GO_END to keys("End"),
     ShortcutAction.MOTION_PREV_FRAME to keys("Left"),
     ShortcutAction.MOTION_NEXT_FRAME to keys("Right"),
+    ShortcutAction.MOTION_ADD_MARKER to keys("M"),
+    ShortcutAction.MOTION_PREV_MARKER to keys("Ctrl+Left"),
+    ShortcutAction.MOTION_NEXT_MARKER to keys("Ctrl+Right"),
+    ShortcutAction.MOTION_TOGGLE_BOOKMARK to keys("B"),
+    ShortcutAction.MOTION_TOGGLE_SHY to keys("Shift+H"),
+    ShortcutAction.MOTION_HIDE_SHY to keys("H"),
+    ShortcutAction.MOTION_TOGGLE_FREEZE to keys("Shift+F"),
+    ShortcutAction.MOTION_CLOSE_LOOP to keys("Shift+L"),
 )
 
 /**

@@ -30,6 +30,12 @@ internal class MotionEditorState {
 	var view: MotionEditorView by mutableStateOf(MotionEditorView.DOPESHEET)
 	var snapToFrames: Boolean by mutableStateOf(true)
 	var autoKey: Boolean by mutableStateOf(false)
+	/** Tracks marked shy stay out of the track list and timeline while this is on. */
+	var hideShy: Boolean by mutableStateOf(false)
+	/** Only bookmarked parameters' tracks show. */
+	var bookmarksOnly: Boolean by mutableStateOf(false)
+	/** The preview canvas draws the selected object's path through the open motion. */
+	var showTrajectory: Boolean by mutableStateOf(false)
 	/** Copied keys, times relative to the earliest. */
 	var clipboard: List<Pair<String, MotionKey>> = emptyList()
 
