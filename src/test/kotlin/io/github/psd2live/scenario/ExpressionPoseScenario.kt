@@ -25,6 +25,10 @@ class ExpressionPoseScenario {
 			"motion_set_key" to req("id" to "wave", "parameter" to "ParamTail", "key" to mapOf("time" to 1, "value" to 6)))
 		val standard = ModelExpressions.standardFor(puppet.parameters.mapTo(HashSet()) { it.id.raw })
 		expect("standard", now.document.rigEdits.expressions == null) { "a new model already holds expressions of its own" }
+		// Replacing the rig with an imported CMO3 keeps the face's expressions: an imported model has no standard ones.
+		val cmo3 = Files.readAllBytes(export("cmo3").single { it.fileName.toString().endsWith(".cmo3") })
+		val replaced = Cmo3ModelImport.prepare(cmo3, Cmo3ImportMode.REPLACE, now.model, now.model.config).second.rigEdits
+		expect("replace", replaced.importedCmo3 != null && replaced.expressions == standard) { "the replacement kept the expressions ${replaced.expressions}" }
 
 		edit("make an expression of a pose", "expression_create", req("id" to "joy", "name" to "Joy", "fade_in" to 0.25,
 			"values" to mapOf("ParamTail" to 4, "ParamAngleX" to 0)))
@@ -112,6 +116,10 @@ class ExpressionPoseScenario {
 			val parts = puppet.parts.map { it.id.raw }
 			edit("group two parts beside a missing one", "pose_add_group", req("parts" to listOf(parts[0], parts[1])))
 			refused("group a part the rig lacks", "pose_add_group", req("parts" to listOf("PartNope")))
+			refused("give another expression joy's missing parameter", "expression_create", req("id" to "other",
+				"entries" to listOf(mapOf("parameter" to "ParamGone", "blend" to "ADD", "value" to 1))))
+			refused("give another group the missing part", "pose_add_group", req("parts" to listOf(parts[2], "PartGone")))
+			edit("regroup the missing part's own group", "pose_set_group", req("index" to 0, "parts" to listOf("PartGone", parts[2])))
 
 			fun changed(before: io.github.psd2live.application.WorkspaceCapture<io.github.psd2live.core.RigPreviewModel>) =
 				io.github.psd2live.application.WorkspaceSidecarEdits.changed(before.document, before.model.rig.puppet, now.document, puppet)
@@ -127,7 +135,8 @@ class ExpressionPoseScenario {
 			expect("preview", now.model.runtimeBundle.assets.none { it.path.endsWith(".pose3.json") }) { "the preview bundle hides parts with a pose3" }
 			val files = export("moc3")
 			val pose3 = Json.parseToJsonElement(Files.readString(files.single { it.fileName.toString().endsWith(".pose3.json") })).jsonObject
-			expect("export", pose3.getValue("Groups").jsonArray.single().jsonArray.map { it.jsonObject.getValue("Id").jsonPrimitive.content } == parts.take(2)) {
+			expect("export", pose3.getValue("Groups").jsonArray.map { group -> group.jsonArray.map { it.jsonObject.getValue("Id").jsonPrimitive.content } } ==
+				listOf(listOf(parts[2]), parts.take(2))) {
 				"the exported pose is $pose3"
 			}
 			val exp3 = Json.parseToJsonElement(Files.readString(files.single { it.fileName.toString().endsWith(".joy.exp3.json") })).jsonObject

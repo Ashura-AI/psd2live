@@ -38,7 +38,9 @@ class Moc3SidecarIdsTest {
 
 	private val exp3 = """{"Type":"Live2D Expression","Parameters":[{"Id":"$longParameter","Value":0.5,"Blend":"Add"},{"Id":"ParamElsewhere","Value":1,"Blend":"Overwrite"}]}"""
 	private val pose3 = """{"Type":"Live2D Pose","FadeInTime":0.5,"Groups":[[{"Id":"PartA","Link":["PartGuide"]},{"Id":"PartGuide","Link":[]}],[{"Id":"PartGuide","Link":[]}]]}"""
-	private val motion3 = """{"Version":3,"Curves":[{"Target":"Parameter","Id":"$longParameter","Segments":[0,0,0,1,1]},{"Target":"PartOpacity","Id":"PartA","Segments":[0,1]}]}"""
+	private val motion3 = """{"Version":3,"Meta":{"Duration":1,"CurveCount":3,"TotalSegmentCount":3,"TotalPointCount":6},"Curves":[""" +
+		"""{"Target":"Parameter","Id":"$longParameter","Segments":[0,0,0,1,1]},{"Target":"PartOpacity","Id":"PartA","Segments":[0,1,1,0.2,1,0.4,0,1,0]},""" +
+		"""{"Target":"PartOpacity","Id":"PartGuide","Segments":[0,1,2,1,0]}]}"""
 
 	@Test fun sidecarsUseTheWrittenIdsAndDropUnwrittenParts() {
 		val model = puppet()
@@ -56,8 +58,11 @@ class Moc3SidecarIdsTest {
 		assertEquals(listOf(listOf("PartA" to emptyList<String>())), groups.map { group -> group.jsonArray.map { entry ->
 			entry.jsonObject.getValue("Id").jsonPrimitive.content to entry.jsonObject.getValue("Link").jsonArray.map { it.jsonPrimitive.content }
 		} })
-		val curves = Json.parseToJsonElement(files.getValue("m.idle.motion3.json")).jsonObject.getValue("Curves").jsonArray
-		assertEquals(listOf(written, "PartA"), curves.map { it.jsonObject.getValue("Id").jsonPrimitive.content })
+		val motion = Json.parseToJsonElement(files.getValue("m.idle.motion3.json")).jsonObject
+		assertEquals(listOf(written, "PartA"), motion.getValue("Curves").jsonArray.map { it.jsonObject.getValue("Id").jsonPrimitive.content })
+		// The guide part's curve goes, and the counts a reader allocates from follow: a linear and a bezier segment.
+		val meta = motion.getValue("Meta").jsonObject
+		assertEquals(listOf(2, 2, 6, 1), listOf("CurveCount", "TotalSegmentCount", "TotalPointCount", "Duration").map { meta.getValue(it).jsonPrimitive.int })
 	}
 
 	@Test fun aPoseOfUnwrittenPartsGoesWithItsReference() {

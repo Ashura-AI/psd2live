@@ -53,11 +53,16 @@ internal object WorkspaceSidecarEdits {
                 if (mode == "reset") return document.copy(rigEdits = document.rigEdits.copy(expressions = null))
                 val current = ModelExpressions.effective(document.rigEdits, parameterIds)
                 val next = ModelExpressions.validated(expression(mode, current, request, puppet.parameters))
-                // Only what this edit writes must name a parameter the rig has: entries left dangling by an earlier
-                // deletion stay, as export skips them and expression_get lists them as missing.
-                val referenced = current.flatMapTo(HashSet()) { e -> e.entries.map { it.parameterId } }
-                next.flatMap { e -> e.entries.map { it.parameterId } }.firstOrNull { it !in referenced && it !in parameterIds }?.let {
-                    throw IllegalArgumentException("Unknown expression parameter: $it")
+                // Only what this edit writes must name a parameter the rig has: an expression keeps the entries an
+                // earlier deletion left it, which export skips and expression_get lists as missing, and a duplicate
+                // those of its source; no other expression takes them on.
+                val before = current.associate { e -> e.id to e.entries.mapTo(HashSet()) { it.parameterId } }
+                val source = if (mode == "duplicate") request.text("id") else null
+                for (expression in next) {
+                    val kept = before[expression.id] ?: source?.let(before::get).orEmpty()
+                    expression.entries.firstOrNull { it.parameterId !in parameterIds && it.parameterId !in kept }?.let {
+                        throw IllegalArgumentException("Unknown expression parameter: ${it.parameterId}")
+                    }
                 }
                 // Unchanged standard expressions stay generated, so the rig's own set keeps following it.
                 if (document.rigEdits.expressions == null && next == current) document
@@ -65,10 +70,17 @@ internal object WorkspaceSidecarEdits {
             }
             operation.operation.startsWith("pose_") -> {
                 val partIds = puppet.parts.mapTo(HashSet()) { it.id.raw }
-                val next = pose(operation.operation.removePrefix("pose_"), document.rigEdits.pose, request)?.takeIf { it.groups.isNotEmpty() }
-                // As with expressions, only parts this edit adds must exist; pose_get reports the missing ones.
-                val referenced = document.rigEdits.pose?.let(ModelPoses::partIds).orEmpty()
-                next?.let(ModelPoses::partIds)?.firstOrNull { it !in referenced && it !in partIds }?.let { throw IllegalArgumentException("Part not found: $it") }
+                val mode = operation.operation.removePrefix("pose_")
+                val old = document.rigEdits.pose?.groups.orEmpty()
+                val next = pose(mode, document.rigEdits.pose, request)?.takeIf { it.groups.isNotEmpty() }
+                // As with expressions, only parts this edit writes must exist: a group left as it was keeps its missing
+                // parts, which pose_get reports, and a replaced group those it had; no other group takes them on.
+                val replaced = if (mode == "set_group") old.getOrNull(request.getValue("index").jsonPrimitive.int) else null
+                for (group in next?.groups.orEmpty()) {
+                    if (group in old) continue
+                    val kept = replaced?.parts.orEmpty().flatMapTo(HashSet()) { it.ids }
+                    group.parts.flatMap { it.ids }.firstOrNull { it !in partIds && it !in kept }?.let { throw IllegalArgumentException("Part not found: $it") }
+                }
                 document.copy(rigEdits = document.rigEdits.copy(pose = next))
             }
             else -> throw IllegalArgumentException("Not a sidecar operation: ${operation.operation}")
