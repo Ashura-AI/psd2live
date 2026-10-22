@@ -1,3 +1,22 @@
+## v3.6.6 · 2026-10-24
+
+### New
+
+- **Free transform of selections**: the Paint free transform (`Alt+T`, or `T` in Paint mode) puts the selection's pixels (or the whole layer) in a box to move, scale and rotate; Enter applies it as one stroke, Esc puts it back.
+- **Quick selection and resizing selections**: a quick selection brush joins the selection tool; the paint menu expands or contracts the selection and selects opaque pixels.
+- **Whole eyes through the bangs**: eye whites, irides with highlights, lashes and closed-eye lines can show through the bangs, on by default for new projects; rigs made under the 3.6.5 rules update when regenerated.
+
+### Improved
+
+- **Knife folded into Mesh points**: the tool has a Points face (`Alt+M`) and a Line face (`K`) whose polyline lets the mesh fold along it; recorded projects replay as before.
+- **Interior handles in Object mode**: `Shift+I` switches to Object mode with no mesh points under the handles; clicking another object picks it.
+- **Tab switches modes**: Tab toggles between Object mode and the mode last used.
+- **A shorter canvas display rail**: only pinned toggles show, and only when the canvas has something for them; pin or unpin from "View ▾". Onion skin moves to the animation editor's toolbar and random pose to the parameters panel.
+
+### Fixes
+
+- The editing canvas shows inverted masks and add / multiply blends correctly.
+
 ## v3.6.5 · 2026-10-23
 
 ### New

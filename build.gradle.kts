@@ -18,7 +18,7 @@ plugins {
 }
 
 group = "io.github.psd2live"
-version = "3.6.5"
+version = "3.6.6"
 
 // Cubism proprietary binaries under src/main/resources/cubism/ are opt-in only.
 // Default jars/distributions must NOT embed them. Enable with:
