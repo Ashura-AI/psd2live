@@ -68,13 +68,15 @@ class MotionLoopScenario {
 		reopen()
 		expect("reopened", clip().curve("ParamWheel")!!.keys.last().value == 720f) { "the spin changed on reopen" }
 		// The default Cubism 5.0 target strips the repeat, and the report says the spin will clamp there.
-		val losses = step("export for Cubism 5.0") {
-			io.github.psd2live.application.WorkspaceExportSession(now, "Figure.psd").target("moc3", Files.createTempDirectory(temp, "moc50").toAbsolutePath(), emptyMap())
-		}.getValue("losses").jsonArray.map { it.jsonObject }
-		expect("export", losses.any { it.getValue("object").jsonPrimitive.content == "spin/ParamWheel" && it.getValue("handling").jsonPrimitive.content == "approximated" }) {
-			"the 5.0 report does not name the clamped spin: $losses"
+		for (target in listOf("moc3", "vtube-studio")) {
+			val losses = step("export $target for Cubism 5.0") {
+				io.github.psd2live.application.WorkspaceExportSession(now, "Figure.psd").target(target, Files.createTempDirectory(temp, target).toAbsolutePath(), emptyMap())
+			}.getValue("losses").jsonArray.map { it.jsonObject }
+			expect("export", losses.any { it.getValue("object").jsonPrimitive.content == "spin/ParamWheel" && it.getValue("handling").jsonPrimitive.content == "approximated" }) {
+				"the 5.0 $target report does not name the clamped spin: $losses"
+			}
+			expect("export", losses.none { it.getValue("object").jsonPrimitive.content.endsWith("/ParamAngleZ") }) { "an ordinary curve was reported: $losses" }
 		}
-		expect("export", losses.none { it.getValue("object").jsonPrimitive.content.endsWith("/ParamAngleZ") }) { "an ordinary curve was reported: $losses" }
 		// Parameter repeat needs a Cubism 5.3 target; the default 5.0 one strips it with a notice.
 		edit("export motions for Cubism 5.3", "settings_update", req("changes" to mapOf("exportMoc3" to true, "exportMotions" to true, "runtimeTarget" to "Cubism53")))
 		val motion = export("moc3").filter { it.toString().endsWith(".motion3.json") }

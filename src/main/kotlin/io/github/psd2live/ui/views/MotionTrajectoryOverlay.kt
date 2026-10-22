@@ -4,7 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
@@ -47,9 +47,10 @@ internal fun MotionTrajectoryOverlay(
 	// while playing the base is held, the frame changing every tick.
 	val driven = clip.curves.mapTo(HashSet()) { ParameterId(it.parameterId) } + frozen.keys
 	val current = pose.filterKeys { it !in driven || it in locked }
-	val held = remember { mutableStateOf(current) }
-	if (!editor.playing) held.value = current
-	val base = held.value
+	// A plain holder, written after composition: holding the base must not itself recompose.
+	val held = remember { arrayOf(current) }
+	SideEffect { if (!editor.playing) held[0] = current }
+	val base = if (editor.playing) held[0] else current
 	val track by produceState<MotionTrajectory.Track?>(null, probes, clip, base, frozen, locked) {
 		value = withContext(Dispatchers.Default) {
 			MotionTrajectory.sample(probes, clip, base, frozen, locked) { !coroutineContext.isActiveSafe() }

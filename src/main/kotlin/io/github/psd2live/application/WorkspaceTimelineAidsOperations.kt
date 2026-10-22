@@ -91,7 +91,7 @@ internal object WorkspaceTimelineAidsResultSchemas {
  * stays taken while its timeline aids remain, and a new motion never inherits its frozen, shy or marked tracks.
  */
 internal object WorkspaceMotionIds {
-    private val fields = mapOf("motion_create" to "id", "motion_duplicate" to "new_id")
+    private val fields = mapOf("motion_create" to "id", "motion_duplicate" to "new_id", "motion_seed_builtin" to "id")
 
     fun chosen(edit: WorkspaceDocumentOperation, clips: List<io.github.psd2live.core.MotionClip>, aids: TimelineAids) =
         chosen(listOf(edit), clips, aids).single()

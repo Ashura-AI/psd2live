@@ -38,7 +38,7 @@ MIT 模块不依赖任何 GPL 模块，由 Gradle 依赖关系在编译期保证
 | ID | 类别 | 输出 | 主要损失 |
 | --- | --- | --- | --- |
 | `moc3` | 结构化绑定 | `.moc3`、model3、physics3、motion3、exp3、pose3、cdi3、userdata3、贴图 | 按目标运行时版本剥离不支持的功能；Cubism 5.3 的混合模式在更早的版本改为最接近的旧模式（滤色与加算类为加算，乘算类为乘算，其余为普通，Alpha 混合改为 over），每个受影响的网格与隔离部件按 ID 记一条 `blend_mode` 损失（默认 `approximated`，可由导出选项改写），注明改成的模式（`cmo3`、`vtube-studio` 按同一目标版本相同处理）；多网格的[点击区域](#点击区域)拆成同名多项 |
-| `cmo3` | 结构化绑定 | Cubism Editor 工程；有动作片段时另写同名 `.can3`（Cubism Animator 工程） | 生成器意图不保留；动作片段中眨眼、口型效果曲线不写入（见 [Cubism Animator](#cubism-animator)）；表情与姿势不写入（记为 `structure` / `dropped`） |
+| `cmo3` | 结构化绑定 | Cubism Editor 工程；有动作片段时另写同名 `.can3`（Cubism Animator 工程）；参数循环写入 `isRepeat`（Cubism 5.3 目标，更早的目标去掉并列入损失报告） | 生成器意图不保留；动作片段中眨眼、口型效果曲线不写入（见 [Cubism Animator](#cubism-animator)）；表情与姿势不写入（记为 `structure` / `dropped`） |
 | `dragonbones` | 结构化绑定 | `_ske.json`、每页 `_tex_<i>.json` 与贴图 | 与 Spine 相同的参数动画与片段烘焙；关键点取整到帧；透明度以整百分比记录；运行时以 16 位偏移寻址每个动画的变形数据，超出时按更大容差精简并报告（骨架模型的整身片段误差较大）；遮罩、屏幕色、物理未写入 |
 | `vtube-studio` | 结构化绑定 | `moc3` 的全部文件 + `.vtube.json` | 同 `moc3`；面部跟踪只映射标准参数（头、身体、眼、视线、眉、嘴、呼吸），每个动作片段一个热键、每个表情一个 `ToggleExpression` 热键；其余设置由 VTube Studio 取默认值 |
 | `spine` | 结构化绑定 | 骨骼 JSON 或 `.skel`、`.atlas`、贴图页 | 旋转变形器成为骨骼链，网格挂在最近的旋转骨骼上；每个参数成为一段 1 秒动画（时间即参数归一化值），键入骨骼变换与骨骼空间内的变形，交叉项按 Spine 骨骼运算测量并报告；动作片段按帧采样后精简关键帧；无 Warp、混合形、Glue（已烘焙）；遮罩转为按轮廓多边形裁剪（反相遮罩丢弃）；驱动骨骼旋转的摆锤转为物理约束（近似），其余物理与屏幕色未写入 |

@@ -87,7 +87,8 @@ internal fun registerDocumentBatch(registry: WorkspaceOperationRegistry, port: W
             WorkspaceDocumentOperation(edit.getValue("operation").jsonPrimitive.content, edit.getValue("request").jsonObject)
         }
         startWorkspaceOperationJob(statePort, jobs, "workspace_preview_edits") {
-            WorkspaceOperationOutput(port.previewDocumentEdits(request.getValue("state").jsonPrimitive.content, edits))
+            // The same IDs a commit of these edits would choose.
+            WorkspaceOperationOutput(port.previewDocumentEdits(request.getValue("state").jsonPrimitive.content, motionIds(edits)))
         }
     }
     registry.register(WorkspaceOperationDefinition("workspace_preview_regeneration",

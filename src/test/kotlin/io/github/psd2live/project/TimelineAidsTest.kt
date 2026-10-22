@@ -94,6 +94,20 @@ class TimelineAidsTest {
         assertEquals(4, port.edits, "every edit is one auxiliary write")
     }
 
+    @Test fun newMotionIdsSkipDeletedMotionsThatStillHaveAids() {
+        val clips = listOf(MotionClip("motion_2", "Kept"))
+        val aids = TimelineAids(clips = mapOf("motion_1" to MotionTimelineAids(shy = setOf("ParamAngleX")), "motion_3" to MotionTimelineAids(shy = setOf("ParamAngleX"))))
+        val chosen = WorkspaceMotionIds.chosen(listOf(
+            WorkspaceDocumentOperation("motion_create", buildJsonObject { put("name", "A") }),
+            WorkspaceDocumentOperation("motion_seed_builtin", buildJsonObject { put("builtin", "Blink") }),
+            WorkspaceDocumentOperation("motion_duplicate", buildJsonObject { put("id", "motion_2") }),
+            WorkspaceDocumentOperation("motion_create", buildJsonObject { put("id", "motion_9") }),
+            WorkspaceDocumentOperation("motion_set_key", buildJsonObject { put("id", "motion_2") })), clips, aids)
+        assertEquals(listOf("motion_4", "motion_5", "motion_6", "motion_9", null), chosen.map { edit ->
+            (edit.request["new_id"].takeIf { edit.operation == "motion_duplicate" } ?: edit.request["id"].takeIf { edit.operation != "motion_set_key" })?.jsonPrimitive?.content
+        }, "each new motion takes an ID no motion and no remembered aid holds")
+    }
+
     @Test fun aFrozenTrackHoldsItsValueWhereTheMotionPlays() {
         val clip = MotionClip("spin", "Spin", curves = listOf(MotionCurve("ParamAngleX", listOf(MotionKey(0f, -30f), MotionKey(2f, 30f)))))
         val sampled = MotionClips.sampleAll(clip, 1.5)
