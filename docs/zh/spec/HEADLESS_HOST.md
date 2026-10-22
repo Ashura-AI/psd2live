@@ -61,9 +61,9 @@ flowchart TD
   - 映射类字段（图层可见、覆盖、父级、网格覆盖、纹理覆盖）与设置 JSON 逐键合并；
   - `rigEdits` 若双方只在 `authoringJournal` 上追加，草稿追加的命令接在 `next` 的日志之后（命令级变基，等同草稿晚于外部编辑执行）；
   - 其余双方都改的字段为**冲突**：运行时取胜，丢弃该字段的草稿并在编辑器日志里警告。
-- **检出替换**：撤销、重做、分支切换（`checkoutHistory`）传 `base = null`，展示整体换成检出的文档，未提交的草稿丢弃并在日志里警告；随后草稿队列与编辑器字段会话里待重放的设置切换、待记录的对象编辑一并丢弃（`discardDrafts`），会话结束时不会落到检出后的文档上。
-- **草稿的提交起点**：编辑器在提交草稿时（而不是字段会话开始时）于状态锁内读取草稿文档、**最近一次展示的提交文档**（`origin`，即草稿未改动字段所镜像的运行时文档）与运行时状态令牌，一起作为 `WorkspaceEditorDraft` 提交。运行时在锁内先 `show` 后发布状态，发布不在编辑器的状态锁内，所以读到的令牌可能早于 `origin` 那次提交；令牌只作首次 CAS 的期望，冲突时队列以 `origin` 为基准把草稿带到当前状态，草稿缺少外部编辑却带着新令牌的情形不会发生（`origin` 总不旧于草稿所见）。旧的会话开始快照 `editorDraftExpected` 删除。
-- **草稿队列变基重试**：队列中的草稿在执行时若遇到外部提交造成的 `WorkspaceConflict`，以 `origin`（或同一状态下的运行时文档）为 `base`、当前运行时文档为 `next` 变基草稿，按新状态重试；与展示同一规则，双方都改的字段取运行时的值，其余照常提交，让出的字段经 `draftYielded` 在编辑器日志里警告。只有连续被超过 `MAX_REBASES` 次，或不知道 `origin` 时才拒绝；拒绝后的修复也走 `show`（`base` = 被拒草稿），只撤回草稿之后未再改动的字段。
+- **检出替换**：撤销、重做、分支切换（`checkoutHistory`）传 `base = null`，展示整体换成检出的文档，未提交的草稿丢弃并在日志里警告（与上一次展示的提交比较；工程刚打开、还未展示过提交时与检出的文档比较）。编辑器字段会话里待重放的设置切换、让出与被改过的设置键、待记录的对象编辑在同一次状态更新里清掉，不必等宿主随后丢弃草稿队列（`discardDrafts`），因此检出发布之后才结束的字段也不会把切换重放到检出后的文档上。
+- **草稿的提交起点**：编辑器在提交草稿时（而不是字段会话开始时）于状态锁内读取草稿文档、**最近一次展示的提交文档**（`origin`，即草稿未改动字段所镜像的运行时文档）与运行时状态令牌，一起作为 `WorkspaceEditorDraft` 提交。`origin` 在每次 `show` 时更新，打开工程、导入新来源和替换导入时也换成装入的文档。运行时在锁内先 `show` 后发布状态，发布不在编辑器的状态锁内，所以读到的令牌可能早于 `origin` 那次提交；令牌只作首次 CAS 的期望，冲突时队列以 `origin` 为基准把草稿带到当前状态，草稿缺少外部编辑却带着新令牌的情形不会发生（`origin` 总不旧于草稿所见）。旧的会话开始快照 `editorDraftExpected` 删除。
+- **草稿队列变基重试**（让出的设置键在准备候选时连同它的设置切换整体撤回，切换派生的键与释放的姿态也就不会落地）：队列中的草稿在执行时若遇到外部提交造成的 `WorkspaceConflict`，以 `origin`（或同一状态下的运行时文档）为 `base`、当前运行时文档为 `next` 变基草稿，按新状态重试；与展示同一规则，双方都改的字段取运行时的值，其余照常提交，让出的字段经 `draftYielded` 在编辑器日志里警告。只有连续被超过 `MAX_REBASES` 次，或不知道 `origin` 时才拒绝；拒绝后的修复也走 `show`（`base` = 被拒草稿），只撤回草稿之后未再改动的字段。
 - **保存不回写**：`captureProject` 不再把编辑器版本的文档作为 "Save project" 节点提交进运行时；保存前照旧结束字段会话、等待草稿队列，然后只保存运行时的捕获。保存的脏标记基线是 `savedView`：编辑器状态换上所保存捕获的文档字段，因此编辑器仍草拟着而运行时没有的字段保存后依旧为脏，关闭时会提示。`checkpoint` 仍对运行时文档强制追加节点。`WorkspaceHostPresentation.document` 删除，宿主不再读取展示中的文档。
 
 ### 提交与保存时机的变化
@@ -76,9 +76,11 @@ flowchart TD
 | 保存时编辑器有未经草稿提交的字段 | 作为 "Save project" 节点提交后保存 | 不提交；只保存运行时文档，工程保持为脏 |
 | MCP 撤销 / 检出时编辑器有草稿 | 检出被拒 | 检出成功，草稿丢弃并警告 |
 
-字段会话中的设置切换（`editorSettingsIntents`）随草稿按命令重放。重放会派生别的键（如 `meshOnly` 派生 `generateDeformers`、动作开关派生 `exportMotions`），而布尔派生键在字段比较中可能根本不构成冲突，因此编辑器记录两类让出的设置键，随草稿交给队列（`yieldedSettings`），重放之后这些键恢复为运行时的值：投影判定为冲突的键（同时从切换中移除），以及会话期间被别的提交改过、编辑器之后没有再改的键。草稿预览（`schedulePreviewRebuild`）构建期间若有提交落地，预览以 `WorkspaceConflict` 结束而不报错，展示该提交时若仍有草稿字段会重新安排预览。
+字段会话中的设置切换（`editorSettingsIntents`）随草稿按命令重放。重放会派生别的键（如 `meshOnly` 派生 `generateDeformers`、动作开关派生 `exportMotions`），而布尔派生键在字段比较中可能根本不构成冲突，因此编辑器记录两类让出的设置键，随草稿交给队列（`yieldedSettings`），重放之后这些键恢复为运行时的值：投影判定为冲突的键（同时从切换中移除），以及会话期间被别的提交改过的键。两类都只在会话持有待重放的切换时记录，每个会话开始时清空，提交时只保留编辑器之后没有再改的键（草稿中的值仍等于 `origin`）——用户让出后又亲手改回的值照常提交。草稿预览（`schedulePreviewRebuild`）构建期间若有提交落地，预览以 `WorkspaceConflict` 结束而不报错，展示该提交时若仍有草稿字段会重新安排预览。
 
 风险：若仍有编辑器路径只改状态字段而不经 `editorChanged` / 命令提交（"幽灵草稿"），此前会被保存"兜底"提交，现在不会进入工程，但工程保持为脏；这类路径应视为缺陷，结束时还原或改为草稿提交。已修正的来源：动作关键帧拖动结束时总是还原为已提交的片段；删除变形器不再在本地删除旧 v1 父级覆盖（由日志里的删除命令负责）。
+
+动作关键帧拖动与字段草稿同一规则：拖动期间别的作者提交了，若被拖动的片段在已提交文档里仍是拖动开始时的样子，拖动按当前状态提交；片段被改过则拖动让出并警告。
 
 模拟烘焙的进度与取消对两个宿主相同：命令用 `WorkspaceSimulationWork.cancellable` 把进度报给运行它的进程任务（`WorkspaceJobContext`）并随任务取消而停止；`simulationBake` 只是展示的观察入口，桌面用它显示烘焙条与取消按钮，无窗口为空。
 
@@ -111,5 +113,7 @@ flowchart TD
   - `SaveAndCloseTest.aGestureOverAnExternalCommit…`：越过外部提交的手势正常提交、同设置让步，之后的保存不再脏；
   - `SaveAndCloseTest.aSettingYieldedInAFieldKeepsTheAgentsValueWhereASwitchWouldDeriveIt`：会话中的派生键保留智能体写的值；
   - `SaveAndCloseTest.aCheckoutDiscardingAFieldWarnsAndForgetsItsSwitches`：检出丢弃草稿时警告，会话结束不再把切换重放到检出后的文档；
-  - `SaveAndCloseTest.deletingADeformerLeavesNoDraftBehind`、`aMotionKeyDragOvertakenByAnAgentCommitLeavesNoDraftBehind`：这两条路径结束后编辑器只显示运行时文档；
+  - `SaveAndCloseTest.deletingADeformerLeavesNoDraftBehind`、`aMotionKeyDragOvertakenByAnAgentCommitLeavesNoDraftBehind`：这两条路径结束后编辑器只显示运行时文档，被未改动片段的提交超过的拖动照常提交；
+  - `SaveAndCloseTest.aFieldClosingBetweenACommitsShowAndItsPublicationStillLands`：用运行时的测试钩子让字段恰在提交已展示、尚未发布时读取状态，并在发布之后才入队，草稿凭 `origin` 落地；
+  - `SaveAndCloseTest.aValueTheEditorTakesBackAfterYieldingItIsCommitted`、`aReplacingImportIsWhatTheEditorMirrorsAfterwards`、`aCheckoutRightAfterOpeningDiscardsAFieldWithAWarning`、`aReplacingShowEndsTheSessionsSwitchesBeforeTheHostDiscardsItsQueues`：让出后改回的值、替换导入后的镜像文档、打开后立即检出的警告、检出展示时即清空会话；
   - `HeadlessSimulationBakeTest`：无窗口烘焙向进程任务报告进度，任务取消即停止。
