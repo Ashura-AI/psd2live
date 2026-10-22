@@ -36,6 +36,14 @@ sealed interface ExportNotice {
 	data class WeldDivergence(val drawableNames: List<String>) : ExportNotice
 
 	/**
+	 * A manifest hit area left out because the moc does not contain its drawable (a hidden mesh the options omit).
+	 *
+	 * @property String name       The hit area's name.
+	 * @property String drawableId The drawable's model id.
+	 */
+	data class HitAreaDropped(val name: String, val drawableId: String) : ExportNotice
+
+	/**
 	 * A feature the export target's runtime cannot load, removed from the written file.
 	 *
 	 * Distinct from [UnsupportedChange], which reports what the lowering could not express: this one

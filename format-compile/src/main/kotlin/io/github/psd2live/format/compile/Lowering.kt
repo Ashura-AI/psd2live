@@ -12,6 +12,12 @@ public object CapabilityScan {
 	                defaults: Map<Feature, Handling> = emptyMap()): List<LossEntry> {
 		fun handling(feature: Feature, fallback: Handling) = options.handling[feature] ?: defaults[feature] ?: fallback
 		val losses = ArrayList<LossEntry>()
+		val meshIds = ir.meshes.mapTo(HashSet()) { it.id }
+		for (area in ir.hitAreas) {
+			if (!profile.hitAreas) losses += LossEntry(area.id, Feature.STRUCTURE, Handling.DROPPED, note = "Hit areas are not supported by this target")
+			else for (mesh in area.meshes.filterNot(meshIds::contains))
+				losses += LossEntry(area.id, Feature.STRUCTURE, Handling.DROPPED, note = "Hit area ${area.name} names mesh $mesh, which the rig no longer has")
+		}
 		if (!profile.structure) {
 			losses += LossEntry("*", Feature.STRUCTURE, Handling.BAKED, note = "Rendered to pixels; deformers, parameters and meshes are not kept")
 			if (ir.physics.groups.isNotEmpty() && profile.physics == PhysicsSupport.NONE)

@@ -50,9 +50,12 @@ internal object WorkspaceHitAreaEdits {
     private fun put(areas: List<RigHitArea>, model: RigPreviewModel, request: JsonObject): List<RigHitArea> {
         val id = request.getValue("id").jsonPrimitive.content
         val current = areas.firstOrNull { it.id == id }
+        // A mesh the area names already may be gone (export leaves it out and reports it); only a mesh it gains must exist.
         val meshes = request["meshes"]?.jsonArray?.map { element ->
             val raw = element.jsonPrimitive.content.removePrefix("mesh:")
-            require(model.rig.puppet.drawables.any { it.id.raw == raw && it.mesh != null }) { "Mesh not found: $raw" }
+            require(current?.meshes?.contains(raw) == true || model.rig.puppet.drawables.any { it.id.raw == raw && it.mesh != null }) {
+                "Mesh not found: $raw"
+            }
             raw
         }?.distinct()
         require(current != null || meshes != null) { "A new hit area needs meshes" }

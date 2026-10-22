@@ -41,10 +41,25 @@ object RigHitAreas {
 		json.getValue("id").jsonPrimitive.content, json.getValue("name").jsonPrimitive.content,
 		json.getValue("meshes").jsonArray.map { it.jsonPrimitive.content })
 
-	/** [areas] with each mesh in [renames] under its new ID: what an ID conversion of meshes carries over. */
+	/**
+	 * [areas] with each mesh of [replacements] replaced by the meshes it maps to, in place: an ID conversion (one new ID),
+	 * a split (its pieces) or a deletion (none). An area left without meshes is dropped; a mesh reached twice is kept once.
+	 */
+	fun replaceMeshes(areas: List<RigHitArea>, replacements: Map<String, List<String>>): List<RigHitArea> =
+		if (replacements.isEmpty() || areas.none { area -> area.meshes.any { it in replacements } }) areas
+		else areas.mapNotNull { area ->
+			area.meshes.flatMap { replacements[it] ?: listOf(it) }.distinct().takeIf { it.isNotEmpty() }?.let { area.copy(meshes = it) }
+		}
+
+	/** [replaceMeshes] for an ID conversion of meshes, [renames] from old to new ID. */
 	fun renameMeshes(areas: List<RigHitArea>, renames: Map<String, String>): List<RigHitArea> =
-		if (renames.isEmpty() || areas.none { area -> area.meshes.any { it in renames } }) areas
-		else areas.map { area -> area.copy(meshes = area.meshes.map { renames[it] ?: it }.distinct()) }
+		replaceMeshes(areas, renames.mapValues { listOf(it.value) })
+
+	/** [overlay] with its hit areas following [replacements] ([replaceMeshes]). */
+	fun replacingMeshes(overlay: RigEditOverlay, replacements: Map<String, List<String>>): RigEditOverlay {
+		val next = replaceMeshes(overlay.hitAreas, replacements)
+		return if (next === overlay.hitAreas) overlay else overlay.copy(hitAreas = next)
+	}
 
 	/** The meshes of [area] that [model] still has, in the area's order. */
 	fun present(area: RigHitArea, model: PuppetModel): List<String> {
@@ -52,11 +67,12 @@ object RigHitAreas {
 		return area.meshes.filter { it in ids }
 	}
 
-	/** [areas] as the export carries them: each with the meshes [model] has, areas left with none dropped. */
-	fun toIr(areas: List<RigHitArea>, model: PuppetModel): List<HitAreaIR> {
-		val ids = model.drawables.mapTo(HashSet()) { it.id.raw }
-		return areas.mapNotNull { area -> area.meshes.filter { it in ids }.takeIf { it.isNotEmpty() }?.let { HitAreaIR(area.id, area.name, it) } }
-	}
+	/**
+	 * [areas] as the export carries them, every mesh they name included: a target leaves out, and reports, the meshes the
+	 * rig no longer has, so an area whose meshes are all gone stays the document's own rather than giving way to the
+	 * runtime's automatic ones.
+	 */
+	fun toIr(areas: List<RigHitArea>): List<HitAreaIR> = areas.map { HitAreaIR(it.id, it.name, it.meshes) }
 
 	/**
 	 * The Head and Body areas a generated rig suggests ([RuntimeExtras.hitAreas]): the face, and the top, else the neck or
@@ -106,15 +122,23 @@ object RigHitAreas {
 			}
 		}
 
+	/**
+	 * The meshes of [areas] that count for a hit in [model] evaluated to [geometry], by ID with their evaluated points and
+	 * triangles: shown, evaluated and with an opacity above zero, as the runtime tests them.
+	 */
+	fun drawn(areas: List<RigHitArea>, model: PuppetModel, geometry: DeformedGeometry): Map<String, Pair<FloatArray, IntArray>> {
+		val wanted = areas.flatMapTo(HashSet()) { it.meshes }
+		return model.drawables.filter { it.id.raw in wanted && it.isVisible && it.mesh != null }.mapNotNull { d ->
+			val points = geometry.worldPositions[d.id] ?: return@mapNotNull null
+			if ((geometry.opacity[d.id] ?: d.opacity) <= 0f) return@mapNotNull null
+			d.id.raw to (points to d.mesh!!.indices)
+		}.toMap()
+	}
+
 	/** [areaAt] on [model] evaluated to [geometry]; ([worldX], [worldY]) is a point in world space (canvas x, negated canvas y). */
 	fun areaAt(areas: List<RigHitArea>, model: PuppetModel, geometry: DeformedGeometry, worldX: Float, worldY: Float): RigHitArea? {
 		if (areas.isEmpty()) return null
-		val wanted = areas.flatMapTo(HashSet()) { it.meshes }
-		val drawn = model.drawables.filter { it.id.raw in wanted && it.isVisible && it.mesh != null }
-		return areaAt(areas,
-			drawn.mapNotNull { d -> geometry.worldPositions[d.id]?.let { d.id.raw to it } }.toMap(),
-			drawn.associate { it.id.raw to it.mesh!!.indices },
-			drawn.associate { it.id.raw to (geometry.opacity[it.id] ?: it.opacity) },
-			worldX, worldY)
+		val drawn = drawn(areas, model, geometry)
+		return areaAt(areas, drawn.mapValues { it.value.first }, drawn.mapValues { it.value.second }, drawn.mapValues { 1f }, worldX, worldY)
 	}
 }

@@ -58,7 +58,7 @@ internal object RigIrCompiler {
 				expressions = RuntimeExtras.expressions(puppet),
 				hitAreas = RuntimeExtras.hitAreas(puppet, analysis, rig.layerIdByDrawableId),
 			),
-			hitAreas = RigHitAreas.toIr(config.rigEdits.hitAreas, puppet),
+			hitAreas = RigHitAreas.toIr(config.rigEdits.hitAreas),
 		)
 	}
 

@@ -35,7 +35,7 @@ public object Moc3Target : ExportTarget {
 	override val capabilities: CapabilityProfile = CapabilityProfile(
 		warpLattice = true, parameterGrid = 3, blendShapes = true, timeline = true,
 		physics = PhysicsSupport.PARAMETER_PENDULUM, blendModes = ColorBlend.entries.toSet(),
-		masks = MaskSupport.TEXTURE_ALPHA, keyedDrawOrder = true, glue = true,
+		masks = MaskSupport.TEXTURE_ALPHA, keyedDrawOrder = true, glue = true, hitAreas = true,
 	)
 	override val settings: List<TargetSetting> = listOf(
 		TargetSetting.Flag("physics", true), TargetSetting.Flag("user_data", true), TargetSetting.Flag("display_info", true),
@@ -97,9 +97,12 @@ public object Moc3Target : ExportTarget {
 	}
 
 	/** What model3 cannot say about the document's hit areas: their own IDs, and more than one mesh each. */
-	public fun hitAreaLosses(ir: RigIR): List<LossEntry> = ir.hitAreas.filter { it.meshes.size > 1 }.map { area ->
-		LossEntry(area.id, Feature.STRUCTURE, Handling.APPROXIMATED,
-			note = "model3 hit areas name one ArtMesh each: ${area.meshes.size} entries named ${area.name}, which a host testing only the first entry by name reads as its first mesh")
+	public fun hitAreaLosses(ir: RigIR): List<LossEntry> {
+		val meshes = ir.meshes.mapTo(HashSet()) { it.id }
+		return ir.hitAreas.mapNotNull { area -> area.meshes.count(meshes::contains).takeIf { it > 1 }?.let { count ->
+			LossEntry(area.id, Feature.STRUCTURE, Handling.APPROXIMATED,
+				note = "model3 hit areas name one ArtMesh each: $count entries named ${area.name}, which a host testing only the first entry by name reads as its first mesh")
+		} }
 	}
 
 	/** What the physics3 and motion3 texts of a bundle depend on. */
@@ -199,6 +202,8 @@ public object Moc3Target : ExportTarget {
 			note = "${notice.pageCount} texture pages rebuilt without source art")
 		is ExportNotice.SharedAtlasSlotKept -> LossEntry(notice.drawableNames.joinToString(","), Feature.TEXTURE_SIZE, Handling.APPROXIMATED,
 			note = "Meshes keep a shared atlas slot")
+		is ExportNotice.HitAreaDropped -> LossEntry(notice.drawableId, Feature.STRUCTURE, Handling.DROPPED,
+			note = "Hit area ${notice.name} names mesh ${notice.drawableId}, which the moc does not contain")
 		is ExportNotice.DrawOrdersRenumbered -> LossEntry(notice.subjects.joinToString(","), Feature.STRUCTURE, Handling.APPROXIMATED,
 			note = "Fractional draw orders renumbered to whole numbers; the stacking is unchanged")
 	}

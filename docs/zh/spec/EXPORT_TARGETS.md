@@ -110,9 +110,9 @@ Spine 有骨骼没有参数。导出的骨骼空间原点为画布底边中点�
 
 ## 点击区域
 
-文档的点击区域（`rigEdits.hitAreas`，编辑器检查器、层级右键菜单与 MCP `hit_area_*` 编辑）按测试顺序编译为 `RigIR.hitAreas`：每个区域有自己的 ID（如 `HitAreaHead`）、宿主查询用的名称（如 `Head`）和所覆盖的网格，已不存在的网格不写入，网格全都不在的区域整个不写入。
+文档的点击区域（`rigEdits.hitAreas`，编辑器检查器、层级右键菜单与 MCP `hit_area_*` 编辑）按测试顺序编译为 `RigIR.hitAreas`：每个区域有自己的 ID（如 `HitAreaHead`）、宿主查询用的名称（如 `Head`）和所覆盖的网格。网格拆分（连通块、多边形、深度切分）时分片接替原网格在区域中的位置，删除图层时其网格移出区域（区域因此没有网格时一并删除）。IR 保留区域所指的全部网格；目标写入时跳过 Rig 中已不存在的网格，并为每个记 `structure` / `dropped` 损失，网格全都不在的区域仍算文档自己的区域，不退回运行时的自动区域。不承载点击区域的目标（`cmo3`、`spine`、`dragonbones`、`gltf`、`unity`、`psd-pose` 与光栅类）为每个区域记 `structure` / `dropped` 损失。
 
-- **`moc3` / `vtube-studio`**：写入 model3.json 的 `HitAreas`，每项 `Name` 为区域名称、`Id` 为 moc 中写出的 ArtMesh ID（ID 被缩短时取缩短后的值，未写入 moc 的网格不列出）。model3 每项只指一个 ArtMesh，因此多网格区域写成同名的多项，并记 `structure` / `approximated` 损失（只按名称找第一项的宿主只测到第一个网格）；区域自身的 ID 不在 model3 中。没有点击区域的文档不写 `HitAreas`，导出逐字节不变。
+- **`moc3` / `vtube-studio`**：写入 model3.json 的 `HitAreas`，每项 `Name` 为区域名称、`Id` 为 moc 中写出的 ArtMesh ID（ID 被缩短时取缩短后的值；未写入 moc 的网格，例如导出选项省略的隐藏网格，不列出并记 `structure` / `dropped` 损失，一项都不剩时不写 `HitAreas`）。model3 每项只指一个 ArtMesh，因此多网格区域写成同名的多项，并记 `structure` / `approximated` 损失（只按名称找第一项的宿主只测到第一个网格）；区域自身的 ID 不在 model3 中。没有点击区域的文档不写 `HitAreas`，导出逐字节不变。
 - **`p2lrt`**：版本 2 写入可选块 `HITA`（区域 ID、名称、网格索引）；文档没有点击区域时沿用由语义自动得到的 `HitAreaHead`（脸）与 `HitAreaBody`（上衣，否则颈或下装）。版本 1 没有点击区域，文档的每个区域记 `structure` / `dropped` 损失。
 - **命中规则**：按列表顺序取第一个命中的区域；网格可见、不透明度大于 0 且其三角形（含边）包含该点即命中。编辑器预览单击、MCP `hit_area_test` 与运行时 `p2l_hit_test` 用同一规则。Cubism SDK 示例按网格的包围矩形判断，与此可能不同。
 - 二进制 IR（`RigIrBinary`）自编码版本 6 起写入该字段，更早版本读取为空。

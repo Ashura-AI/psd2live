@@ -53,12 +53,17 @@ class RigHitAreasTest {
 		assertFailsWith<IllegalArgumentException> { RigEditOverlay(hitAreas = listOf(head, head.copy(name = "Again"))) }
 	}
 
-	@Test fun anIdConversionCarriesTheMeshesOver() {
+	@Test fun meshReplacementsMapOneMeshToManyInPlace() {
 		val areas = listOf(RigHitArea("HitAreaHead", "Head", listOf("face", "ear")), RigHitArea("HitAreaBody", "Body", listOf("top")))
-		assertEquals(listOf(listOf("Face01", "ear"), listOf("top")), RigHitAreas.renameMeshes(areas, mapOf("face" to "Face01")).map { it.meshes })
-		// Two meshes merging onto one ID keep it once.
+		// A split: the pieces in the original's place.
+		assertEquals(listOf(listOf("face_l", "face_r", "ear"), listOf("top")),
+			RigHitAreas.replaceMeshes(areas, mapOf("face" to listOf("face_l", "face_r"))).map { it.meshes })
+		// A deletion: out of the area, and an area left without meshes goes.
+		assertEquals(listOf("HitAreaHead"), RigHitAreas.replaceMeshes(areas, mapOf("top" to emptyList())).map { it.id })
+		// An ID conversion: one new ID; two meshes reaching one ID keep it once.
+		assertEquals(listOf("Face01", "ear"), RigHitAreas.renameMeshes(areas, mapOf("face" to "Face01")).first().meshes)
 		assertEquals(listOf("ear"), RigHitAreas.renameMeshes(areas, mapOf("face" to "ear")).first().meshes)
-		assertTrue(RigHitAreas.renameMeshes(areas, mapOf("other" to "x")) === areas)
+		assertTrue(RigHitAreas.replaceMeshes(areas, mapOf("other" to listOf("x"))) === areas)
 	}
 
 	@Test fun theNextIdIsTheFirstFreeNumber() {

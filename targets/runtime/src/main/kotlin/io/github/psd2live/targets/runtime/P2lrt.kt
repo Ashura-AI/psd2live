@@ -651,7 +651,7 @@ public object P2lrtTarget : ExportTarget {
 	override val description: String = "PSD2Live runtime rig (.p2lrt)"
 	override val capabilities: CapabilityProfile = CapabilityProfile(
 		warpLattice = true, parameterGrid = 8, blendShapes = true, timeline = true, physics = PhysicsSupport.PARAMETER_PENDULUM,
-		blendModes = ColorBlend.entries.toSet(), masks = MaskSupport.TEXTURE_ALPHA, keyedDrawOrder = true, glue = true,
+		blendModes = ColorBlend.entries.toSet(), masks = MaskSupport.TEXTURE_ALPHA, keyedDrawOrder = true, glue = true, hitAreas = true,
 	)
 
 	/**

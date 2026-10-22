@@ -59,8 +59,10 @@ internal object WorkspaceLayerEdits {
             parentOverrides = document.parentOverrides - id, meshOverrides = document.meshOverrides - id,
             textureOverrides = document.textureOverrides - id, deletedLayerIds = document.deletedLayerIds - id,
             layout = document.layout.retaining(remaining.mapTo(HashSet()) { it.id.raw }),
-            rigEdits = document.rigEdits.copy(splitDrawableIds = document.rigEdits.splitDrawableIds - id,
-                assetLayers = document.rigEdits.assetLayers - id, calibrationLayerIds = document.rigEdits.calibrationLayerIds - id))
+            // Its meshes leave the hit areas, so a later mesh given a freed ID does not join them.
+            rigEdits = RigHitAreas.replacingMeshes(document.rigEdits.copy(splitDrawableIds = document.rigEdits.splitDrawableIds - id,
+                assetLayers = document.rigEdits.assetLayers - id, calibrationLayerIds = document.rigEdits.calibrationLayerIds - id),
+                meshes.associateWith { emptyList() }))
         if (meshes.isEmpty()) return candidate
         return candidate.copy(rigEdits = candidate.rigEdits.copy(authoringJournal = candidate.rigEdits.authoringJournal +
             LayerDeletionJournal.encode(id, meshes)))

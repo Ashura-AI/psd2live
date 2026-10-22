@@ -93,8 +93,10 @@ internal object WorkspacePartitionEdits {
         val command = SourcePartitionJournal.encode(model.rig.puppet, drawable.id, pieces.map { it.id.raw }, ids, names, geometry,
             textureSource = if (model.config.rigEdits.importedCmo3 == null) PuppetSourceAtlas.SOURCE_ID_RAW else Cmo3ModelImport.PAINT_SOURCE_ID,
             followCutVertices = componentPlan == null)
-        val overlay = SourcePartitionJournal.migrateSimulations(
-            MeshGenerationBaseline.preserve(next.rigEdits, model.config), model.rig.puppet, drawable.id.raw, ids, geometry)
+        // The pieces take the original's place in its hit areas, as they take its simulations.
+        val overlay = RigHitAreas.replacingMeshes(SourcePartitionJournal.migrateSimulations(
+            MeshGenerationBaseline.preserve(next.rigEdits, model.config), model.rig.puppet, drawable.id.raw, ids, geometry),
+            mapOf(drawable.id.raw to ids))
         next = next.copy(rigEdits = overlay.copy(authoringJournal = overlay.authoringJournal + command,
                 importedLayerIds = if (overlay.importedCmo3 == null) overlay.importedLayerIds else
                     overlay.importedLayerIds + ids.zip(pieces.map { it.id.raw })))
@@ -150,8 +152,8 @@ internal object WorkspacePartitionEdits {
                 classification.copy(side = sides[index].takeUnless { it == Side.NONE } ?: classification.side))
         }
         return WorkspaceArtPrimitives.materialize({ generated ->
-            val simulations = SourcePartitionJournal.migrateSimulations(MeshGenerationBaseline.preserve(frozen.rigEdits, model.config),
-                authored, drawable.id.raw, pieceIds, geometry)
+            val simulations = RigHitAreas.replacingMeshes(SourcePartitionJournal.migrateSimulations(MeshGenerationBaseline.preserve(frozen.rigEdits, model.config),
+                authored, drawable.id.raw, pieceIds, geometry), mapOf(drawable.id.raw to pieceIds))
             // Generated parts take the bones of the original; their parents are generated unless the original's was chosen.
             val overlay = if (generated) SourcePartitionJournal.migrateBones(simulations, drawable.id.raw, pieceIds) else simulations
             WorkspaceArtPrimitives.replaceLayer(frozen, model, id, pieces, sides, explicitParentOnly = generated).copy(rigEdits = overlay.copy(

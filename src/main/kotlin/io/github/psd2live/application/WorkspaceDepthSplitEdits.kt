@@ -40,7 +40,9 @@ internal object WorkspaceDepthSplitEdits {
             val frozen = WorkspaceLayerInsertionEdits.freeze(document, model)
             val placed = WorkspaceArtPrimitives.replaceLayer(frozen, model, slices.sourceLayerId, listOf(slices.front, slices.back),
                 listOf(Side.NONE, Side.NONE))
-            val overlay = MeshGenerationBaseline.preserve(frozen.rigEdits.copy(simEdits = slices.simulations.simEdits), model.config)
+            // Both slices take the source's place in its hit areas.
+            val overlay = RigHitAreas.replacingMeshes(MeshGenerationBaseline.preserve(frozen.rigEdits.copy(simEdits = slices.simulations.simEdits), model.config),
+                mapOf(requireNotNull(slices.source).raw to slices.sliceIds.map { it.raw }))
             val layers = listOf(slices.back.id.raw, slices.front.id.raw)
             fun documentWith(placed: WorkspaceDocument, rigEdits: RigEditOverlay, parents: Map<String, String?>) = placed.copy(
                 layerOverrides = placed.layerOverrides + layers.associateWith { slices.classification },

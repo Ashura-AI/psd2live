@@ -36,6 +36,8 @@ public data class CapabilityProfile(
 	val powerOfTwo: Boolean = false,
 	/** Whether the output keeps the rig's structure at all (false for raster outputs). */
 	val structure: Boolean = true,
+	/** Whether the format carries the rig's hit areas ([RigIR.hitAreas]). */
+	val hitAreas: Boolean = false,
 )
 
 /** An IR capability a target may be unable to hold. */

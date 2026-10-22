@@ -13,6 +13,7 @@ import org.umamo.format.moc3.json.UserData3Json
 import org.umamo.format.moc3.json.UserDataEntry
 import org.umamo.format.moc3.json.UserDataMeta
 import org.umamo.format.moc3.moc.MocVersion
+import org.umamo.interop.ExportNotice
 import org.umamo.interop.ExportReport
 import org.umamo.interop.moc3.export.CanvasToParentSpace
 import org.umamo.interop.moc3.export.Moc3Export
@@ -174,6 +175,13 @@ object Moc3Sidecars {
 						}
 					}
 			}
+		// Each hit area names its ArtMesh as the moc wrote it; one the moc left out names nothing it contains and is
+		// reported. A manifest left with none has no HitAreas, as one that never had any.
+		val (written, dropped) = source?.hitAreas.orEmpty().partition { lowered.writtenIds.wroteDrawable(DrawableId(it.id)) }
+		val hitAreas = source?.hitAreas?.let { all ->
+			written.map { it.copy(id = lowered.writtenIds.drawableId(DrawableId(it.id))) }.takeIf { it.isNotEmpty() || all.isEmpty() }
+		}
+		val reported = if (dropped.isEmpty()) report else report.copy(notices = report.notices + dropped.map { ExportNotice.HitAreaDropped(it.name, it.id) })
 		val manifest =
 			Model3Json(
 				version = MODEL3_VERSION,
@@ -195,13 +203,10 @@ object Moc3Sidecars {
 				// the manifest.  Nothing in PuppetModel holds them, so dropping them here would quietly
 				// delete a rigger's eye-blink wiring on the first MOC3 round trip.
 				groups = source?.groups,
-				// Each names its ArtMesh as the moc wrote it; one the moc left out names nothing it contains.
-				hitAreas = source?.hitAreas?.mapNotNull { area ->
-					DrawableId(area.id).takeIf(lowered.writtenIds::wroteDrawable)?.let { area.copy(id = lowered.writtenIds.drawableId(it)) }
-				},
+				hitAreas = hitAreas,
 			)
 		files.add(BundleFile("$basename.model3.json", Moc3.writeModel3(manifest).encodeToByteArray()))
-		return Bundle(files, mocFileName, report)
+		return Bundle(files, mocFileName, reported)
 	}
 
 	/**

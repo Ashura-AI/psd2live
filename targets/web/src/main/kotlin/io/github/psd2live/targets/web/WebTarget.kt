@@ -17,7 +17,7 @@ public object WebTarget : ExportTarget {
 	override val capabilities: CapabilityProfile = CapabilityProfile(
 		warpLattice = true, parameterGrid = 8, blendShapes = true, timeline = true, physics = PhysicsSupport.PARAMETER_PENDULUM,
 		blendModes = ColorBlend.entries.toSet(),
-		masks = MaskSupport.TEXTURE_ALPHA, keyedDrawOrder = true, glue = true,
+		masks = MaskSupport.TEXTURE_ALPHA, keyedDrawOrder = true, glue = true, hitAreas = true,
 	)
 
 	private fun resource(name: String): ByteArray =

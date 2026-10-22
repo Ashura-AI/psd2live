@@ -175,6 +175,8 @@ internal object Cmo3ModelImport {
             motionPresets = if (replace) config.rigEdits.motionPresets else emptyMap(),
             swingEdits = if (replace) config.rigEdits.swingEdits else emptyList(),
             simEdits = if (replace) config.rigEdits.simEdits else emptyList(),
+            // A replacement keeps the mesh IDs, and with them the hit areas set up on them.
+            hitAreas = if (replace) config.rigEdits.hitAreas else emptyList(),
             authoringJournal = if (replace) current!!.rig.puppet.vertexGroups.filter { g ->
                 incoming.puppet.drawables.none { it.id == g.drawableId }
             }.map(VertexGroupJournal::encode) else emptyList(),
