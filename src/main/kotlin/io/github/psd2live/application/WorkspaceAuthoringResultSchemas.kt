@@ -24,7 +24,7 @@ internal object WorkspaceAuthoringResultSchemas {
         "skeleton_auto", "skeleton_put", "skeleton_enable", "skeleton_bone", "skeleton_move", "skeleton_bind", "skeleton_remove", "skeleton_delete",
         "motion_put", "motion_delete", "motion_seed_builtin", "motion_set_key", "motion_delete_key", "motion_remove_curve",
         "motion_pose", "motion_move_keys", "motion_delete_keys", "motion_paste_keys", "motion_replace_keys", "motion_preset",
-        "motion_create", "motion_duplicate", "motion_rename", "motion_properties",
+        "motion_create", "motion_duplicate", "motion_rename", "motion_properties", "motion_close_loop",
     )
     private val normalizedOperations = setOf(
         "parameter_create", "parameter_update", "parameter_delete", "swing_put", "swing_delete", "interior_put", "interior_delete",

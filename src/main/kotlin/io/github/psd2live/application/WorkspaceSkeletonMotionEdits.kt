@@ -64,6 +64,9 @@ internal object WorkspaceSkeletonMotionEdits {
         ranges: Map<String, ClosedFloatingPointRange<Float>>,
         skeleton: SkeletonSpec?,
         presets: Map<String, MotionPresetSettings> = emptyMap(),
+        /** The values keys may hold: [ranges], widened for repeating parameters. */
+        limits: Map<String, ClosedFloatingPointRange<Float>> = ranges,
+        parameters: List<org.umamo.runtime.model.Parameter> = emptyList(),
     ): List<MotionClip> {
         val mode = request.requiredText("mode")
         val next = when (mode) {
@@ -169,7 +172,7 @@ internal object WorkspaceSkeletonMotionEdits {
                     "pose" -> MotionKeyEdits.pose(clip, request.getValue("values").jsonObject.mapValues { it.value.jsonPrimitive.float },
                         request.getValue("time").jsonPrimitive.float)
                     "move_keys" -> MotionKeyEdits.move(clip, selection, request.getValue("dt").jsonPrimitive.float,
-                        request["dv"]?.jsonPrimitive?.float ?: 0f, ranges, request["normalized"]?.jsonPrimitive?.boolean ?: false).first
+                        request["dv"]?.jsonPrimitive?.float ?: 0f, ranges, request["normalized"]?.jsonPrimitive?.boolean ?: false, limits).first
                     "delete_keys" -> MotionKeyEdits.delete(clip, selection)
                     "paste_keys" -> MotionKeyEdits.paste(clip, request.getValue("keys").jsonArray.map {
                         val key = it.jsonObject; key.requiredText("parameter") to parseKey(key.getValue("key").jsonObject)
@@ -188,9 +191,16 @@ internal object WorkspaceSkeletonMotionEdits {
                 }
                 current.map { if (it.id == clip.id) next else it }
             }
+            "close_loop" -> {
+                val clip = requireClip(current, request.requiredText("id"))
+                val chosen = request["parameters"]?.jsonArray?.mapTo(LinkedHashSet()) { it.jsonPrimitive.content }
+                chosen?.forEach { require(clip.curve(it) != null) { "Motion curve not found: $it" } }
+                val closed = io.github.psd2live.core.MotionLoops.closeLoop(clip, parameters, chosen)
+                current.map { if (it.id == clip.id) closed else it }
+            }
             else -> error("Unknown motion mode: $mode")
         }
-        return validated(next, ranges)
+        return validated(next, limits)
     }
 
     /** Generated-motion knobs and lifecycle share the same candidate as timeline edits. */
@@ -217,7 +227,10 @@ internal object WorkspaceSkeletonMotionEdits {
         return document.copy(rigEdits = document.rigEdits.copy(motionPresets = presets, motionClips = clips))
     }
 
-    /** [next] once every clip is known to fit the model's parameters and the limits a request may not pass. */
+    /**
+     * [next] once every clip is known to fit the model's parameters and the limits a request may not pass. [ranges] are
+     * the values a key may hold ([io.github.psd2live.core.MotionLoops.keyLimits]).
+     */
     fun validated(next: List<MotionClip>, ranges: Map<String, ClosedFloatingPointRange<Float>>): List<MotionClip> {
         require(next.map { it.id }.distinct().size == next.size) { "Duplicate motion IDs" }
         require(next.mapNotNull { it.builtin }.distinct().size == next.count { it.builtin != null }) { "Duplicate built-in override" }

@@ -482,6 +482,8 @@ data class PSD2LiveState(
     val workspaces: List<EditorWorkspace> = defaultEditorWorkspaces(),
     val activeWorkspaceId: String = DEFAULT_WORKSPACE_ID,
     val historyAnnotations: Map<String, HistoryAnnotation> = emptyMap(),
+    /** Bookmarks, shy and frozen tracks and markers of the motion editor; saved project data, not rig history. */
+    val timelineAids: io.github.psd2live.project.TimelineAids = io.github.psd2live.project.TimelineAids(),
     val inputPath: String = "",
 	/** Input identity that produced [analysis]; remains stable while the user edits the next path field. */
 	val loadedInputPath: String? = null,
@@ -923,4 +925,7 @@ data class ExportSuccess(
 
 /** The project data saved beside the document but outside its history: snapshots, history notes and guides. */
 internal fun PSD2LiveState.savedProjectData() =
-	io.github.psd2live.project.WorkspaceAuxiliaryData(parameterSnapshots, historyAnnotations, canvasGuides)
+	io.github.psd2live.project.WorkspaceAuxiliaryData(
+		parameterSnapshots = parameterSnapshots, historyAnnotations = historyAnnotations,
+		canvasGuides = canvasGuides, timelineAids = timelineAids,
+	)

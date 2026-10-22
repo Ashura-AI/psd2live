@@ -120,6 +120,8 @@ internal object MotionKeyEdits {
 		dv: Float,
 		ranges: Map<String, ClosedFloatingPointRange<Float>> = emptyMap(),
 		normalized: Boolean = false,
+		/** The values a key may hold, when they differ from [ranges] (a repeating parameter's turns). */
+		limits: Map<String, ClosedFloatingPointRange<Float>> = ranges,
 	): Pair<MotionClip, Set<MotionKeyRef>> {
 		val picked = keysOf(clip, selection)
 		if (picked.isEmpty()) return clip to selection
@@ -130,7 +132,8 @@ internal object MotionKeyEdits {
 		val next = mapKeys(clip, selection) { parameterId, key ->
 			val range = ranges[parameterId]
 			val delta = if (normalized && range != null) dv * (range.endInclusive - range.start) else dv
-			val value = (key.value + delta).let { if (range != null) it.coerceIn(range) else it }
+			val limit = limits[parameterId]
+			val value = (key.value + delta).let { if (limit != null) it.coerceIn(limit) else it }
 			key.copy(time = key.time + shift, value = value).also { moved += MotionKeyRef(parameterId, it.time) }
 		}
 		return next to moved

@@ -72,21 +72,29 @@ data class MotionClip(
 }
 
 object MotionClips {
-	/** Parameter deletion removes tracks; range changes constrain keys and Bezier control values. */
+	/**
+	 * Parameter deletion removes tracks; range changes constrain keys and Bezier control values. A repeating parameter's
+	 * keys may run turns past its range ([MotionLoops.keyLimits]): the runtime wraps them.
+	 */
 	fun reconcileParameters(clips: List<MotionClip>, parameters: List<org.umamo.runtime.model.Parameter>): List<MotionClip> {
 		val definitions = parameters.associateBy { it.id.raw }
 		return clips.map { clip -> clip.copy(curves = clip.curves.mapNotNull { curve ->
 			val parameter = definitions[curve.parameterId] ?: return@mapNotNull null
-			clamped(curve, parameter.min, parameter.max)
+			val limits = MotionLoops.keyLimits(parameter)
+			clamped(curve, limits.start, limits.endInclusive)
 		}) }
 	}
 
 	/**
-	 * [clips] once parameter [parameterId] spans [min]..[max]: its keys and their handles are held inside the range,
-	 * as the export plays them, so the clips stay valid to edit.
+	 * [clips] once parameter [parameterId] spans [min]..[max]: its keys and their handles are held inside the range
+	 * (or the turns a [repeat] parameter allows), as the export plays them, so the clips stay valid to edit.
 	 */
-	fun withParameterRange(clips: List<MotionClip>, parameterId: String, min: Float, max: Float): List<MotionClip> =
-		clips.map { clip -> clip.copy(curves = clip.curves.map { if (it.parameterId == parameterId) clamped(it, min, max) else it }) }
+	fun withParameterRange(clips: List<MotionClip>, parameterId: String, min: Float, max: Float, repeat: Boolean = false): List<MotionClip> {
+		val limits = MotionLoops.keyLimits(min, max, repeat)
+		return clips.map { clip -> clip.copy(curves = clip.curves.map {
+			if (it.parameterId == parameterId) clamped(it, limits.start, limits.endInclusive) else it
+		}) }
+	}
 
 	/** [clips] without the curves of parameter [parameterId], once it is deleted. */
 	fun withoutParameter(clips: List<MotionClip>, parameterId: String): List<MotionClip> =

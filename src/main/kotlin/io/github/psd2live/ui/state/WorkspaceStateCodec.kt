@@ -667,6 +667,7 @@ internal object WorkspaceStateCodec {
         canvasGuides = WorkspaceAuxiliaryCodec.decode(value, base.savedProjectData()).canvasGuides,
         drawOrderOverrides = value["drawOrderOverrides"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float.coerceIn(0f, 1000f) } ?: base.drawOrderOverrides,
         historyAnnotations = WorkspaceAuxiliaryCodec.decode(value, base.savedProjectData()).historyAnnotations,
+        timelineAids = value[io.github.psd2live.project.TimelineAidsCodec.KEY]?.let(io.github.psd2live.project.TimelineAidsCodec::decode) ?: base.timelineAids,
         logEntries = value["logEntries"]?.jsonArray?.mapNotNull { v -> val l = v.jsonObject
             val source = runCatching { LogSource.valueOf(l.getValue("source").jsonPrimitive.content) }.getOrNull() ?: return@mapNotNull null
             val level = runCatching { LogLevel.valueOf(l.getValue("level").jsonPrimitive.content) }.getOrDefault(LogLevel.INFO)

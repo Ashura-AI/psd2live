@@ -143,6 +143,7 @@ internal class DesktopPresentation(private val viewModel: PSD2LiveViewModel) : W
         val persisted = WorkspaceStateCodec.decode(capture.document.settings, ui).copy(
             parameterSnapshots = auxiliary.parameterSnapshots, historyAnnotations = auxiliary.historyAnnotations,
             canvasGuides = auxiliary.canvasGuides,
+            timelineAids = auxiliary.timelineAids,
             projectId = capture.projectId, analysis = capture.model.analysis, previewModel = capture.model,
             documentLayerVisibility = capture.document.layerVisibility, deletedLayerIds = capture.document.deletedLayerIds,
             layerOverrides = capture.document.layerOverrides, parentOverrides = capture.document.parentOverrides,

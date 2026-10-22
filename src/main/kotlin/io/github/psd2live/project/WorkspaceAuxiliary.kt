@@ -17,6 +17,7 @@ data class WorkspaceAuxiliaryData(
     val parameterSnapshots: List<ParameterSnapshot> = emptyList(),
     val historyAnnotations: Map<String, HistoryAnnotation> = emptyMap(),
     val canvasGuides: List<CanvasGuide> = emptyList(),
+    val timelineAids: TimelineAids = TimelineAids(),
 )
 
 /** These field names are the existing v1 presentation format; loading preserves IDs and numbers. */
@@ -32,6 +33,7 @@ object WorkspaceAuxiliaryCodec {
         putJsonArray("canvasGuides") { value.canvasGuides.forEach { guide -> add(buildJsonObject {
             put("id", guide.id); put("axis", if (guide.vertical) "x" else "y"); put("position", guide.position)
         }) } }
+        put(TimelineAidsCodec.KEY, TimelineAidsCodec.encode(value.timelineAids))
     }
 
     fun decode(value: JsonObject, fallback: WorkspaceAuxiliaryData = WorkspaceAuxiliaryData()): WorkspaceAuxiliaryData = WorkspaceAuxiliaryData(
@@ -56,5 +58,6 @@ object WorkspaceAuxiliaryCodec {
             val position = obj["position"]?.jsonPrimitive?.floatOrNull?.takeIf(Float::isFinite) ?: return@mapNotNull null
             CanvasGuide(id, axis == "x", position)
         }?.distinctBy { it.id } ?: fallback.canvasGuides,
+        timelineAids = value[TimelineAidsCodec.KEY]?.let(TimelineAidsCodec::decode) ?: fallback.timelineAids,
     )
 }

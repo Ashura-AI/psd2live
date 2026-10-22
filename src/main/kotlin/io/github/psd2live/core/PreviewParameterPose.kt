@@ -3,12 +3,17 @@ package io.github.psd2live.core
 import org.umamo.runtime.model.Parameter
 import org.umamo.runtime.model.ParameterId
 
-/** Bound the composed pose, after motion, tracking and physics have contributed. */
+/**
+ * Bound the composed pose, after motion, tracking and physics have contributed. A repeating parameter wraps, as the
+ * runtime plays it, so a motion may key it turns past its range.
+ */
 internal fun boundedPreviewPose(values: Map<ParameterId, Float>, parameters: List<Parameter>): Map<ParameterId, Float> {
     var bounded: MutableMap<ParameterId, Float>? = null
     for (parameter in parameters) {
         val value = values[parameter.id] ?: continue
-        val next = if (value.isFinite()) value.coerceIn(parameter.min, parameter.max) else parameter.default
+        val next = if (!value.isFinite()) parameter.default
+            else if (parameter.repeat) MotionLoops.wrap(value, parameter.min, parameter.max)
+            else value.coerceIn(parameter.min, parameter.max)
         if (next != value) {
             if (bounded == null) bounded = values.toMutableMap()
             bounded[parameter.id] = next

@@ -171,7 +171,7 @@ internal class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<R
             val oneShot = session.motionId?.let { clip(capture, it) }?.let { MotionClips.sampleAll(it, session.motionTime.toDouble(), false) }.orEmpty()
             val generated = session.animationClock.sample(capture.model, true, false, oneShot)
             boundedPreviewPose(pose.values + generated.filterKeys { it !in pose.locked }, capture.model.rig.puppet.parameters)
-        } else sample(capture.model, pose, clip, session.time)
+        } else sample(capture.model, pose, clip, session.time, frozen = frozen(capture, clip))
         val values = pointerPreviewPose(base, session.pointer?.first ?: 0f, session.pointer?.second ?: 0f,
             capture.model.rig.puppet.parameters, session.tracking && session.pointer != null, pose.locked,
             session.trackingClock.takeIf { session.smoothTracking })
@@ -184,6 +184,14 @@ internal class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<R
         session.activeMotion?.let { put("active_motion", it) }
         put("pointer_active", session.pointer != null)
         putJsonObject("values") { values.forEach { (id, value) -> put(id.raw, value) } }
+    }
+
+    /** The tracks of [clip] the motion editor froze: they hold their value while the clip plays or scrubs. */
+    private fun frozen(capture: WorkspaceCapture<RigPreviewModel>, clip: MotionClip?): Map<ParameterId, Float> {
+        if (clip == null) return emptyMap()
+        val aids = io.github.psd2live.project.TimelineAidsCodec.decode(capture.auxiliary[io.github.psd2live.project.TimelineAidsCodec.KEY])
+        return aids.clip(io.github.psd2live.project.TimelineAids.keyOf(clip.id, clip.builtin)).frozen
+            .filterKeys { id -> clip.curve(id) != null }.mapKeys { ParameterId(it.key) }
     }
 
     private fun clip(capture: WorkspaceCapture<RigPreviewModel>, id: String): MotionClip? {
@@ -222,9 +230,10 @@ internal class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<R
 
         /** GUI scrubbing and process sessions use the same bounded, lock-aware frame composition. */
         fun sample(model: RigPreviewModel, pose: WorkspacePose, clip: MotionClip?, time: Float,
-                   tracking: Boolean = false, pointer: Pair<Float, Float>? = null): Map<ParameterId, Float> {
+                   tracking: Boolean = false, pointer: Pair<Float, Float>? = null,
+                   frozen: Map<ParameterId, Float> = emptyMap()): Map<ParameterId, Float> {
             require(time.isFinite() && time >= 0f)
-            val motion = clip?.let { MotionClips.sampleAll(it, time.toDouble(), loop = false) }.orEmpty()
+            val motion = (clip?.let { MotionClips.sampleAll(it, time.toDouble(), loop = false) }.orEmpty() + frozen)
                 .filterKeys { it !in pose.locked }
             return pointerPreviewPose(pose.values + motion, pointer?.first ?: 0f, pointer?.second ?: 0f,
                 model.rig.puppet.parameters, tracking && pointer != null, pose.locked)

@@ -22,6 +22,8 @@ sealed interface WorkspaceAuxiliaryEdit {
     data class DeleteAnnotation(val nodeId: String) : WorkspaceAuxiliaryEdit
     /** Replaces the edit canvases' ruler guides: one drag, added guide or cleared set is one edit. */
     data class SetCanvasGuides(val guides: List<CanvasGuide>) : WorkspaceAuxiliaryEdit
+    /** Bookmarks, shy and frozen tracks and markers of the motion editor ([TimelineAidsEdits]). */
+    data class EditTimeline(val edit: TimelineAidsEdit) : WorkspaceAuxiliaryEdit
 }
 
 object WorkspaceAuxiliaryEdits {
@@ -70,6 +72,8 @@ object WorkspaceAuxiliaryEdits {
                 require(edit.guides.distinctBy { it.id }.size == edit.guides.size) { "Guide IDs must be unique" }
                 current.copy(canvasGuides = edit.guides.toList())
             }
+            is WorkspaceAuxiliaryEdit.EditTimeline ->
+                current.copy(timelineAids = TimelineAidsEdits.apply(current.timelineAids, edit.edit, parameters))
         }
     }
 }
