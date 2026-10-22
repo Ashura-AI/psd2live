@@ -441,6 +441,10 @@ private val BLENDER_OVERRIDES: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.PREV_TAB to keys("Ctrl+PageUp"),
     // Insert keyframe.
     ShortcutAction.MOTION_KEY_POSE to keys("I", "K"),
+    // Alt+letter is Blender's "clear" family (Alt+G, Alt+R, Alt+S...): the canvas aids stay unbound there.
+    ShortcutAction.TOGGLE_ONION_SKIN to emptyList(),
+    ShortcutAction.RANDOM_POSE to emptyList(),
+    ShortcutAction.RESTORE_RANDOM_POSE to emptyList(),
 )
 
 /**

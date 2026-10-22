@@ -95,7 +95,7 @@
 
 - **设置**：开关与参数是画布视图选项的 `TabViewOptions.aids`（`CanvasAidOptions`），随工作区呈现保存，只写与默认值不同的字段，未用过的画布字节不变。颜色存主题语义（`CanvasAidColor`），绘制时取 `ToolColors`，换主题仍然醒目。
 - **辅助线**是工程数据：`WorkspaceAuxiliaryData.canvasGuides`，与参数快照同走运行时辅助 CAS（`WorkspaceAuxiliaryEdit.SetCanvasGuides`），所有编辑画布共用。拖动只改 `CanvasGuideDrag`（画布绘制与指针处理读取），松手时保存一次；拖回标尺即删除。辅助写入会发出新的状态令牌，所以编辑、姿势提交、模拟烘焙或编辑器手势进行中时，新辅助线先作为 VM 的待存草稿显示（`canvasGuides(state)`），空闲后再提交；内容不变的辅助编辑保持原状态（`WorkspaceHost.editSavedProjectData`）。画布上的辅助线只由选择类工具与变换工具、无 Shift/Alt、指针不在编辑器控制柄上时抓取；标尺始终可拖出新线。
-- **栅格、辅助线与标尺**画在单独的合成视图 `$gpuKey/aids`（`order = 3`，叠加层与参考图之上），绘制是一个记住的 lambda，经 `rememberUpdatedState` 读选项、辅助线与颜色，只读镜头、选项与辅助线，重组、姿势变化与悬停不会让它重录。栅格的线距随缩放取能分辨的一级（`CanvasGrid.step`，屏幕间距按 dp 计），吸附也取这一级（`CanvasGrid.nearest`）；吸附作用于被拖动的点而不是指针：画布把 `CanvasSnap` 包成 `CanvasEditor.snapScreenPoint`，编辑器在拖动的首次移动取离按下点最近的被拖点作锚点，以 `snap(锚点 + 位移) - 锚点` 修正位移；命中测试与悬停始终用原始指针。绘画与变形笔刷不吸附。
+- **栅格、辅助线与标尺**画在单独的合成视图 `$gpuKey/aids`（`order = 3`，叠加层与参考图之上），绘制是一个记住的 lambda，经 `rememberUpdatedState` 读选项、辅助线与颜色，只读镜头、选项与辅助线，重组、姿势变化与悬停不会让它重录。栅格的线距随缩放取能分辨的一级（`CanvasGrid.step`，屏幕间距按 dp 计），吸附也取这一级（`CanvasGrid.nearest`）；吸附作用于被拖动的点而不是指针：画布把 `CanvasSnap` 包成 `CanvasEditor.snapScreenPoint`，编辑器在拖动的首次移动取离按下点最近的被拖点作锚点，以 `snap(锚点 + 位移) - 锚点` 修正位移；命中测试与悬停始终用原始指针。吸附只作用于网格点与变形器点的平移拖动（未抓控制柄或抓住框体）；变换框的旋转、缩放控制柄，以及骨骼姿势、锚点、放置控制柄、贝塞尔锚点与手柄、新建变形器与路径点的点击都有意不吸附。绘画与变形笔刷不吸附。
 - **洋葱皮**的姿势在组合中求出（求值不在组合里）：打开动作时取播放头前后按帧间隔的时刻（`OnionSkin.frameGhosts` + `MotionClips.sampleAll`），否则取最近设置的参数在当前值两侧的关键（`OnionSkin.keyGhosts`，选中对象有关键时用它的）。每个幽灵按 `RigCanvasSupport.evaluate` 在 `Dispatchers.Default` 上对已提交的预览模型求几何（`produceState`，新结果出来前保留上一帧），拖动手势与参数滑块拖动期间冻结在原处，播放时不显示。几何与求值所用的模型一起画进各自的 GPU 视图（`$gpuKey#onion<i>`），以整层透明度与 `SRC_ATOP` 着色叠在美术层上；键未变时不重画。软件路径以同样的图层透明度与颜色滤镜绘制。关闭时不求值、不占视图。
 
 ## 11. 播放与跟踪会话

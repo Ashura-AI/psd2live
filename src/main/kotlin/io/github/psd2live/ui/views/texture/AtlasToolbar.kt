@@ -664,7 +664,10 @@ internal fun FloatingMenuSlider(
 @Composable
 private fun FloatingMenuValueLabel(label: String, enabled: Boolean) {
 	val colors = LocalToolColors.current
-	Text(label, color = if (enabled) colors.textMuted else colors.textMuted.copy(alpha = 0.5f), fontSize = 10.5.sp, maxLines = 1,
+	val typography = LocalToolTypography.current
+	// The caption's face at the scale's small step, so a 54 dp column holds the usual labels.
+	Text(label, color = if (enabled) colors.textMuted else colors.textMuted.copy(alpha = 0.5f),
+		style = typography.caption.copy(fontSize = typography.monoSmall.fontSize), maxLines = 1,
 		overflow = TextOverflow.Ellipsis, modifier = Modifier.width(54.dp))
 }
 

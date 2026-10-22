@@ -154,6 +154,7 @@ import io.github.psd2live.ui.tutorial.tutorialTarget
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ensureActive
 import org.umamo.render.eval.DeformedGeometry
 import java.awt.BasicStroke
 import java.awt.Cursor
@@ -401,11 +402,13 @@ fun CanvasViewportComposable(
 	val onionHeld = remember { arrayOfNulls<Pair<RigPreviewModel, List<Pair<io.github.psd2live.ui.OnionGhost,
 		Map<org.umamo.runtime.model.ParameterId, Float>>>>>(1) }
 	val requested = sourcePreviewModel?.takeIf { onionOn && onionPoses.isNotEmpty() }?.let { it to onionPoses }
-	val onionRequest = (if (onionFrozen && requested != null) onionHeld[0] ?: requested else requested).also { onionHeld[0] = it }
+	val onionRequest = if (onionFrozen && requested != null) onionHeld[0] ?: requested else requested
+	androidx.compose.runtime.SideEffect { onionHeld[0] = onionRequest }
 	val onionFrame by androidx.compose.runtime.produceState<OnionFrame?>(null, onionRequest) {
 		val (model, poses) = onionRequest ?: run { value = null; return@produceState }
 		value = OnionFrame(model, withContext(Dispatchers.Default) {
-			poses.map { (ghost, pose) -> ghost to RigCanvasSupport.evaluate(model, pose) }
+			// A newer request cancels this one between ghosts rather than after all of them.
+			poses.map { (ghost, pose) -> ensureActive(); ghost to RigCanvasSupport.evaluate(model, pose) }
 		})
 	}
 	val onionGeometry = onionFrame?.ghosts.orEmpty()
@@ -886,6 +889,7 @@ fun CanvasViewportComposable(
 	}
 	val snapsPoints = mode == CanvasMode.EDIT && previewModel != null && aids.snaps
 	androidx.compose.runtime.SideEffect { editor.snapScreenPoint = if (snapsPoints) ::snapPoint else null }
+	DisposableEffect(editor) { onDispose { editor.snapScreenPoint = null } }
 
 	fun runCanvasCommand(action: ShortcutAction, shift: Boolean, wheel: Boolean): Boolean {
 		if (action == ShortcutAction.QUICK_PREVIEW) {
@@ -2035,7 +2039,7 @@ fun CanvasViewportComposable(
 						}
 					}
 					for (label in labels) {
-						val layout = guideLabelMeasurer.measure(label.text, GuideLabelStyle)
+						val layout = guideLabelMeasurer.measure(label.text, typography.body)
 						val top = label.baseline - layout.firstBaseline
 						if (label.plate) drawRect(Color(20, 20, 24, 220), Offset(label.x - 3f, label.baseline - 14f),
 							Size(layout.size.width + 6f, 17f))
@@ -2410,7 +2414,6 @@ private class GuideLabel(val text: String, val x: Float, val baseline: Float, va
 private class OnionFrame(val model: RigPreviewModel,
 	val ghosts: List<Pair<io.github.psd2live.ui.OnionGhost, DeformedGeometry>>)
 
-private val GuideLabelStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp)
 
 /** The guide labels laid out for one set of guide inputs, kept across redraws that change nothing they show. */
 private class GuideLabelMemo {

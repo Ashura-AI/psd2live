@@ -7044,6 +7044,10 @@ class PSD2LiveViewModel : AutoCloseable {
 		while (true) {
 			val pending = pendingCanvasGuides ?: return
 			if (!workspaceIdle(_state.value)) { _state.first(::workspaceIdle); continue }
+			// A bake reads the state it started from between its rounds, so it is waited out too.
+			if (_simulationBaking.value != null || simBaking?.isActive == true) {
+				_simulationBaking.first { it == null }; simBaking?.join(); continue
+			}
 			if (!canvasEditorsIdle()) { androidx.compose.runtime.snapshotFlow { canvasEditorsIdle() }.first { it }; continue }
 			val current = _state.value
 			if (pending.first == current.projectOpenGeneration && current.analysis != null && pending.second != current.canvasGuides) {

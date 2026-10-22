@@ -1551,6 +1551,8 @@ internal class CanvasEditor(
     /** The drag's pointer moved so that the grabbed point, not the pointer, meets the line it is drawn to. */
     private fun snappedDrag(pos: Offset, t: CanvasTarget, viewport: CanvasViewport): Offset {
         val snap = snapScreenPoint ?: return pos
+        // Only a move snaps: a rotate or scale handle turned by a point's offset would jump in angle or size.
+        if (boxDrag && activeHandle != BoundingHandle.NONE && activeHandle != BoundingHandle.BODY) return pos
         val anchor = snapAnchor ?: run {
             val candidates = if (boxDrag) initialScreenPoints.flatMapIndexed { item, points ->
                 val indices = dragIndices.getOrElse(item) { points.indices.toSet() }
