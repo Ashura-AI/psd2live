@@ -249,20 +249,25 @@ internal object WorkspaceDocumentEdits {
     }
 
     /**
-     * Edits that change a mesh carrying an interior effect - its topology or its rest shape, whatever the command -
-     * bake the effect again on the edited mesh in the same step, as the structure rebuild does, so the point tools work
-     * on interior meshes as on any other. Only effects that matched their mesh before the edit and no longer match it
-     * after are baked; one already out of date stays as it was. A bake the new mesh cannot take (its area checks or any
-     * other bake failure) does not refuse the edit: the effect keeps its recipe and reports the mesh mismatch until it
-     * is baked again. Cancellation is never swallowed.
+     * Edits that change a mesh carrying an interior effect - its topology or its rest shape, by any command that names
+     * the mesh - bake the effect again on the edited mesh in the same step, as the structure rebuild does, so the point
+     * tools work on interior meshes as on any other. Only effects that matched their mesh before the edit and no longer
+     * match it after are baked; one already out of date stays as it was. A bake the new mesh cannot take (its area
+     * checks, or another refusal the bake raises) does not refuse the edit: the effect keeps its recipe and reports the
+     * mesh mismatch until it is baked again. Cancellation and programming errors are never swallowed.
      */
     private fun rebakeInteriors(document: WorkspaceDocument, model: RigPreviewModel, journal: List<JsonObject>): WorkspaceDocument {
         val effects = document.rigEdits.interiorEffects
         if (effects.isEmpty() || journal.isEmpty()) return document
+        // A cheap filter first: only an effect whose mesh the batch names can have changed, so drags, weights and
+        // deformer edits elsewhere never pay for the authored replay below.
+        val named = journal.map { it.toString() }
+        val candidates = effects.filter { effect -> named.any { "\"${effect.target}\"" in it || "\"mesh:${effect.target}\"" in it } }
+        if (candidates.isEmpty()) return document
         val before = model.authored.rig.puppet
         fun stamp(puppet: org.umamo.runtime.model.PuppetModel, target: String) =
             puppet.drawables.firstOrNull { it.id.raw == target }?.mesh?.let(io.github.psd2live.core.interior.InteriorMeshStamp::of)
-        val current = effects.filter { stamp(before, it.target) == it.meshStamp }
+        val current = candidates.filter { stamp(before, it.target) == it.meshStamp }
         if (current.isEmpty()) return document
         val authored = model.authoredPuppet(document.rigEdits)
         var overlay = document.rigEdits
@@ -273,7 +278,10 @@ internal object WorkspaceDocumentEdits {
                 io.github.psd2live.core.interior.NativeInteriorAuthoring.put(model, overlay, buildJsonObject { put("target", effect.target) }, authored)
             } catch (cancelled: java.util.concurrent.CancellationException) {
                 throw cancelled
-            } catch (failure: RuntimeException) {
+            } catch (refused: IllegalArgumentException) {
+                // The bake's own refusals (require / check / error): its area limits, a texture it cannot read.
+                overlay
+            } catch (refused: IllegalStateException) {
                 overlay
             }
         }

@@ -4,8 +4,11 @@ import org.umamo.edit.MergeTarget
 import org.umamo.edit.MeshElement
 import org.umamo.edit.MeshManualOps
 import org.umamo.edit.MeshShapes
+import org.umamo.runtime.model.Drawable
 import org.umamo.runtime.model.DrawableId
+import org.umamo.runtime.model.OrgChild
 import org.umamo.runtime.model.PuppetModel
+import org.umamo.runtime.model.withDerivedRenderRoot
 import kotlinx.serialization.json.*
 import org.umamo.edit.MeshRefinementOps
 import org.umamo.edit.MeshTopology
@@ -71,9 +74,28 @@ internal object CanvasTopology {
         fun shifted(deltas: FloatArray) = if (deltas.size != rest.size) null else FloatArray(rest.size) { rest[it] + deltas[it] }
         val forms = drawable.geometryGrid?.cells.orEmpty().mapNotNull { shifted(it.form.positionDeltas) } +
             drawable.blendShapes.flatMap { binding -> binding.forms.mapNotNull { form -> form?.let { shifted(it.positionDeltas) } } }
-        val defaults = model.parameters.associate { it.id to it.default }
-        val shown = org.umamo.render.eval.CpuDeformationEvaluator().evaluate(model, defaults).worldPositions[id]
+        val shown = shownAtDefault(model, drawable)
         return MeshShapes(shown?.takeIf { it.size == rest.size && it.all(Float::isFinite) }, forms)
+    }
+
+    /**
+     * [drawable] as it shows at the default pose, evaluated on a model cut down to it, the meshes glued to it and the
+     * deformers those hang from: the world positions the whole model gives (masks do not move a mesh, and glue pulls
+     * each pair toward its partner's deformed position), at the cost of a few meshes and their parent chains, so
+     * replaying many hand edits stays cheap.
+     */
+    private fun shownAtDefault(model: PuppetModel, drawable: Drawable): FloatArray? {
+        val glues = model.glues.filter { it.meshA == drawable.id || it.meshB == drawable.id }
+        val ids = (glues.flatMap { listOf(it.meshA, it.meshB) } + drawable.id).toSet()
+        val kept = model.drawables.filter { it.id in ids }.map { it.copy(maskedBy = emptyList()) }
+        val byId = model.deformers.associateBy { it.id }
+        val chains = kept.flatMap { mesh ->
+            generateSequence(mesh.parentDeformerId?.let(byId::get)) { deformer -> deformer.parent?.let(byId::get) }.take(model.deformers.size)
+        }.map { it.id }.toSet()
+        val cut = model.copy(deformers = model.deformers.filter { it.id in chains }, drawables = kept, glues = glues, parts = emptyList(),
+            rootChildren = kept.map { OrgChild.Drawable(it.id) }, rootPartId = null, vertexGroups = emptyList()).withDerivedRenderRoot()
+        val defaults = model.parameters.associate { it.id to it.default }
+        return org.umamo.render.eval.CpuDeformationEvaluator().evaluate(cut, defaults).worldPositions[drawable.id]
     }
 
     /** Every action [build] knows, in the order the public schema lists them. */

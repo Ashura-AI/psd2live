@@ -111,4 +111,22 @@ class ManualMeshTopologyJournalTest {
             edited.drawables.single { it.id == sheet }.geometryGrid!!.cells[1].form.positionDeltas)
         assertFailsWith<IllegalArgumentException> { RigAuthoringJournal.apply(edited, topology("retriangulate") {}) }
     }
+
+    @Test fun theJudgeShapeEvaluatesOnlyTheParentChainYetMatchesTheWholeModel() {
+        val base = fixture()
+        val lattice = FloatArray(18).also { for (r in 0..2) for (c in 0..2) { it[(r * 3 + c) * 2] = -5f + 25f * c + r; it[(r * 3 + c) * 2 + 1] = -5f + 22f * r } }
+        val warp = Deformer.Warp(DeformerId("body"), "Body", null, null, 2, 2, true,
+            KeyformGrid(listOf(KeyformAxis(pull, floatArrayOf(0f, 1f))), listOf(
+                KeyformCell(intArrayOf(0), WarpLatticeForm(lattice.copyOf())), KeyformCell(intArrayOf(1), WarpLatticeForm(lattice.copyOf())))))
+        val turn = Deformer.Rotation(DeformerId("turn"), "Turn", warp.id, null, 0f,
+            KeyformGrid(listOf(KeyformAxis(pull, floatArrayOf(0f, 1f))), listOf(
+                KeyformCell(intArrayOf(0), RotationPivotForm(0.5f, 0.5f, 15f, 1f)), KeyformCell(intArrayOf(1), RotationPivotForm(0.5f, 0.5f, 40f, 1f)))))
+        val model = base.copy(deformers = listOf(warp, turn), drawables = base.drawables.map { if (it.id == sheet) it.copy(parentDeformerId = turn.id) else it })
+            .withDerivedRenderRoot()
+        val whole = org.umamo.render.eval.CpuDeformationEvaluator().evaluate(model, mapOf(pull to 0f)).worldPositions[sheet]!!
+        val judge = CanvasTopology.shapes(model, sheet).judge!!
+        assertEquals(whole.size, judge.size)
+        for (k in whole.indices) assertEquals(whole[k], judge[k], 1e-3f, "coordinate $k")
+        assertTrue(whole.indices.any { kotlin.math.abs(whole[it] - mesh(model).positions[it]) > 1f }, "the chain moves the mesh")
+    }
 }
