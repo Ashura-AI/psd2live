@@ -1,4 +1,4 @@
-## next
+## v3.6.5 · 2026-10-23
 
 ### New
 
@@ -17,6 +17,14 @@
 
 - **Editing alongside the agent**: the runtime is the workspace's only authority; when an agent commit lands, the editor's pending changes yield only the conflicting fields and the rest still commit, and saving records what is really there.
 - **Screen blend**: a PSD's Screen layers export as Cubism 5.3 Screen and as an approximated Add for earlier versions, noted in the loss report; generated-result overrides now keep color, opacity and draw order edits too.
+- **Window modes**: pick windowed, maximized or full screen under Settings > Display, remembered; `F11` or View > Full Screen toggles full screen, and maximizing no longer covers the taskbar.
+- **New look**: panels are rounded cards on the window background with tighter spacing; title bar menus, dropdowns and context menus share one frosted menu style.
+
+### Fixes
+
+- Painting a generated lip outline explains that it comes from the mouth layer and mouth settings instead of reporting a missing source layer; the parameter name's right-click menu unbinds it from the selected mesh or deformer (#55).
+- The saved window size stays inside the screen's usable area, so the title bar can't open off screen.
+- On large canvases, adding a deformer to a mesh, moving a bone or squeezing a whole root mesh no longer reports false collapses or regeneration conflicts (#56, #59).
 
 ### Compatibility
 

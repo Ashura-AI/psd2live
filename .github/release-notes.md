@@ -1,60 +1,66 @@
-v3.6.0：帮助页改为按 Cubism 目录整理的「手册」与「教程」，参考成为层级树里的一类成员，网格可按纹理结构重布点，关键形可以镜像。
+v3.6.5：绘画选区与新工具、手工布点、关键形工具、表情 / 姿势 / Event、点击区域、眉毛透过刘海，以及窗口模式和新的界面样式。
 
 ## 主要更新
 
 ### 新功能
 
-- **帮助页 → 手册与教程**：按 Cubism 编辑器手册与教程网站的目录重排，每页标出与 Cubism 相同、操作不同、本程序独有或尚未实现，页末列出该页相关的 MCP 操作。
-- **参考**：背景、图层中、前景三种参考成为层级树成员，可多张、可锁定、Alt+R 显隐，按关键形固定；不透明度改为连续滑条，参考图与 ArtMesh 可互相转换。
-- **按纹理结构重布点**：按纹理里画出的褶皱、明暗分界与图案线条重建网格内侧，顶点只放在线上，关键形、路径、权重与 Glue 照常迁移。
-- **关键形镜像**：点/变形菜单可把当前键镜像到对称键、对侧对象或原位翻转，Shift+M 一键镜像。
-- **按落点拖入文件**：拖入文件时松手的位置决定做什么（放素材、插入层级、放置图层、设为参考、替换图片或仅导入素材库），CMO3 拖入即打开。
-- **素材与 CMO3**：每个图层都有对应素材，关联不再悄悄断开；导入的 CMO3 按当前图层重新打包纹理集。
-- **历史树压缩**：连续的线性版本合并为一张卡片，工具栏可切回逐节点视图，双击卡片检出该段最后一步。
+- **绘画选区与新工具**：选区工具（`Alt+L`）含矩形、椭圆、套索、多边形套索与魔棒；新增渐变、模糊笔、不连续填充，以及防抖、左右对称与保护透明度。
+- **手工布点**：`Alt+M` 加点、移点、连线、删点或删边，可左右对称；拓扑菜单增加删除边与重新三角化。
+- **内部造型画布手柄**：`Shift+I` 在画布上拖动鼓起、偏压、传动方向，直接画褶皱引导线。
+- **关键形工具**：复制粘贴形状到其他键或对象（混合、翻转）、恢复默认、相邻键补间、多键编辑；`Shift+T` 临时变形格子。
+- **画布辅助**：栅格、标尺辅助线、洋葱皮与随机姿势。
+- **复制粘贴与批量改名**：`Ctrl+C` / `Ctrl+V` 复制网格、变形器、部件与参数；复制网格拓扑；查找替换与批量转换 ID。
+- **表情、姿势与 Event**：动画面板创建表情、姿势组与动作 Event，导出 exp3、pose3 与 UserData；生成的模型默认带四个表情。
+- **点击区域**：设置 HitArea 并在预览中点击验证，导出写入 model3 与 VTube Studio 包。
+- **时间轴辅助与循环**：书签、隐藏、冻结、标记、运动轨迹；一键首尾衔接，参数可循环。
+- **眉毛透过刘海**：自动生成时眉毛半透明显示在刘海之上，可调可关。
 
 ### 改进
 
-- **Layout 先编辑、再生成**：未生成的 Layout 工程也能像普通工程一样编辑网格、变形器、参数与层级，并可直接导出。
-- **更流畅**：编辑画布单独绘制，参数拖动与不显示姿势的面板不再逐帧重组；PSD 导入的准备移到后台（#50）。
-- **素材面板**：显示使用量，悬停列出使用它的图层，右键可编辑标签、设为默认参考图层或选中使用它的图层。
-- **内部造型面板**：与其他检查器一致的工具条与分区，试动改为滑条与 2D pad。
-- **卡死诊断**：日志写入文件，界面卡住超过 5 秒记录线程栈（#52）。
+- **编辑器与 Agent 同时编辑**：编辑器的未提交修改只在冲突字段上让步，其余照常提交。
+- **滤色混合**：PSD 滤色图层导出为 Cubism 5.3 Screen（更早版本近似为加算）。
+- **窗口模式与新界面样式**：设置中可选窗口、最大化、全屏（`F11`）；面板改为圆角卡片，菜单样式统一。
 
 ### 修复
 
-- **MOC3 用户数据**：导出用户数据时写出 `userdata3.json` 并在 `model3.json` 中引用。
-- **纹理绑定**：导入图片与参考图层的纹理不再绑到 1×1 的占位图块。
-- **参考图层位置**：Layout 的参考图层按自己的画布矩形绘制。
+- 唇线绘制提示、参数名右键解除绑定、窗口不再跑出屏幕（#55）；大画布上的误报退化与重新生成冲突（#56、#59）。
+
+### 兼容
+
+- 含表情、姿势或点击区域的工程，较早版本会拒绝打开，不会悄悄丢失数据。
 
 <details>
 <summary>English</summary>
 
-v3.6.0: the help page becomes a Cubism-style Manual and Tutorials tree, references become hierarchy members, meshes can be re-pointed along the structure in their texture, and keyforms can be mirrored.
+v3.6.5: paint selections and new tools, mesh point placement, keyform tools, expressions / pose / events, hit areas, brows through the bangs, plus window modes and a new look.
 
 ## Highlights
 
 ### New
 
-- **Help page → Manual and Tutorials**: laid out like the Cubism Editor manual and tutorial site, each page tagged same as Cubism, different, PSD2Live-only or not yet, and ending with the MCP operations that do its work.
-- **References**: background, in-stack and foreground references are hierarchy members — several at once, lockable, Alt+R to show or hide, and pinnable to keyforms; opacity is a continuous slider, and a reference image and an ArtMesh convert into each other.
-- **Mesh along texture structure**: rebuilds a mesh's inside along the creases, shading boundaries and pattern lines drawn into its texture, with keyforms, paths, weights and glue migrated.
-- **Mirror keyforms**: the deform menu mirrors a key onto its opposite key, the opposite-side object or in place; Shift+M mirrors to the opposite key.
-- **Drop where you mean it**: the drop position decides what happens (material, hierarchy insert, placed layer, reference, image replacement or library-only import); a dropped CMO3 opens directly.
-- **Materials and CMO3**: every layer has its material and links no longer break silently; an imported CMO3 gets its atlas packed from the current layers.
-- **Compressed history tree**: consecutive linear versions share one card, a toolbar toggle restores the per-node view, and double-clicking a card checks out the last step of its run.
+- **Paint selections and tools**: a selection tool (`Alt+L`) with marquee, ellipse, lasso, polygon lasso and magic wand; new gradient, blur brush and global fill, with a stabilizer, mirror symmetry and lock transparency.
+- **Mesh points**: `Alt+M` adds, moves, connects and removes points or edges, optionally mirrored; the topology menu adds delete edges and re-triangulate.
+- **Interior handles on the canvas**: `Shift+I` drags bulge, pressure and propagation and draws fold guides on the canvas.
+- **Keyform tools**: paste shapes onto other keys or objects (blended or flipped), restore defaults, interpolate between keys, edit several keys at once; `Shift+T` temporary lattice.
+- **Canvas aids**: grid, ruler guides, onion skin and random pose.
+- **Copy, paste and rename**: `Ctrl+C` / `Ctrl+V` for meshes, deformers, parts and parameters; duplicate mesh topology; find and replace and bulk ID conversion.
+- **Expressions, pose and events**: make expressions, pose groups and motion events in the animation panel; exports write exp3, pose3 and UserData, and generated models come with four expressions.
+- **Hit areas**: set them up and click to test in the preview; exported to model3 and the VTube Studio package.
+- **Timeline aids and loops**: bookmarks, shy, freeze, markers, motion trails; close loops in one step and let parameters repeat.
+- **Brows through the bangs**: generation shows covered brows semi-transparently above the bangs, adjustable or off.
 
 ### Improved
 
-- **Edit before generating**: a Layout project not generated yet edits meshes, deformers, parameters and the hierarchy like any project, and exports directly.
-- **Smoother**: the edit canvas paints on its own, parameter drags and pose-less panels no longer recompose every frame, and PSD import prepares in the background (#50).
-- **Materials panel**: shows usage counts, lists the layers using a material on hover, and its menu edits tags, sets the default reference and selects the using layers.
-- **Interior panel**: uses the same toolbar and folding sections as the other inspectors, with the audition as sliders and a 2D pad.
-- **Freeze diagnostics**: the console goes to a log file and a UI freeze over 5 seconds writes a thread dump (#52).
+- **Editing alongside the agent**: the editor's pending changes yield only conflicting fields to an agent commit.
+- **Screen blend**: PSD Screen layers export as Cubism 5.3 Screen (approximated as Add for earlier versions).
+- **Window modes and a new look**: windowed, maximized or full screen (`F11`) in Settings; panels become rounded cards and menus share one style.
 
 ### Fixes
 
-- **MOC3 user data**: exporting user data writes userdata3.json and references it from model3.json.
-- **Texture binding**: imported images and reference layers no longer bind their textures to a placeholder tile.
-- **Reference layer placement**: a Layout reference layer draws at its own canvas rectangle.
+- Lip outline painting hint, unbinding a parameter from its right-click menu, window kept on screen (#55); false collapses and regeneration conflicts on large canvases (#56, #59).
+
+### Compatibility
+
+- Projects holding expressions, a pose or hit areas are refused by earlier builds instead of losing that data.
 
 </details>
