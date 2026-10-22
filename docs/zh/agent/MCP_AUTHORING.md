@@ -131,11 +131,11 @@
 
 ### 物体复制、查找替换与 ID 转变
 
-`object_paste`（`sources` 为 `mesh:/warp:/rotation:/part:/parameter:` 句柄；可选 `parent`、`part`、`parameter_group`、`ids`）复制网格、变形器（连同子树与其中网格）、Part（连同其子项）和参数，新 ID 在记录时确定（缺省为 `<ID>_copy`，冲突时加序号，`ids` 可逐项指定），重放结果与 ID 固定一致；副本之间的父级、遮罩、Glue、路径与顶点组改指副本，指向未复制对象的引用保留。给出 `parent` 时网格按画布坐标改挂、变形器按局部坐标改挂。结果的 `ids` 给出原句柄到新 ID 的映射。
+`object_paste`（`sources` 为 `mesh:/warp:/rotation:/part:/parameter:` 句柄；可选 `parent`、`part`、`parameter_group`、`ids`）复制网格、变形器（连同子树与其中网格）、Part（连同其子项）和参数，新 ID 在记录时确定（缺省为 `<ID>_copy`，冲突时加序号，`ids` 可逐项指定），重放结果与 ID 固定一致；副本之间的父级、遮罩、Glue、路径与顶点组改指副本，指向未复制对象的引用保留。给出 `parent` 时网格按画布坐标改挂、变形器按局部坐标改挂。粘贴在作者态 Rig 上规划：摆动、模拟与内部造型生成的对象不在其中，指名它们会被拒绝，复制子树时也不带上它们。副本不算其图层的网格：按图层查找网格（拾取、拆分与删除时保持网格 ID）只认原网格，删除图层时副本随之删除。单独调用时结果的 `ids` 给出原句柄到新 ID 的映射，与写入的记录一致（请求按捕获版本固定全部新 ID 后提交）；批量成员从 `changed` 读取新句柄。
 
 `mesh_duplicate`（`source`、`targets`）把源网格的拓扑按画布位置套到每个目标网格上，UV 取目标自己的纹理；每个目标写一条 `canvas_mesh_rebuild`，关键形、路径、权重与 Glue 照常迁移。
 
-`object_find`（只读）按名称或 ID（`field`）在 `kinds` 中查找，支持 `find`/`replace`、`regex`、`match_case`、`prefix`、`suffix`、`swap_sides`（独立的 L/R、Left/Right、左/右 互换）与 `standard_ids`（Cubism 2 式 ID 改为 Cubism 3 标准 ID），返回每项改前改后；`object_rename` 以同样参数一次提交。按 ID 改名与 `object_convert_id`（`renames`：`target` 与新 `id`）都写一条 `convert_id` 日志项：引用它的关键形、混合形、遮罩、Glue、路径、顶点组、动作曲线、用户物理与摆动目标同时改名，之后的生成覆盖与延后面板编辑按新 ID 重放，内置物理、动作预设与表情按新 ID 找回标准参数。ID 必须为字母开头的 1–64 位 ASCII 字母、数字或下划线，同类重名、已被占用和生成器所有的对象（模拟、内部造型、摆动参数）被拒绝且不做任何修改。导出前检查 ID：同类（Warp 与旋转共用）重名拒绝导出，字符不合规只警告。
+`object_find`（只读）按名称或 ID（`field`）在 `kinds` 中查找，支持 `find`/`replace`、`regex`、`match_case`、`prefix`、`suffix`、`swap_sides`（独立的 L/R、Left/Right、左/右 互换）与 `standard_ids`（Cubism 2 式 ID 改为 Cubism 3 标准 ID），返回每项改前改后；`object_rename` 以同样参数一次提交；二者只列作者态 Rig 的对象，生成器在日志之后加入的对象保留生成器给的名称与 ID。按 ID 改名与 `object_convert_id`（`renames`：`target` 与新 `id`）都写一条 `convert_id` 日志项：引用它的关键形、混合形、遮罩、Glue、路径、顶点组、动作曲线、用户物理与摆动目标同时改名，之后的生成覆盖与延后面板编辑按新 ID 重放，内置物理、动作预设与表情按新 ID 找回标准参数。ID 必须为字母开头的 1–64 位 ASCII 字母、数字或下划线，同类重名、已被占用和生成器所有的对象（模拟、内部造型、摆动参数）被拒绝且不做任何修改；骨骼绑定或加权的网格、骨骼参数与骨骼变形器同样被拒绝（骨骼在日志之前按原 ID 烘焙）。拆分、删除图层与重新生成时，基础阶段按转变前的 ID 保持网格，再由日志项改名；再生成三方合并也把生成结果换算到转变后的 ID。导出前对实际导出的模型检查 ID：同类（Warp 与旋转共用；含参数文件夹）重名拒绝导出，字符不合规只警告。
 
 
 ### 纹理与纹理集
