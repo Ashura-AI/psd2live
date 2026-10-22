@@ -84,6 +84,10 @@ class RigHitAreasTest {
 		}
 		val index = ProjectFormatV2.split(temp, snapshot)
 		assertEquals(snapshot, ProjectFormatV2.join(temp, index))
+		// The rig node holding them is schema 5, which older readers refuse rather than drop them; without them it stays 1.
+		val rig = ProjectFormatV2.schemaOf("rig", buildJsonObject { putJsonObject("rigEdits") { put("hitAreas", JsonArray(areas.map(RigHitAreas::toJson))) } })
+		assertEquals(ProjectFormatV2.NODE_SCHEMA_HIT_AREAS, rig)
+		assertEquals(ProjectFormatV2.NODE_SCHEMA, ProjectFormatV2.schemaOf("rig", buildJsonObject { putJsonObject("rigEdits") { putJsonArray("motions") {} } }))
 		// The areas are part of the rig definitions, not a node of their own.
 		assertEquals(setOf("settings", "rig", "journal", "document"), index.getValue("nodes").jsonObject.keys)
 	}

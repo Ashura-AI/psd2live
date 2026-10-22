@@ -1,11 +1,6 @@
 package io.github.psd2live.ui.views
 
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.Text
-import androidx.compose.ui.unit.sp
-import io.github.psd2live.ui.theme.LocalToolColors
-import io.github.psd2live.ui.theme.LocalToolTypography
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -36,12 +31,13 @@ internal fun HitAreaInspectorRows(drawable: Drawable, state: PSD2LiveState, view
 	val meshId = drawable.id.raw
 	val current = areas.firstOrNull { meshId in it.meshes }
 	val editable = !state.isBusy && !state.workspaceEditBusy && !state.editorDraftBusy
+	val puppet = state.previewModel?.rig?.puppet
+	val present = remember(puppet) { puppet?.drawables?.mapTo(HashSet()) { it.id.raw } }
 	InspectorFormRow(label = tr("inspector.hitArea")) {
 		val choices = buildList {
 			add(HitAreaChoice.None)
-			val shown = state.previewModel?.rig?.puppet?.drawables?.mapTo(HashSet()) { it.id.raw }
 			areas.forEach { area ->
-				val gone = if (shown == null) 0 else area.meshes.count { it !in shown }
+				val gone = if (present == null) 0 else area.meshes.count { it !in present }
 				add(HitAreaChoice.Area(area.id, "${area.name} (${area.id})" + if (gone > 0) " · " + tr("hitArea.missingCount", gone) else ""))
 			}
 			add(HitAreaChoice.New)
@@ -97,15 +93,11 @@ internal fun HitAreaInspectorRows(drawable: Drawable, state: PSD2LiveState, view
 		)
 	}
 	// Meshes the area still names that the rig no longer has: export leaves them out and reports them.
-	val present = state.previewModel?.rig?.puppet?.drawables?.mapTo(HashSet()) { it.id.raw }
-	val missing = if (present == null) emptyList() else current.meshes.filterNot(present::contains)
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
+	val missing = present?.let { ids -> current.meshes.filterNot(ids::contains) }.orEmpty()
 	if (missing.isNotEmpty()) InspectorFormRow(label = tr("inspector.hitAreaMissing")) {
-		Text(missing.joinToString(", "), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.warning)
+		InspectorHint(missing.joinToString(", "), warning = true)
 	}
-	Text(tr("hitArea.rule"), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textMuted,
-		modifier = Modifier.padding(start = 4.dp))
+	InspectorHint(tr("hitArea.rule"))
 }
 
 /**

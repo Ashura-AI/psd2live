@@ -64,6 +64,8 @@ class HitAreaScenario {
 		}
 		val p2lrt = String(Files.readAllBytes(export("p2lrt").single { it.toString().endsWith(".p2lrt") }), Charsets.ISO_8859_1)
 		expect("p2lrt", "HITA" in p2lrt && "HitAreaSkirt" in p2lrt) { "the runtime file has no HITA chunk with the document's areas" }
+		export("psd-pose")
+		expect("psd-pose loss", losses.count { it.getValue("note").jsonPrimitive.content.startsWith("Hit areas") } == 3) { "losses $losses" }
 
 		edit("delete Skirt", WorkspaceHitAreaEdits.DELETE, req("id" to "HitAreaSkirt"))
 		expect("deleted", areas().map { it.id } == listOf("HitAreaHead", "HitAreaBody")) { "areas ${areas()}" }
@@ -85,6 +87,32 @@ class HitAreaScenario {
 			"after deleting the skirt ${areas()}"
 		}
 		reopen()
+	}
+
+	/** Both depth paths: a generated model's two new slices, and an imported CMO3 model's source kept as the back. */
+	@Test fun depthSlicesJoinTheSourcesHitAreas() {
+		var cmo3: Path? = null
+		Studio.run(temp, Characters.figure(), checks = emptySet()) {
+			val top = mesh("top")
+			edit("Body on the top", WorkspaceHitAreaEdits.PUT, req("id" to "HitAreaBody", "meshes" to listOf("mesh:$top")))
+			cmo3 = export("cmo3").single { it.toString().endsWith(".cmo3") }
+			edit("slice the top around a sleeve", "source_split_depth", req("source_id" to top, "middle_ids" to listOf(mesh("sleeve_r"))))
+			val meshes = now.document.rigEdits.hitAreas.single().meshes
+			expect("generated slices", top !in meshes && meshes.size == 2 && meshes.all { id -> puppet.drawables.any { it.id.raw == id } }) {
+				"Body after the split $meshes"
+			}
+		}
+		Studio.run(temp.resolve("imported").also(Files::createDirectories), checks = emptySet()) {
+			importCmo3(requireNotNull(cmo3))
+			val top = puppet.drawables.first { it.name == "top" }.id.raw
+			val sleeve = puppet.drawables.first { it.name == "sleeve_r" }.id.raw
+			edit("Body on the top", WorkspaceHitAreaEdits.PUT, req("id" to "HitAreaBody", "meshes" to listOf("mesh:$top")))
+			edit("slice the top around a sleeve", "source_split_depth", req("source_id" to top, "middle_ids" to listOf(sleeve), "front_mesh_id" to "ArtMeshTopFront"))
+			val meshes = now.document.rigEdits.hitAreas.single().meshes
+			expect("imported slices", meshes == listOf(top, "ArtMeshTopFront") && puppet.drawables.any { it.id.raw == "ArtMeshTopFront" }) {
+				"Body after the split $meshes"
+			}
+		}
 	}
 
 	@Test fun anAreaWhoseMeshesAreGoneStaysTheDocumentsOwnAndIsReported() {

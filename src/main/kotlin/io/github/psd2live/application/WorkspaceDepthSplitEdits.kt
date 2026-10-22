@@ -74,7 +74,9 @@ internal object WorkspaceDepthSplitEdits {
         return document.copy(source = WorkspaceSourceArt(document.source.widthPx, document.source.heightPx,
             document.source.layers + front, document.source.groups), layerVisibility = prepared.config.layerVisibility,
             layerOverrides = prepared.config.layerOverrides, parentOverrides = prepared.config.parentOverrides,
-            meshOverrides = prepared.config.meshOverrides, rigEdits = RigLayerDeletion.preserve(model, prepared.config),
+            // The source stays as the back slice; the front joins it in its hit areas.
+            meshOverrides = prepared.config.meshOverrides, rigEdits = RigHitAreas.replacingMeshes(RigLayerDeletion.preserve(model, prepared.config),
+                mapOf(sourceId to listOf(sourceId, frontMeshId))),
             generationSource = if (prepared.config.rigEdits.importedCmo3 == null) document.generationSource else document.generationSource ?: document.source,
             settings = JsonObject(document.settings + ("drawOrderOverrides" to JsonObject(prepared.config.drawOrderOverrides.mapValues { JsonPrimitive(it.value) }))))
     }

@@ -1052,6 +1052,14 @@ internal fun InspectorFormRow(
     }
 }
 
+/** A line of explanation under inspector rows, in the caption style; [warning] marks something to act on. */
+@Composable
+internal fun InspectorHint(text: String, modifier: Modifier = Modifier, warning: Boolean = false) {
+    val colors = LocalToolColors.current
+    Text(text, style = LocalToolTypography.current.caption, color = if (warning) colors.warning else colors.textMuted,
+        modifier = modifier.padding(start = 4.dp))
+}
+
 /**
  * Color Row matching screenshots: Rectangular swatch preview + Hex text + Reset button
  */

@@ -50,9 +50,11 @@ internal object ProjectFormatV2 {
 	const val NODE_SCHEMA_LAYOUT = 4
 	/**
 	 * A clips node holding what older readers would drop: the document's expressions or pose, or motion events. Only
-	 * clips nodes take it; one without these fields keeps schema 1.
+	 * clips nodes take it ([NODE_SCHEMA_HIT_AREAS] is the same number for rig nodes); one without these fields keeps schema 1.
 	 */
 	const val NODE_SCHEMA_SIDECARS = 5
+	/** A rig node holding hit areas (`rigEdits.hitAreas`), which older readers would drop. */
+	const val NODE_SCHEMA_HIT_AREAS = 5
 	/** Schema of a revision index whose journal names no payload node. */
 	const val REVISION_SCHEMA = 1
 	/** Schema of a revision index whose journal names payload nodes (listed under `payloads`). */
@@ -322,6 +324,7 @@ internal object ProjectFormatV2 {
 			else -> false
 		}
 		if (transformed) return NODE_SCHEMA_TRANSFORMS
+		if (kind == "rig" && (value["rigEdits"] as? JsonObject)?.containsKey("hitAreas") == true) return NODE_SCHEMA_HIT_AREAS
 		// Layout nodes hold their state under one key ([layoutParts]), as source parts do.
 		val layoutValue = value[kind] as? JsonObject
 		val layout = when (kind) {
@@ -376,7 +379,7 @@ internal object ProjectFormatV2 {
 		}
 		fun load(folder: String, kind: String, hash: String): JsonObject {
 			val value = cache.getOrPut("$folder/$hash") { read(root, folder, hash) }
-			val newest = if (kind == "clips") NODE_SCHEMA_SIDECARS else NODE_SCHEMA_LAYOUT
+			val newest = if (kind == "clips" || kind == "rig") NODE_SCHEMA_SIDECARS else NODE_SCHEMA_LAYOUT
 			require(value["schema"]?.jsonPrimitive?.intOrNull in NODE_SCHEMA..newest && value["kind"]?.jsonPrimitive?.contentOrNull == kind) {
 				"Unsupported document node: $kind $hash"
 			}

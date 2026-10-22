@@ -55,6 +55,7 @@ public class PosedPsdTarget(private val renderer: FrameRenderer) : ExportTarget 
 		}
 		val losses = buildList {
 			add(LossEntry("*", Feature.STRUCTURE, Handling.BAKED, note = "Each mesh is rendered at the pose; deformers and parameters are not kept"))
+			ir.hitAreas.forEach { add(LossEntry(it.id, Feature.STRUCTURE, Handling.DROPPED, note = "Hit areas are not supported by this target")) }
 			ir.meshes.filter { io.github.psd2live.format.model.Channel.DRAW_ORDER in it.channels }.forEach {
 				add(LossEntry(it.id, Feature.KEYED_DRAW_ORDER, Handling.APPROXIMATED, note = "Layers follow the rest draw order"))
 			}
