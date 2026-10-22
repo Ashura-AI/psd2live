@@ -23,19 +23,58 @@ object AppSettings {
 		Preferences.userRoot().node(PREFS_NODE_NAME)
 	}
 
-	/** The window's size in dp and whether it was maximized when it last closed; 1280 x 820 the first time. */
+	/** The window's windowed size in dp, the one every other mode returns to; 1280 x 820 the first time. */
 	val windowWidth: Float get() = runCatching { preferences.getFloat("window_width", 1280f) }.getOrDefault(1280f).let { if (it.isFinite()) it.coerceIn(640f, 8192f) else 1280f }
 	val windowHeight: Float get() = runCatching { preferences.getFloat("window_height", 820f) }.getOrDefault(820f).let { if (it.isFinite()) it.coerceIn(400f, 8192f) else 820f }
-	val windowMaximized: Boolean get() = runCatching { preferences.getBoolean("window_maximized", false) }.getOrDefault(false)
 
-	fun rememberWindow(width: Float, height: Float, maximized: Boolean) {
+	fun rememberWindowSize(width: Float, height: Float) {
+		if (!width.isFinite() || !height.isFinite()) return
 		runCatching {
-			preferences.putBoolean("window_maximized", maximized)
-			// A maximized window keeps the floating size it restores to.
-			if (!maximized && width.isFinite() && height.isFinite()) {
-				preferences.putFloat("window_width", width); preferences.putFloat("window_height", height)
-			}
+			preferences.putFloat("window_width", width); preferences.putFloat("window_height", height)
 			preferences.flush()
+		}
+	}
+
+	/** A stored mode by name; before modes, only whether the window was maximized was kept. */
+	internal fun windowModeOf(stored: String?, legacyMaximized: Boolean): WindowMode =
+		WindowMode.entries.firstOrNull { it.name == stored } ?: if (legacyMaximized) WindowMode.MAXIMIZED else WindowMode.WINDOWED
+
+	private fun storedWindowMode(key: String): WindowMode? =
+		runCatching { preferences.get(key, null) }.getOrNull()?.let { name -> WindowMode.entries.firstOrNull { it.name == name } }
+
+	private val legacyMaximized: Boolean get() = runCatching { preferences.getBoolean("window_maximized", false) }.getOrDefault(false)
+
+	private val windowModeState = kotlinx.coroutines.flow.MutableStateFlow(
+		windowModeOf(runCatching { preferences.get("window_mode", null) }.getOrNull(), legacyMaximized))
+
+	/** The main window's mode; the window follows it as it changes, and opens in it next time. */
+	val windowModeFlow: kotlinx.coroutines.flow.StateFlow<WindowMode> get() = windowModeState
+
+	var windowMode: WindowMode
+		get() = windowModeState.value
+		set(value) {
+			windowModeState.value = value
+			runCatching {
+				preferences.put("window_mode", value.name)
+				if (value != WindowMode.FULLSCREEN) preferences.put("window_restore_mode", value.name)
+			}
+		}
+
+	/** The windowed or maximized mode last used, which leaving full screen returns to. */
+	val restoreMode: WindowMode
+		get() = storedWindowMode("window_restore_mode")?.takeIf { it != WindowMode.FULLSCREEN } ?: windowModeOf(null, legacyMaximized)
+
+	/** Full screen, or back out of it. */
+	fun toggleFullscreen() {
+		windowMode = if (windowMode == WindowMode.FULLSCREEN) restoreMode else WindowMode.FULLSCREEN
+	}
+
+	/** The title bar's maximize button: windowed and maximized swap; from full screen, back to where it came from. */
+	fun toggleMaximized() {
+		windowMode = when (windowMode) {
+			WindowMode.WINDOWED -> WindowMode.MAXIMIZED
+			WindowMode.MAXIMIZED -> WindowMode.WINDOWED
+			else -> restoreMode
 		}
 	}
 

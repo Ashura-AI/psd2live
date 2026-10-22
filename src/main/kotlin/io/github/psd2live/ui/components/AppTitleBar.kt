@@ -38,6 +38,7 @@ import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -78,13 +79,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
 import io.github.psd2live.i18n.AppLanguage
 import io.github.psd2live.i18n.I18n
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.state.AppPage
+import io.github.psd2live.ui.state.AppSettings
+import io.github.psd2live.ui.state.WindowMode
+import io.github.psd2live.ui.utils.MainWindowModes
 import io.github.psd2live.ui.views.PageIcon
 import io.github.psd2live.ui.state.Keymap
 import io.github.psd2live.ui.state.ShortcutAction
@@ -196,6 +199,8 @@ fun AppTitleBar(
 ) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
+
+	val windowMode by AppSettings.windowModeFlow.collectAsState()
 
 	// Track which menu is open (null if none)
 	var activeMenu by remember { mutableStateOf<String?>(null) }
@@ -543,6 +548,16 @@ fun AppTitleBar(
 							onResetZoom()
 						},
 					)
+					AppMenuItem(
+						text = tr(if (windowMode == WindowMode.FULLSCREEN) "menu.view.exitFullscreen" else "menu.view.fullscreen"),
+						shortcut = keymap.labelFor(ShortcutAction.TOGGLE_FULLSCREEN),
+						onHover = { activeSubmenu = null },
+						onClick = {
+							activeMenu = null
+							activeSubmenu = null
+							AppSettings.toggleFullscreen()
+						},
+					)
 
 				}
 			}
@@ -708,18 +723,10 @@ fun AppTitleBar(
 			modifier = Modifier
 				.weight(1f)
 				.fillMaxHeight()
-				.pointerInput(window, windowState) {
-					detectTapGestures(
-						onDoubleTap = {
-							windowState.placement = if (windowState.placement == WindowPlacement.Maximized) {
-								WindowPlacement.Floating
-							} else {
-								WindowPlacement.Maximized
-							}
-						}
-					)
+				.pointerInput(window) {
+					detectTapGestures(onDoubleTap = { AppSettings.toggleMaximized() })
 				}
-				.pointerInput(window, windowState) {
+				.pointerInput(window) {
 					detectDragGestures(
 						onDragStart = {
 							initialMouseLocation = MouseInfo.getPointerInfo()?.location
@@ -729,10 +736,14 @@ fun AppTitleBar(
 							change.consume()
 							val mouse = MouseInfo.getPointerInfo()?.location
 							val initMouse = initialMouseLocation
-							val initWin = initialWindowLocation
-							if (mouse != null && initMouse != null && initWin != null && window != null) {
-								if (windowState.placement == WindowPlacement.Maximized) {
-									windowState.placement = WindowPlacement.Floating
+							var initWin = initialWindowLocation
+							// A full-screen window stays put; a maximized one comes off the edge under the pointer.
+							if (mouse != null && initMouse != null && initWin != null && window != null && windowMode != WindowMode.FULLSCREEN) {
+								if (windowMode == WindowMode.MAXIMIZED) {
+									if (mouse.distance(initMouse) < 4.0) return@detectDragGestures
+									initWin = MainWindowModes.restoreForDrag(window, mouse)
+									initialWindowLocation = initWin
+									initialMouseLocation = mouse
 								}
 								window.setLocation(
 									initWin.x + (mouse.x - initMouse.x),
@@ -823,16 +834,10 @@ fun AppTitleBar(
 				GridIcon(Modifier.size(10.dp), colors.textPrimary) { line(1f, 9f, 17f, 9f) }
 			}
 
-			// Maximize / Restore
-			val isMaximized = windowState.placement == WindowPlacement.Maximized
+			// Maximize / Restore; in full screen, restore leaves it.
+			val isMaximized = windowMode != WindowMode.WINDOWED
 			WindowControlButton(
-				onClick = {
-					windowState.placement = if (isMaximized) {
-						WindowPlacement.Floating
-					} else {
-						WindowPlacement.Maximized
-					}
-				},
+				onClick = { AppSettings.toggleMaximized() },
 			) {
 				GridIcon(Modifier.size(10.dp), colors.textPrimary) {
 					if (isMaximized) {

@@ -108,6 +108,7 @@ import io.github.psd2live.ui.tutorial.tutorialTarget
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material.DropdownMenu
 import io.github.psd2live.ui.state.AppSettings
+import io.github.psd2live.ui.state.WindowMode
 import io.github.psd2live.ui.state.AppPrompt
 import io.github.psd2live.ui.components.ModalDialogFrame
 import io.github.psd2live.ui.components.ModalMessage
@@ -456,6 +457,7 @@ fun FrameWindowScope.PSD2LiveApp(
 				ShortcutAction.ZOOM_RESET -> { viewModel.resetZoom(); true }
 				ShortcutAction.OPEN_SETTINGS -> { viewModel.togglePage(AppPage.SETTINGS); true }
 				ShortcutAction.OPEN_HELP -> { viewModel.togglePage(AppPage.HELP); true }
+				ShortcutAction.TOGGLE_FULLSCREEN -> { AppSettings.toggleFullscreen(); true }
 				else -> {
 					// The nine tab-jump actions share one body. A null index means this is a
 					// canvas action, which this handler does not own.
@@ -465,12 +467,14 @@ fun FrameWindowScope.PSD2LiveApp(
 			}
 		}
 
+		val windowMode by AppSettings.windowModeFlow.collectAsState()
 		Box(Modifier.fillMaxSize()) {
 		CompositionLocalProvider(LocalTutorialTargets provides tutorialTargets, LocalAgentMcp provides agentMcp) {
 		Box(
 			modifier = Modifier
 				.fillMaxSize()
-				.border(BorderStroke(1.dp, colors.border))
+				// The outline marks a window's edge on the desktop; filling the screen, it would draw a line along it.
+				.then(if (windowMode == WindowMode.WINDOWED) Modifier.border(BorderStroke(1.dp, colors.border)) else Modifier)
 				.onPreviewKeyEvent { event ->
 					if (tutorialShown && event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
 						stopInteractiveTutorial()

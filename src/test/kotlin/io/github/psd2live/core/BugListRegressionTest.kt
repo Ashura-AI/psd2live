@@ -1,13 +1,14 @@
 package io.github.psd2live.core
 
 import io.github.psd2live.commandArguments
-import io.github.psd2live.fitWindowSize
 import io.github.psd2live.format.compile.ClipSampler
 import io.github.psd2live.format.model.Clip
 import io.github.psd2live.format.model.Curve
 import io.github.psd2live.format.model.CurveSegment
 import io.github.psd2live.targets.raster.gifCentisecondDelays
-import io.github.psd2live.ui.utils.MaximizedWorkArea
+import io.github.psd2live.ui.state.AppSettings
+import io.github.psd2live.ui.state.WindowMode
+import io.github.psd2live.ui.utils.MainWindowModes
 import java.awt.image.BufferedImage
 import java.nio.file.Files
 import kotlin.test.Test
@@ -26,22 +27,35 @@ class BugListRegressionTest {
 
 	@Test
 	fun aSavedWindowLargerThanTheScreenOpensWithinIt() {
-		val usable = java.awt.Rectangle(0, 0, 1707, 1019)
-		val fitted = fitWindowSize(2560f, 1500f, usable)
-		assertEquals(1707f, fitted.width.value); assertEquals(1019f, fitted.height.value)
-		val small = fitWindowSize(1280f, 820f, usable)
-		assertEquals(1280f, small.width.value); assertEquals(820f, small.height.value)
-		assertEquals(2560f, fitWindowSize(2560f, 1500f, null).width.value)
+		val area = java.awt.Rectangle(0, 0, 1707, 1019)
+		assertEquals(java.awt.Rectangle(0, 0, 1707, 1019), MainWindowModes.windowedBounds(java.awt.Dimension(2560, 1500), null, area))
+		assertEquals(java.awt.Rectangle(213, 99, 1280, 820), MainWindowModes.windowedBounds(java.awt.Dimension(1280, 820), null, area))
+		assertEquals(java.awt.Rectangle(40, 30, 1280, 820),
+			MainWindowModes.windowedBounds(java.awt.Dimension(1280, 820), java.awt.Point(40, 30), area))
+		// A spot that no longer fits (the window was on another screen) is centred instead.
+		assertEquals(java.awt.Rectangle(213, 99, 1280, 820),
+			MainWindowModes.windowedBounds(java.awt.Dimension(1280, 820), java.awt.Point(1900, 30), area))
 	}
 
 	@Test
-	fun aMaximizedUndecoratedWindowLeavesTheTaskbarAndNeverCoversTheMonitor() {
+	fun windowModesPlaceTheWindowWithoutTheSystemMaximize() {
 		val screen = java.awt.Rectangle(1707, 0, 1707, 1067)
-		assertEquals(java.awt.Rectangle(1707, 0, 1707, 1019),
-			MaximizedWorkArea.workArea(screen, java.awt.Insets(0, 0, 48, 0), windows = true))
+		val taskbar = java.awt.Insets(0, 0, 48, 0)
+		assertEquals(null, MainWindowModes.boundsFor(WindowMode.WINDOWED, screen, taskbar, windows = true))
+		assertEquals(java.awt.Rectangle(1707, 0, 1707, 1019), MainWindowModes.boundsFor(WindowMode.MAXIMIZED, screen, taskbar, windows = true))
+		assertEquals(screen, MainWindowModes.boundsFor(WindowMode.FULLSCREEN, screen, taskbar, windows = true))
+		// An auto-hidden taskbar reserves nothing; maximized still leaves the bottom row so it is not full screen.
 		assertEquals(java.awt.Rectangle(1707, 0, 1707, 1066),
-			MaximizedWorkArea.workArea(screen, java.awt.Insets(0, 0, 0, 0), windows = true))
-		assertEquals(screen, MaximizedWorkArea.workArea(screen, java.awt.Insets(0, 0, 0, 0), windows = false))
+			MainWindowModes.boundsFor(WindowMode.MAXIMIZED, screen, java.awt.Insets(0, 0, 0, 0), windows = true))
+		assertEquals(screen, MainWindowModes.workArea(screen, java.awt.Insets(0, 0, 0, 0), windows = false))
+	}
+
+	@Test
+	fun aWindowSavedMaximizedBeforeModesOpensMaximized() {
+		assertEquals(WindowMode.MAXIMIZED, AppSettings.windowModeOf(null, legacyMaximized = true))
+		assertEquals(WindowMode.WINDOWED, AppSettings.windowModeOf(null, legacyMaximized = false))
+		assertEquals(WindowMode.FULLSCREEN, AppSettings.windowModeOf("FULLSCREEN", legacyMaximized = true))
+		assertEquals(WindowMode.WINDOWED, AppSettings.windowModeOf("UNKNOWN", legacyMaximized = false))
 	}
 
 	@Test

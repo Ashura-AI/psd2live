@@ -58,6 +58,7 @@ import io.github.psd2live.ui.state.AppSettings
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.state.SettingsTopic
+import io.github.psd2live.ui.state.WindowMode
 import io.github.psd2live.ui.views.InspectorFormRow
 import io.github.psd2live.ui.views.InspectorSectionBox
 import io.github.psd2live.ui.views.PageBody
@@ -353,6 +354,26 @@ private fun SettingsCanvasSection() {
 			color = colors.textMuted,
 			modifier = Modifier.padding(start = 24.dp),
 		)
+	}
+
+	// How the main window sits on its screen; it changes as soon as a mode is picked.
+	val windowMode by AppSettings.windowModeFlow.collectAsState()
+	InspectorSectionBox(tr("settings.window.title")) {
+		for (mode in WindowMode.entries) {
+			Column(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+				CompactRadioButton(
+					selected = mode == windowMode,
+					onClick = { AppSettings.windowMode = mode },
+					label = tr(mode.labelKey),
+				)
+				Text(
+					text = tr(mode.descriptionKey),
+					style = typography.caption.copy(fontSize = 10.5.sp),
+					color = colors.textMuted,
+					modifier = Modifier.padding(start = 24.dp),
+				)
+			}
+		}
 	}
 }
 

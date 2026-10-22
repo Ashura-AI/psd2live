@@ -93,6 +93,7 @@ enum class ShortcutAction(
     ZOOM_IN(ShortcutCategory.VIEW, "menu.view.zoomIn"),
     ZOOM_OUT(ShortcutCategory.VIEW, "menu.view.zoomOut"),
     ZOOM_RESET(ShortcutCategory.VIEW, "menu.view.zoomReset"),
+    TOGGLE_FULLSCREEN(ShortcutCategory.VIEW, "menu.view.fullscreen"),
     OPEN_SETTINGS(ShortcutCategory.VIEW, "help.shortcuts.settings"),
     OPEN_HELP(ShortcutCategory.VIEW, "help.shortcuts.help"),
 
@@ -310,6 +311,7 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.ZOOM_RESET to keys("Ctrl+0", "Ctrl+NumPad0"),
     ShortcutAction.OPEN_SETTINGS to keys("Ctrl+,"),
     ShortcutAction.OPEN_HELP to keys("F1"),
+    ShortcutAction.TOGGLE_FULLSCREEN to keys("F11"),
 
     ShortcutAction.TEMPORARY_SELECT to keys("Z"),
     ShortcutAction.QUICK_PREVIEW to keys("`"),

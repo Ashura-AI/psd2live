@@ -1,6 +1,8 @@
 package io.github.psd2live
 
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -28,6 +30,7 @@ import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.state.UiFailureReports
 import io.github.psd2live.ui.state.reportingWindowExceptionHandler
 import io.github.psd2live.ui.views.PSD2LiveApp
+import io.github.psd2live.ui.utils.MainWindowModes
 import java.io.IOException
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,8 +38,6 @@ import javax.swing.JOptionPane
 import kotlin.io.path.absolutePathString
 import kotlin.system.exitProcess
 
-import androidx.compose.ui.window.rememberWindowState
-import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.Alignment
 import io.github.psd2live.ui.state.AppSettings
@@ -180,17 +181,16 @@ private fun runGui() {
 					}
 				}
 			}
-			// The size and maximized state the window last closed with, centred on the screen.
-			val windowState = rememberWindowState(
-				placement = if (AppSettings.windowMaximized) WindowPlacement.Maximized else WindowPlacement.Floating,
-				position = WindowPosition(Alignment.Center),
-				size = fitWindowSize(AppSettings.windowWidth, AppSettings.windowHeight,
-					runCatching { java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().maximumWindowBounds }.getOrNull()),
-			)
+			// Opens in the mode it last closed in, already at that mode's bounds; windowed is the saved size centred.
+			val windowState = remember {
+				val bounds = MainWindowModes.initialBounds(AppSettings.windowMode, AppSettings.windowWidth, AppSettings.windowHeight)
+				if (bounds == null) WindowState(position = WindowPosition(Alignment.Center), size = DpSize(AppSettings.windowWidth.dp, AppSettings.windowHeight.dp))
+				else WindowState(position = WindowPosition(bounds.x.dp, bounds.y.dp), size = DpSize(bounds.width.dp, bounds.height.dp))
+			}
+			val mainFrame = remember { java.util.concurrent.atomic.AtomicReference<java.awt.Frame?>() }
 			val closeApp: () -> Unit = {
 				viewModel.withSavedChanges {
-					AppSettings.rememberWindow(windowState.size.width.value, windowState.size.height.value,
-						windowState.placement == WindowPlacement.Maximized)
+					mainFrame.get()?.let { MainWindowModes.windowedSize(it) }?.let { AppSettings.rememberWindowSize(it.width.toFloat(), it.height.toFloat()) }
 					quitByUser.set(true)
                     agentWorkspace.prepareClose(if (viewModel.state.value.projectDirty)
                         io.github.psd2live.application.WorkspaceCloseReason.DISCARDED
@@ -231,9 +231,12 @@ private fun runGui() {
 						transparent = transparent,
 					) {
 						DisposableEffect(window) {
-							val uninstall = io.github.psd2live.ui.utils.MaximizedWorkArea.install(window)
-							onDispose { uninstall() }
+							mainFrame.set(window)
+							val uninstall = MainWindowModes.install(window)
+							onDispose { uninstall(); mainFrame.compareAndSet(window, null) }
 						}
+						val windowMode by AppSettings.windowModeFlow.collectAsState()
+						LaunchedEffect(window, windowMode) { MainWindowModes.apply(window, windowMode) }
 						androidx.compose.runtime.CompositionLocalProvider(io.github.psd2live.ui.views.LocalAwtWindow provides window) {
 							PSD2LiveApp(
 								viewModel = viewModel,
@@ -284,16 +287,6 @@ private class ExitWatchdog {
 		// Above the longest clean exit: MCP stop, the recovery-write flush and the Cubism shutdown.
 		const val EXIT_TIMEOUT_MILLIS = 15_000L
 	}
-}
-
-/**
- * The window's saved size, no larger than the screen's usable area [usable] (logical pixels, the taskbar left out).
- * The window draws its own title bar: one taller than the screen would be centred with that bar above the top edge,
- * leaving no way to move, maximize or close it - a size saved on a larger screen or at a smaller display scale.
- */
-internal fun fitWindowSize(width: Float, height: Float, usable: java.awt.Rectangle?): DpSize {
-	if (usable == null || usable.width <= 0 || usable.height <= 0) return DpSize(width.dp, height.dp)
-	return DpSize(minOf(width, usable.width.toFloat()).dp, minOf(height, usable.height.toFloat()).dp)
 }
 
 /** Arguments with every `--lang <tag>` pair removed. [configureLanguage] already applied the tag. */
