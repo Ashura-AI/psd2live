@@ -141,6 +141,7 @@ enum class ShortcutAction(
     TOOL_PAINT_SELECT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_select"),
     TOOL_PAINT_GRADIENT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_gradient"),
     TOOL_PAINT_BLUR(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_blur"),
+    TOOL_PAINT_TRANSFORM(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_transform"),
     // The numbered choices of the mode or tool in hand: Deform's levels, otherwise the variants the toolbar
     // lists under the tool (brush tips, glue and skeleton sub-tools, the vertex group kinds, paint shapes).
     PICK_OPTION_1(ShortcutCategory.CANVAS_TOOLS, "shortcut.pickOption"),
@@ -363,6 +364,9 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.TOOL_PAINT_SELECT to keys("Alt+L"),
     ShortcutAction.TOOL_PAINT_GRADIENT to keys("Alt+G"),
     ShortcutAction.TOOL_PAINT_BLUR to keys("Alt+J"),
+    // Photoshop's Ctrl+T opens a workspace tab here, so Free Transform takes the transform tool's T with Alt;
+    // in Paint mode the T of the object transform tool picks it too.
+    ShortcutAction.TOOL_PAINT_TRANSFORM to keys("Alt+T"),
     ShortcutAction.PICK_OPTION_1 to keys("1", "NumPad1"),
     ShortcutAction.PICK_OPTION_2 to keys("2", "NumPad2"),
     ShortcutAction.PICK_OPTION_3 to keys("3", "NumPad3"),
@@ -475,6 +479,7 @@ private val BLENDER_OVERRIDES: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.TOOL_PAINT_SELECT to emptyList(),
     ShortcutAction.TOOL_PAINT_GRADIENT to emptyList(),
     ShortcutAction.TOOL_PAINT_BLUR to emptyList(),
+    ShortcutAction.TOOL_PAINT_TRANSFORM to emptyList(),
     // Numpad-dot = view selected.
     ShortcutAction.FRAME_VIEW to keys("NumPadDot"),
     // Workspace cycling.

@@ -144,6 +144,8 @@ internal fun MaterialEditor(item: MaterialItem, state: PSD2LiveState, vm: PSD2Li
 	DisposableEffect(editor) {
 		onDispose {
 			vm.canvasEditor.takePaintSettings(editor)
+			// A transform still in hand goes back first, so the session is free to commit.
+			editor.cancelPaintTransform(now = true)
 			val session = editor.paintSession
 			if (session != null && session.isDirty) vm.savePaintSession(session.handle, false, false, tr("editor.paint.commitSummary", item.name)) {}
 			else editor.closePaintSession()
@@ -203,7 +205,10 @@ internal fun MaterialEditor(item: MaterialItem, state: PSD2LiveState, vm: PSD2Li
 			ShortcutAction.FRAME_VIEW -> fit()
 			ShortcutAction.RESET_CAMERA -> actual()
 			ShortcutAction.CANCEL -> if (menuAt != null) menuAt = null else editor.cancel()
-			ShortcutAction.FINISH_PATH -> if (!editor.finishPaintPolygon()) editor.promptCommitPaintSession()
+			ShortcutAction.FINISH_PATH -> when {
+				editor.paintTransform != null -> editor.applyPaintTransform()
+				!editor.finishPaintPolygon() -> editor.promptCommitPaintSession()
+			}
 			ShortcutAction.SELECT_ALL -> editor.selectAllPaint()
 			ShortcutAction.INVERT_SELECTION -> editor.invertPaintSelection()
 			ShortcutAction.DELETE_SELECTION -> editor.deleteInPaint()

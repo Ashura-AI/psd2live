@@ -957,7 +957,10 @@ fun CanvasViewportComposable(
 			ShortcutAction.SELECT_ALL -> { editor.selectAll(); true }
 			ShortcutAction.INVERT_SELECTION -> { editor.selectAll(true); true }
 			ShortcutAction.TOOL_SELECT -> { editor.activateTool(CanvasTool.SELECT); true }
-			ShortcutAction.TOOL_TRANSFORM -> { editor.activateTool(CanvasTool.TRANSFORM); true }
+			// Paint has no objects to transform: there T is the free transform of the layer's pixels.
+			ShortcutAction.TOOL_TRANSFORM -> {
+				editor.activateTool(if (editor.hierarchyMode == EditHierarchyMode.PAINT) CanvasTool.PAINT_TRANSFORM else CanvasTool.TRANSFORM); true
+			}
 			ShortcutAction.TOOL_LASSO_SELECT -> { editor.activateTool(CanvasTool.LASSO_SELECT); true }
 			ShortcutAction.TOOL_BRUSH_SELECT -> { editor.activateTool(CanvasTool.BRUSH_SELECT); true }
 			ShortcutAction.TOOL_BRUSH -> { editor.activateTool(CanvasTool.BRUSH); true }
@@ -1021,6 +1024,7 @@ fun CanvasViewportComposable(
 				when {
 					editor.activeTemporaryWarp() != null -> { editor.endTemporaryWarp(); true }
 					viewModel.swingSession != null -> { viewModel.commitSwing(); true }
+					editor.hierarchyMode == EditHierarchyMode.PAINT && editor.paintTransform != null -> { editor.applyPaintTransform(); true }
 					editor.hierarchyMode == EditHierarchyMode.PAINT && editor.paintSelectDraft.isNotEmpty() -> editor.finishPaintPolygon()
 					editor.knifing -> { editor.finishKnife(); true }
 					editor.tool == CanvasTool.INTERIOR -> editor.interiorTool.finish()
@@ -1082,7 +1086,8 @@ fun CanvasViewportComposable(
 				if (editor.hierarchyMode != EditHierarchyMode.PAINT) editor.setHierarchyMode(EditHierarchyMode.PAINT)
 				editor.selectPaintShape(PaintShape.ELLIPSE); true
 			}
-			ShortcutAction.TOOL_PAINT_SELECT, ShortcutAction.TOOL_PAINT_GRADIENT, ShortcutAction.TOOL_PAINT_BLUR -> {
+			ShortcutAction.TOOL_PAINT_SELECT, ShortcutAction.TOOL_PAINT_GRADIENT, ShortcutAction.TOOL_PAINT_BLUR,
+			ShortcutAction.TOOL_PAINT_TRANSFORM -> {
 				if (editor.hierarchyMode != EditHierarchyMode.PAINT) editor.setHierarchyMode(EditHierarchyMode.PAINT)
 				editor.paintShortcut(action)
 			}

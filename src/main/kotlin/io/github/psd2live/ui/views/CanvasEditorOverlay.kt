@@ -2895,6 +2895,42 @@ private val selectionPathCache = java.util.WeakHashMap<FloatArray, Pair<io.githu
  * The paint selection and the drafts of the tools that make one: the marching ants around what is selected, the
  * box, ellipse or lasso being drawn, the gradient being dragged and the axes a mirrored stroke is painted across.
  */
+/**
+ * A free transform in hand: the lifted pixels where the box puts them, and the box with its handles. The pixels go
+ * from the lifted area of the raster, through the layer's frame and the box, onto the screen in one matrix.
+ */
+private fun DrawScope.drawPaintTransform(editor: CanvasEditor, hand: CanvasEditor.PaintTransformInHand, viewport: CanvasViewport,
+                                         colors: ToolColors) {
+    val session = editor.paintSession ?: return
+    val scale = viewport.scale.toFloat()
+    val region = hand.region
+    val raster = io.github.psd2live.project.LayerTransform(1f / session.scaleX, 0f, 0f, 1f / session.scaleY,
+        session.originX + region.x / session.scaleX, session.originY + region.y / session.scaleY)
+    val view = io.github.psd2live.project.LayerTransform(scale, 0f, 0f, scale, viewport.offsetX.toFloat(), viewport.offsetY.toFloat())
+    val m = view.after(hand.box.transform.after(session.frame.after(raster)))
+    val matrix = androidx.compose.ui.graphics.Matrix().apply {
+        this[0, 0] = m.a; this[0, 1] = m.b; this[1, 0] = m.c; this[1, 1] = m.d; this[3, 0] = m.e; this[3, 1] = m.f
+    }
+    withTransform({ transform(matrix) }) { drawImage(hand.preview) }
+    fun screen(p: Offset) = Offset(viewport.x(p.x).toFloat(), (viewport.offsetY + p.y * viewport.scale).toFloat())
+    val corners = hand.box.corners.map(::screen)
+    val outline = Path().apply {
+        moveTo(corners[0].x, corners[0].y); corners.drop(1).forEach { lineTo(it.x, it.y) }; close()
+    }
+    drawPath(outline, Color.Black.copy(alpha = 0.7f), style = Stroke(3f))
+    drawPath(outline, colors.accent, style = Stroke(1.2f))
+    for (handle in PaintTransformBox.handlePoints) {
+        val at = screen(hand.box.point(handle.x, handle.y))
+        val half = 4f
+        drawRect(Color.White, at - Offset(half, half), Size(half * 2, half * 2))
+        drawRect(colors.accent, at - Offset(half, half), Size(half * 2, half * 2), style = Stroke(1.2f))
+    }
+    // The point it turns about.
+    val center = screen(hand.box.center)
+    drawCircle(Color.Black.copy(alpha = 0.7f), 3.5f, center, style = Stroke(2.5f))
+    drawCircle(colors.accent, 3.5f, center, style = Stroke(1f))
+}
+
 private fun DrawScope.drawPaintSelectionOverlays(editor: CanvasEditor, viewport: CanvasViewport, colors: ToolColors) {
     val session = editor.paintSession
     val scale = viewport.scale.toFloat()
@@ -2935,7 +2971,8 @@ private fun DrawScope.drawPaintSelectionOverlays(editor: CanvasEditor, viewport:
         }
         // The path stays in canvas units and the view is applied to the drawing, so nothing is copied per frame; the
         // line and its dashes are divided by the scale to stay one screen pixel.
-        if (path != null) withTransform({
+        // A selection being transformed moves with its pixels; its old outline would only mislead.
+        if (path != null && editor.paintTransform == null) withTransform({
             translate(viewport.offsetX.toFloat(), viewport.offsetY.toFloat())
             scale(scale, scale, Offset.Zero)
         }) {
@@ -2952,6 +2989,7 @@ private fun DrawScope.drawPaintSelectionOverlays(editor: CanvasEditor, viewport:
             if (symmetry.horizontal) drawLine(guide, screen(Offset(0f, h / 2f)), screen(Offset(w, h / 2f)), 1f, pathEffect = dash)
         }
     }
+    editor.paintTransform?.let { drawPaintTransform(editor, it, viewport, colors) }
     // The quick selection brush: its ring under the pointer, sized in the layer's frame as the paint tips are.
     editor.cursor?.takeIf { editor.paintQuickSelectActive }?.let { cur ->
         val r = (editor.paintQuickSelectSize / editor.paintPixelsPerUnit / 2f * editor.paintShownScale * viewport.scale.toFloat()).coerceAtLeast(1f)

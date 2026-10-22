@@ -207,6 +207,12 @@ class PaintSession(val handle: WorkspacePaintSession) {
         put("to", JsonArray(listOf(JsonPrimitive(x1), JsonPrimitive(y1)))); put("color", rgba(from)); put("end_color", rgba(to))
         put("kind", if (radial) "radial" else "linear"); put("opacity", opacity); put("lock_alpha", lockAlpha)
     }, name)
+    /** Takes the selection's pixels - the layer's without one - off the raster for a free transform; null with nothing to take. */
+    internal fun lift() = handle.lift()
+    /** Lays the lifted pixels down through [matrix], in the layer's frame, as one stroke. */
+    fun transform(matrix: io.github.psd2live.project.LayerTransform, smooth: Boolean, name: String) = handle.gesture(buildJsonObject {
+        put("mode", "transform"); put("matrix", JsonArray(matrix.toList().map(::JsonPrimitive))); put("smooth", smooth)
+    }, name)
     /** Changes the selection with one [io.github.psd2live.application.WorkspacePaintSessionSchemas.selection] request. */
     fun select(request: JsonObject) = handle.select(request)
     /** Whether the session has a selection - which may be too faint to have an edge ([selectionOutline] empty). */

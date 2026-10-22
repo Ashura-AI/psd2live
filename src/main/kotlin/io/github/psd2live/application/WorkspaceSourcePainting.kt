@@ -97,14 +97,31 @@ internal fun WorkspaceDocument.paintLayerImage(arguments: JsonObject,
 }
 
 /**
+ * A `transform` gesture's `matrix`, in canvas units, as the map it makes of [space]'s raster pixels: the same map
+ * seen through the canvas-to-raster scale.
+ */
+internal fun rasterTransformMatrix(arguments: JsonObject, space: PaintSpace): FloatArray {
+    val m = arguments.getValue("matrix").jsonArray.map { it.jsonPrimitive.float }
+    require(m.size == 6 && m.all(Float::isFinite)) { "matrix must be six numbers a b c d e f" }
+    fun mapped(x: Float, y: Float): Pair<Float, Float> {
+        val cx = space.imageToCanvasX(x); val cy = space.imageToCanvasY(y)
+        return space.canvasToImageX(m[0] * cx + m[2] * cy + m[4]) to space.canvasToImageY(m[1] * cx + m[3] * cy + m[5])
+    }
+    val (ox, oy) = mapped(0f, 0f); val (ux, uy) = mapped(1f, 0f); val (vx, vy) = mapped(0f, 1f)
+    return floatArrayOf(ux - ox, uy - oy, vx - ox, vy - oy, ox, oy)
+}
+
+/**
  * A private session and a durable single gesture use the same raster processor. Gesture coordinates, radii and
  * widths are canvas units; [space] maps them onto [image]'s pixels, so a dense layer paints at its own density.
  */
 internal fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
     work: WorkspaceRasterWork = WorkspaceRasterWork.Direct, before: (java.awt.Rectangle) -> Unit = {},
     space: PaintSpace = PaintSpace.canvas(image.width, image.height),
-    /** What `clear`, `fill` and `gradient` cover, in raster pixels; the whole raster when null. */
-    area: java.awt.Rectangle? = null) {
+    /** What `clear`, `fill` and `gradient` cover, and what `transform` lifts, in raster pixels; the whole raster when null. */
+    area: java.awt.Rectangle? = null,
+    /** The share of each pixel a `transform` lifts; all of [area] when null. */
+    selection: io.github.psd2live.core.PaintSelection? = null) {
     val width = image.width; val height = image.height
     work.progress(0.05f, "Rasterizing paint gesture")
     val mode = arguments.getValue("mode").jsonPrimitive.content
@@ -196,6 +213,20 @@ internal fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
                 java.awt.Rectangle(0, 0, width, height)))
             RasterPaintEngine.drawShape(image, x0.toInt(), y0.toInt(), x1.toInt(), y1.toInt(),
                 shape, color, opacity, imageWidth, arguments["filled"]?.jsonPrimitive?.boolean ?: false)
+        }
+        "transform" -> {
+            val matrix = rasterTransformMatrix(arguments, space)
+            require(io.github.psd2live.core.PaintPixelTransform.inverse(matrix) != null) { "matrix squashes the pixels flat" }
+            val raster = java.awt.Rectangle(0, 0, width, height)
+            val region = (area ?: raster).intersection(raster)
+            if (!region.isEmpty) {
+                val target = io.github.psd2live.core.PaintPixelTransform.mappedBounds(matrix, region, width, height)
+                before(if (target.isEmpty) region else region.union(target))
+                val floating = io.github.psd2live.core.PaintPixelTransform.lifted(image, region, selection)
+                io.github.psd2live.core.PaintPixelTransform.clear(image, region, selection)
+                io.github.psd2live.core.PaintPixelTransform.place(image, floating, region, matrix,
+                    arguments["smooth"]?.jsonPrimitive?.boolean ?: true, work::checkpoint)
+            }
         }
         else -> throw IllegalArgumentException("Unknown paint mode: $mode")
     }

@@ -17,6 +17,7 @@ import io.github.psd2live.project.transform
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.tutorial.expandShortcutMarkup
 import io.github.psd2live.ui.state.*
+import io.github.psd2live.ui.utils.toImageBitmapFast
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
@@ -145,6 +146,8 @@ internal enum class CanvasTool(val action: ShortcutAction) {
     PAINT_GRADIENT(ShortcutAction.TOOL_PAINT_GRADIENT),
     /** A tip that blurs what it passes over instead of painting. */
     PAINT_BLUR(ShortcutAction.TOOL_PAINT_BLUR),
+    /** Free Transform of the selection's pixels, or the layer's, in a box of handles ([PaintTransformBox]). */
+    PAINT_TRANSFORM(ShortcutAction.TOOL_PAINT_TRANSFORM),
 }
 
 internal enum class SelectionStyle { BOX, LASSO }
@@ -295,7 +298,7 @@ internal val PAINT_TOOLS = setOf(
     CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER,
     CanvasTool.PAINT_BUCKET, CanvasTool.PAINT_EYEDROPPER,
     CanvasTool.PAINT_SHAPE,
-    CanvasTool.PAINT_SELECT, CanvasTool.PAINT_GRADIENT, CanvasTool.PAINT_BLUR,
+    CanvasTool.PAINT_SELECT, CanvasTool.PAINT_GRADIENT, CanvasTool.PAINT_BLUR, CanvasTool.PAINT_TRANSFORM,
 )
 
 /** The paint tools that stamp a tip: they are the ones with a size, a hardness and an opacity. */
@@ -330,7 +333,7 @@ internal val TOOLBAR_TOOL_ORDER = listOf(
     CanvasTool.WEIGHT_PAINT, CanvasTool.WEIGHT_GRADIENT,
     CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER, CanvasTool.PAINT_BLUR,
     CanvasTool.PAINT_BUCKET, CanvasTool.PAINT_GRADIENT, CanvasTool.PAINT_EYEDROPPER,
-    CanvasTool.PAINT_SHAPE, CanvasTool.PAINT_SELECT,
+    CanvasTool.PAINT_SHAPE, CanvasTool.PAINT_SELECT, CanvasTool.PAINT_TRANSFORM,
     CanvasTool.CREATE_WARP, CanvasTool.CREATE_ROTATION, CanvasTool.CREATE_DEFORM_PATH,
 )
 
@@ -369,7 +372,7 @@ internal fun toolbarGroups(mode: EditHierarchyMode): List<List<CanvasTool>> = wh
     EditHierarchyMode.PAINT -> listOf(
         listOf(CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER, CanvasTool.PAINT_BLUR),
         listOf(CanvasTool.PAINT_BUCKET, CanvasTool.PAINT_GRADIENT, CanvasTool.PAINT_EYEDROPPER),
-        listOf(CanvasTool.PAINT_SHAPE, CanvasTool.PAINT_SELECT),
+        listOf(CanvasTool.PAINT_SHAPE, CanvasTool.PAINT_SELECT, CanvasTool.PAINT_TRANSFORM),
     )
 }
 
@@ -2159,19 +2162,21 @@ internal class CanvasEditor(
         paintSession?.canRedo() == true
 
     fun undoPaint(layerId: String = targetLayerId(paintTarget()) ?: "") {
+        // Undo during a free transform takes the transform back, as Photoshop's does.
+        if (paintTransform != null) { cancelPaintTransform(); return }
         if (paintWorking) return
         val session = paintSession ?: return
         session.undo()
     }
 
     fun redoPaint(layerId: String = targetLayerId(paintTarget()) ?: "") {
-        if (paintWorking) return
+        if (paintWorking || paintTransformInFlight) return
         val session = paintSession ?: return
         session.redo()
     }
 
     fun jumpToPaintStroke(index: Int) {
-        if (paintWorking) return
+        if (paintWorking || paintTransformInFlight) return
         val session = paintSession ?: return
         session.jumpToStroke(index)
     }
@@ -2188,6 +2193,7 @@ internal class CanvasEditor(
         }
         retirePaintSession { it.dismiss() }
         paintSession = null
+        dropPaintTransformState()
         isPainting = false
         paintStrokeStart = null
         paintStrokeCurrent = null
@@ -2207,6 +2213,7 @@ internal class CanvasEditor(
         if (paintSession == null) return
         retirePaintSession { it.discard() }
         paintSession = null
+        dropPaintTransformState()
         isPainting = false
         paintStrokeStart = null
         paintStrokeCurrent = null
@@ -2215,12 +2222,15 @@ internal class CanvasEditor(
     }
 
     fun clearCurrentLayerPaint() {
+        if (paintTransformInFlight) return
         val session = paintSession ?: ensurePaintSession() ?: return
         val name = tr("editor.paint.strokeClear")
         paintInBackground { session.clear(name) }
     }
 
     fun promptCommitPaintSession() {
+        // A transform in hand lands first; the commit follows once it has.
+        if (paintTransform != null) { applyPaintTransform { promptCommitPaintSession() }; return }
         if (paintWorking) return
         val session = paintSession ?: return
         if (!session.isDirty) return
@@ -2356,6 +2366,7 @@ internal class CanvasEditor(
 
     /** Changes the paint session's selection; [mode] and the fields [build] adds are one selection request. */
     private fun paintSelect(mode: String, op: io.github.psd2live.core.PaintSelectionOp? = null, build: JsonObjectBuilder.() -> Unit = {}) {
+        if (paintTransformInFlight) return
         val session = paintSession ?: ensurePaintSession() ?: return
         if (isPainting && tool != CanvasTool.PAINT_SELECT) return
         val request = buildJsonObject {
@@ -2393,6 +2404,7 @@ internal class CanvasEditor(
 
     /** Fills the selection, or the whole layer without one, with the foreground colour - the background one for [secondary]. */
     fun fillPaintSelection(secondary: Boolean = false) {
+        if (paintTransformInFlight) return
         val session = paintSession ?: ensurePaintSession() ?: return
         if (isPainting) return
         val color = if (secondary) paintSecondaryColor else paintColor
@@ -2402,6 +2414,7 @@ internal class CanvasEditor(
 
     /** Clears what the selection holds, the way Delete does in Photoshop; without a selection there is nothing to clear. */
     fun deletePaintSelection() {
+        if (paintTransformInFlight) return
         val session = paintSession ?: return
         if (isPainting || !session.hasSelection) return
         val name = tr("editor.paint.strokeDeleteSelection")
@@ -2423,6 +2436,7 @@ internal class CanvasEditor(
             ShortcutAction.TOOL_PAINT_SELECT -> activateTool(CanvasTool.PAINT_SELECT)
             ShortcutAction.TOOL_PAINT_GRADIENT -> activateTool(CanvasTool.PAINT_GRADIENT)
             ShortcutAction.TOOL_PAINT_BLUR -> activateTool(CanvasTool.PAINT_BLUR)
+            ShortcutAction.TOOL_PAINT_TRANSFORM -> activateTool(CanvasTool.PAINT_TRANSFORM)
             ShortcutAction.PAINT_DESELECT -> deselectPaint()
             ShortcutAction.PAINT_FILL_SELECTION -> fillPaintSelection()
             ShortcutAction.PAINT_RESET_COLORS -> resetPaintColors()
@@ -2566,6 +2580,133 @@ internal class CanvasEditor(
         }
     }
 
+    /** A free transform in hand: the box over the lifted pixels, where they sat on the raster, and how they look. */
+    internal class PaintTransformInHand(val box: PaintTransformBox, val region: java.awt.Rectangle,
+        val preview: androidx.compose.ui.graphics.ImageBitmap)
+
+    /** The free transform in hand, or null; its pixels are off the raster ([io.github.psd2live.application.WorkspacePaintSession.lift]) meanwhile. */
+    var paintTransform by mutableStateOf<PaintTransformInHand?>(null)
+        private set
+    /** Smooth (bilinear) resampling for a transform; off keeps hard pixels, for pixel art. */
+    var paintTransformSmooth by mutableStateOf(true)
+    /** Whether a lift is being worked out: the box arrives when it has. */
+    private var paintTransformLifting by mutableStateOf(false)
+    /** Bumped whenever a transform is dropped, so a lift arriving after is put back rather than shown. */
+    private var paintTransformSerial = 0
+    private var paintTransformHandle: PaintTransformBox.Handle? = null
+    private var paintTransformStart = io.github.psd2live.project.LayerTransform.IDENTITY
+    private var paintTransformFrom = Offset.Zero
+
+    /** Whether a free transform is in hand or on its way: the other paint commands wait for it to be applied or cancelled. */
+    val paintTransformInFlight: Boolean get() = paintTransform != null || paintTransformLifting
+
+    /**
+     * Lifts the selection's pixels - the layer's, without one - into a free transform box. Nothing happens on a layer
+     * with nothing on it, which the bar says.
+     */
+    fun beginPaintTransform() {
+        if (paintTransformInFlight || isPainting) return
+        val session = paintSession ?: ensurePaintSession() ?: return
+        val serial = paintTransformSerial
+        paintTransformLifting = true
+        paintInBackground {
+            var lift: io.github.psd2live.application.WorkspacePaintLift? = null
+            var answered = false
+            try { lift = session.lift(); answered = true } finally {
+                val taken = lift
+                val preview = taken?.let { lifted ->
+                    BufferedImage(lifted.region.width, lifted.region.height, BufferedImage.TYPE_INT_ARGB).also {
+                        it.setRGB(0, 0, lifted.region.width, lifted.region.height, lifted.pixels, 0, lifted.region.width)
+                    }.toImageBitmapFast()
+                }
+                java.awt.EventQueue.invokeLater {
+                    paintTransformLifting = false
+                    when {
+                        // A failed lift has said why already; one with nothing to take says so here.
+                        taken == null || preview == null -> if (answered && serial == paintTransformSerial) error = tr("editor.paintTransform.nothing")
+                        serial != paintTransformSerial || paintSession !== session -> paintInBackground { session.abandonStroke() }
+                        else -> paintTransform = PaintTransformInHand(paintTransformBox(session, taken.region), taken.region, preview)
+                    }
+                }
+            }
+        }
+    }
+
+    /** The box over raster [region] of [session], as the canvas shows it through the layer's transform. */
+    private fun paintTransformBox(session: PaintSession, region: java.awt.Rectangle): PaintTransformBox {
+        fun shown(x: Int, y: Int): Offset {
+            val fx = session.originX + x / session.scaleX; val fy = session.originY + y / session.scaleY
+            return Offset(session.frame.x(fx, fy), session.frame.y(fx, fy))
+        }
+        val origin = shown(region.x, region.y)
+        return PaintTransformBox(origin, shown(region.x + region.width, region.y) - origin, shown(region.x, region.y + region.height) - origin)
+    }
+
+    /**
+     * Lays the transformed pixels down as one stroke - Enter, or picking another tool - and runs [then] once they are.
+     * A box never moved puts the pixels back as they were and records nothing.
+     */
+    fun applyPaintTransform(then: () -> Unit = {}) {
+        val hand = paintTransform ?: return
+        val session = paintSession ?: return
+        paintTransform = null
+        paintTransformHandle = null
+        isPainting = false
+        val shown = hand.box.transform
+        // The box moved the pixels as the canvas shows them; the session takes the same move in the layer's own frame.
+        val frame = session.frame
+        val matrix = frame.inverse().after(shown.after(frame))
+        val name = tr("editor.paint.strokeTransform"); val smooth = paintTransformSmooth
+        paintInBackground {
+            if (shown.isIdentity) session.abandonStroke() else session.transform(matrix, smooth, name)
+            java.awt.EventQueue.invokeLater(then)
+        }
+    }
+
+    /**
+     * Puts the lifted pixels back where they were: Esc, or undo while transforming. [now] does it before returning
+     * rather than after the edits queued, for a window closing on the session.
+     */
+    fun cancelPaintTransform(now: Boolean = false) {
+        if (!paintTransformInFlight) return
+        val session = paintSession
+        paintTransformSerial++
+        val hand = paintTransform
+        paintTransform = null
+        paintTransformHandle = null
+        if (hand == null || session == null) return
+        if (now) session.abandonStroke() else paintInBackground { session.abandonStroke() }
+    }
+
+    /** Forgets a transform whose session has gone: the session's end already put its pixels back. */
+    private fun dropPaintTransformState() {
+        paintTransformSerial++
+        paintTransform = null
+        paintTransformHandle = null
+    }
+
+    /** A press of the transform tool: a handle, the inside or the outside of the box; without a box, one is lifted. */
+    private fun pressPaintTransform(pos: Offset, viewport: CanvasViewport) {
+        val hand = paintTransform
+        if (hand == null) {
+            isPainting = false; dragging = false
+            beginPaintTransform()
+            return
+        }
+        val here = canvasPoint(pos, viewport)
+        paintTransformHandle = hand.box.hit(here, PAINT_TRANSFORM_HANDLE_PX / viewport.scale.toFloat())
+        paintTransformStart = hand.box.transform
+        paintTransformFrom = here
+    }
+
+    /** Drags the box: Shift frees a corner's proportions and steps a turn by 15°, Alt scales about the middle. */
+    private fun movePaintTransform(pos: Offset, viewport: CanvasViewport, shift: Boolean, alt: Boolean) {
+        val hand = paintTransform ?: return
+        val handle = paintTransformHandle ?: return
+        hand.box.transform = hand.box.dragged(handle, paintTransformStart, paintTransformFrom, canvasPoint(pos, viewport),
+            free = shift, fromCenter = alt, snap = shift)
+    }
+
     /** Lands the gradient dragged from [paintStrokeStart] to [paintStrokeCurrent]. */
     private fun releasePaintGradient(viewport: CanvasViewport) {
         val session = paintSession ?: return
@@ -2599,9 +2740,10 @@ internal class CanvasEditor(
             poseDrag = null; draggingIkTargetId = null; ikTargetDragOrigin = null; ikTargetDragValues = null; ikTargetPoseDraft = null
             viewModel.cancelParameterScrub()
         }
+        cancelPaintTransform()
         // Every tip edits pixels as it goes, so an abandoned gesture has to give them back.
         val session = paintSession
-        if (isPainting && session != null) {
+        if (isPainting && session != null && tool != CanvasTool.PAINT_TRANSFORM) {
             session.abandonStroke()
             session.refreshPreview()
         }
@@ -2671,9 +2813,12 @@ internal class CanvasEditor(
             if (!hasPartFor(mode)) { deferMode(mode, next); return }
             enterMode(mode)
         }
+        // Another tool puts a free transform in hand down where it is, as Photoshop's Apply does.
+        if (next != CanvasTool.PAINT_TRANSFORM) applyPaintTransform()
         cancel()
         tool = next
         error = null
+        if (next == CanvasTool.PAINT_TRANSFORM && hierarchyMode == EditHierarchyMode.PAINT) beginPaintTransform()
         if (next == CanvasTool.LASSO_SELECT) selectionStyle = SelectionStyle.LASSO
         else if (next == CanvasTool.SELECT) selectionStyle = SelectionStyle.BOX
         if (next == CanvasTool.SELECT && objectMode) selection = emptyMap()
@@ -6119,6 +6264,7 @@ internal class CanvasEditor(
                 // Picking a colour rather than drawing one: the eyedropper's own gesture, and what Alt
                 // does to every paint tool. The pick follows the pointer for as long as the button is
                 // down, so a colour can be scrubbed for instead of guessed at in one click.
+                tool == CanvasTool.PAINT_TRANSFORM -> pressPaintTransform(pos, viewport)
                 tool == CanvasTool.PAINT_EYEDROPPER || (alt && tool != CanvasTool.PAINT_SELECT) -> {
                     isSampling = true
                     // Alt means two different things here, as it does in Photoshop: on the eyedropper it
@@ -6565,6 +6711,8 @@ internal class CanvasEditor(
                 lastPaintPoint = tipAt
             } else if (tool == CanvasTool.PAINT_SELECT) {
                 movePaintSelect(pos, viewport)
+            } else if (tool == CanvasTool.PAINT_TRANSFORM) {
+                movePaintTransform(pos, viewport, shift, alt)
             }
             return
         }
@@ -6875,6 +7023,7 @@ internal class CanvasEditor(
                         session.recordStroke(toolName)
                     }
                     tool == CanvasTool.PAINT_SELECT -> releasePaintSelect(vp)
+                    tool == CanvasTool.PAINT_TRANSFORM -> paintTransformHandle = null
                     tool == CanvasTool.PAINT_GRADIENT -> releasePaintGradient(vp)
                     tool == CanvasTool.PAINT_SHAPE -> {
                         val s = paintStrokeStart
@@ -7118,6 +7267,9 @@ private const val POLYGON_CLOSE_PX = 8f
 
 /** The most points a lasso request carries ([io.github.psd2live.application.WorkspacePaintSessionSchemas.selection]). */
 private const val LASSO_MAX_POINTS = 4096
+
+/** How near, in screen pixels, a press must come to a free transform handle to take it. */
+private const val PAINT_TRANSFORM_HANDLE_PX = 8f
 
 /** How far, in screen pixels, the quick selection brush moves before the stretch since the last piece is selected. */
 private const val QUICK_SELECT_STEP_PX = 12f

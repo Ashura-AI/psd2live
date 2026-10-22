@@ -148,6 +148,12 @@ internal fun DrawScope.drawToolIcon(
         CanvasTool.PAINT_SELECT -> pen.paintSelect(paintSelectShape ?: PaintSelectShape.RECTANGLE)
         CanvasTool.PAINT_GRADIENT -> pen.paintGradient()
         CanvasTool.PAINT_BLUR -> pen.blurDrop()
+        // A dashed box with its corner handles, a stroke inside it: the pixels in a free transform.
+        CanvasTool.PAINT_TRANSFORM -> {
+            pen.box(3f, 3f, 12f, 12f, r = 0f, dash = floatArrayOf(1.6f, 1.6f))
+            for (x in listOf(3f, 15f)) for (y in listOf(3f, 15f)) pen.fillBox(x - 1.5f, y - 1.5f, 3f, 3f, r = 0f)
+            pen.line(6.4f, 11.6f, 11.6f, 6.4f, width = 1.6f)
+        }
     }
 }
 

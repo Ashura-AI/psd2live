@@ -12,6 +12,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 data class WorkspacePaintStroke(val id: String, val name: String)
 
+/** What [WorkspacePaintSession.lift] took off the raster for a transform in hand: [region] in raster pixels, its straight ARGB [pixels]. */
+class WorkspacePaintLift(val region: Rectangle, val pixels: IntArray)
+
 /**
  * One private raster and stroke history, shared by UI and public session controls.
  *
@@ -41,6 +44,8 @@ class WorkspacePaintSession internal constructor(
     private val buffer = PaintRasterSession(layerId, layerName, image, copy(image))
     private var version = 0L
     private var active = false
+    /** Whether the live edit in hand is a [lift], which a `transform` gesture puts back before it lands. */
+    private var lifted = false
     private var committing = false
     private var closed = false
     private var completion: WorkspaceMutationResult? = null
@@ -199,26 +204,56 @@ class WorkspacePaintSession internal constructor(
         writable(allowActive = true); buffer.recordStroke(name); active = false; changed()
     }
     fun abandonStroke(expected: String? = null) = synchronized(lock) {
-        writable(expected, allowActive = true); buffer.abandonStroke(); active = false; changed()
+        writable(expected, allowActive = true); buffer.abandonStroke(); active = false; lifted = false; changed()
+    }
+
+    /** What a `transform` gesture takes: the selection's bounds, else every pixel of the raster that is not transparent. */
+    private fun transformRegion(): Rectangle? =
+        selection?.bounds ?: PaintPixelTransform.contentBounds(buffer.workingImage, Rectangle(0, 0, imageWidth, imageHeight))
+
+    /**
+     * Takes what a `transform` would move off the raster while it is being placed, as Photoshop shows a free transform:
+     * a live edit, outside the history, that [abandonStroke] puts back and a `transform` gesture puts back before it
+     * lands. Null - and nothing taken - when there is nothing to move.
+     */
+    fun lift(): WorkspacePaintLift? = synchronized(lock) {
+        writable()
+        val region = transformRegion() ?: return null
+        val pixels = PaintPixelTransform.lifted(buffer.workingImage, region, selection)
+        buffer.willWrite(region)
+        PaintPixelTransform.clear(buffer.workingImage, region, selection)
+        active = true; lifted = true
+        changed()
+        WorkspacePaintLift(region, pixels)
     }
     fun gesture(request: JsonObject, name: String = request.getValue("mode").jsonPrimitive.content,
         expected: String? = null, checkpoint: () -> Unit = {}) = synchronized(lock) {
-        writable(expected)
-        validateOperationSchema(request, WorkspacePaintSessionSchemas.gesture)
         val mode = request.getValue("mode").jsonPrimitive.content
+        val transform = mode == "transform"
+        writable(expected, allowActive = transform && lifted)
+        validateOperationSchema(request, WorkspacePaintSessionSchemas.gesture)
+        if (lifted) { buffer.abandonStroke(); active = false; lifted = false }
         val lockAlpha = request["lock_alpha"]?.jsonPrimitive?.boolean ?: false
         // Keeping the alpha of what is painted while taking it away contradicts itself; the editor's eraser paints the
         // background colour under lock transparency instead, which a public gesture asks for as a brush stroke.
         require(!lockAlpha || (mode != "eraser" && mode != "clear")) { "lock_alpha does not apply to $mode: paint the colour with a brush instead" }
         // One tile patch is the rollback boundary for a fill, shape or complete public stroke.
+        // A transform moves the selection's pixels rather than painting inside it; with nothing to move it does nothing.
+        val area = if (transform) transformRegion() ?: run { changed(); return@synchronized } else gestureArea()
         try {
             paintRasterGesture(buffer.workingImage, request, object : WorkspaceRasterWork {
                 override fun checkpoint() = checkpoint()
                 override fun progress(fraction: Float, message: String) {}
-            }, before = { checkpoint(); buffer.willWrite(it) }, space = space, area = gestureArea())
+            }, before = { checkpoint(); buffer.willWrite(it) }, space = space, area = area, selection = selection.takeIf { transform })
             // Every gesture lands through the selection, and with lock_alpha only on what is already painted.
-            buffer.confinePending(selection, lockAlpha)
-            checkpoint(); buffer.recordStroke(name); changed()
+            if (!transform) buffer.confinePending(selection, lockAlpha)
+            checkpoint(); buffer.recordStroke(name)
+            // The selection goes where its pixels went.
+            if (transform) selection?.let { current ->
+                selection = PaintPixelTransform.mapSelection(current, rasterTransformMatrix(request, space))
+                selectionRevision++
+            }
+            changed()
         } catch (failure: Throwable) { buffer.abandonStroke(); publish(); throw failure }
     }
     /**

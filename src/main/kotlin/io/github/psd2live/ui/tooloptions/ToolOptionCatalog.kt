@@ -158,6 +158,9 @@ internal val PAINT_FEATHER = SliderOption("paint.feather", "editor.paintSelect.f
 internal val PAINT_SELECT_GROW = SliderOption("paint.selectGrow", "editor.paintSelect.grow", OptionUnit.PX, { 1f..256f },
     { it.paintSelectGrow }, { e, v -> e.paintSelectGrow = v }, logarithmic = true)
 
+internal val PAINT_TRANSFORM_SMOOTH = ToggleOption("paint.transformSmooth", "editor.paintTransform.smooth",
+    { it.paintTransformSmooth }, { e, on -> e.paintTransformSmooth = on })
+
 internal val PAINT_GRADIENT_KIND = ChoiceOption("paint.gradientKind", "editor.paintGradient.kind", { listOf(false, true) },
     { _, radial -> tr(if (radial) "editor.paintGradient.radial" else "editor.paintGradient.linear") }, { it.paintGradientRadial },
     { e, radial -> e.paintGradientRadial = radial })
@@ -682,6 +685,14 @@ private fun MutableList<ToolOption>.addPaint(editor: CanvasEditor) {
             add(PAINT_OPACITY)
             if (editor.paintShape.canFill) add(PAINT_FILL)
             add(PAINT_LOCK_ALPHA)
+        }
+        CanvasTool.PAINT_TRANSFORM -> {
+            add(NoteOption("paint.transformHint", { e -> tr(if (e.paintTransform == null) "editor.paintTransform.start" else "editor.paintTransform.hint") }))
+            add(PAINT_TRANSFORM_SMOOTH)
+            add(ActionOption("paint.transformApply", "editor.paintTransform.apply", { it.paintTransform != null }, { it.applyPaintTransform() },
+                OptionIcon.CONFIRM, primary = true, place = OptionPlace.TOP))
+            add(ActionOption("paint.transformCancel", "action.cancel", { it.paintTransform != null }, { it.cancelPaintTransform() },
+                OptionIcon.CANCEL, place = OptionPlace.TOP))
         }
         CanvasTool.PAINT_SELECT -> {
             add(PAINT_SELECT_KIND)

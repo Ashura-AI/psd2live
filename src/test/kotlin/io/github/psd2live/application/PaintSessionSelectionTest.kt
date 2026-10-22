@@ -80,6 +80,49 @@ class PaintSessionSelectionTest {
     }
 
     @Test
+    fun aFreeTransformLiftsMovesAndUndoesAsOneStroke() {
+        val session = session()
+        session.select(buildJsonObject { put("mode", "rectangle"); put("from", point(0, 0)); put("to", point(10, 10)); put("antialias", false) })
+        session.gesture(buildJsonObject { put("mode", "fill"); put("color", rgba(255, 0, 0)) }, "fill")
+        val strokes = session.strokes.size
+
+        // Lifted: the pixels are off the raster while the box is in hand, and every other edit waits.
+        val lift = requireNotNull(session.lift())
+        assertEquals(java.awt.Rectangle(0, 0, 10, 10), lift.region)
+        assertEquals(0, session.sample(5, 5))
+        assertFailsWith<WorkspaceBusy> { session.gesture(buildJsonObject { put("mode", "clear") }, "clear") }
+        // Cancelled: back as they were, nothing recorded.
+        session.abandonStroke()
+        assertEquals(0xFFFF0000.toInt(), session.sample(5, 5))
+        assertEquals(strokes, session.strokes.size)
+
+        session.lift()
+        session.gesture(buildJsonObject { put("mode", "transform"); put("smooth", false)
+            put("matrix", JsonArray(listOf(1, 0, 0, 1, 20, 5).map(::JsonPrimitive))) }, "transform")
+        assertEquals(0, session.sample(5, 5))
+        assertEquals(0xFFFF0000.toInt(), session.sample(25, 10))
+        assertEquals(strokes + 1, session.strokes.size)
+        assertEquals(java.awt.Rectangle(20, 5, 10, 10), session.selectionBounds, "the selection goes with its pixels")
+        session.undo()
+        assertEquals(0xFFFF0000.toInt(), session.sample(5, 5))
+        assertEquals(0, session.sample(25, 10))
+    }
+
+    @Test
+    fun aTransformWithoutASelectionTakesTheLayersContent() {
+        val session = session()
+        session.select(buildJsonObject { put("mode", "rectangle"); put("from", point(4, 4)); put("to", point(8, 8)); put("antialias", false) })
+        session.gesture(buildJsonObject { put("mode", "fill"); put("color", rgba(0, 0, 255)) }, "fill")
+        session.select(buildJsonObject { put("mode", "none") })
+        assertEquals(java.awt.Rectangle(4, 4, 4, 4), session.lift()?.region)
+        session.gesture(buildJsonObject { put("mode", "transform"); put("smooth", false)
+            put("matrix", JsonArray(listOf(2, 0, 0, 2, 0, 0).map(::JsonPrimitive))) }, "transform")
+        assertEquals(0xFF0000FF.toInt(), session.sample(15, 15))
+        assertEquals(0, session.sample(5, 5))
+        assertNull(session.selectionBounds)
+    }
+
+    @Test
     fun aFillWithoutASelectionCoversTheLayerNotTheCanvas() {
         val session = WorkspacePaintSession("s", "p", "state", "layer", "Layer", BufferedImage(40, 40, BufferedImage.TYPE_INT_ARGB),
             space = io.github.psd2live.core.PaintSpace.canvas(40, 40, java.awt.Rectangle(10, 10, 10, 10)), validateWorkspace = {})

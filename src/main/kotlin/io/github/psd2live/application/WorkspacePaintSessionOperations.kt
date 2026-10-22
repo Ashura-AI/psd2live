@@ -28,6 +28,9 @@ internal object WorkspacePaintSessionSchemas {
         branch("blur", mapOf("points" to s.array(s.vector(2), 1, 512), "radius" to s.number(0.5, 512),
             "hardness" to s.number(0, 1)), setOf("points")),
         branch("fill", emptyMap(), emptySet()),
+        // Free transform of the selection's pixels - the layer's content without one - by an affine map in canvas units.
+        s.obj(mapOf("mode" to s.constant("transform"), "matrix" to s.array(s.number(), 6, 6), "smooth" to s.boolean()),
+            setOf("mode", "matrix")),
         branch("gradient", mapOf("from" to s.vector(2), "to" to s.vector(2), "end_color" to color,
             "kind" to s.choices("linear", "radial")), setOf("from", "to")),
     ))
