@@ -570,7 +570,7 @@ private fun InteriorBody(
 	}
 }
 
-/** Arms the interior tool on the active canvas, in edit mode, and hands the keyboard back to the canvas. */
+/** Arms the interior tool on the active canvas, in object mode, and hands the keyboard back to the canvas. */
 private fun editInteriorOnCanvas(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	val canvas = state.activeCanvas.id
 	if (state.activeCanvas.mode != CanvasMode.EDIT) vm.setCanvasMode(canvas, CanvasMode.EDIT)

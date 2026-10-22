@@ -268,17 +268,28 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 
 	// ── Gestures ───────────────────────────────────────────────────────────────
 
-	fun press(pos: Offset, viewport: CanvasViewport, ctrl: Boolean, alt: Boolean) {
-		val scene = scene() ?: run { editor.error = missing(); return }
-		val at = raster(scene, pos, viewport) ?: return
+	/**
+	 * Takes a press: a handle or guide under it, the next point of the line being drawn, or the first point of a new one.
+	 * False, leaving the press to the editor, when there is no effect to edit or the press lands on another object
+	 * than the effect's mesh - object mode picks that one instead.
+	 */
+	fun press(pos: Offset, viewport: CanvasViewport, ctrl: Boolean, alt: Boolean): Boolean {
+		val scene = scene() ?: return false
+		val part = if (drawing.isEmpty()) hit(scene, pos, viewport) else null
+		if (drawing.isEmpty() && part == null) {
+			// A fold starts on the mesh or on empty canvas beside it; another object under the press is picked.
+			val under = editor.layerCandidates(pos, viewport)
+			if (under.isNotEmpty() && editor.state.selectedLayerId !in under) return false
+		}
+		val at = raster(scene, pos, viewport) ?: return true
 		if (drawing.isNotEmpty()) {
 			// A click on the last point drawn ends the line, as Enter does.
 			val last = screen(scene, listOf(drawing.last()), viewport).singleOrNull()
 			if (last != null && (last - pos).getDistance() <= POINT_REACH) finish() else drawing = drawing + at
-			return
+			return true
 		}
 		val draft = scene.draft
-		when (val part = hit(scene, pos, viewport)) {
+		when (part) {
 			null -> {
 				selected = null
 				drawing = listOf(at)
@@ -300,7 +311,7 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 			is Part.Segment -> {
 				selected = draft.guides[part.guide].id to null
 				if (ctrl) {
-					val inserted = InteriorGuideEdits.insert(draft.guides, part.guide, part.segment, at) ?: return
+					val inserted = InteriorGuideEdits.insert(draft.guides, part.guide, part.segment, at) ?: return true
 					begin(Part.Point(part.guide, part.segment + 1), scene, at, inserted)
 					draft.guides = inserted
 					selected = inserted[part.guide].id to part.segment + 1
@@ -309,6 +320,7 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 			}
 			is Part.Handle, is Part.Radius -> begin(part, scene, at)
 		}
+		return true
 	}
 
 	private fun begin(part: Part, scene: Scene, at: InteriorPoint, base: List<InteriorGuide> = scene.draft.guides) {

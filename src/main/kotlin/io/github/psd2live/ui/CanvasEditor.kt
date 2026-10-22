@@ -134,7 +134,10 @@ internal enum class CanvasTool(val action: ShortcutAction) {
     PAINT_EYEDROPPER(ShortcutAction.TOOL_PAINT_EYEDROPPER),
     /** Line, rectangle and ellipse: one tool with a [paintShape], not three tools. */
     PAINT_SHAPE(ShortcutAction.TOOL_PAINT_LINE),
-    /** Edit-mode handles of the selected mesh's interior effect: its surface, propagation and guides ([InteriorCanvasTool]). */
+    /**
+     * Object-mode handles of the selected mesh's interior effect: its surface, propagation and guides ([InteriorCanvasTool]).
+     * Object mode draws no mesh points, so the handles do not sit among vertices.
+     */
     INTERIOR(ShortcutAction.TOOL_INTERIOR),
     /** Marquee, lasso, polygon lasso and magic wand: one tool with a [paintSelectShape]. */
     PAINT_SELECT(ShortcutAction.TOOL_PAINT_SELECT),
@@ -346,6 +349,7 @@ internal fun toolbarRows(mode: EditHierarchyMode): List<List<CanvasTool>> =
 internal fun toolbarGroups(mode: EditHierarchyMode): List<List<CanvasTool>> = when (mode) {
     EditHierarchyMode.SELECT -> listOf(
         listOf(CanvasTool.SELECT, CanvasTool.TRANSFORM, CanvasTool.LASSO_SELECT),
+        listOf(CanvasTool.INTERIOR),
     )
     EditHierarchyMode.DEFORM -> listOf(
         listOf(CanvasTool.SELECT, CanvasTool.TRANSFORM, CanvasTool.LASSO_SELECT, CanvasTool.BRUSH_SELECT),
@@ -355,7 +359,6 @@ internal fun toolbarGroups(mode: EditHierarchyMode): List<List<CanvasTool>> = wh
         listOf(CanvasTool.SELECT, CanvasTool.TRANSFORM, CanvasTool.LASSO_SELECT, CanvasTool.BRUSH_SELECT),
         listOf(CanvasTool.BRUSH, CanvasTool.SMOOTH, CanvasTool.INFLATE),
         listOf(CanvasTool.MESH_POINT, CanvasTool.SUBDIVIDE, CanvasTool.GLUE),
-        listOf(CanvasTool.INTERIOR),
     )
     EditHierarchyMode.SIMULATE -> listOf(
         listOf(CanvasTool.WEIGHT_PAINT, CanvasTool.WEIGHT_GRADIENT),
@@ -3481,12 +3484,11 @@ internal class CanvasEditor(
      * Creation tools are handled separately and never force Edit.
      */
     internal fun modeForTool(tool: CanvasTool): EditHierarchyMode = when {
-        tool == CanvasTool.TRANSFORM -> EditHierarchyMode.SELECT
+        tool == CanvasTool.TRANSFORM || tool == CanvasTool.INTERIOR -> EditHierarchyMode.SELECT
         tool in SKELETON_TOOLS -> EditHierarchyMode.SKELETON
         tool in PAINT_TOOLS -> EditHierarchyMode.PAINT
         tool in WEIGHT_TOOLS -> EditHierarchyMode.SIMULATE
         tool == CanvasTool.SUBDIVIDE || tool == CanvasTool.MESH_POINT -> EditHierarchyMode.EDIT
-        tool == CanvasTool.INTERIOR -> EditHierarchyMode.EDIT
         else -> EditHierarchyMode.DEFORM
     }
 
@@ -6070,10 +6072,17 @@ internal class CanvasEditor(
             return true
         }
 
-        // The interior tool's handles and guides own its presses: a miss starts a fold line, never a selection.
+        // The interior tool's handles and guides own its presses, and a press on its mesh or empty canvas starts a fold
+        // line. A press on another object picks it, as object mode does, so the handles move to it.
         if (tool == CanvasTool.INTERIOR) {
-            interiorTool.press(pos, viewport, ctrl, alt)
-            dragging = interiorTool.dragging
+            if (interiorTool.press(pos, viewport, ctrl, alt)) {
+                dragging = interiorTool.dragging
+                return true
+            }
+            val pick = objectPick(pos, viewport, ctrl = false)
+            if (pick == null) { error = interiorTool.missing(); return true }
+            deselectSkeleton()
+            applyObjectPick(pick, null)
             return true
         }
         // A temporary warp owns the canvas until it ends: a press off its lattice does nothing.
