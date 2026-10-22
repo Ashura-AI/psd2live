@@ -65,6 +65,8 @@ object TimelineAidsEdits {
             // Turning an aid off never needs the parameter: it may be gone.
             is TimelineAidsEdit.Bookmark -> {
                 if (edit.bookmarked) parameter(edit.parameterId)
+                // Unchanged stays the same value, so the saved state keeps its token.
+                if (edit.bookmarked == (edit.parameterId in current.bookmarks)) return current
                 val without = current.bookmarks - edit.parameterId
                 current.copy(bookmarks = if (edit.bookmarked) without + edit.parameterId else without)
             }

@@ -37,6 +37,7 @@ class TimelineAidsTest {
         assertEquals(listOf("marker_2", "marker_1"), aids.clip("motion_1").markers.map { it.id }, "markers keep time order")
         assertEquals("hit", aids.clip("motion_1").markers.last().label)
         assertEquals("marker_3", TimelineAidsEdits.nextMarkerId(aids.clip("motion_1")))
+        assertSame(aids, apply(aids, TimelineAidsEdit.Bookmark("ParamWheel", true)), "bookmarking again changes nothing")
 
         assertFailsWith<IllegalArgumentException> { apply(aids, TimelineAidsEdit.Freeze("motion_1", "ParamAngleX", 40f)) }
         assertFailsWith<IllegalArgumentException> { apply(aids, TimelineAidsEdit.Shy("motion_1", "ParamGone", true)) }

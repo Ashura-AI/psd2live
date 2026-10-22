@@ -192,6 +192,8 @@ object Cmo3Import {
 					min = source.minValue,
 					max = source.maxValue,
 					default = source.defaultValue,
+					// CMO3: CParameterSource field isRepeat - the axis wraps past its range.
+					repeat = source.isRepeat,
 					// CMO3: CParameterSource field paramType - MORPH_TARGET marks a blend-shape axis.
 					kind = if ((source.paramType as? Type) == Type.MORPH_TARGET) ParameterKind.BLEND_SHAPE else ParameterKind.NORMAL,
 				)

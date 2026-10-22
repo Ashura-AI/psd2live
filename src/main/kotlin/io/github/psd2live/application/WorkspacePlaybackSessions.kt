@@ -186,10 +186,18 @@ internal class WorkspacePlaybackSessions(private val runtime: WorkspaceRuntime<R
         putJsonObject("values") { values.forEach { (id, value) -> put(id.raw, value) } }
     }
 
+    /** The last record decoded: playback asks every frame, and the record changes only with an auxiliary edit. */
+    @Volatile private var decodedAids: Pair<JsonElement?, io.github.psd2live.project.TimelineAids>? = null
+
+    private fun timelineAids(record: JsonElement?): io.github.psd2live.project.TimelineAids {
+        decodedAids?.let { (source, aids) -> if (source === record) return aids }
+        return io.github.psd2live.project.TimelineAidsCodec.decode(record).also { decodedAids = record to it }
+    }
+
     /** The tracks of [clip] the motion editor froze: they hold their value while the clip plays or scrubs. */
     private fun frozen(capture: WorkspaceCapture<RigPreviewModel>, clip: MotionClip?): Map<ParameterId, Float> {
         if (clip == null) return emptyMap()
-        val aids = io.github.psd2live.project.TimelineAidsCodec.decode(capture.auxiliary[io.github.psd2live.project.TimelineAidsCodec.KEY])
+        val aids = timelineAids(capture.auxiliary[io.github.psd2live.project.TimelineAidsCodec.KEY])
         return aids.clip(io.github.psd2live.project.TimelineAids.keyOf(clip.id, clip.builtin)).frozen
             .filterKeys { id -> clip.curve(id) != null }.mapKeys { ParameterId(it.key) }
     }

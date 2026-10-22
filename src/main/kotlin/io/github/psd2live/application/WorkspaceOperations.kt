@@ -26,7 +26,9 @@ internal class WorkspaceOperations(private val workspace: WorkspaceBackend,
         registerSimulationPreviewOperations(registry, workspace, workspace, jobs)
         registerPhysicsAuditionOperations(registry, workspace)
         registerLayoutOperations(registry, workspace, workspace, jobs)
-        registerDocumentBatch(registry, workspace, workspace, jobs)
+        registerDocumentBatch(registry, workspace, workspace, jobs) { edits ->
+            WorkspaceMotionIds.chosen(edits, workspace.captureQueries().motionClips(), workspace.savedProjectData().data.timelineAids)
+        }
         registerIntentOperations(registry, workspace, workspace, jobs)
         registerAuxiliaryOperations(registry, workspace, workspace)
         registerTimelineAidsOperations(registry, workspace)

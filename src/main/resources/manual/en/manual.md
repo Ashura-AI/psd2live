@@ -1231,6 +1231,9 @@ With **Repeat** on, a parameter's value runs on past its maximum from its minimu
 - The preview and the runtimes wrap the value into the range. The maximum and the minimum are the same pose, so the shapes at both ends should match.
 - A motion may key the parameter past its range, up to 64 turns, for a continuous spin; see [[timeline-basic-operation-repeat]].
 - The `moc3` gets the parameter repeat flag (the format from Cubism 5.3), the `cmo3` its `isRepeat`.
+- The value wraps as in Cubism: exactly whole turns past the maximum land on the minimum, and below the minimum on the maximum.
+- Physics inputs and motion fades take the wrapped value, so across the ends they work from the other end, which may differ from a continuous spin.
+- Exporting to a target without repeat, the downgrade report lists each motion curve keyed past the range.
 !> Exporting for an SDK target before Cubism 5.3 drops the setting and lists it in the downgrade report; the runtime then clamps motion values past the range to its ends.
 @@ recording-parameters | Record Parameter Operations and Generate Animations
 @@ copy-and-paste-parameter-values | Copy/Paste Parameter Values
@@ -1619,7 +1622,8 @@ While frozen the track's keys cannot be selected, dragged or keyed, and Auto Key
 For a parameter set to [[repeat]], a motion's keys may go past the parameter's range, for motions that keep turning: a wheel with a range of 0–360 keyed 0 at 0 s and 720 at 1 s turns twice a second.
 - Keys may go up to 64 turns past the range; the curves view draws a dashed line at each whole turn.
 - The preview shows the value wrapped into the range; the exported `motion3.json` keeps the keyed values and the runtime wraps them.
-- When [[loop-editing-support]] closes a looping motion, such a parameter ends on the whole turn nearest its start, so the spin never winds back.
+- Keying on the timeline (auto-key too) writes the turn nearest the curve's own value, never the 180 the preview shows for 540.
+- When [[loop-editing-support]] closes a looping motion, such a parameter ends on the next whole turn in the way it is going (0→170 closes at 360), so the spin never winds back; past 64 turns it fails and changes nothing.
 !> Turning the parameter's repeat off or narrowing its range clamps keys past the range to its ends.
 @@ grapheditor | Graph Editor
 The curve view draws a track as a curve of the value over time, used to tune easing and overshoot. It shares the same area, selection and shortcuts as the dopesheet; click **Curves** on the animation editor toolbar to switch.
@@ -1702,7 +1706,7 @@ A looping motion (an idle, a walk, a spin) has to end where it starts, or every 
 ## Change the loop
 Drag the grip at the end on the ruler to change the loop's length, the same as the toolbar's duration; shortening it removes the keys past the end.
 ## Close the loop
-The close-loop button on the toolbar ({key:MOTION_CLOSE_LOOP}) mends every track at once: it keys 0 and the end, the end taking the start's value ([[repeat]] parameters the nearest whole turn), and where both ends ease, the end arrives at the slope the start leaves with, so the curve meets itself smoothly. This is one undoable history step.
+The close-loop button on the toolbar ({key:MOTION_CLOSE_LOOP}) mends every track that is not frozen at once: it keys 0 and the end, the end taking the start's value ([[repeat]] parameters whole turns on in the way they go), and where the segment into the end eases, the end arrives at the slope the start leaves with, so the curve meets itself smoothly. This is one undoable history step.
 *> The loop is the whole motion: `motion3.json` cannot loop part of one.
 @@ export | Export
 @@ exporting-images | Image and video export

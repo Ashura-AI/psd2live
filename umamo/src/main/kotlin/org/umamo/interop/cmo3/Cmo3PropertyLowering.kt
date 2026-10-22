@@ -151,6 +151,11 @@ internal class Cmo3PropertyLowering(
 							}
 							ParameterField.KIND ->
 								unsupported(ExportEntityCategory.Parameter, diff.id.raw, ExportNoticeReason.ParameterKindChangeNotLowered)
+							ParameterField.REPEAT -> {
+								// CMO3: CParameterSource field isRepeat - the editor's parameter repeat.
+								source.isRepeat = editedParameter.repeat
+								editor.ensureChildSlot(source, "CParameterSource", "isRepeat", "id")
+							}
 						}
 					}
 				}

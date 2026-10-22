@@ -85,3 +85,26 @@ internal object WorkspaceTimelineAidsResultSchemas {
         else -> error("Timeline aid operation has no result schema: $id")
     }
 }
+
+/**
+ * New motion IDs chosen before an edit is recorded, so replay reads them from the request: a deleted motion's ID
+ * stays taken while its timeline aids remain, and a new motion never inherits its frozen, shy or marked tracks.
+ */
+internal object WorkspaceMotionIds {
+    private val fields = mapOf("motion_create" to "id", "motion_duplicate" to "new_id")
+
+    fun chosen(edit: WorkspaceDocumentOperation, clips: List<io.github.psd2live.core.MotionClip>, aids: TimelineAids) =
+        chosen(listOf(edit), clips, aids).single()
+
+    fun chosen(edits: List<WorkspaceDocumentOperation>, clips: List<io.github.psd2live.core.MotionClip>, aids: TimelineAids):
+        List<WorkspaceDocumentOperation> {
+        if (edits.none { it.operation in fields }) return edits
+        val reserved = HashSet(aids.clips.keys)
+        return edits.map { edit ->
+            val field = fields[edit.operation] ?: return@map edit
+            edit.request[field]?.let { reserved += it.jsonPrimitive.content; return@map edit }
+            val id = io.github.psd2live.core.MotionClips.newId(clips, reserved).also { reserved += it }
+            edit.copy(request = JsonObject(edit.request + (field to JsonPrimitive(id))))
+        }
+    }
+}

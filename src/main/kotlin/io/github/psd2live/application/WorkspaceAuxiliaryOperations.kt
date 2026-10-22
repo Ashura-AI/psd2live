@@ -23,7 +23,7 @@ internal fun registerAuxiliaryOperations(registry: WorkspaceOperationRegistry, w
     fun WorkspaceAuxiliarySnapshot.result() = buildJsonObject {
         put("project_id", projectId); put("state", state); put("history_node_id", historyNodeId)
     }
-    fun ParameterSnapshot.json() = WorkspaceAuxiliaryCodec.encode(WorkspaceAuxiliaryData(listOf(this)))
+    fun ParameterSnapshot.json() = WorkspaceAuxiliaryCodec.encode(WorkspaceAuxiliaryData(parameterSnapshots = listOf(this)))
         .getValue("parameterSnapshots").jsonArray.single().jsonObject
     fun snapshot(captured: WorkspaceAuxiliarySnapshot, id: String) = captured.data.parameterSnapshots.firstOrNull { it.id == id }
         ?: throw IllegalArgumentException("Snapshot not found: $id")

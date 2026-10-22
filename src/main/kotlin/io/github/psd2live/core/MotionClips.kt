@@ -223,9 +223,13 @@ object MotionClips {
 	}
 
 	/** A clip id unused by [clips]. */
-	fun newId(clips: List<MotionClip>): String {
+	/**
+	 * An unused motion ID. [reserved] are IDs to skip as well - a deleted motion's, which its timeline aids still
+	 * hold for an undo to find, so a new motion does not inherit them.
+	 */
+	fun newId(clips: List<MotionClip>, reserved: Set<String> = emptySet()): String {
 		var index = clips.size + 1
-		while (clips.any { it.id == "motion_$index" }) index++
+		while (clips.any { it.id == "motion_$index" } || "motion_$index" in reserved) index++
 		return "motion_$index"
 	}
 

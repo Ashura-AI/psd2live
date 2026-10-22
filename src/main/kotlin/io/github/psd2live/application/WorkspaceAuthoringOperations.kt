@@ -878,7 +878,9 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
                         .forEach { (parameter, value) -> put(parameter.raw, value) }
                 }
             }
-            else -> workspace.editMotion(input.text("state"), input).compact()
+            else -> workspace.editMotion(input.text("state"), WorkspaceMotionIds.chosen(
+                WorkspaceDocumentOperation("motion_${input.text("mode")}", input), workspace.captureQueries().motionClips(),
+                workspace.savedProjectData().data.timelineAids).request).compact()
         }
     }
 

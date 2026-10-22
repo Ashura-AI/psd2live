@@ -3,6 +3,7 @@ package io.github.psd2live.targets.cubism
 import io.github.psd2live.format.compile.*
 import io.github.psd2live.format.model.AlphaBlend
 import io.github.psd2live.format.model.Clip
+import io.github.psd2live.format.model.CurveSegment
 import io.github.psd2live.format.model.ColorBlend
 import io.github.psd2live.format.model.GroupMode
 import io.github.psd2live.format.model.Physics
@@ -114,7 +115,8 @@ public object Moc3Target : ExportTarget {
 
 	override fun plan(ir: RigIR, options: ExportOptions): LoweredExport {
 		val bundle = bundle(ir, options)
-		val losses = CapabilityScan.scan(ir, capabilities, options) + losses(ir, options, bundle.report.notices)
+		val losses = CapabilityScan.scan(ir, capabilities, options) + losses(ir, options, bundle.report.notices) +
+			clampedMotions(ir, bundle.report.notices)
 		return object : LoweredExport {
 			override val losses: List<LossEntry> = losses
 			override fun write(sink: OutputSink) = bundle.files.forEach { sink.write(it.name, it.bytes) }
@@ -144,6 +146,28 @@ public object Moc3Target : ExportTarget {
 		}
 		ir.meshes.mapNotNull { entry(it.id, it.blend, it.alphaBlend) } +
 			ir.parts.filter { it.groupMode == GroupMode.ISOLATED }.mapNotNull { entry(it.id, it.composite.blend, it.composite.alphaBlend) }
+	}
+
+	/**
+	 * Each motion curve keyed past the range of a parameter whose repeat the target version stripped: the editor wraps
+	 * it a turn round, the runtime clamps it at the end of the range.
+	 */
+	public fun clampedMotions(ir: RigIR, notices: List<ExportNotice>): List<LossEntry> {
+		val stripped = notices.filterIsInstance<ExportNotice.FeatureStripped>()
+			.filter { it.feature == RuntimeFeature.ParameterRepeat }.flatMapTo(HashSet()) { it.subjects }
+		if (stripped.isEmpty()) return emptyList()
+		val parameters = ir.parameters.filter { it.id in stripped }.associateBy { it.id }
+		return ir.clips.flatMap { clip ->
+			clip.curves.mapNotNull { curve ->
+				val parameter = parameters[curve.parameter] ?: return@mapNotNull null
+				val values = sequenceOf(curve.startValue) + curve.segments.asSequence().flatMap { segment ->
+					if (segment is CurveSegment.Bezier) sequenceOf(segment.c1Value, segment.c2Value, segment.value) else sequenceOf(segment.value)
+				}
+				if (values.all { it in parameter.min..parameter.max }) null
+				else LossEntry("${clip.id}/${parameter.id}", Feature.TIMELINE, Handling.APPROXIMATED,
+					note = "Motion ${clip.name} keys ${parameter.id} past its range; without parameter repeat the runtime clamps it where the editor preview wraps it")
+			}
+		}
 	}
 
 	/** An engine lowering notice as a loss entry. */

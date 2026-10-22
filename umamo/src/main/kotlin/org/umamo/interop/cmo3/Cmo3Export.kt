@@ -273,7 +273,7 @@ object Cmo3Export {
 					diff.parameters.mapNotNull { entityDiff ->
 						when {
 							entityDiff is EntityDiff.Created && entityDiff.id in synthesizedParameters ->
-								EntityDiff.Changed(entityDiff.id, setOf(ParameterField.NAME, ParameterField.RANGE))
+								EntityDiff.Changed(entityDiff.id, setOf(ParameterField.NAME, ParameterField.RANGE, ParameterField.REPEAT))
 
 							entityDiff is EntityDiff.Deleted -> null
 							else -> entityDiff

@@ -25,15 +25,27 @@ object MotionLoops {
 		parameters.associate { it.id.raw to keyLimits(it) }
 
 	/**
-	 * [value] as a repeating axis plays it: unchanged within [min]..[max], else wrapped into [min, max), a value past
-	 * the maximum re-entering at the minimum (Cubism's parameter repeat).
+	 * [value] as a repeating axis plays it, as Cubism's parameter repeat does: unchanged within [min]..[max], a value
+	 * past the maximum re-entering from the minimum and one below the minimum from the maximum - so a whole number of
+	 * turns past the maximum lands on the minimum, and below the minimum on the maximum.
 	 */
 	fun wrap(value: Float, min: Float, max: Float): Float {
 		if (value in min..max) return value
 		val span = max - min
 		if (span <= 0f) return min
-		val turned = (value - min) % span
-		return min + if (turned < 0f) turned + span else turned
+		return if (value > max) min + (value - max) % span else max - (min - value) % span
+	}
+
+	/**
+	 * A value the preview shows for [parameter] - wrapped when it repeats - as a key over a curve whose own value is
+	 * [raw]: the whole turns on that keep it nearest [raw], so keying the shown pose over a spin at 540 keeps 540
+	 * rather than 180, and a turn keyed a little past the end goes on rather than back round.
+	 */
+	fun unwrapped(value: Float, raw: Float?, parameter: Parameter?): Float {
+		if (raw == null || parameter == null || !parameter.repeat) return value
+		val span = parameter.max - parameter.min
+		if (span <= 0f) return value
+		return (value + ((raw - value) / span).roundToInt() * span).coerceIn(keyLimits(parameter))
 	}
 
 	/**
@@ -54,8 +66,9 @@ object MotionLoops {
 
 	/**
 	 * [clip] with each curve of [parameterIds] (every curve when null) ending where it starts: a key at the start and
-	 * one at the end holding the start's value - a repeating parameter's the nearest whole turns on, so a spin keeps
-	 * spinning - and, where both segments at the seam ease, the end arriving at the slope the start leaves with.
+	 * one at the end holding the start's value - a repeating parameter's whole turns on in the way it is going, so a
+	 * spin keeps spinning - and, where the segment into the end eases, the end arriving at the slope the start leaves
+	 * with. Fails rather than clips a spin past [REPEAT_TURNS] turns.
 	 */
 	fun closeLoop(clip: MotionClip, parameters: List<Parameter>, parameterIds: Set<String>? = null): MotionClip {
 		val byId = parameters.associateBy { it.id.raw }
@@ -65,14 +78,26 @@ object MotionLoops {
 		})
 	}
 
+	/** Whole turns from [start] to [end] in the way they go: 0 to 170 of 360 is one turn on, 0 to 540 two. */
+	private fun turns(start: Float, end: Float, span: Float): Int {
+		val turned = (end - start) / span
+		val nearest = turned.roundToInt()
+		return when {
+			abs(turned - nearest) < 1e-4f -> nearest
+			turned > 0f -> kotlin.math.ceil(turned).toInt()
+			else -> kotlin.math.floor(turned).toInt()
+		}
+	}
+
 	private fun closed(curve: MotionCurve, duration: Float, parameter: Parameter?): List<MotionKey> {
 		val eps = MotionClips.TIME_EPSILON
 		val start = MotionClips.sample(curve, 0f)
 		val end = MotionClips.sample(curve, duration)
 		val span = parameter?.let { it.max - it.min } ?: 0f
-		val turns = if (parameter?.repeat == true && span > 0f) ((end - start) / span).roundToInt() else 0
-		val limits = parameter?.let(::keyLimits)
-		val target = (start + turns * span).let { if (limits != null) it.coerceIn(limits) else it }
+		val target = if (parameter?.repeat == true && span > 0f) start + turns(start, end, span) * span else start
+		parameter?.let(::keyLimits)?.let { limits ->
+			require(target in limits) { "Closing ${curve.parameterId} would take it past $REPEAT_TURNS turns of its range" }
+		}
 		var keys = curve.keys
 		if (keys.none { abs(it.time) < eps }) keys = MotionClips.normalized(keys + MotionKey(0f, start))
 		val last = keys.lastOrNull { abs(it.time - duration) < eps }
@@ -81,10 +106,15 @@ object MotionLoops {
 		val first = keys.first()
 		val second = keys[1]
 		val beforeLast = keys[keys.size - 2]
-		if (first.interpolation != MotionInterpolation.BEZIER || beforeLast.interpolation != MotionInterpolation.BEZIER) return keys
-		val out = first.outHandle.clamped()
+		// Only an easing segment into the end has a handle to meet the start's slope with.
+		if (beforeLast.interpolation != MotionInterpolation.BEZIER) return keys
 		val leaving = second.time - first.time
-		val slope = if (out.x * leaving > eps) out.y / (out.x * leaving) else 0f
+		val slope = when (first.interpolation) {
+			MotionInterpolation.BEZIER -> first.outHandle.clamped().let { out -> if (out.x * leaving > eps) out.y / (out.x * leaving) else 0f }
+			MotionInterpolation.LINEAR -> if (leaving > eps) (second.value - first.value) / leaving else 0f
+			// A held or stepped start leaves level.
+			else -> 0f
+		}
 		val arriving = duration - beforeLast.time
 		val end0 = keys.last()
 		val x = end0.inHandle.clamped().x.takeIf { it > 0f } ?: (1f / 3f)

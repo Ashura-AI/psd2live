@@ -70,16 +70,19 @@ internal class WorkspacePoseCommands(private val runtime: WorkspaceRuntime<RigPr
             val requestedTime = record.getValue("time").jsonPrimitive.float
             require(requestedTime.isFinite() && requestedTime in 0f..clip.duration) { "Time must lie within the clip" }
             val time = if (record["snap"]?.jsonPrimitive?.boolean == true) MotionKeyEdits.snap(requestedTime, clip.fps).coerceIn(0f, clip.duration) else requestedTime
+            val aids = io.github.psd2live.project.TimelineAidsCodec.decode(before.auxiliary[io.github.psd2live.project.TimelineAidsCodec.KEY])
             // A track the motion editor froze takes no keys.
-            val frozen = io.github.psd2live.project.TimelineAidsCodec.decode(before.auxiliary[io.github.psd2live.project.TimelineAidsCodec.KEY])
-                .clip(io.github.psd2live.project.TimelineAids.keyOf(clip.id, clip.builtin)).frozen.keys
+            val frozen = aids.clip(io.github.psd2live.project.TimelineAids.keyOf(clip.id, clip.builtin)).frozen.keys
+            val definitions = puppet.parameters.associateBy { it.id.raw }
+            // A repeating axis keys the turn nearest the curve's own value, not the wrapped value the pose holds.
             val changes = pose.values.filter { (parameter, value) -> abs(value - current.values.getValue(parameter)) >= 1e-5f }
                 .mapKeys { it.key.raw }.filterKeys { it !in frozen }
+                .mapValues { (id, value) -> io.github.psd2live.core.MotionLoops.unwrapped(value, clip.curve(id)?.let { MotionClips.sample(it, time) }, definitions[id]) }
             val (next, references) = MotionKeyEdits.autoKeyMultiple(clip, changes, current.values.mapKeys { it.key.raw }, time)
             keyed += references
             if (next != clip) {
                 val materialized = if (id.startsWith("preset:") && document.rigEdits.motionClips.none { it.id == clip.id })
-                    next.copy(id = MotionClips.newId(document.rigEdits.motionClips)) else next
+                    next.copy(id = MotionClips.newId(document.rigEdits.motionClips, aids.clips.keys)) else next
                 val clips = document.rigEdits.motionClips.filterNot { it.id == materialized.id } + materialized
                 WorkspaceSkeletonMotionEdits.validated(clips, io.github.psd2live.core.MotionLoops.keyLimits(puppet.parameters))
                 document = document.copy(rigEdits = document.rigEdits.copy(motionClips = clips))

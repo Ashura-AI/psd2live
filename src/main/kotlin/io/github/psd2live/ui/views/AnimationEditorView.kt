@@ -1001,7 +1001,7 @@ private fun Timeline(
 			clipRect(top = rulerPx) {
 				val ghost = clip.duration.takeIf { clip.loop }
 				if (curvesMode) drawCurves(clip, visibleCurves, curveIndex, ranges, vp, valueViewport, plotTop, plotHeight, editor.selection, colors.textPrimary, colors.divider,
-					frozen, ghost, parameters.any { it.repeat && ranges.containsKey(it.id.raw) && visibleCurves.any { c -> c.parameterId == it.id.raw } })
+					frozen, ghost, parameters.filter { it.repeat && ranges.containsKey(it.id.raw) }.mapTo(HashSet()) { it.id.raw })
 				else drawDopesheet(rows, curveIndex, vp, rulerPx, rowPx, trackScroll.value.toFloat(), editor.selection, editor.focusedCurve, colors.textPrimary, colors.textMuted, colors.selection,
 					frozen.keys, seams, ghost, colors.warning)
 				// Markers run down the plot as faint rules.
@@ -1110,7 +1110,17 @@ private fun MarkerEditor(viewModel: PSD2LiveViewModel, marker: TimelineMarker, c
 		shown = next
 		viewModel.updateMotionMarker(next)
 	}
-	TreeContextMenu(expanded = true, onDismissRequest = { if (label != shown.label) save(shown.copy(label = label)); onDismiss() },
+	// Stepping the time writes once it settles, not once per step: each write is a saved-data edit.
+	var time by remember(marker.id) { mutableStateOf(marker.time) }
+	LaunchedEffect(time) {
+		if (time == shown.time) return@LaunchedEffect
+		kotlinx.coroutines.delay(350)
+		save(shown.copy(time = time))
+	}
+	TreeContextMenu(expanded = true, onDismissRequest = {
+		if (label != shown.label || time != shown.time) save(shown.copy(label = label, time = time))
+		onDismiss()
+	},
 		minWidth = 200.dp, maxWidth = 240.dp) {
 		Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
 			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1127,8 +1137,8 @@ private fun MarkerEditor(viewModel: PSD2LiveViewModel, marker: TimelineMarker, c
 			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 				ToolbarLabel(tr("animation.editor.time"))
 				CompactNumberSpinner(
-					value = shown.time.toDouble(),
-					onValueChange = { save(shown.copy(time = it.toFloat().coerceIn(0f, clip.duration))) },
+					value = time.toDouble(),
+					onValueChange = { time = it.toFloat().coerceIn(0f, clip.duration) },
 					min = 0.0,
 					max = clip.duration.toDouble(),
 					step = 1.0 / clip.fps,
@@ -1286,9 +1296,10 @@ private fun DrawScope.drawCurves(
 	frozen: Map<String, Float>,
 	/** A looping clip's duration: the cycles either side show faintly. */
 	ghost: Float?,
-	/** A repeating parameter is shown: each whole turn of its range gets a rule. */
-	turns: Boolean,
+	/** Repeating parameters: each whole turn of a shown one's range gets a rule, and its cycles go on by their turns. */
+	repeating: Set<String>,
 ) {
+	val turns = curves.any { it.parameterId in repeating }
 	// Parameter minimum, middle and maximum.
 	for (level in listOf(0f, 0.5f, 1f)) {
 		val y = values.y(level, top, height)
@@ -1310,7 +1321,11 @@ private fun DrawScope.drawCurves(
 			drawLine(color.copy(alpha = 1f), Offset(0f, y), Offset(size.width, y), 1.4.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 3f)))
 		}
 		if (ghost != null) {
-			// The neighbouring cycles, where the loop wraps.
+			// The neighbouring cycles, where the loop wraps; a spin's cycles each start the turns on its last ended.
+			val spun = if (curve.parameterId in repeating && range != null && range.endInclusive > range.start) {
+				val span = range.endInclusive - range.start
+				kotlin.math.round((MotionClips.sample(curve, ghost) - MotionClips.sample(curve, 0f)) / span) * span
+			} else 0f
 			val ghostPath = Path()
 			var x = 0f
 			var pen = false
@@ -1318,7 +1333,8 @@ private fun DrawScope.drawCurves(
 				val t = vp.time(x)
 				if (t < 0f || t > ghost) {
 					val wrapped = ((t % ghost) + ghost) % ghost
-					val y = values.y(MotionTimelineGeometry.normalize(MotionClips.sample(curve, wrapped), range), top, height)
+					val cycle = kotlin.math.floor(t / ghost)
+					val y = values.y(MotionTimelineGeometry.normalize(MotionClips.sample(curve, wrapped) + cycle * spun, range), top, height)
 					if (pen) ghostPath.lineTo(x, y) else ghostPath.moveTo(x, y)
 					pen = true
 				} else pen = false

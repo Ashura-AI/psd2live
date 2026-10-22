@@ -3903,7 +3903,7 @@ class PSD2LiveViewModel : AutoCloseable {
 			val existing = MotionClips.overrideOf(clips, preset)
 			if (existing != null) clips.map { if (it.id == existing.id) transform(it).copy(id = it.id, builtin = it.builtin) else it }
 			else {
-				val next = transform(generated).copy(id = MotionClips.newId(clips), name = preset, builtin = preset)
+				val next = transform(generated).copy(id = MotionClips.newId(clips, _state.value.timelineAids.clips.keys), name = preset, builtin = preset)
 				if (next.copy(id = generated.id) == generated) clips else clips + next
 			}
 		}
@@ -3911,7 +3911,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	/** A new clip, blank or a copy of a generated motion as it plays now, opened in the editor. */
 	fun createMotionClip(fromBuiltin: String? = null): String {
-		val id = MotionClips.newId(motionClips)
+		val id = MotionClips.newId(motionClips, _state.value.timelineAids.clips.keys)
 		saveMotionOperation("create", kotlinx.serialization.json.buildJsonObject {
 			put("id", id); put("name", fromBuiltin ?: tr("animation.newMotionName")); fromBuiltin?.let { put("from_builtin", it) }
 		}) { openMotionInEditor(id) }
@@ -3920,7 +3920,7 @@ class PSD2LiveViewModel : AutoCloseable {
 
 	fun duplicateMotionClip(id: String) {
 		if (motionClips.none { it.id == id }) return
-		val nextId = MotionClips.newId(motionClips)
+		val nextId = MotionClips.newId(motionClips, _state.value.timelineAids.clips.keys)
 		saveMotionOperation("duplicate", kotlinx.serialization.json.buildJsonObject { put("id", id); put("new_id", nextId) }) { openMotionInEditor(nextId) }
 	}
 
@@ -4011,7 +4011,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		val clip = source ?: return
 		val state = expectedState ?: return
 		val untouched = clip.id.startsWith("preset:")
-		val materialized = if (untouched) clip.copy(id = MotionClips.newId(motionClips)) else clip
+		val materialized = if (untouched) clip.copy(id = MotionClips.newId(motionClips, _state.value.timelineAids.clips.keys)) else clip
 		val edits = buildList {
 			if (untouched) add(io.github.psd2live.application.WorkspaceDocumentOperation("motion_put", kotlinx.serialization.json.buildJsonObject { put("clip", MotionClips.toJson(materialized)) }))
 			add(io.github.psd2live.application.WorkspaceDocumentOperation("motion_" + mode,
@@ -4064,6 +4064,18 @@ class PSD2LiveViewModel : AutoCloseable {
 			?: state.previewModel?.rig?.puppet?.parameters?.firstOrNull { it.id == id }?.default ?: 0f
 	}
 
+	/**
+	 * The key [keyCurrentPose] writes on [curve]: its own value where the preview still shows it, so an untouched
+	 * track keeps a repeating axis's turns, else the shown value at the turn nearest the curve.
+	 */
+	private fun posedKeyValue(curve: io.github.psd2live.core.MotionCurve, time: Float, parameter: org.umamo.runtime.model.Parameter?): Float {
+		val raw = MotionClips.sample(curve, time)
+		val shown = currentMotionParameterValue(curve.parameterId)
+		val played = parameter?.let { io.github.psd2live.core.boundedPreviewPose(mapOf(it.id to raw), listOf(it)).getValue(it.id) } ?: raw
+		val span = parameter?.let { it.max - it.min }?.takeIf { it > 0f } ?: 1f
+		return if (kotlin.math.abs(played - shown) <= 1e-5f * span) raw else io.github.psd2live.core.MotionLoops.unwrapped(shown, raw, parameter)
+	}
+
 	/** A key at [time] on [parameterId], at [value] or the curve's value there. */
 	fun setMotionKey(parameterId: String, time: Float, value: Float? = null) {
 		val clip = editingMotionClip() ?: return
@@ -4083,8 +4095,9 @@ class PSD2LiveViewModel : AutoCloseable {
 		val time = motionEditor.playhead.coerceIn(0f, clip.duration)
 		val frozen = openMotionAids().frozen
 		val curves = clip.curves.filter { it.parameterId !in frozen }.ifEmpty { return }
+		val parameters = _state.value.previewModel?.rig?.puppet?.parameters.orEmpty().associateBy { it.id.raw }
 		editTimeline("pose", kotlinx.serialization.json.buildJsonObject {
-			put("time", time); putJsonObject("values") { curves.forEach { curve -> put(curve.parameterId, currentMotionParameterValue(curve.parameterId)) } }
+			put("time", time); putJsonObject("values") { curves.forEach { curve -> put(curve.parameterId, posedKeyValue(curve, time, parameters[curve.parameterId])) } }
 		})
 		motionEditor.selection = curves.mapTo(HashSet()) { MotionKeyRef(it.parameterId, time) }
 	}
@@ -4346,7 +4359,9 @@ class PSD2LiveViewModel : AutoCloseable {
 		val frozen = parameterId in openMotionAids().frozen
 		val value = if (frozen) null
 			else clip.curve(parameterId)?.let { MotionClips.sample(it, motionEditor.playhead.coerceIn(0f, clip.duration)) } ?: return
-		editTimelineAids(io.github.psd2live.project.TimelineAidsEdit.Freeze(clipId, parameterId, value))
+		// An easing curve may overshoot the range between keys; the held value is one the parameter takes.
+		val limits = motionKeyLimits()[parameterId]
+		editTimelineAids(io.github.psd2live.project.TimelineAidsEdit.Freeze(clipId, parameterId, value?.let { v -> limits?.let(v::coerceIn) ?: v }))
 		if (!frozen) motionEditor.selection = motionEditor.selection.filterTo(HashSet()) { it.parameterId != parameterId }
 		// The paused session poses again with the track held (or released).
 		if (!motionEditor.playing) setMotionPlayhead(motionEditor.playhead)
@@ -4382,11 +4397,14 @@ class PSD2LiveViewModel : AutoCloseable {
 		target?.let(::setMotionPlayhead)
 	}
 
-	/** Every curve of the open motion ends where it starts, so its loop has no seam (one history edit). */
+	/** Every curve of the open motion but the frozen ones ends where it starts, so its loop has no seam (one history edit). */
 	fun closeMotionLoop() {
 		val clip = editingMotionClip() ?: return
-		if (clip.curves.isEmpty()) return
-		editTimeline("close_loop", kotlinx.serialization.json.JsonObject(emptyMap()))
+		val frozen = openMotionAids().frozen
+		val curves = clip.curves.map { it.parameterId }.filter { it !in frozen }.ifEmpty { return }
+		editTimeline("close_loop", kotlinx.serialization.json.buildJsonObject {
+			putJsonArray("parameters") { curves.forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } }
+		})
 	}
 	// endregion
 

@@ -4,6 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -28,6 +30,7 @@ internal fun MotionTrajectoryOverlay(
 	viewModel: PSD2LiveViewModel,
 	model: RigPreviewModel,
 	pose: Map<ParameterId, Float>,
+	locked: Set<ParameterId>,
 	selectedLayerIds: Set<String>,
 	selectedDeformerId: String?,
 	viewport: () -> CanvasViewport,
@@ -39,9 +42,17 @@ internal fun MotionTrajectoryOverlay(
 	val frozen = viewModel.openMotionAids(state).frozen.mapKeys { ParameterId(it.key) }
 	val drawables = model.rig.layerIdByDrawableId.filterValues { it in selectedLayerIds }.keys
 	if (drawables.isEmpty() && selectedDeformerId == null) return
-	val track by produceState<MotionTrajectory.Track?>(null, model, clip, drawables, selectedDeformerId, pose, frozen) {
+	val probes = remember(model, drawables, selectedDeformerId) { MotionTrajectory.probes(model.rig.puppet, drawables, selectedDeformerId) } ?: return
+	// The motion's own tracks and the frozen ones come from the motion, so only the other parameters move the path;
+	// while playing the base is held, the frame changing every tick.
+	val driven = clip.curves.mapTo(HashSet()) { ParameterId(it.parameterId) } + frozen.keys
+	val current = pose.filterKeys { it !in driven || it in locked }
+	val held = remember { mutableStateOf(current) }
+	if (!editor.playing) held.value = current
+	val base = held.value
+	val track by produceState<MotionTrajectory.Track?>(null, probes, clip, base, frozen, locked) {
 		value = withContext(Dispatchers.Default) {
-			MotionTrajectory.sample(model.rig.puppet, clip, drawables, selectedDeformerId, pose, frozen) { !coroutineContext.isActiveSafe() }
+			MotionTrajectory.sample(probes, clip, base, frozen, locked) { !coroutineContext.isActiveSafe() }
 		}
 	}
 	val path = track ?: return

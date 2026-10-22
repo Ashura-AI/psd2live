@@ -18,15 +18,12 @@ internal object MotionTrajectory {
 
 	const val MAX_SAMPLES = 241
 
-	fun sample(
-		puppet: PuppetModel,
-		clip: MotionClip,
-		drawableIds: Set<String>,
-		deformerId: String?,
-		base: Map<ParameterId, Float>,
-		frozen: Map<ParameterId, Float> = emptyMap(),
-		cancelled: () -> Boolean = { false },
-	): Track? {
+	/** What a trajectory evaluates: the chosen meshes and a deformer probe, alone. Built once per model and selection. */
+	class Probes internal constructor(val parameters: List<Parameter>, val ids: List<DrawableId>, val model: PuppetModel) {
+		internal val evaluator = CpuDeformationEvaluator()
+	}
+
+	fun probes(puppet: PuppetModel, drawableIds: Set<String>, deformerId: String?): Probes? {
 		val probes = puppet.drawables.filter { it.id.raw in drawableIds }.toMutableList()
 		puppet.deformers.firstOrNull { it.id.raw == deformerId }?.let { deformer ->
 			// A probe point under the deformer: its pivot is the local origin, a warp's middle is (0.5, 0.5).
@@ -35,20 +32,40 @@ internal object MotionTrajectory {
 				DrawableMesh(point, FloatArray(point.size), intArrayOf()), null)
 		}
 		if (probes.isEmpty()) return null
-		val model = puppet.copy(drawables = probes, glues = emptyList()).withDerivedRenderRoot()
-		val evaluator = CpuDeformationEvaluator()
+		return Probes(puppet.parameters, probes.map { it.id }, puppet.copy(drawables = probes, glues = emptyList()).withDerivedRenderRoot())
+	}
+
+	fun sample(
+		puppet: PuppetModel,
+		clip: MotionClip,
+		drawableIds: Set<String>,
+		deformerId: String?,
+		base: Map<ParameterId, Float>,
+		frozen: Map<ParameterId, Float> = emptyMap(),
+		cancelled: () -> Boolean = { false },
+	): Track? = probes(puppet, drawableIds, deformerId)?.let { sample(it, clip, base, frozen, emptySet(), cancelled) }
+
+	/** The track of [probes] through [clip]; a [locked] parameter keeps its [base] value, as the editor plays it. */
+	fun sample(
+		probes: Probes,
+		clip: MotionClip,
+		base: Map<ParameterId, Float>,
+		frozen: Map<ParameterId, Float> = emptyMap(),
+		locked: Set<ParameterId> = emptySet(),
+		cancelled: () -> Boolean = { false },
+	): Track? = synchronized(probes) {
 		val count = (kotlin.math.ceil(clip.duration * clip.fps).toInt() + 1).coerceIn(2, MAX_SAMPLES)
 		val times = FloatArray(count) { clip.duration * it / (count - 1) }
 		val points = FloatArray(count * 2)
 		for (i in 0 until count) {
 			if (cancelled()) return null
-			val pose = boundedPreviewPose(base + MotionClips.sampleAll(clip, times[i].toDouble(), loop = false) + frozen, puppet.parameters)
-			val world = evaluator.evaluate(model, pose).worldPositions
+			val motion = (MotionClips.sampleAll(clip, times[i].toDouble(), loop = false) + frozen).filterKeys { it !in locked }
+			val world = probes.evaluator.evaluate(probes.model, boundedPreviewPose(base + motion, probes.parameters)).worldPositions
 			var x = 0.0
 			var y = 0.0
 			var n = 0
-			for (probe in probes) {
-				val positions = world[probe.id] ?: continue
+			for (probe in probes.ids) {
+				val positions = world[probe] ?: continue
 				for (v in 0 until positions.size / 2) { x += positions[v * 2]; y += positions[v * 2 + 1]; n++ }
 			}
 			// A hidden object at this frame keeps the last place it was seen.
@@ -59,6 +76,6 @@ internal object MotionTrajectory {
 			points[i * 2] = (x / n).toFloat()
 			points[i * 2 + 1] = (y / n).toFloat()
 		}
-		return Track(times, points)
+		Track(times, points)
 	}
 }

@@ -36,7 +36,9 @@ internal suspend fun startDocumentBatch(port: WorkspaceDocumentPort, statePort: 
     }
 
 internal fun registerDocumentBatch(registry: WorkspaceOperationRegistry, port: WorkspaceDocumentPort,
-                                   statePort: WorkspaceStatePort, jobs: WorkspaceJobs) {
+                                   statePort: WorkspaceStatePort, jobs: WorkspaceJobs,
+                                   /** The edits with the IDs of new motions chosen before they are recorded. */
+                                   motionIds: (List<WorkspaceDocumentOperation>) -> List<WorkspaceDocumentOperation> = { it }) {
     val supported = WorkspaceDocumentEdits.supported
     registry.markBatchable(supported)
     val variants = batchMemberSchemas(registry).map { (id, business) ->
@@ -72,7 +74,7 @@ internal fun registerDocumentBatch(registry: WorkspaceOperationRegistry, port: W
             WorkspaceDocumentOperation(edit.getValue("operation").jsonPrimitive.content, edit.getValue("request").jsonObject)
         }
         startDocumentBatch(port, statePort, jobs, "workspace_apply_edits", request.getValue("state").jsonPrimitive.content,
-            request["summary"]?.jsonPrimitive?.content ?: "Applied ${edits.size} document edits", edits, context.author)
+            request["summary"]?.jsonPrimitive?.content ?: "Applied ${edits.size} document edits", motionIds(edits), context.author)
     }
     registry.register(WorkspaceOperationDefinition("workspace_preview_edits",
         "Dry-run 1..128 geometry authoring operations using the same ordered candidate preparation, rebuild and geometry gate as commit. No state, pose, history, dirty flag or resources are published. Returns a read-only job; diagnostics describe the captured input state. New IDs for canvas creation must be explicit so a later commit with the same state and edits reproduces the candidate revision. The geometry scope is parent-local sampled keys, not visual quality or composed animation.",

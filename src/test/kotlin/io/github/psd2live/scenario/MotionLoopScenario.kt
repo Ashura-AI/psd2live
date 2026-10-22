@@ -55,8 +55,26 @@ class MotionLoopScenario {
 		expect("trajectory", track.size == 31 && xs.max() - xs.min() > 1f) { "the face's path spans ${xs.max() - xs.min()} over ${track.size} frames" }
 		expect("trajectory", kotlin.math.abs(track.points[0] - track.points[(track.size - 1) * 2]) < 1e-3f) { "a closed loop ends where it starts" }
 
+		// Auto-key over the spin keys the turn the curve is on, not the wrapped value the pose shows.
+		val turning = MotionClips.sample(clip().curve("ParamWheel")!!, 0.75f)
+		val shown = MotionLoops.wrap(turning, 0f, 360f) + 10f
+		kotlinx.coroutines.runBlocking {
+			io.github.psd2live.application.WorkspacePoseCommands(runtime).execute(now.projectId, now.state, "main",
+				req("values" to mapOf("ParamWheel" to shown), "auto_key" to mapOf("clip_id" to "spin", "time" to 0.75)), io.github.psd2live.project.MutationAuthor.USER)
+		}
+		val keyed = clip().curve("ParamWheel")!!.keys.single { kotlin.math.abs(it.time - 0.75f) < 1e-4f }.value
+		expect("auto key", kotlin.math.abs(keyed - (turning + 10f)) < 1e-2f) { "auto-key wrote $keyed over a curve at $turning, not ${turning + 10f}" }
+
 		reopen()
 		expect("reopened", clip().curve("ParamWheel")!!.keys.last().value == 720f) { "the spin changed on reopen" }
+		// The default Cubism 5.0 target strips the repeat, and the report says the spin will clamp there.
+		val losses = step("export for Cubism 5.0") {
+			io.github.psd2live.application.WorkspaceExportSession(now, "Figure.psd").target("moc3", Files.createTempDirectory(temp, "moc50").toAbsolutePath(), emptyMap())
+		}.getValue("losses").jsonArray.map { it.jsonObject }
+		expect("export", losses.any { it.getValue("object").jsonPrimitive.content == "spin/ParamWheel" && it.getValue("handling").jsonPrimitive.content == "approximated" }) {
+			"the 5.0 report does not name the clamped spin: $losses"
+		}
+		expect("export", losses.none { it.getValue("object").jsonPrimitive.content.endsWith("/ParamAngleZ") }) { "an ordinary curve was reported: $losses" }
 		// Parameter repeat needs a Cubism 5.3 target; the default 5.0 one strips it with a notice.
 		edit("export motions for Cubism 5.3", "settings_update", req("changes" to mapOf("exportMoc3" to true, "exportMotions" to true, "runtimeTarget" to "Cubism53")))
 		val motion = export("moc3").filter { it.toString().endsWith(".motion3.json") }
@@ -68,5 +86,8 @@ class MotionLoopScenario {
 		expect("export", segments.any { it == 720f } && segments.any { it == 540f }) { "the exported spin was clamped: $segments" }
 		expect("export", moc3().parameters.single { it.id.raw == "ParamWheel" }.repeat) { "the moc3 lost the repeat flag" }
 		expect("export", wheel.repeat) { "the axis does not repeat" }
+		val cmo3 = export("cmo3").single { it.toString().endsWith(".cmo3") }
+		val source = org.umamo.interop.cmo3.Cmo3Import.fromModelSource(org.umamo.format.cmo3.Cmo3.read(Files.readAllBytes(cmo3)).root as org.umamo.format.cmo3.model.custom.CModelSource)
+		expect("export", source.parameters.single { it.id.raw == "ParamWheel" }.repeat) { "the cmo3 lost the repeat flag" }
 	}
 }

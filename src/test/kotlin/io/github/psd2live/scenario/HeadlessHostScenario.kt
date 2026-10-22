@@ -93,6 +93,34 @@ class HeadlessHostScenario {
 		}
 	}
 
+	@Test fun timelineAidsKeepTheStateWhenNothingChangesAndADeletedMotionsIdStaysTaken() = runBlocking {
+		HeadlessPresentation().use { presentation ->
+			WorkspaceHost(presentation, temp.resolve("store")).use { host ->
+				presentation.attach(host)
+				WorkspaceOperations(host).use { operations ->
+					val agent = Agent(host, createAgentMcpServer(host, operations, AgentToolProfile.CORE))
+					agent.layOut(Files.createDirectories(temp.resolve("files")))
+					agent.edit("parameter_create", "parameter_id" to "ParamWheel", "name" to "Wheel", "min" to 0, "max" to 360, "default" to 0, "repeat" to true)
+					val marked = agent.edit("timeline_bookmark_set", "parameter" to "ParamWheel", "bookmarked" to true).getValue("state").jsonPrimitive.content
+					val again = agent.call("timeline_bookmark_set", req("state" to marked, "parameter" to "ParamWheel", "bookmarked" to true))
+					assertEquals(marked, again.getValue("state").jsonPrimitive.content, "bookmarking a bookmarked parameter made the held state stale")
+
+					val first = agent.edit("motion_create", "name" to "Spin")
+					assertEquals("motion_1", host.captureQueries().motionClips().single().id, "the first motion: $first")
+					agent.edit("motion_set_key", "id" to "motion_1", "parameter" to "ParamWheel", "key" to mapOf("time" to 0, "value" to 0))
+					agent.edit("timeline_freeze_set", "clip_id" to "motion_1", "parameter" to "ParamWheel", "frozen" to true, "value" to 90)
+					agent.edit("motion_delete", "id" to "motion_1")
+					agent.edit("motion_create", "name" to "Wave")
+					val created = host.captureQueries().motionClips().single().id
+					assertNotEquals("motion_1", created, "a new motion took the deleted one's ID and its frozen track")
+					assertEquals(mapOf("ParamWheel" to 90f), host.savedProjectData().data.timelineAids.clip("motion_1").frozen,
+						"deleting the motion dropped the aids an undo would find")
+					assertTrue(host.savedProjectData().data.timelineAids.clip(created).isEmpty, "the new motion inherited aids")
+				}
+			}
+		}
+	}
+
 	@Test fun theDesktopHostGivesTheSameDocument() = runBlocking {
 		val desktop = PSD2LiveViewModel().use { vm ->
 			DesktopWorkspace(vm, temp.resolve("desktop")).use { workspace ->

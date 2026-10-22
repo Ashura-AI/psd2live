@@ -2225,7 +2225,7 @@ fun CanvasViewportComposable(
 				order = 3, clear = false, layer = gpuKey, onDraw = drawAids)
 		}
 		if (mode == CanvasMode.PREVIEW && previewModel != null) {
-			MotionTrajectoryOverlay(viewModel, previewModel, canvasState.parameterValues,
+			MotionTrajectoryOverlay(viewModel, previewModel, canvasState.parameterValues, canvasState.lockedParameters,
 				canvasState.selectedLayerIds.ifEmpty { setOfNotNull(canvasState.selectedLayerId) }, canvasState.selectedDeformerId) {
 				currentViewportFor(viewSize)
 			}
