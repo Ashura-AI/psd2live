@@ -1,0 +1,33 @@
+name: Set up JetBrains Runtime 21
+description: >-
+  Installs a pinned JBR 21 SDK from JetBrains' download mirror. setup-java's jetbrains distribution resolves the
+  version from GitHub's release list, which intermittently comes back without JBR 21 and fails the job.
+runs:
+  using: composite
+  steps:
+    - name: Download JBR SDK
+      id: jbr
+      shell: bash
+      env:
+        JBR_VERSION: 21.0.11
+        JBR_BUILD: b1163.116
+      run: |
+        case "${RUNNER_OS}-${RUNNER_ARCH}" in
+          Linux-X64) platform=linux-x64 ;;
+          Linux-ARM64) platform=linux-aarch64 ;;
+          Windows-X64) platform=windows-x64 ;;
+          Windows-ARM64) platform=windows-aarch64 ;;
+          *) echo "No JBR SDK for ${RUNNER_OS}-${RUNNER_ARCH}" >&2; exit 1 ;;
+        esac
+        file="jbrsdk-${JBR_VERSION}-${platform}-${JBR_BUILD}.tar.gz"
+        curl -fsSL --retry 5 --retry-all-errors -o "${RUNNER_TEMP}/${file}" \
+          "https://cache-redirector.jetbrains.com/intellij-jbr/${file}"
+        echo "file=${RUNNER_TEMP}/${file}" >> "$GITHUB_OUTPUT"
+        echo "arch=$([ "${RUNNER_ARCH}" = ARM64 ] && echo aarch64 || echo x64)" >> "$GITHUB_OUTPUT"
+    - name: Install JBR SDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: jdkfile
+        jdkFile: ${{ steps.jbr.outputs.file }}
+        java-version: "21"
+        architecture: ${{ steps.jbr.outputs.arch }}
