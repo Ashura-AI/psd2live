@@ -209,7 +209,12 @@ class PaintSession(val handle: WorkspacePaintSession) {
     }, name)
     /** Changes the selection with one [io.github.psd2live.application.WorkspacePaintSessionSchemas.selection] request. */
     fun select(request: JsonObject) = handle.select(request)
-    val hasSelection: Boolean get() = selectionOutline.isNotEmpty()
+    /** Whether the session has a selection - which may be too faint to have an edge ([selectionOutline] empty). */
+    val hasSelection: Boolean get() = selectionBounds != null
+
+    /** The selection's bounds in raster pixels, or null without one. */
+    var selectionBounds by mutableStateOf<Rectangle?>(null)
+        private set
 
     /**
      * The selection's edge in raster pixels ([io.github.psd2live.core.PaintSelection.outline]), traced again only
@@ -222,6 +227,7 @@ class PaintSession(val handle: WorkspacePaintSession) {
         val revision = handle.selectionRevision
         if (revision == outlineRevision) return
         outlineRevision = revision
+        selectionBounds = handle.selectionBounds
         selectionOutline = handle.selectionOutline()
     }
     private fun rgba(color: Color): JsonArray {

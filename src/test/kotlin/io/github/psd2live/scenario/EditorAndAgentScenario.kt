@@ -95,6 +95,7 @@ class EditorAndAgentScenario {
 			val session = assertNotNull(canvas.startPaintSession("material:$materialId", forceReload = true))
 			val original = session.workingImage.getRGB(0, 0, session.docWidth, session.docHeight, null, 0, session.docWidth)
 			canvas.clearCurrentLayerPaint()
+			canvas.awaitPaintWork()
 			assertSame(session, canvas.paintSession)
 			assertEquals("material:$materialId", session.layerId)
 			assertTrue(session.isDirty)

@@ -206,7 +206,7 @@ internal fun MaterialEditor(item: MaterialItem, state: PSD2LiveState, vm: PSD2Li
 			ShortcutAction.FINISH_PATH -> if (!editor.finishPaintPolygon()) editor.promptCommitPaintSession()
 			ShortcutAction.SELECT_ALL -> editor.selectAllPaint()
 			ShortcutAction.INVERT_SELECTION -> editor.invertPaintSelection()
-			ShortcutAction.DELETE_SELECTION -> editor.deletePaintSelection()
+			ShortcutAction.DELETE_SELECTION -> editor.deleteInPaint()
 			ShortcutAction.TOOL_PAINT_BRUSH -> editor.activateTool(CanvasTool.PAINT_BRUSH)
 			ShortcutAction.TOOL_PAINT_PENCIL -> editor.activateTool(CanvasTool.PAINT_PENCIL)
 			ShortcutAction.TOOL_PAINT_ERASER -> editor.activateTool(CanvasTool.PAINT_ERASER)

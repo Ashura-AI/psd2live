@@ -581,6 +581,9 @@ private fun MutableList<ToolOption>.addStrokeAssists(lockAlpha: Boolean) {
 private fun MutableList<ToolOption>.addPaint(editor: CanvasEditor) {
     // Paint mode cannot start without a layer, so until one is picked that is all the bar has to say.
     add(NoteOption("paint.layer", { if (it.paintSession == null) tr("editor.paintSelectLayerHint") else null }, warning = { true }))
+    // A selection softer than half everywhere still confines the tools, though it has no edge to show.
+    add(NoteOption("paint.faintSelection", { e -> e.paintSession?.takeIf { it.hasSelection && it.selectionOutline.isEmpty() }
+        ?.let { tr("editor.paintSelect.faint") } }, warning = { true }))
     when (editor.tool) {
         CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_ERASER -> {
             add(PAINT_BRUSH_SIZE)
@@ -634,7 +637,8 @@ private fun MutableList<ToolOption>.addPaint(editor: CanvasEditor) {
     add(ActionOption("paint.selectAll", "shortcut.selectAll", session, { it.selectAllPaint() }, OptionIcon.SELECT_ALL, place = OptionPlace.MENU))
     add(ActionOption("paint.deselect", "editor.paintSelect.deselect", { it.paintHasSelection }, { it.deselectPaint() }, OptionIcon.DESELECT,
         place = OptionPlace.MENU))
-    add(ActionOption("paint.invert", "editor.paintSelect.invert", session, { it.invertPaintSelection() }, OptionIcon.INVERT, place = OptionPlace.MENU))
+    add(ActionOption("paint.invert", "editor.paintSelect.invert", { it.paintHasSelection }, { it.invertPaintSelection() }, OptionIcon.INVERT,
+        place = OptionPlace.MENU))
     add(ActionOption("paint.featherSelection", "editor.paintSelect.featherAction", { it.paintHasSelection }, { it.featherPaintSelection() },
         labelArgs = { listOf(it.paintFeather.toInt()) }, place = OptionPlace.MENU))
     add(ActionOption("paint.fillSelection", "editor.paintSelect.fill", session, { it.fillPaintSelection() }, OptionIcon.FILL, place = OptionPlace.MENU))

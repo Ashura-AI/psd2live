@@ -2859,6 +2859,9 @@ private fun SkeletonPoseLayer(editor: CanvasEditor, viewport: CanvasViewport, pa
     }
 }
 
+/** Past this many edge segments the selection shows as its bounding box rather than its marching ants. */
+private const val MAX_ANT_SEGMENTS = 200_000
+
 /** Each selection outline as one path in canvas units, traced while that outline is the session's. */
 private val selectionPathCache = java.util.WeakHashMap<FloatArray, Pair<io.github.psd2live.project.LayerTransform, androidx.compose.ui.graphics.Path>>()
 
@@ -2879,26 +2882,40 @@ private fun DrawScope.drawPaintSelectionOverlays(editor: CanvasEditor, viewport:
     }
     if (session != null) {
         val outline = session.selectionOutline
-        if (outline.isNotEmpty()) {
-            val frame = session.frame
-            val cached = selectionPathCache[outline]?.takeIf { it.first == frame }?.second ?: androidx.compose.ui.graphics.Path().also { path ->
-                // Raster pixels to canvas units, through the layer's own transform: the outline as the canvas shows it.
-                for (i in outline.indices step 4) {
-                    val x0 = session.originX + outline[i] / session.scaleX; val y0 = session.originY + outline[i + 1] / session.scaleY
-                    val x1 = session.originX + outline[i + 2] / session.scaleX; val y1 = session.originY + outline[i + 3] / session.scaleY
-                    path.moveTo(frame.x(x0, y0), frame.y(x0, y0))
-                    path.lineTo(frame.x(x1, y1), frame.y(x1, y1))
+        val bounds = session.selectionBounds
+        val frame = session.frame
+        // Raster pixels to canvas units, through the layer's own transform: where the canvas shows a raster point.
+        fun shownX(x: Float, y: Float) = frame.x(session.originX + x / session.scaleX, session.originY + y / session.scaleY)
+        fun shownY(x: Float, y: Float) = frame.y(session.originX + x / session.scaleX, session.originY + y / session.scaleY)
+        val path: androidx.compose.ui.graphics.Path? = when {
+            // An edge too long to trace every frame - a wand over noise - and a selection too faint to have one show
+            // as the box they fill instead.
+            bounds != null && (outline.isEmpty() || outline.size / 4 > MAX_ANT_SEGMENTS) ->
+                selectionPathCache[outline]?.takeIf { it.first == frame }?.second ?: androidx.compose.ui.graphics.Path().also { box ->
+                    val l = bounds.x.toFloat(); val t = bounds.y.toFloat()
+                    val r = (bounds.x + bounds.width).toFloat(); val btm = (bounds.y + bounds.height).toFloat()
+                    box.moveTo(shownX(l, t), shownY(l, t)); box.lineTo(shownX(r, t), shownY(r, t))
+                    box.lineTo(shownX(r, btm), shownY(r, btm)); box.lineTo(shownX(l, btm), shownY(l, btm)); box.close()
+                    selectionPathCache[outline] = frame to box
                 }
-                selectionPathCache[outline] = frame to path
+            outline.isNotEmpty() -> selectionPathCache[outline]?.takeIf { it.first == frame }?.second ?: androidx.compose.ui.graphics.Path().also { edge ->
+                for (i in outline.indices step 4) {
+                    edge.moveTo(shownX(outline[i], outline[i + 1]), shownY(outline[i], outline[i + 1]))
+                    edge.lineTo(shownX(outline[i + 2], outline[i + 3]), shownY(outline[i + 2], outline[i + 3]))
+                }
+                selectionPathCache[outline] = frame to edge
             }
-            val shown = androidx.compose.ui.graphics.Path().apply {
-                addPath(cached)
-                transform(androidx.compose.ui.graphics.Matrix().apply {
-                    this[0, 0] = scale; this[1, 1] = scale
-                    this[3, 0] = viewport.offsetX.toFloat(); this[3, 1] = viewport.offsetY.toFloat()
-                })
-            }
-            ants(shown)
+            else -> null
+        }
+        // The path stays in canvas units and the view is applied to the drawing, so nothing is copied per frame; the
+        // line and its dashes are divided by the scale to stay one screen pixel.
+        if (path != null) withTransform({
+            translate(viewport.offsetX.toFloat(), viewport.offsetY.toFloat())
+            scale(scale, scale, Offset.Zero)
+        }) {
+            val unit = 1f / scale
+            drawPath(path, Color.Black.copy(alpha = 0.8f), style = Stroke(unit, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f * unit, 4f * unit))))
+            drawPath(path, Color.White.copy(alpha = 0.9f), style = Stroke(unit, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f * unit, 4f * unit), 4f * unit)))
         }
         // The mirror axes run through the middle of the canvas.
         val symmetry = editor.paintSymmetry

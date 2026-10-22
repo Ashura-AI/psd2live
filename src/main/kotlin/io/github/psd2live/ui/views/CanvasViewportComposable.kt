@@ -832,7 +832,7 @@ fun CanvasViewportComposable(
 				else if (editor.tool == CanvasTool.INTERIOR) editor.interiorTool.deleteSelection()
                         else if (editor.tool == CanvasTool.CREATE_DEFORM_PATH || editor.activePath != null) editor.deletePathPoint()
 				else if (editor.hierarchyMode == EditHierarchyMode.EDIT) editor.deleteMeshSelection()
-				else if (editor.hierarchyMode == EditHierarchyMode.PAINT) editor.deletePaintSelection()
+				else if (editor.hierarchyMode == EditHierarchyMode.PAINT) editor.deleteInPaint()
 				true
 			}
 			ShortcutAction.TOOL_PAINT_BRUSH -> {

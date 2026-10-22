@@ -12,7 +12,7 @@ enum class PaintSelectShape(val labelKey: String) {
     ELLIPSE("editor.paintSelect.ellipse"),
     /** Freehand: the outline follows the drag. */
     LASSO("editor.paintSelect.lasso"),
-    /** Click by click; the first point, a double click or Enter closes it. */
+    /** Click by click; a click on the first point or Enter closes it, Delete takes the last point back. */
     POLYGON("editor.paintSelect.polygon"),
     /** The pixels of the colour clicked, within the tolerance. */
     WAND("editor.paintSelect.wand"),

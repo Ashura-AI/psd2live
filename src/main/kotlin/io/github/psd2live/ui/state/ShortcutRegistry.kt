@@ -327,8 +327,9 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.TOOL_PAINT_RECT to keys("Shift+R"),
     ShortcutAction.TOOL_PAINT_ELLIPSE to keys("Shift+O"),
     ShortcutAction.TOOL_INTERIOR to keys("Shift+I"),
-    // Photoshop's M, G and R belong to tools of the other modes here, so the paint tools take them with Alt.
-    ShortcutAction.TOOL_PAINT_SELECT to keys("Alt+M"),
+    // Photoshop's M, G and R belong to tools of the other modes here, so the paint tools take Alt chords instead -
+    // the selection Alt+L, after the lasso it starts as.
+    ShortcutAction.TOOL_PAINT_SELECT to keys("Alt+L"),
     ShortcutAction.TOOL_PAINT_GRADIENT to keys("Alt+G"),
     ShortcutAction.TOOL_PAINT_BLUR to keys("Alt+J"),
     ShortcutAction.PICK_OPTION_1 to keys("1", "NumPad1"),
@@ -412,6 +413,11 @@ private val BLENDER_OVERRIDES: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.TOOL_CREATE_WARP to keys("Shift+W"),
     ShortcutAction.TOOL_GLUE to keys("Shift+G"),
     ShortcutAction.TOOL_PAINT_ERASER to keys("Shift+E"),
+    // Blender hands Alt + letter to clearing transforms and the like in every mode, and these chords would switch
+    // into Paint from anywhere: the newer paint tools are left to the toolbar there.
+    ShortcutAction.TOOL_PAINT_SELECT to emptyList(),
+    ShortcutAction.TOOL_PAINT_GRADIENT to emptyList(),
+    ShortcutAction.TOOL_PAINT_BLUR to emptyList(),
     // Numpad-dot = view selected.
     ShortcutAction.FRAME_VIEW to keys("NumPadDot"),
     // Workspace cycling.
