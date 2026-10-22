@@ -72,6 +72,7 @@ import io.github.psd2live.ui.drawTransformBox
 import io.github.psd2live.ui.CanvasTool
 import io.github.psd2live.ui.CreatePlacementKind
 import io.github.psd2live.ui.EditHierarchyMode
+import io.github.psd2live.ui.MeshPointMode
 import io.github.psd2live.ui.PaintShape
 import io.github.psd2live.ui.SelectionStyle
 import io.github.psd2live.ui.VERTEX_TOOLS
@@ -969,8 +970,9 @@ fun CanvasViewportComposable(
 			ShortcutAction.TOOL_CREATE_DEFORM_PATH -> { editor.activateTool(CanvasTool.CREATE_DEFORM_PATH); true }
 			ShortcutAction.TOOL_GLUE -> { editor.activateTool(CanvasTool.GLUE); true }
 			ShortcutAction.TOOL_SUBDIVIDE -> { editor.activateTool(CanvasTool.SUBDIVIDE); true }
-			ShortcutAction.TOOL_KNIFE -> { editor.activateTool(CanvasTool.KNIFE); true }
-			ShortcutAction.TOOL_MESH_POINT -> { editor.activateTool(CanvasTool.MESH_POINT); true }
+			// The two chords arm the point tool's two faces, the way the shape chords arm the shape tool's.
+			ShortcutAction.TOOL_KNIFE -> { editor.selectMeshPointMode(MeshPointMode.LINE); true }
+			ShortcutAction.TOOL_MESH_POINT -> { editor.selectMeshPointMode(MeshPointMode.POINT); true }
 			ShortcutAction.TOOL_WEIGHT_PAINT -> { editor.activateTool(CanvasTool.WEIGHT_PAINT); true }
 			ShortcutAction.TOOL_WEIGHT_GRADIENT -> { editor.activateTool(CanvasTool.WEIGHT_GRADIENT); true }
 			ShortcutAction.TOOL_INTERIOR -> { editor.activateTool(CanvasTool.INTERIOR); true }
@@ -1020,7 +1022,7 @@ fun CanvasViewportComposable(
 					editor.activeTemporaryWarp() != null -> { editor.endTemporaryWarp(); true }
 					viewModel.swingSession != null -> { viewModel.commitSwing(); true }
 					editor.hierarchyMode == EditHierarchyMode.PAINT && editor.paintSelectDraft.isNotEmpty() -> editor.finishPaintPolygon()
-					editor.tool == CanvasTool.KNIFE -> { editor.finishKnife(); true }
+					editor.knifing -> { editor.finishKnife(); true }
 					editor.tool == CanvasTool.INTERIOR -> editor.interiorTool.finish()
 					editor.placement != null && editor.placement?.kind != CreatePlacementKind.PATH -> {
 						editor.confirmPlacement(); true
@@ -1039,7 +1041,7 @@ fun CanvasViewportComposable(
 			ShortcutAction.PASTE -> editor.hierarchyMode == EditHierarchyMode.SELECT && editor.editable && viewModel.pasteObjects()
 			ShortcutAction.DELETE_SELECTION -> {
 				if (selectedReference() != null) { referenceInteraction.cancel(); viewModel.removeReference(requireNotNull(selectedReference()).id) }
-				else if (editor.tool == CanvasTool.KNIFE || editor.drawingPath) editor.undoDraftPoint()
+				else if (editor.knifing || editor.drawingPath) editor.undoDraftPoint()
 				else if (editor.tool == CanvasTool.INTERIOR) editor.interiorTool.deleteSelection()
                         else if (editor.tool == CanvasTool.CREATE_DEFORM_PATH || editor.activePath != null) editor.deletePathPoint()
 				else if (editor.hierarchyMode == EditHierarchyMode.EDIT) editor.deleteMeshSelection()

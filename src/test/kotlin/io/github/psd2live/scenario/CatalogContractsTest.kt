@@ -5,6 +5,7 @@ import io.github.psd2live.testing.MESSAGE_BUNDLES
 import io.github.psd2live.testing.messageBundle
 import io.github.psd2live.testing.missingMessages
 import io.github.psd2live.ui.CanvasTool
+import io.github.psd2live.ui.MeshPointMode
 import io.github.psd2live.ui.state.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,6 +26,15 @@ class CatalogContractsTest {
 			assertEquals(emptyList(), keys.filter { props.getProperty(it).isBlank() }, "$name has blank values")
 		}
 		assertEquals(emptyList(), missingMessages(CanvasTool.entries.map { "editor.tool.${it.name.lowercase()}" } + ShortcutAction.entries.map { it.labelKey }))
+	}
+
+	/** The point tool's two faces (the old point tool and knife) each keep a name, a hint and their old key in every preset that had it. */
+	@Test fun everyFaceOfThePointToolIsNamedAndKeepsItsKey() {
+		assertEquals(emptyList(), missingMessages(MeshPointMode.entries.flatMap { listOf(it.labelKey, it.hintKey) }))
+		assertEquals(MeshPointMode.entries.size, MeshPointMode.entries.map { it.action }.toSet().size)
+		val keymap = Keymap.of(KeymapPreset.entries.first())
+		assertEquals("K", keymap.labelFor(MeshPointMode.LINE.action))
+		assertEquals("Alt+M", keymap.labelFor(MeshPointMode.POINT.action))
 	}
 
 	@Test fun everyKeymapPresetIsFreeOfCollisions() {

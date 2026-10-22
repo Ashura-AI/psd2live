@@ -71,6 +71,49 @@ class ManualMeshTopologyJournalTest {
         assertContentEquals(after.indices, mesh(replayed).indices)
     }
 
+    /**
+     * The point tool's line, journalled as `knife` since it was a tool of its own: a project that recorded one replays it
+     * unchanged, and every two neighbouring anchors end joined by an edge - which is what sets it apart from `add_points`.
+     */
+    @Test fun aLineJoinsItsAnchorsByEdgesAndReplaysAsRecorded() {
+        val model = fixture()
+        val command = topology("knife") {
+            put("anchors", buildJsonArray {
+                add(buildJsonObject { put("vertex", 3) })
+                add(buildJsonObject { put("x", 9f); put("y", 13f) })
+                add(buildJsonObject { put("x", 26f); put("y", 12f) })
+            })
+        }
+        val (edited, journal) = RigAuthoringJournal.compile(model, JsonArray(listOf(command)))
+        assertEquals("knife", journal.single().getValue("action").jsonPrimitive.content)
+        val after = mesh(edited)
+        val edges = org.umamo.edit.MeshTopology.uniqueEdges(after.indices)
+        fun vertexAt(x: Float, y: Float) = (0 until after.vertexCount).single {
+            kotlin.math.abs(after.positions[it * 2] - x) < 1e-3f && kotlin.math.abs(after.positions[it * 2 + 1] - y) < 1e-3f
+        }
+        val chain = listOf(3, vertexAt(9f, 13f), vertexAt(26f, 12f))
+        // Each segment splits the edges it crosses, so it runs as a chain of edges through every vertex lying on it.
+        for ((a, b) in chain.zipWithNext()) {
+            val ax = after.positions[a * 2]; val ay = after.positions[a * 2 + 1]
+            val dx = after.positions[b * 2] - ax; val dy = after.positions[b * 2 + 1] - ay
+            val length = dx * dx + dy * dy
+            val along = (0 until after.vertexCount).mapNotNull { v ->
+                val px = after.positions[v * 2] - ax; val py = after.positions[v * 2 + 1] - ay
+                val t = (px * dx + py * dy) / length
+                if (t < -1e-4f || t > 1f + 1e-4f || kotlin.math.abs(px * dy - py * dx) > 1e-2f * kotlin.math.sqrt(length)) null else v to t
+            }.sortedBy { it.second }.map { it.first }
+            assertEquals(a, along.first()); assertEquals(b, along.last())
+            for ((u, v) in along.zipWithNext()) assertTrue(org.umamo.edit.MeshElement.Edge.of(u, v) in edges, "edge $u-$v on $a-$b")
+        }
+        // The point outside the grid grew the outline, and the keys of the new points follow the linear field.
+        val pulled = edited.drawables.single { it.id == sheet }.geometryGrid!!.cells.single { it.coordinate[0] == 1 }.form.positionDeltas
+        assertEquals(9f * 0.1f, pulled[chain[1] * 2], 1e-4f)
+        assertEquals(13f * 0.2f, pulled[chain[1] * 2 + 1], 1e-4f)
+        val replayed = RigAuthoringJournal.apply(model, command)
+        assertContentEquals(after.positions, mesh(replayed).positions)
+        assertContentEquals(after.indices, mesh(replayed).indices)
+    }
+
     @Test fun deletedEdgesDropTheVertexTheyFreeAndRemapEverythingElse() {
         val model = fixture()
         val command = topology("delete_edges") {

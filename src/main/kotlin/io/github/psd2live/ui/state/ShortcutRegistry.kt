@@ -124,8 +124,9 @@ enum class ShortcutAction(
     TOOL_CREATE_DEFORM_PATH(ShortcutCategory.CANVAS_TOOLS, "editor.tool.create_deform_path"),
     TOOL_GLUE(ShortcutCategory.CANVAS_TOOLS, "editor.tool.glue"),
     TOOL_SUBDIVIDE(ShortcutCategory.CANVAS_TOOLS, "editor.tool.subdivide"),
-    TOOL_KNIFE(ShortcutCategory.CANVAS_TOOLS, "editor.tool.knife"),
-    TOOL_MESH_POINT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.mesh_point"),
+    // The point tool's two faces. TOOL_KNIFE keeps its name so saved keymaps still bind the line face.
+    TOOL_KNIFE(ShortcutCategory.CANVAS_TOOLS, "shortcut.meshPointLine"),
+    TOOL_MESH_POINT(ShortcutCategory.CANVAS_TOOLS, "shortcut.meshPointPoint"),
     TOOL_WEIGHT_PAINT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.weight_paint"),
     TOOL_WEIGHT_GRADIENT(ShortcutCategory.CANVAS_TOOLS, "editor.tool.weight_gradient"),
     TOOL_PAINT_BRUSH(ShortcutCategory.CANVAS_TOOLS, "editor.tool.paint_brush"),

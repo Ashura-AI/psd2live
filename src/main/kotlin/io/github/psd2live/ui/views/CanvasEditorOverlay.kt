@@ -821,10 +821,10 @@ internal fun BoxScope.CanvasEditorOverlay(
             }
         }
 
-        // 3g. The knife's polyline: the anchors placed so far, the red rubber band that shows where the cut
+        // 3g. The point tool's line: the anchors placed so far, the red rubber band that shows where the line
         //     would run to the pointer, and a ring that turns red and grows where a click would snap to a
         //     vertex or an edge instead of dropping a new point.
-        if (editor.tool == CanvasTool.KNIFE && currentTarget != null && currentTarget.kind == "mesh") {
+        if (editor.knifing && currentTarget != null && currentTarget.kind == "mesh") {
             val placed = editor.knifeDraft.mapNotNull { editor.knifeAnchorScreen(it, currentTarget, viewport) }
             for (index in 0 until placed.size - 1) {
                 drawLine(Color.Black.copy(alpha = 0.45f), placed[index], placed[index + 1], 2.5f)
@@ -844,9 +844,9 @@ internal fun BoxScope.CanvasEditorOverlay(
             }
         }
 
-        // 3g'. The point tool: the stroke laying new points, else where a click would land - the vertex it would grab,
+        // 3g'. The point tool's points: the stroke laying new points, else where a click would land - the vertex it would grab,
         //      the spot on an edge it would split, or the free point it would add.
-        if (editor.tool == CanvasTool.MESH_POINT && currentTarget != null && currentTarget.kind == "mesh") {
+        if (editor.tool == CanvasTool.MESH_POINT && !editor.knifing && currentTarget != null && currentTarget.kind == "mesh") {
             val stroke = editor.pointStroke
             if (stroke.size > 1) drawMeshWires(stroke.zipWithNext().flatMap { listOf(it.first, it.second) }, MeshLook.Structure, alpha = 1f)
             else editor.knifeHover?.let { at -> drawMeshHandle(at, MeshLook.Structure, colors.accent, hovered = true) }
@@ -2064,8 +2064,12 @@ internal fun BoxScope.CanvasToolBar(
                     selected = if (creating) placingTool == tool || editor.tool == tool else editor.tool == tool,
                     enabled = (if (creating) editor.editable else !editor.busy) && !waiting,
                     tooltip = if (waiting) tr("editor.glueNeedTwo", editor.glueMeshCount()) else null,
-                    // The shape tool answers to its shapes' chords, so its row shows the one that is in hand.
-                    keyLabel = keymap.labelFor(if (tool == CanvasTool.PAINT_SHAPE) editor.paintShape.action else tool.action).orEmpty(),
+                    // The shape and point tools answer to their faces' chords, so their rows show the one that is in hand.
+                    keyLabel = keymap.labelFor(when (tool) {
+                        CanvasTool.PAINT_SHAPE -> editor.paintShape.action
+                        CanvasTool.MESH_POINT -> editor.meshPointMode.action
+                        else -> tool.action
+                    }).orEmpty(),
                     keyCap = true,
                     icon = { color ->
                         ToolIcon(
@@ -2075,6 +2079,7 @@ internal fun BoxScope.CanvasToolBar(
                             paintShape = if (tool == CanvasTool.PAINT_SHAPE) editor.paintShape else null,
                             skeletonEditSubTool = if (tool == CanvasTool.SKELETON_EDIT) editor.skeletonEditSubTool else null,
                             paintSelectShape = if (tool == CanvasTool.PAINT_SELECT) editor.paintSelectShape else null,
+                            meshPointMode = if (tool == CanvasTool.MESH_POINT) editor.meshPointMode else null,
                         )
                     },
                     onClick = {
@@ -2111,6 +2116,10 @@ internal fun BoxScope.CanvasToolBar(
         RailVariants(editor.hierarchyMode == EditHierarchyMode.PAINT && editor.tool == CanvasTool.PAINT_SHAPE, PaintShape.entries,
             { editor.paintShape == it }, { tr(it.labelKey) }, { color, shape -> PaintShapeIcon(shape = shape, color = color) },
             keys = { keymap.labelFor(PaintShape.entries[it].action).orEmpty() }) { shape -> editor.selectPaintShape(shape); focus() }
+        // The point tool's two faces, points and a line, each on its own chord.
+        RailVariants(editor.hierarchyMode == EditHierarchyMode.EDIT && editor.tool == CanvasTool.MESH_POINT, MeshPointMode.entries,
+            { editor.meshPointMode == it }, { tr(it.labelKey) }, { color, mode -> MeshPointModeIcon(mode = mode, color = color) },
+            keys = { keymap.labelFor(MeshPointMode.entries[it].action).orEmpty() }) { mode -> editor.selectMeshPointMode(mode); focus() }
         // The selection tool's faces, under it the same way, on the number keys.
         RailVariants(editor.hierarchyMode == EditHierarchyMode.PAINT && editor.tool == CanvasTool.PAINT_SELECT, PaintSelectShape.entries,
             { editor.paintSelectShape == it }, { tr(it.labelKey) }, { color, shape -> PaintSelectShapeIcon(shape = shape, color = color) },

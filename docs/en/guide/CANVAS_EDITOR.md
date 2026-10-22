@@ -12,7 +12,7 @@ The mode menu at the top left of the canvas (like Blender's mode drop-down) list
 | --- | --- | --- |
 | Object | Object selection | Click, box and lasso select; synced with the hierarchy; the toolbar's **Create** |
 | Deform | Base shape or the keyform of the current parameters | Vertex / edge / face select, transform, push, smooth, inflate, path control points |
-| Edit | Mesh topology and path binding | Vertex / edge / face select, mesh points, connect, merge, subdivide, knife, delete edges, re-triangulate, delete, Glue (when two meshes are selected), interior handles |
+| Edit | Mesh topology and path binding | Vertex / edge / face select, mesh points (points / line), connect, merge, subdivide, delete edges, re-triangulate, delete, Glue (when two meshes are selected), interior handles |
 | Simulate | Vertex weight groups read by the simulation (this app only) | Weight brush, weight gradient, with the group to paint (pinned, stiffness and so on) switched by kind beneath them; the mode bar creates cloth / hair and switches the reference simulation (not exported) |
 | Skeleton | Skeleton | Pose, bone edit; bone edits are saved when switching to pose or leaving the mode |
 | Paint | Layer pixels | Brush, pencil, eraser, blur, fill, gradient, eyedropper, shapes, selection |
@@ -122,12 +122,20 @@ The tip shape is picked under the brush in the left toolbar (the same for the we
 | **Delete** | Deletes the selection and tries to rebuild the gap; refused when no valid topology can be formed |
 | Delete edges | Deletes the selected edges (`Del` in edge mode, or **Delete edges** in the topology menu): an inner edge is replaced by the other diagonal of the quad its two triangles form, refused when the quad is not convex at rest or in any keyform or blend form (it would turn over in that pose); an outline edge removes its triangle, together with any vertex no longer used; refused when a vertex would be left joined by a single point or no triangle would remain |
 | Re-triangulate | Topology menu: around the selected vertices (the whole mesh when nothing is selected), turns slivers into more even triangles; vertices, outline and texture stay put, and a notice says when there is nothing to improve |
-| Knife | Places a polyline point by point; snaps near points or edges, Shift turns snapping off temporarily; Enter finishes, Esc cancels |
-| Mesh points | Point-by-point corrections to the automatic layout, see below |
+| Mesh points | Point-by-point corrections to the automatic layout: **Points** adds, moves and deletes vertices, **Line** lays joined edges along a line, see below |
 
 ### Mesh points
 
-The first tool of the topology group in the Edit mode toolbar (`Alt+M`), for ordinary meshes and meshes with an interior effect alike. The pointer snaps to nearby vertices and edges (the snap radius is the knife's), and the hover marker shows where a press would land.
+The first tool of the topology group in the Edit mode toolbar, for ordinary meshes and meshes with an interior effect alike. It has two modes, switched in the options bar or under the tool in the toolbar, or directly by each one's shortcut:
+
+| Mode | Shortcut | Use | Journal command |
+| --- | --- | --- | --- |
+| Points | `Alt+M` | Add, move and delete vertices, tune the density; every click or stroke commits at once and the mesh tidies the connections around new points, so points are **not promised an edge** between them | `add_points` (and `connect` / `delete` / `delete_edges`) |
+| Line | `K` | Click a polyline point by point and commit it with Enter; every point is joined to the last by an edge, so the mesh can **fold** along it (an eyelid, a mouth line, a crease) | `knife` |
+
+Both modes place a point by the same rule: the pointer snaps to nearby vertices and edges (one shared snap radius; in Line mode Shift turns snapping off for the moment), the hover marker shows where a press would land, and points may land outside the mesh.
+
+#### Points
 
 | Action | Result |
 | --- | --- |
@@ -137,11 +145,17 @@ The first tool of the topology group in the Edit mode toolbar (`Alt+M`), for ord
 | Shift + click a vertex | Connects the one selected vertex to it and moves the selection onto it, so repeated Shift-clicks draw a chain |
 | Alt + click | Deletes a vertex (filling the gap) or an edge |
 
+#### Line
+
+Each click drops one anchor: on a vertex it uses that vertex, on an edge it splits the edge, inside a triangle or outside the mesh it adds a new vertex; every two neighbouring anchors are joined by an edge, splitting the edges it crosses. Enter (or **Finish line** on the mode bar) commits the whole line in one step, Delete takes back a point, Esc cancels. A line that cannot be joined without overlapping the mesh is refused whole and the draft is kept, so the last point can be taken back and placed again.
+
+#### Common to both
+
 A new vertex's position, UV, keyforms, blend shapes and vertex weights all derive from the vertices around it by one set of weights, so adding points never moves the picture; afterwards the edges around it are flipped where that does not change the texture, to avoid slivers. With **Mirror across centre** on, adds, deletes and edge deletes also happen at the mirror position across the vertical centre line of the mesh's current bounds (only on this side when there is no vertex or edge there). The selection group of the context menu also has **Select outline vertices** and **Select inner vertices**, for working on the boundary or the inside alone.
 
 On a mesh with an interior effect, adding, deleting or connecting points, deleting edges, re-triangulating or moving rest-shape vertices bakes the effect again on the new mesh in the same step; when the new mesh fails the effect's area checks, the edit is still committed and the interior panel reports that the mesh changed and needs regenerating.
 
-The knife may place points outside the original mesh. Topology updates also handle UVs, keyforms, blend shapes and Glue vertex references, and rebind paths. Still check existing poses, especially boundary changes after deleting outline points.
+Topology updates also handle UVs, keyforms, blend shapes and Glue vertex references, and rebind paths. Still check existing poses, especially boundary changes after deleting outline points.
 
 ## Interior handles
 
@@ -186,7 +200,7 @@ Drag the origin to move it and the end point to rotate; by default holding `Shif
 Edit mode acts on all selected art meshes at once:
 
 - Vertex clicking, box selection, brush selection, the transform box and the deform brush all work across meshes.
-- Clicking a vertex of a mesh makes it the **primary mesh**; the knife, edge / face modes and paths act on the primary mesh only.
+- Clicking a vertex of a mesh makes it the **primary mesh**; a mesh-points line, edge / face modes and paths act on the primary mesh only.
 - Vertex actions such as delete commit once per mesh with a selection, in a single history entry.
 
 ## Glue

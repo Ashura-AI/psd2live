@@ -529,11 +529,8 @@ internal fun ToolDetailsView(
                         color = colors.textMuted,
                     )
                 }
-                CanvasTool.KNIFE -> {
-                    Text(expandShortcutMarkup(tr("editor.knifeGestureHint"), editor.state.keymap), style = typography.caption, color = colors.textMuted)
-                }
                 CanvasTool.MESH_POINT -> {
-                    Text(expandShortcutMarkup(tr("editor.meshPointHint"), editor.state.keymap), style = typography.caption, color = colors.textMuted)
+                    Text(expandShortcutMarkup(tr(editor.meshPointMode.hintKey), editor.state.keymap), style = typography.caption, color = colors.textMuted)
                 }
                 CanvasTool.SKELETON_POSE -> {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

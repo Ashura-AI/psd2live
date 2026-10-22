@@ -58,10 +58,7 @@ internal val INFLATE_DIRECTION = ChoiceOption("brush.inflate", "editor.tool.infl
     { _, shrink -> tr(if (shrink) "editor.inflate.shrink" else "editor.inflate.grow") },
     { it.inflateInvert }, { e, shrink -> e.inflateInvert = shrink })
 
-internal val KNIFE_SNAP = SliderOption("knife.snap", "editor.knifeSnapRadius", OptionUnit.PX, { 3f..30f },
-    { it.knifeSnapRadius }, { e, v -> e.knifeSnapRadius = v }, step = 1f, integer = true)
-
-/** The point tool snaps through the knife's radius, so the two place points by one rule. */
+/** Points and lines snap through one radius, so both faces of the point tool place a vertex by one rule. */
 internal val POINT_SNAP = SliderOption("point.snap", "editor.knifeSnapRadius", OptionUnit.PX, { 3f..30f },
     { it.knifeSnapRadius }, { e, v -> e.knifeSnapRadius = v }, step = 1f, integer = true)
 
@@ -94,6 +91,9 @@ internal val SKELETON_WEIGHT_VALUE = SliderOption("skeleton.weightValue", "skele
 
 internal val BRUSH_TIP = ChoiceOption("variant.brushTip", "editor.brushShape", { BrushShape.entries }, { _, s -> tr(s.labelKey) },
     { it.brushShape }, { e, s -> e.brushShape = s }, variant = true, place = OptionPlace.MENU)
+
+internal val MESH_POINT_MODE = ChoiceOption("variant.meshPoint", "editor.tool.mesh_point", { io.github.psd2live.ui.MeshPointMode.entries },
+    { _, m -> tr(m.labelKey) }, { it.meshPointMode }, { e, m -> e.selectMeshPointMode(m) }, variant = true, place = OptionPlace.MENU)
 
 internal val PAINT_SHAPE_KIND = ChoiceOption("variant.paintShape", "editor.tool.paint_shape", { io.github.psd2live.ui.PaintShape.entries },
     { _, s -> tr(s.labelKey) }, { it.paintShape }, { e, s -> e.selectPaintShape(s) }, variant = true, place = OptionPlace.MENU)
@@ -293,6 +293,7 @@ internal fun CanvasEditor.pickVariant(n: Int): Boolean {
         tool == CanvasTool.GLUE -> pick(GlueSubTool.entries) { glueSubTool = it }
         tool == CanvasTool.SKELETON_EDIT -> pick(SkeletonEditSubTool.entries) { skeletonEditSubTool = it }
         tool == CanvasTool.SKELETON_POSE -> pick(SkeletonPoseSubTool.entries) { skeletonPoseSubTool = it }
+        tool == CanvasTool.MESH_POINT -> pick(io.github.psd2live.ui.MeshPointMode.entries) { selectMeshPointMode(it) }
         tool == CanvasTool.PAINT_SHAPE -> pick(io.github.psd2live.ui.PaintShape.entries) { selectPaintShape(it) }
         tool == CanvasTool.PAINT_SELECT -> pick(io.github.psd2live.ui.PaintSelectShape.entries) { paintSelectShape = it }
         else -> false
@@ -469,13 +470,14 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
             add(ActionOption("subdivide.run", "editor.subdivide", { it.editable && it.vertices.isNotEmpty() }, { it.topology("subdivide") },
                 OptionIcon.SUBDIVIDE, primary = true))
         }
-        CanvasTool.MESH_POINT -> {
+        CanvasTool.MESH_POINT -> if (editor.meshPointMode == io.github.psd2live.ui.MeshPointMode.POINT) {
+            add(MESH_POINT_MODE)
             add(POINT_SPACING)
             add(POINT_SNAP)
             add(POINT_MIRROR)
-        }
-        CanvasTool.KNIFE -> {
-            add(KNIFE_SNAP)
+        } else {
+            add(MESH_POINT_MODE)
+            add(POINT_SNAP)
             add(ActionOption("knife.finish", "editor.finishCut", { it.editable && it.knifeDraft.size >= 2 }, { it.finishKnife() },
                 OptionIcon.CONFIRM, primary = true, place = OptionPlace.TOP))
             add(ActionOption("knife.undoPoint", "editor.undoPoint", { !it.busy && it.knifeDraft.isNotEmpty() }, { it.undoDraftPoint() },
@@ -492,7 +494,7 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
             add(BRUSH_FALLOFF)
         }
     }
-    if (editing && mesh && editor.tool != CanvasTool.KNIFE) {
+    if (editing && mesh && !editor.knifing) {
         add(SectionOption("topology", "editor.topology", OptionPlace.MENU, submenu = true, icon = OptionIcon.TOPOLOGY))
         for (action in TOPOLOGY_ACTIONS) {
             if (editor.tool == CanvasTool.SUBDIVIDE && action.first == "subdivide") continue
@@ -517,7 +519,7 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
         addKeyformTools(editor)
         addKeyformMirror()
     }
-    if (editor.tool in SELECTION_TOOLS || editor.tool == CanvasTool.TRANSFORM || editor.tool == CanvasTool.MESH_POINT)
+    if (editor.tool in SELECTION_TOOLS || editor.tool == CanvasTool.TRANSFORM || (editor.tool == CanvasTool.MESH_POINT && !editor.knifing))
         addSelectionActions(objectMode = false, mesh = mesh)
 }
 

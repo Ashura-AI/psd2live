@@ -250,7 +250,7 @@ Every layer already gets a mesh automatically when generated, so most of the tim
 ## Where the operations are
 | Operation | Where |
 |---|---|
-| Subdivide, cut, delete vertices | Edit mode toolbar and right-click menu: subdivide {key:TOOL_SUBDIVIDE}, knife {key:TOOL_KNIFE}, delete {key:DELETE_SELECTION} |
+| Subdivide, mesh points, delete vertices | Edit mode toolbar and right-click menu: subdivide {key:TOOL_SUBDIVIDE}, mesh points {key:TOOL_MESH_POINT} (Line {key:TOOL_KNIFE}), delete {key:DELETE_SELECTION} |
 | Point / edge / face selection | The Edit mode bar ({key:PICK_OPTION_1}–{key:PICK_OPTION_3}) |
 | Rebuild from current pixels | The right-click "Mesh" submenu, or the Mesh panel |
 | Split disconnected meshes… | The right-click "Mesh" submenu, or right-click in the hierarchy tree |
@@ -321,7 +321,7 @@ Deform changes shape and Edit changes mesh structure; this is the pair most easi
 2. Click to select; {kbd:Shift} adds, {kbd:Alt} subtracts, {kbd:Ctrl} + click cycles the hierarchy level among overlapping hit objects, drag for a box selection, {key:SELECT_ALL} selects all.
 3. The selection stays in sync with the hierarchy tree; press {key:FRAME_VIEW} to bring the selected objects to the center of the view.
 4. After choosing a target, switch to the mode you need. With no target selected, the mode tells you to select one first.
-In other modes, hold {key:TEMPORARY_SELECT} to switch to selection temporarily and release to return. {key:TOGGLE_OBJECT_MODE} switches between Object mode and the mode last used (Deform by default). Multi-step operations such as placing or cutting are finished with "Confirm" on the mode bar or {kbd:Enter}, and cancelled with {key:CANCEL}.
+In other modes, hold {key:TEMPORARY_SELECT} to switch to selection temporarily and release to return. {key:TOGGLE_OBJECT_MODE} switches between Object mode and the mode last used (Deform by default). Multi-step operations such as placing or drawing a mesh-points line are finished with "Confirm" on the mode bar or {kbd:Enter}, and cancelled with {key:CANCEL}.
 {tutorial=SELECT_MODE}
 *> Simulate, Skeleton and Paint are modes Cubism does not have; their results are baked into parameters, keyforms and pendulums on export, or written straight into the textures.
 
@@ -432,7 +432,7 @@ The toolbar sits at the upper left of each canvas, below the mode menu, and list
 |---|---|
 | Object | Select, Transform, lasso select; Create Warp, Create Rotation, deform path |
 | Deform | Select, Transform, lasso select, brush select; push/pull brush, smooth brush, inflate/deflate |
-| Edit | The Deform mode tools, plus subdivide, knife and Glue (available when two meshes are selected) |
+| Edit | The Deform mode tools, plus mesh points, subdivide and Glue (available when two meshes are selected) |
 | Simulate | Weight brush, weight gradient, with the weight groups to paint listed below |
 | Skeleton | Bone pose, edit bones |
 | Paint | Brush, pencil, eraser; paint bucket, eyedropper; shapes |
@@ -967,7 +967,7 @@ When the mesh does not cover some visible pixels, the panel shows the proportion
 | Units | Scale with document size, trace outline by texture pixels, wrap | The length unit, the precision of the outline trace, and gaps between small protrusions such as closed eyelashes |
 
 @@ mesh-edit-manual | Edit Mesh manually
-Where the automatic mesh is not right in a few places, change the topology directly in **Edit** mode: subdivide, connect, merge, duplicate, delete and cut. Even when the mesh already has keyforms you can modify it — the vertex references of the UVs, keyforms, blend shapes and glue are updated along with it, and every operation goes straight into the history.
+Where the automatic mesh is not right in a few places, change the topology directly in **Edit** mode: subdivide, connect, merge, duplicate, delete and mesh points (adding points, drawing lines). Even when the mesh already has keyforms you can modify it — the vertex references of the UVs, keyforms, blend shapes and glue are updated along with it, and every operation goes straight into the history.
 ## Entering Edit mode
 1. Select one or more art meshes.
 2. In the mode menu choose **Edit** ({key:MODE_EDIT}); the mesh is forced to display.
@@ -980,11 +980,11 @@ Where the automatic mesh is not right in a few places, change the topology direc
 | Connect / merge | Creates connections between the selected points, or merges the selected vertices into one point |
 | Duplicate | Duplicates the selected vertices and the faces they fully cover; the new copy becomes the selection |
 | Delete ({key:DELETE_SELECTION}) | Deletes the selection and tries to fill the gap; refused when no valid topology can result |
-| Knife ({key:TOOL_KNIFE}) | Specify a polyline point by point, snapping near points or edges (hold {kbd:Shift} to turn this off temporarily); {key:FINISH_PATH} finishes and {key:CANCEL} cancels |
-| Mesh points ({key:TOOL_MESH_POINT}) | Click on open canvas to add a vertex (inside a triangle, on an edge or outside the mesh), drag on open canvas to add points along the stroke at **Point spacing**, drag a vertex to move it; {kbd:Shift}+click connects from the selected vertex, {kbd:Alt}+click deletes a vertex or edge; **Mirror across centre** repeats it on the other side |
+| Mesh points · Points ({key:TOOL_MESH_POINT}) | Click on open canvas to add a vertex (inside a triangle, on an edge or outside the mesh), drag on open canvas to add points along the stroke at **Point spacing**, drag a vertex to move it; {kbd:Shift}+click connects from the selected vertex, {kbd:Alt}+click deletes a vertex or edge; **Mirror across centre** repeats it on the other side. The mesh tidies its own connections around new points, so they are not promised an edge between them |
+| Mesh points · Line ({key:TOOL_KNIFE}) | Click a polyline point by point; each point is joined to the last by an edge, so the mesh can fold along it (an eyelid, a mouth line, a crease). Snaps near points or edges (hold {kbd:Shift} to turn this off temporarily); {key:FINISH_PATH} finishes and {key:CANCEL} cancels |
 | Delete edges | {key:DELETE_SELECTION} in edge mode or the topology menu: an inner edge becomes the other diagonal of its quad, an outline edge removes its triangle; refused when it would break the mesh |
 | Re-triangulate | Topology menu: around the selected vertices (the whole mesh with none selected) turns slivers into more even triangles, leaving vertices and texture in place |
-When several art meshes are selected, clicking a vertex of one mesh makes it the primary mesh; the knife and edge and face selection act only on the primary mesh.
+When several art meshes are selected, clicking a vertex of one mesh makes it the primary mesh; a mesh-points line and edge and face selection act only on the primary mesh.
 !> Deleting outline points changes the boundary, so check under several parameter poses after changing it. Do everyday shape pulling in Deform mode, and use Edit mode only to change topology.
 
 @@ mesh-duplication | Mesh duplication
@@ -1341,7 +1341,7 @@ All keyforms are made in Deform mode: set a parameter to a key, then change the 
 - The canvas right-click menu **Mirror keyform** mirrors a finished side to the other; see [[motion-mirroring]].
 - The canvas right-click menu **Keyform** copies, pastes, resets or interpolates the shape at the current key; see [[copy-and-blend-shape]].
 - With **Soft selection** on ({key:SOFT_SELECTION_TOGGLE}), dragging or transforming selected points also moves the points around them, less the further away they are; set the reach in the tool options bar or with {key:BRUSH_RADIUS_DOWN} / {key:BRUSH_RADIUS_UP}. The falloff curve is shared with the deform brush, and the affected points are ringed in red.
-*> Changing the mesh structure (adding points, cutting) happens in Edit mode, separate from changing shapes; for everyday shape correction stay in Deform mode. When you edit a keyform owned by a generator, the change is recorded as a generated override and survives regeneration; see [[generated-overrides]].
+*> Changing the mesh structure (adding points, drawing lines) happens in Edit mode, separate from changing shapes; for everyday shape correction stay in Deform mode. When you edit a keyform owned by a generator, the change is recorded as a generated override and survives regeneration; see [[generated-overrides]].
 
 @@ keyform-parent-chilid-relation | Keyforms (Parent-Child Hierarchy Movement)
 A parent deformer and a child object can be bound to the same parameter, each recording shapes on the keys; when the parameter changes, the overall motion brought by the parent and the child's own shape are combined into the final result. This way the parent handles the large motion and the child only needs small corrections.

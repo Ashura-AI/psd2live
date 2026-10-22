@@ -20,6 +20,7 @@ import io.github.psd2live.ui.CanvasTool
 import io.github.psd2live.ui.EditHierarchyMode
 import io.github.psd2live.ui.GlueSubTool
 import io.github.psd2live.ui.PaintSelectShape
+import io.github.psd2live.ui.MeshPointMode
 import io.github.psd2live.ui.PaintShape
 import io.github.psd2live.ui.SkeletonEditSubTool
 import io.github.psd2live.ui.SkeletonPoseSubTool
@@ -53,8 +54,9 @@ internal fun ToolIcon(
     paintShape: PaintShape? = null,
     skeletonEditSubTool: SkeletonEditSubTool? = null,
     paintSelectShape: PaintSelectShape? = null,
+    meshPointMode: MeshPointMode? = null,
 ) {
-    Canvas(Modifier.size(18.dp)) { drawToolIcon(tool, color, brushShape, paintShape, skeletonEditSubTool, paintSelectShape) }
+    Canvas(Modifier.size(18.dp)) { drawToolIcon(tool, color, brushShape, paintShape, skeletonEditSubTool, paintSelectShape, meshPointMode) }
 }
 
 /** The hierarchy mode bar's icons, one per mode, on the same grid as the tools. */
@@ -71,6 +73,11 @@ internal fun BrushShapeIcon(shape: BrushShape, color: Color, size: Dp = 14.dp) {
 @Composable
 internal fun PaintShapeIcon(shape: PaintShape, color: Color, size: Dp = 14.dp) {
     Canvas(Modifier.size(size)) { drawPaintShapeIcon(shape, color) }
+}
+
+@Composable
+internal fun MeshPointModeIcon(mode: MeshPointMode, color: Color, size: Dp = 14.dp) {
+    Canvas(Modifier.size(size)) { IconPen(this, color).meshPoint(mode) }
 }
 
 @Composable
@@ -105,6 +112,7 @@ internal fun DrawScope.drawToolIcon(
     paintShape: PaintShape? = null,
     skeletonEditSubTool: SkeletonEditSubTool? = null,
     paintSelectShape: PaintSelectShape? = null,
+    meshPointMode: MeshPointMode? = null,
 ) {
     val pen = IconPen(this, color)
     when (tool) {
@@ -126,8 +134,7 @@ internal fun DrawScope.drawToolIcon(
         CanvasTool.CREATE_DEFORM_PATH -> pen.deformPath()
         CanvasTool.GLUE -> pen.glue()
         CanvasTool.SUBDIVIDE -> pen.subdivide()
-        CanvasTool.KNIFE -> pen.knife()
-        CanvasTool.MESH_POINT -> pen.meshPoint()
+        CanvasTool.MESH_POINT -> pen.meshPoint(meshPointMode ?: MeshPointMode.POINT)
         CanvasTool.WEIGHT_PAINT -> pen.weightPaint()
         CanvasTool.WEIGHT_GRADIENT -> pen.weightGradient()
         CanvasTool.PAINT_BRUSH -> pen.paintBrush()
@@ -410,23 +417,22 @@ private fun IconPen.skeletonEdit() {
 
 // --- mesh editing ----------------------------------------------------------------------------------------
 
-private fun IconPen.knife() = turned(-45f) {
-    val blade = path {
-        m(11f, 7f); l(4.4f, 7f)
-        c(2.4f, 7f, 1.1f, 8.6f, 0.8f, 10.8f)
-        l(11f, 10.8f); z()
-    }
-    fill(blade, soft)
-    outline(blade)
-    fillBox(12f, 7.2f, 5.6f, 3.4f, 1.4f)
-}
+/** The point tool's face in hand: a lone point, or a line of points joined by edges. */
+private fun IconPen.meshPoint(mode: MeshPointMode) = if (mode == MeshPointMode.LINE) meshLine() else meshPoints()
 
 /** Mesh points: a mesh triangle on its corners, and the new point being joined to it. */
-private fun IconPen.meshPoint() {
+private fun IconPen.meshPoints() {
     shape(path { m(2.4f, 13f); l(7.6f, 2.8f); l(12.2f, 10.4f); z() }, width = ICON_FINE)
     outline(path { m(12.2f, 10.4f); l(15f, 15f); l(2.4f, 13f) }, width = ICON_FINE, dash = floatArrayOf(1.4f, 1.1f))
     for ((x, y) in listOf(2.4f to 13f, 7.6f to 2.8f, 12.2f to 10.4f)) dot(x, y, 1.4f)
     ring(15f, 15f, 2.2f)
+}
+
+/** A mesh line: a triangle crossed by a solid polyline whose three points it is now split along. */
+private fun IconPen.meshLine() {
+    shape(path { m(2.4f, 15.4f); l(9f, 2.4f); l(15.6f, 15.4f); z() }, width = ICON_FINE)
+    outline(path { m(1.4f, 11.6f); l(9f, 8.4f); l(16.6f, 11.6f) })
+    for ((x, y) in listOf(1.4f to 11.6f, 9f to 8.4f, 16.6f to 11.6f)) dot(x, y, 1.6f)
 }
 
 /** Weight paint: the paint brush pressed into the patch of falloff it lays its weight over. */

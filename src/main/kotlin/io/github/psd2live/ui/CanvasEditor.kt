@@ -117,9 +117,10 @@ internal enum class CanvasTool(val action: ShortcutAction) {
     GLUE(ShortcutAction.TOOL_GLUE),
     /** Region subdivide: a radius brush over the mesh's edges. */
     SUBDIVIDE(ShortcutAction.TOOL_SUBDIVIDE),
-    /** The knife: click anchors along a cut, connect them, commit with Enter. */
-    KNIFE(ShortcutAction.TOOL_KNIFE),
-    /** Hand placement: click or stroke to add vertices, drag them, Shift-click to connect, Alt-click to delete. */
+    /**
+     * The point tool, with a [meshPointMode]: points (click or stroke to add vertices, drag them, Shift-click to
+     * connect, Alt-click to delete) or a line (click anchors along it, every two joined by an edge, commit with Enter).
+     */
     MESH_POINT(ShortcutAction.TOOL_MESH_POINT),
     /** Paints a simulation vertex group (pin, stiffness, goal...) on the edited meshes. */
     WEIGHT_PAINT(ShortcutAction.TOOL_WEIGHT_PAINT),
@@ -321,7 +322,7 @@ internal val TOOLBAR_TOOL_ORDER = listOf(
     CanvasTool.SELECT, CanvasTool.TRANSFORM, CanvasTool.LASSO_SELECT, CanvasTool.BRUSH_SELECT,
     CanvasTool.BRUSH, CanvasTool.SMOOTH, CanvasTool.INFLATE,
     CanvasTool.SKELETON_POSE, CanvasTool.SKELETON_EDIT,
-    CanvasTool.MESH_POINT, CanvasTool.SUBDIVIDE, CanvasTool.KNIFE, CanvasTool.GLUE,
+    CanvasTool.MESH_POINT, CanvasTool.SUBDIVIDE, CanvasTool.GLUE,
     CanvasTool.INTERIOR,
     CanvasTool.WEIGHT_PAINT, CanvasTool.WEIGHT_GRADIENT,
     CanvasTool.PAINT_BRUSH, CanvasTool.PAINT_PENCIL, CanvasTool.PAINT_ERASER, CanvasTool.PAINT_BLUR,
@@ -339,7 +340,7 @@ internal fun toolbarRows(mode: EditHierarchyMode): List<List<CanvasTool>> =
  * of it: they arm a placement rather than a mode's tool, and follow it in object mode ([toolbarRows]).
  *
  * Object mode is the one without the vertex tools. Deform mode edits points without changing topology.
- * Edit mode handles mesh topology (subdivide / knife). Simulate paints the simulation's vertex groups,
+ * Edit mode handles mesh topology (points and lines / subdivide). Simulate paints the simulation's vertex groups,
  * Skeleton poses or reshapes the armature, and Paint replaces layer pixels.
  */
 internal fun toolbarGroups(mode: EditHierarchyMode): List<List<CanvasTool>> = when (mode) {
@@ -353,7 +354,7 @@ internal fun toolbarGroups(mode: EditHierarchyMode): List<List<CanvasTool>> = wh
     EditHierarchyMode.EDIT -> listOf(
         listOf(CanvasTool.SELECT, CanvasTool.TRANSFORM, CanvasTool.LASSO_SELECT, CanvasTool.BRUSH_SELECT),
         listOf(CanvasTool.BRUSH, CanvasTool.SMOOTH, CanvasTool.INFLATE),
-        listOf(CanvasTool.MESH_POINT, CanvasTool.SUBDIVIDE, CanvasTool.KNIFE, CanvasTool.GLUE),
+        listOf(CanvasTool.MESH_POINT, CanvasTool.SUBDIVIDE, CanvasTool.GLUE),
         listOf(CanvasTool.INTERIOR),
     )
     EditHierarchyMode.SIMULATE -> listOf(
@@ -1106,9 +1107,8 @@ internal class CanvasEditor(
         val source = preview ?: state.previewModel?.rig?.puppet
         val target = source?.let { target(it, selectedLayerId, selectedDeformerId) }
         val hintKey = when {
-            tool == CanvasTool.KNIFE -> "editor.knifeGestureHint"
+            tool == CanvasTool.MESH_POINT -> meshPointMode.hintKey
             tool == CanvasTool.SUBDIVIDE -> "editor.subdivideHint"
-            tool == CanvasTool.MESH_POINT -> "editor.meshPointHint"
             tool == CanvasTool.SELECT && target?.kind == "rotation" -> "editor.rotationGestureHint"
             tool == CanvasTool.CREATE_DEFORM_PATH -> "editor.pathHint"
             tool == CanvasTool.INFLATE -> "editor.inflateHint"
@@ -1666,9 +1666,25 @@ internal class CanvasEditor(
     /** "vertex" or "edge" while [knifeHover] sits on a snap target, null while it is a free point. */
     var knifeSnapKind by mutableStateOf<String?>(null)
 
+    /** Which face of the point tool is in hand. Its keys arm both the face and the tool. */
+    var meshPointMode by mutableStateOf(MeshPointMode.POINT)
+        private set
+
+    /** Takes [mode] in hand. The tool follows, so a face's chord is enough to start with it; a line being drawn is dropped. */
+    fun selectMeshPointMode(mode: MeshPointMode) {
+        meshPointMode = mode
+        activateTool(CanvasTool.MESH_POINT)
+    }
+
+    /** Whether the point tool is drawing lines: anchors joined by edges, committed with Enter (journalled as `knife`). */
+    val knifing: Boolean get() = tool == CanvasTool.MESH_POINT && meshPointMode == MeshPointMode.LINE
+
+    /** Whether the point tool is laying points one click or stroke at a time (journalled as `add_points`). */
+    private val pointing: Boolean get() = tool == CanvasTool.MESH_POINT && meshPointMode == MeshPointMode.POINT
+
     fun undoDraftPoint() {
         if (busy) return
-        if (tool == CanvasTool.KNIFE) {
+        if (knifing) {
             knifeInput?.dropLast()
             knifeDraft = knifeDraft.dropLast(1)
             if (knifeDraft.isEmpty()) knifeInput = null
@@ -3469,7 +3485,7 @@ internal class CanvasEditor(
         tool in SKELETON_TOOLS -> EditHierarchyMode.SKELETON
         tool in PAINT_TOOLS -> EditHierarchyMode.PAINT
         tool in WEIGHT_TOOLS -> EditHierarchyMode.SIMULATE
-        tool == CanvasTool.KNIFE || tool == CanvasTool.SUBDIVIDE || tool == CanvasTool.MESH_POINT -> EditHierarchyMode.EDIT
+        tool == CanvasTool.SUBDIVIDE || tool == CanvasTool.MESH_POINT -> EditHierarchyMode.EDIT
         tool == CanvasTool.INTERIOR -> EditHierarchyMode.EDIT
         else -> EditHierarchyMode.DEFORM
     }
@@ -3871,10 +3887,10 @@ internal class CanvasEditor(
 
     fun updateHover(pos: Offset, viewport: CanvasViewport, ctrl: Boolean = false, shift: Boolean = false) {
         cursor = pos
-        if (tool == CanvasTool.KNIFE) {
+        if (knifing) {
             target()?.takeIf { it.kind == "mesh" }?.let { knifeAnchor(pos, it, viewport, shift) }
         }
-        if (tool == CanvasTool.MESH_POINT && !dragging) {
+        if (pointing && !dragging) {
             target()?.takeIf { it.kind == "mesh" }?.let { pointSpot(pos, it, viewport, hover = true) }
         }
         if (tool == CanvasTool.SUBDIVIDE && !dragging) {
@@ -4071,7 +4087,7 @@ internal class CanvasEditor(
         if (dragging) {
             if (placementHandle == PlacementHandle.BOX) return CanvasCursors.transform(placementBoxHandle, 0f)
             if (marquee.isNotEmpty()) return cross
-            if (tool in DEFORM_BRUSH_TOOLS || tool == CanvasTool.BRUSH_SELECT || tool == CanvasTool.SUBDIVIDE || tool == CanvasTool.KNIFE || pointStroking) return cross
+            if (tool in DEFORM_BRUSH_TOOLS || tool == CanvasTool.BRUSH_SELECT || tool == CanvasTool.SUBDIVIDE || knifing || pointStroking) return cross
             if (boxDrag || anchorDragging) return CanvasCursors.transform(activeHandle, frameAngle)
             if (activeBezierAnchor != null || activeBezierHandle != null || poseDrag != null) return hand
             return move
@@ -4080,9 +4096,9 @@ internal class CanvasEditor(
         if (tool in CREATION_TOOLS) {
             return if (tool == CanvasTool.GLUE) hand else cross
         }
-        if (tool == CanvasTool.BRUSH_SELECT || tool in DEFORM_BRUSH_TOOLS || tool == CanvasTool.SUBDIVIDE || tool == CanvasTool.KNIFE) return cross
+        if (tool == CanvasTool.BRUSH_SELECT || tool in DEFORM_BRUSH_TOOLS || tool == CanvasTool.SUBDIVIDE || knifing) return cross
         // Over a vertex the point tool grabs, like the select tool; anywhere else it lays a new point.
-        if (tool == CanvasTool.MESH_POINT) return if (knifeSnapKind == "vertex") hand else cross
+        if (pointing) return if (knifeSnapKind == "vertex") hand else cross
         if (tool == CanvasTool.LASSO_SELECT) return cross
         // Painting gets no crosshair: the cursor is exactly where the tip ring already is, and a cross
         // over the pixels being judged is worse than no mark at all.
@@ -6184,9 +6200,9 @@ internal class CanvasEditor(
             return true
         }
 
-        // 1b. The knife is a click tool, not a drag: each press drops one anchor and the polyline is
-        //     committed with Enter. It never sets `dragging`, so no stray move can commit anything.
-        if (tool == CanvasTool.KNIFE) {
+        // 1b. The point tool's line is a click gesture, not a drag: each press drops one anchor and the polyline
+        //     is committed with Enter. It never sets `dragging`, so no stray move can commit anything.
+        if (knifing) {
             val t = target()
             if (t != null && t.kind == "mesh") {
                 if (t.id != knifeDrawableId) {
@@ -6206,7 +6222,7 @@ internal class CanvasEditor(
 
         // 1c. Hand placement. A press on a vertex grabs it as the select tool does; anywhere else it starts a stroke
         //     that lays new vertices on release. Shift connects, Alt deletes, both on the spot under the pointer.
-        if (tool == CanvasTool.MESH_POINT) {
+        if (pointing) {
             val t = target()
             if (t != null && t.kind == "mesh" && editable) pressMeshPoint(pos, t, viewport, shift, alt)
             return true
