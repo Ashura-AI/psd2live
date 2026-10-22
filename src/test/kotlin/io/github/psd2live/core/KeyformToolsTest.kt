@@ -76,16 +76,75 @@ class KeyformToolsTest {
         val neutral = RigGeometryTools.geometry(model, "warp", "face", mapOf("ParamAngleX" to 0f)).points
         val blended = RigGeometryTools.geometry(half, "warp", "face", mapOf("ParamAngleX" to 0f)).points
         for (i in blended.indices) assertEquals((right[i] + neutral[i]) / 2f, blended[i], 1e-4f, "coordinate $i")
+        // A horizontal flip pairs each lattice point with the one in the mirrored column and turns its move around.
         val flipped = RigAuthoringJournal.compile(model, JsonArray(listOf(tool("paste", "warp:face") {
-            put("from", key("ParamAngleX" to 30f)); put("key", key("ParamAngleX" to 0f)); put("flip", "horizontal"); put("flip_center", 50f)
+            put("from", key("ParamAngleX" to 30f)); put("key", key("ParamAngleX" to 0f)); put("flip", "horizontal")
         }))).first
         val result = RigGeometryTools.geometry(flipped, "warp", "face", mapOf("ParamAngleX" to 0f)).points
-        for (i in result.indices) assertEquals(if (i % 2 == 0) 100f - right[i] else right[i], result[i], 1e-4f, "coordinate $i")
+        for (r in 0..2) for (c in 0..2) {
+            val i = (r * 3 + c) * 2; val m = (r * 3 + (2 - c)) * 2
+            assertEquals(neutral[i] - (right[m] - neutral[m]), result[i], 1e-4f, "x of $r,$c")
+            assertEquals(neutral[i + 1] + (right[m + 1] - neutral[m + 1]), result[i + 1], 1e-4f, "y of $r,$c")
+        }
+        val vertical = RigAuthoringJournal.compile(model, JsonArray(listOf(tool("paste", "warp:face") {
+            put("from", key("ParamAngleX" to 30f)); put("key", key("ParamAngleX" to 0f)); put("flip", "vertical")
+        }))).first
+        val down = RigGeometryTools.geometry(vertical, "warp", "face", mapOf("ParamAngleX" to 0f)).points
+        for (r in 0..2) for (c in 0..2) {
+            val i = (r * 3 + c) * 2; val m = ((2 - r) * 3 + c) * 2
+            assertEquals(neutral[i] + (right[m] - neutral[m]), down[i], 1e-4f, "x of $r,$c")
+            assertEquals(neutral[i + 1] - (right[m + 1] - neutral[m + 1]), down[i + 1], 1e-4f, "y of $r,$c")
+        }
         val rotation = RigAuthoringJournal.compile(model, JsonArray(listOf(tool("paste", "rotation:arm") {
             put("from", key("ParamAngleX" to 30f)); put("key", key("ParamAngleX" to -30f)); put("flip", "horizontal")
         }))).first
         val form = (rotation.deformers.single { it.id.raw == "arm" } as Deformer.Rotation).geometryGrid!!.cells.first().form
-        assertEquals(-20f, form.angle, 1e-4f)
+        assertEquals(-20f, form.angle, 1e-4f); assertEquals(26f, form.originX, 1e-4f)
+    }
+
+    @Test fun aMeshFlipPairsVerticesByTheirMirroredRest() {
+        val model = fixture()
+        val flipped = applyAll(model, tool("paste", "mesh:eye") {
+            put("from", key("ParamEyeOpen" to 0f)); put("key", key("ParamEyeOpen" to 1f)); put("flip", "horizontal")
+        })
+        val closed = RigGeometryTools.geometry(model, "mesh", "eye", mapOf("ParamEyeOpen" to 0f))
+        val result = RigGeometryTools.geometry(flipped, "mesh", "eye", mapOf("ParamEyeOpen" to 1f))
+        // The eye's rest is a square: vertex 0 mirrors 1 and 2 mirrors 3.
+        for ((i, j) in listOf(0 to 1, 1 to 0, 2 to 3, 3 to 2)) {
+            assertEquals(-(closed.points[j * 2] - closed.base[j * 2]), result.points[i * 2] - result.base[i * 2], 1e-5f, "dx of $i")
+            assertEquals(closed.points[j * 2 + 1] - closed.base[j * 2 + 1], result.points[i * 2 + 1] - result.base[i * 2 + 1], 1e-5f, "dy of $i")
+        }
+        val lopsided = model.withDrawable("twin") { it.copy(mesh = DrawableMesh(floatArrayOf(0.6f, 0.4f, 0.9f, 0.4f, 0.65f, 0.6f, 0.6f, 0.55f),
+            FloatArray(8), it.mesh!!.indices)) }
+        assertFailsWith<IllegalArgumentException> { KeyformTools.compile(lopsided, tool("paste", "mesh:twin") {
+            put("from", key("ParamAngleX" to 30f)); put("key", key("ParamAngleX" to 0f)); put("flip", "horizontal")
+        }) }
+    }
+
+    @Test fun anotherObjectTakesAShapeOnlyWithTheSameTrianglesAndParent() {
+        val model = fixture()
+        val paste = tool("paste", "mesh:eye") { put("from", key("ParamEyeOpen" to 0f)); put("destination", "mesh:twin"); put("key", key("ParamAngleX" to 30f)) }
+        val shuffled = model.withDrawable("twin") { it.copy(mesh = DrawableMesh(it.mesh!!.positions, it.mesh!!.uvs, intArrayOf(0, 1, 3, 1, 2, 3))) }
+        assertTrue(KeyformTools.misfit(shuffled, KeyformTools.snapshot(shuffled, "mesh:eye", mapOf("ParamEyeOpen" to 0f)), "mesh:twin")!!.contains("triangles"))
+        assertFailsWith<IllegalArgumentException> { KeyformTools.compile(shuffled, paste) }
+        val elsewhere = model.withDrawable("twin") { it.copy(parentDeformerId = null) }
+        assertFailsWith<IllegalArgumentException> { KeyformTools.compile(elsewhere, paste) }
+        // Without the shape, the channels still go across.
+        val channels = KeyformTools.compile(elsewhere, JsonObject(paste + ("channels" to JsonArray(listOf(JsonPrimitive("opacity"))))))
+        assertEquals(listOf(true), channels.map { "channels" in it && "geometry" !in it })
+    }
+
+    @Test fun snapshotsSwapTwoShapesInOneBatch() {
+        val model = fixture()
+        val eye = KeyformTools.snapshot(model, "mesh:eye", mapOf("ParamEyeOpen" to 0f))
+        val twin = KeyformTools.snapshot(model, "mesh:twin", mapOf("ParamAngleX" to 30f))
+        val sets = KeyformTools.paste(model, eye, "mesh:twin", mapOf("ParamAngleX" to 30f), null, 1f, null, listOf("geometry")) +
+            KeyformTools.paste(model, twin, "mesh:eye", mapOf("ParamEyeOpen" to 0f), null, 1f, null, listOf("geometry"))
+        val swapped = sets.fold(model) { current, set -> RigAuthoringJournal.apply(current, set) }
+        fun moves(m: PuppetModel, id: String, k: Map<String, Float>) = RigGeometryTools.geometry(m, "mesh", id, k).let { g -> FloatArray(8) { g.points[it] - g.base[it] } }
+        val eyeMoves = moves(model, "eye", mapOf("ParamEyeOpen" to 0f)); val twinMoves = moves(model, "twin", mapOf("ParamAngleX" to 30f))
+        val newTwin = moves(swapped, "twin", mapOf("ParamAngleX" to 30f)); val newEye = moves(swapped, "eye", mapOf("ParamEyeOpen" to 0f))
+        for (i in 0 until 8) { assertEquals(eyeMoves[i], newTwin[i], 1e-6f); assertEquals(twinMoves[i], newEye[i], 1e-6f) }
     }
 
     @Test fun pasteCarriesOnlyTheChosenChannels() {
@@ -118,6 +177,22 @@ class KeyformToolsTest {
         assertFailsWith<IllegalArgumentException> { KeyformTools.compile(model, buildJsonObject {
             put("op", "multi_key"); put("targets", JsonArray(listOf(JsonPrimitive("warp:face")))); put("drawOrder", 600)
         }) }
+        assertFailsWith<IllegalArgumentException> { KeyformTools.compile(model, buildJsonObject {
+            put("op", "multi_key"); put("targets", JsonArray(listOf(JsonPrimitive("mesh:eye")))); put("drawOrder", 2); put("method", "multiply")
+        }) }
+    }
+
+    @Test fun multiKeyWritesAChannelAtItsOwnKeys() {
+        // The twin's shape is keyed on ParamAngleX; its opacity only on ParamEyeOpen.
+        val keyed = applyAll(fixture(), buildJsonObject {
+            put("op", "set"); put("target", "mesh:twin"); put("key", key("ParamEyeOpen" to 0f)); putJsonObject("channels") { put("opacity", 0.8f) }
+        })
+        val edited = applyAll(keyed, buildJsonObject {
+            put("op", "multi_key"); put("targets", JsonArray(listOf(JsonPrimitive("mesh:twin")))); put("opacity", 0.5f); put("method", "multiply")
+        })
+        val owner = KeyformOwner.Drawable(DrawableId("twin"))
+        assertEquals(listOf("ParamEyeOpen"), edited.channelGridsOf(owner)!![FormChannel.OPACITY]!!.axes.map { it.parameterId.raw })
+        assertEquals(0.4f, (KeyformTools.channelAt(edited, owner, FormChannel.OPACITY, mapOf("ParamEyeOpen" to 0f)) as ChannelValue.Scalar).value, 1e-5f)
     }
 
     @Test fun restoringEveryKeyGivesTheDefaultKeyShapeEverywhere() {
@@ -129,6 +204,9 @@ class KeyformToolsTest {
     }
 
     private fun applyAll(model: PuppetModel, command: JsonObject) = RigAuthoringJournal.compile(model, JsonArray(listOf(command))).first
+
+    private fun PuppetModel.withDrawable(id: String, change: (Drawable) -> Drawable) =
+        copy(drawables = drawables.map { if (it.id.raw == id) change(it) else it })
 
     @Test fun aKeyMustNameEveryBoundAxis() {
         val model = fixture()

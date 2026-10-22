@@ -6,30 +6,38 @@ import org.umamo.runtime.eval.cellsByLinearIndex
 import org.umamo.runtime.eval.gridCorners
 import org.umamo.runtime.model.*
 import kotlin.math.abs
+import kotlin.math.hypot
 
 /**
  * The keyform tools a deform session uses beside the brushes, as Live2D editors offer them on a keyform: `reset` puts
  * the shape at a key back to its default-key shape (or a mesh to its undeformed rest) - with `all_keys` every key of
  * the object, restoring a deformer to the shape it had when it was first keyed; `interpolate` remakes the shape at a
- * key from the keys on either side of it along one parameter, as if the key were not there; `paste` writes the shape
- * another key (of the same or another object of its kind) shows, optionally blended in by a ratio, flipped, or with
- * its opacity, draw order and colours; and `multi_key` sets the opacity, draw order or colours of many keyforms of
- * many objects at once. Shape tools take `vertices` to touch only those points (a mesh's vertices, a warp's control
- * points), the rest keeping the shape at the key.
+ * key from the keys on either side of it along one parameter, as if the key were not there; `paste` writes the move
+ * another key (of the same object, or of one of its kind with the same points and parent) makes, optionally blended in
+ * by a ratio, flipped, or with its opacity, draw order and colours; and `multi_key` sets the opacity, draw order or
+ * colours of many keyforms of many objects at once. Shape tools take `vertices` to touch only those points (a mesh's
+ * vertices, a warp's control points), the rest keeping the shape at the key.
  *
  * Like `mirror`, they are materialized when compiled ([RigAuthoringJournal.compile]): each becomes ordinary `set`s of
- * what it computes, so replay never reads another key again, and an edit of a keyform a generator owns is captured as
- * a `generated_override` like any other `set`.
+ * what it computes, so replay never reads another key again. A geometry `set` of a keyform a generator owns is captured
+ * as a `generated_override` like any other; the channel `set`s of paste and `multi_key` are ordinary channel keyforms.
+ *
+ * A paste carries moves, not places: a mesh's offsets from its rest, a warp's or rotation's offset from its default-key
+ * form, so a shape copied from one object lands on another in the same proportions. The copied side is a [Snapshot],
+ * taken once - the editor's clipboard keeps it, so what a paste writes is what was copied.
  *
  * Fields: `target`, `key` (the key written; it names every directly bound geometry axis), `vertices`; `reset` takes
  * `to` (`default`, the default; `rest`, meshes only), `along` (the parameters taken to their default, default all of
- * the key's) and `all_keys` (in place of `key`); `interpolate` takes `parameter` (default the one axis the key sits
- * between two keys of); `paste` takes `from` (the source key, missing axes at their defaults), `destination` (default
- * the target), `ratio` (0..1, default 1: how far the key moves toward the pasted shape), `flip` (`horizontal` or
- * `vertical`, about `flip_center`, default the pasted shape's own center) and `channels` (`geometry`, `opacity`,
- * `drawOrder`, `multiplyColor`, `screenColor`; default geometry). `multi_key` takes `targets`, `keys` (partial keys a
- * keyform must match one of; default every keyform), `ranges` (per parameter, the values a keyform on it may have), the values `opacity`, `drawOrder`, `multiplyColor`,
- * `screenColor`, and `method` (`overwrite`, the default; `add`, `multiply`, `screen`).
+ * the key's) and `all_keys` (in place of `key`); `interpolate` takes `parameter` (default the one ordinary axis the key
+ * sits between two keys of); `paste` takes `from` (the source key, missing axes at their defaults), `destination`
+ * (default the target), `ratio` (0..1, default 1: how far the key moves toward the pasted values), `flip`
+ * (`horizontal` or `vertical`: a warp's columns or rows reversed, a mesh's vertices paired by their mirrored rest
+ * places, each move turned around; a rotation's angle reversed) and `channels` (`geometry`, `opacity`, `drawOrder`,
+ * `multiplyColor`, `screenColor`; default geometry). `multi_key` takes `targets`, `keys` (partial keys a keyform must
+ * match one of; default every keyform), `ranges` (per parameter, the values a keyform on it may have), the values
+ * `opacity`, `drawOrder`, `multiplyColor`, `screenColor`, and `method` (`overwrite`, the default; `add`, `multiply`,
+ * `screen` - draw order takes only overwrite and add). Each channel is written at its own keys: those of its track, or
+ * the object's geometry keys while it has none.
  */
 internal object KeyformTools {
     const val RESET = "reset"
@@ -45,15 +53,70 @@ internal object KeyformTools {
     private val FIELDS = mapOf(
         RESET to setOf("op", "target", "key", "vertices", "to", "along", "all_keys"),
         INTERPOLATE to setOf("op", "target", "key", "vertices", "parameter"),
-        PASTE to setOf("op", "target", "from", "destination", "key", "vertices", "ratio", "flip", "flip_center", "channels"),
+        PASTE to setOf("op", "target", "from", "destination", "key", "vertices", "ratio", "flip", "channels"),
         MULTI_KEY to setOf("op", "targets", "keys", "ranges", "method") + CHANNELS.keys,
     )
+
+    /**
+     * A shape and its look copied at one key: what is needed to paste it later without reading the source again - its
+     * place in the rig ([parent], [rows] and [columns], [indices]), the [shape] at the key, the [reference] its moves are
+     * measured from (a mesh's rest, a warp's or rotation's default-key form) and its channel values.
+     */
+    internal class Snapshot(
+        val kind: String,
+        val id: String,
+        val parent: String?,
+        val rows: Int?,
+        val columns: Int?,
+        val indices: IntArray?,
+        val shape: FloatArray,
+        val reference: FloatArray,
+        val channels: Map<String, ChannelValue>,
+    ) {
+        val pointCount: Int get() = if (kind == "rotation") 0 else shape.size / 2
+    }
+
+    /** [text]'s shape and channels at [from] (missing axes at their defaults). */
+    fun snapshot(model: PuppetModel, text: String, from: Map<String, Float>): Snapshot {
+        from.keys.forEach { id -> require(model.parameters.any { it.id.raw == id }) { "Unknown parameter: $id" } }
+        val shape = Shape.of(model, text)
+        val owner = RigAuthoringJournal.target(model, text).asKeyformOwner()
+        val channels = CHANNELS.filter { (_, channel) -> shape.kind == "mesh" || channel != FormChannel.DRAW_ORDER }
+            .mapValues { (_, channel) -> channelAt(model, owner, channel, from) }
+        return Snapshot(shape.kind, shape.id, shape.parent, shape.rows, shape.columns, shape.indices, shape.at(from), shape.reference(), channels)
+    }
+
+    /**
+     * Why [snapshot]'s shape cannot be pasted onto [destination], or null when it can: the same object always takes
+     * it back; another must be of its kind with the same points - a mesh the same triangles, a warp the same rows and
+     * columns - under the same parent, since a move means the same only in the same space.
+     */
+    fun misfit(model: PuppetModel, snapshot: Snapshot, destination: String): String? {
+        val other = runCatching { Shape.of(model, destination) }.getOrElse { return it.message }
+        if (other.kind != snapshot.kind) return "Paste source and destination must be the same kind (got ${snapshot.kind} and ${other.kind})"
+        if (other.id == snapshot.id) return null
+        if (other.parent != snapshot.parent) return "${other.id} is under ${other.parent ?: "the root"}, not under ${snapshot.parent ?: "the root"} as ${snapshot.id}; a move pastes only within one parent"
+        return when (other.kind) {
+            "mesh" -> if (other.pointCount != snapshot.pointCount || !other.indices.contentEquals(snapshot.indices))
+                "${other.id} has other points or triangles than ${snapshot.id}" else null
+            "warp" -> if (other.rows != snapshot.rows || other.columns != snapshot.columns)
+                "${other.id} is a ${other.rows}×${other.columns} warp, ${snapshot.id} ${snapshot.rows}×${snapshot.columns}" else null
+            else -> null
+        }
+    }
 
     fun compile(model: PuppetModel, command: JsonObject): List<JsonObject> {
         val op = command.text("op")
         val unexpected = command.keys - FIELDS.getValue(op)
         require(unexpected.isEmpty()) { "Unexpected $op field: ${unexpected.first()}" }
         if (op == MULTI_KEY) return multiKey(model, command)
+        if (op == PASTE) {
+            val channels = command["channels"]?.jsonArray?.map { it.jsonPrimitive.content } ?: listOf("geometry")
+            return paste(model, snapshot(model, command.text("target"), command.coordinate("from")),
+                command["destination"]?.jsonPrimitive?.content ?: command.text("target"), command.coordinate("key"),
+                command["vertices"]?.jsonArray?.map { it.jsonPrimitive.int }?.toSet(), ratioOf(command),
+                command["flip"]?.jsonPrimitive?.content, channels)
+        }
         if (op == RESET && command["all_keys"]?.jsonPrimitive?.boolean == true) {
             require("key" !in command && "vertices" !in command) { "all_keys resets every key; leave out key and vertices" }
             val shape = Shape.of(model, command.text("target"))
@@ -61,112 +124,148 @@ internal object KeyformTools {
             require(keys.isNotEmpty()) { "${shape.id} has no keyforms to restore" }
             return keys.map { key -> shapeTool(model, JsonObject(command - "all_keys" + ("key" to key.json()))) }
         }
-        return listOfNotNull(shapeTool(model, command).takeIf { op != PASTE || channelsOf(command).contains("geometry") }) +
-            (if (op == PASTE) pastedChannels(model, command) else emptyList())
+        return listOf(shapeTool(model, command))
     }
 
-    private fun channelsOf(command: JsonObject): List<String> =
-        (command["channels"]?.jsonArray?.map { it.jsonPrimitive.content } ?: listOf("geometry")).also { channels ->
-            require(channels.isNotEmpty() && channels.all { it == "geometry" || it in CHANNELS }) {
-                "channels are geometry, ${CHANNELS.keys.joinToString()}"
+    /**
+     * The `set`s pasting [snapshot] onto [destination] at [key] writes: its geometry when [channels] names it (the
+     * copied moves, flipped by [flip], blended by [ratio], kept to [vertices]) and its channel values, blended alike.
+     */
+    fun paste(model: PuppetModel, snapshot: Snapshot, destination: String, key: Map<String, Float>, vertices: Set<Int>?,
+              ratio: Float, flip: String?, channels: List<String>): List<JsonObject> {
+        require(channels.isNotEmpty() && channels.all { it == "geometry" || it in CHANNELS }) { "channels are geometry, ${CHANNELS.keys.joinToString()}" }
+        require(ratio in 0f..1f) { "ratio is 0..1" }
+        require(flip == null || flip == "horizontal" || flip == "vertical") { "flip is horizontal or vertical" }
+        val target = Shape.of(model, destination)
+        val result = mutableListOf<JsonObject>()
+        if ("geometry" in channels) {
+            misfit(model, snapshot, destination)?.let { throw IllegalArgumentException(it) }
+            checkKey(model, target, key)
+            val picked = checkVertices(target, vertices)
+            var moves = FloatArray(snapshot.shape.size) { snapshot.shape[it] - snapshot.reference[it] }
+            if (flip != null) moves = flipped(snapshot, moves, flip == "horizontal")
+            val reference = target.reference()
+            var pasted = FloatArray(moves.size) { reference[it] + moves[it] }
+            if (ratio < 1f) {
+                val current = target.at(key)
+                pasted = FloatArray(pasted.size) { current[it] + (pasted[it] - current[it]) * ratio }
             }
+            result += shapeSet(target, key, keepTo(target, key, pasted, picked))
+        }
+        val names = channels.filter { it != "geometry" }
+        if (names.isNotEmpty()) {
+            require(key.isNotEmpty()) { "Specify the exact destination key" }
+            val ref = RigAuthoringJournal.target(model, destination)
+            result += channelSet(ref, key, names.associateWith { name ->
+                val copied = requireNotNull(snapshot.channels[name]) { "${snapshot.id} has no $name to paste" }
+                blend(channelAt(model, ref.asKeyformOwner(), CHANNELS.getValue(name), key), copied, ratio)
+            })
+        }
+        return result
+    }
+
+    /**
+     * [moves] of [snapshot] flipped: a rotation's angle change reversed and its origin's move turned; a warp's columns
+     * ([horizontal]) or rows reversed; a mesh's vertices paired with the one whose rest mirrors theirs across the rest's
+     * middle - refused when the rest is not symmetric. Each point takes its partner's move, turned around.
+     */
+    private fun flipped(snapshot: Snapshot, moves: FloatArray, horizontal: Boolean): FloatArray {
+        val sx = if (horizontal) -1f else 1f
+        val sy = if (horizontal) 1f else -1f
+        if (snapshot.kind == "rotation") return floatArrayOf(moves[0] * sx, moves[1] * sy, -moves[2], moves[3])
+        val partner: IntArray = if (snapshot.kind == "warp") {
+            val rows = requireNotNull(snapshot.rows); val columns = requireNotNull(snapshot.columns)
+            IntArray(snapshot.pointCount) { i ->
+                val r = i / (columns + 1); val c = i % (columns + 1)
+                if (horizontal) r * (columns + 1) + (columns - c) else (rows - r) * (columns + 1) + c
+            }
+        } else {
+            val rest = snapshot.reference
+            val axis = if (horizontal) 0 else 1
+            val along = rest.indices.filter { it % 2 == axis }.map { rest[it] }
+            val middle = (along.min() + along.max()) / 2f
+            val xs = rest.indices.filter { it % 2 == 0 }.map { rest[it] }; val ys = rest.indices.filter { it % 2 == 1 }.map { rest[it] }
+            val tolerance = hypot(xs.max() - xs.min(), ys.max() - ys.min()) * 0.02f
+            IntArray(snapshot.pointCount) { i ->
+                val mx = if (horizontal) 2 * middle - rest[i * 2] else rest[i * 2]
+                val my = if (horizontal) rest[i * 2 + 1] else 2 * middle - rest[i * 2 + 1]
+                val j = (0 until snapshot.pointCount).minBy { hypot(rest[it * 2] - mx, rest[it * 2 + 1] - my) }
+                require(hypot(rest[j * 2] - mx, rest[j * 2 + 1] - my) <= tolerance) {
+                    "${snapshot.id} is not symmetric at rest, so its points have no mirrored partners; use mirror instead"
+                }
+                j
+            }
+        }
+        return FloatArray(moves.size) { k -> val j = partner[k / 2]; moves[j * 2 + k % 2] * (if (k % 2 == 0) sx else sy) }
+    }
+
+    private fun checkKey(model: PuppetModel, target: Shape, key: Map<String, Float>) {
+        require(key.isNotEmpty()) { "Specify the exact destination key" }
+        key.keys.forEach { id -> require(model.parameters.any { it.id.raw == id }) { "Unknown parameter: $id" } }
+        require(target.axes.all { it in key }) { "KEY_INCOMPLETE: include all directly bound geometry axes of ${target.id}" }
+    }
+
+    private fun checkVertices(target: Shape, vertices: Set<Int>?): Set<Int>? = vertices?.toSortedSet()?.also { picked ->
+        require(target.kind != "rotation") { "A rotation has no points to pick; leave out vertices" }
+        require(picked.isNotEmpty() && picked.all { it in 0 until target.pointCount }) { "vertices index the ${target.pointCount} points of ${target.id}" }
+    }
+
+    /** [written] at [picked] only, the rest of [target] keeping its shape at [key]. */
+    private fun keepTo(target: Shape, key: Map<String, Float>, written: FloatArray, picked: Set<Int>?): FloatArray =
+        if (picked == null) written else target.at(key).also { current ->
+            for (v in picked) { current[v * 2] = written[v * 2]; current[v * 2 + 1] = written[v * 2 + 1] }
         }
 
-    /** The `set` of the shape [command] (a reset, interpolate or paste at one key) computes. */
+    private fun shapeSet(target: Shape, key: Map<String, Float>, shape: FloatArray) = buildJsonObject {
+        put("op", "set"); put("target", "${target.kind}:${target.id}")
+        put("key", key.json())
+        put("geometry", target.geometry(shape))
+    }
+
+    /** The `set` of the shape [command] (a reset or interpolate at one key) computes. */
     private fun shapeTool(model: PuppetModel, command: JsonObject): JsonObject {
         val op = command.text("op")
-        val destinationText = if (op == PASTE) command["destination"]?.jsonPrimitive?.content ?: command.text("target") else command.text("target")
-        val destination = Shape.of(model, destinationText)
+        val target = Shape.of(model, command.text("target"))
         val key = command.coordinate("key")
-        require(key.isNotEmpty()) { "Specify the exact destination key" }
+        checkKey(model, target, key)
+        val picked = checkVertices(target, command["vertices"]?.jsonArray?.map { it.jsonPrimitive.int }?.toSet())
         val parameters = model.parameters.associateBy { it.id.raw }
-        key.keys.forEach { require(it in parameters) { "Unknown parameter: $it" } }
-        require(destination.axes.all { it in key }) { "KEY_INCOMPLETE: include all directly bound geometry axes of ${destination.id}" }
-        val vertices = command["vertices"]?.jsonArray?.map { it.jsonPrimitive.int }?.toSortedSet()?.also { picked ->
-            require(destination.kind != "rotation") { "A rotation has no points to pick; leave out vertices" }
-            require(picked.isNotEmpty() && picked.all { it in 0 until destination.pointCount }) {
-                "vertices index the ${destination.pointCount} points of ${destination.id}"
-            }
-        }
         val defaults = parameters.mapValues { it.value.default }
         val written: FloatArray = when (op) {
             RESET -> when (command["to"]?.jsonPrimitive?.content ?: "default") {
                 "rest" -> {
-                    require(destination.kind == "mesh") { "Only a mesh has a rest shape apart from its default key; use to: default" }
+                    require(target.kind == "mesh") { "Only a mesh has a rest shape apart from its default key; use to: default" }
                     require("along" !in command) { "along applies to to: default" }
-                    destination.rest()
+                    target.reference()
                 }
                 "default" -> {
                     val along = command["along"]?.jsonArray?.map { it.jsonPrimitive.content } ?: key.keys.toList()
                     along.forEach { require(it in key) { "along names a parameter of the key; $it is not one" } }
-                    destination.at(key + along.associateWith { defaults.getValue(it) })
+                    target.at(key + along.associateWith { defaults.getValue(it) })
                 }
                 else -> throw IllegalArgumentException("to is default or rest")
             }
-            INTERPOLATE -> {
-                val grid = destination.grid
-                val interior = destination.axes.filter { id -> neighbours(grid, id, key.getValue(id)) != null }
+            else -> {
+                val grid = target.grid
+                val interior = target.axes.filter { id -> parameters[id]?.kind == ParameterKind.NORMAL && neighbours(grid, id, key.getValue(id)) != null }
                 val parameter = command["parameter"]?.jsonPrimitive?.content ?: interior.singleOrNull()
-                    ?: throw IllegalArgumentException(if (interior.isEmpty()) "${destination.id} has no keys on both sides of this key"
+                    ?: throw IllegalArgumentException(if (interior.isEmpty()) "${target.id} has no keys on both sides of this key"
                         else "The key sits between keys of ${interior.joinToString()}; name the parameter")
                 require(parameters[parameter]?.kind == ParameterKind.NORMAL) { "Interpolate reads ordinary keys; $parameter is not one" }
                 require(parameter in key) { "parameter must be one of the key's axes" }
                 val value = key.getValue(parameter)
-                val (below, above) = requireNotNull(neighbours(grid, parameter, value)) { "${destination.id} has no keys of $parameter on both sides of $value" }
+                val (below, above) = requireNotNull(neighbours(grid, parameter, value)) { "${target.id} has no keys of $parameter on both sides of $value" }
                 val t = (value - below) / (above - below)
-                val low = destination.at(key + (parameter to below))
-                val high = destination.at(key + (parameter to above))
+                val low = target.at(key + (parameter to below))
+                val high = target.at(key + (parameter to above))
                 FloatArray(low.size) { low[it] + (high[it] - low[it]) * t }
             }
-            else -> {
-                val source = Shape.of(model, command.text("target"))
-                require(source.kind == destination.kind) { "Paste source and destination must be the same kind (got ${source.kind} and ${destination.kind})" }
-                require(source.pointCount == destination.pointCount && source.rows == destination.rows) {
-                    "Paste needs the same points: ${source.id} has ${source.pointCount}, ${destination.id} ${destination.pointCount}"
-                }
-                val from = command.coordinate("from")
-                from.keys.forEach { require(it in parameters) { "Unknown parameter: $it" } }
-                var pasted = source.moved(source.at(from), destination)
-                command["flip"]?.jsonPrimitive?.content?.let { flip ->
-                    require(flip == "horizontal" || flip == "vertical") { "flip is horizontal or vertical" }
-                    pasted = destination.flipped(pasted, flip == "horizontal", command["flip_center"]?.jsonPrimitive?.float)
-                }
-                val ratio = ratioOf(command)
-                if (ratio < 1f) {
-                    val current = destination.at(key)
-                    pasted = FloatArray(pasted.size) { current[it] + (pasted[it] - current[it]) * ratio }
-                }
-                pasted
-            }
         }
-        val shape = if (vertices == null) written else destination.at(key).also { current ->
-            for (v in vertices) { current[v * 2] = written[v * 2]; current[v * 2 + 1] = written[v * 2 + 1] }
-        }
-        return buildJsonObject {
-            put("op", "set"); put("target", "${destination.kind}:${destination.id}")
-            put("key", key.json())
-            put("geometry", destination.geometry(shape))
-        }
+        return shapeSet(target, key, keepTo(target, key, written, picked))
     }
 
     private fun ratioOf(command: JsonObject): Float = (command["ratio"]?.jsonPrimitive?.float ?: 1f).also {
         require(it in 0f..1f) { "ratio is 0..1" }
-    }
-
-    /** A paste's opacity, draw order and colours: the source's values at `from`, blended by `ratio` into the key's. */
-    private fun pastedChannels(model: PuppetModel, command: JsonObject): List<JsonObject> {
-        val names = channelsOf(command).filter { it != "geometry" }
-        if (names.isEmpty()) return emptyList()
-        val source = RigAuthoringJournal.target(model, command.text("target"))
-        val destination = RigAuthoringJournal.target(model, command["destination"]?.jsonPrimitive?.content ?: command.text("target"))
-        val from = command.coordinate("from")
-        val key = command.coordinate("key")
-        require(key.isNotEmpty()) { "Specify the exact destination key" }
-        val ratio = ratioOf(command)
-        return listOf(channelSet(destination, key, names.associateWith { name ->
-            val channel = CHANNELS.getValue(name)
-            blend(channelAt(model, destination.asKeyformOwner(), channel, key), channelAt(model, source.asKeyformOwner(), channel, from), ratio)
-        }))
     }
 
     /** `multi_key`: each matching keyform of each target, its channels overwritten or combined with the given values. */
@@ -184,25 +283,41 @@ internal object KeyformTools {
         require(values.isNotEmpty()) { "Give at least one of ${CHANNELS.keys.joinToString()}" }
         val method = command["method"]?.jsonPrimitive?.content ?: "overwrite"
         require(method in setOf("overwrite", "add", "multiply", "screen")) { "method is overwrite, add, multiply or screen" }
+        require("drawOrder" !in values || method in setOf("overwrite", "add")) { "Draw order is overwritten or added to, not multiplied or screened" }
         val filters = command["keys"]?.jsonArray?.map { it.jsonObject.mapValues { v -> v.value.jsonPrimitive.float } }
         val ranges = command["ranges"]?.jsonObject?.mapValues { (_, values) -> values.jsonArray.map { it.jsonPrimitive.float } }
         val targets = command.getValue("targets").jsonArray.map { RigAuthoringJournal.target(model, it.jsonPrimitive.content) }
         require(targets.isNotEmpty()) { "Name at least one target" }
         return targets.flatMap { target ->
-            val owner = target.asKeyformOwner()
             require(target.kind != RigTargetKind.GLUE) { "multi_key edits meshes, deformers and parts" }
             if (target.kind == RigTargetKind.WARP_DEFORMER || target.kind == RigTargetKind.ROTATION_DEFORMER)
-                require(FormChannel.DRAW_ORDER.let { CHANNELS.entries.first { e -> e.value == it }.key } !in values) { "A deformer has no draw order" }
-            val keys = keyformKeys(model, target).filter { key ->
-                (filters == null || filters.any { filter -> filter.all { (id, v) -> key[id]?.let { abs(it - v) <= EPS_KEY } == true } }) &&
-                    (ranges == null || ranges.all { (id, values) -> key[id]?.let { k -> values.any { abs(it - k) <= EPS_KEY } } ?: true })
-            }
-            keys.map { key ->
-                channelSet(target, key, values.mapValues { (name, value) ->
-                    combine(channelAt(model, owner, CHANNELS.getValue(name), key), value, method, CHANNELS.getValue(name))
-                })
+                require("drawOrder" !in values) { "A deformer has no draw order" }
+            val owner = target.asKeyformOwner()
+            values.flatMap { (name, value) ->
+                val channel = CHANNELS.getValue(name)
+                channelKeys(model, target, channel).filter { key ->
+                    (filters == null || filters.any { filter -> filter.all { (id, v) -> key[id]?.let { abs(it - v) <= EPS_KEY } == true } }) &&
+                        (ranges == null || ranges.all { (id, allowed) -> key[id]?.let { k -> allowed.any { abs(it - k) <= EPS_KEY } } ?: true })
+                }.map { key -> channelSet(target, key, mapOf(name to combine(channelAt(model, owner, channel, key), value, method, channel))) }
             }
         }.also { require(it.isNotEmpty()) { "No keyform matches; the targets have no keys in that range" } }
+    }
+
+    /**
+     * The keys [channel] of [target] is written at: those of its own track, or while it has none the object's
+     * geometry keys (a part's: those of its other channel tracks), so writing it adds no axis it does not need.
+     */
+    private fun channelKeys(model: PuppetModel, target: RigTargetRef, channel: FormChannel): List<Map<String, Float>> {
+        val grids = model.channelGridsOf(target.asKeyformOwner())
+        grids?.get(channel)?.let { return cellKeys(it) }
+        val geometry: KeyformGrid<*>? = when (target.kind) {
+            RigTargetKind.ART_MESH -> model.drawables.firstOrNull { it.id.raw == target.id }?.geometryGrid
+            RigTargetKind.WARP_DEFORMER -> (model.deformers.firstOrNull { it.id.raw == target.id } as? Deformer.Warp)?.geometryGrid
+            RigTargetKind.ROTATION_DEFORMER -> (model.deformers.firstOrNull { it.id.raw == target.id } as? Deformer.Rotation)?.geometryGrid
+            else -> null
+        }
+        if (geometry != null && geometry.axes.isNotEmpty()) return cellKeys(geometry)
+        return union(grids?.gridsByChannel?.values.orEmpty().toList())
     }
 
     /** Every keyform key of [target]: its geometry axes and the axes its channels are keyed on, each at every key. */
@@ -216,6 +331,11 @@ internal object KeyformTools {
             }
             model.channelGridsOf(target.asKeyformOwner())?.gridsByChannel?.values?.forEach(::add)
         }
+        return union(grids)
+    }
+
+    /** The keys of every axis of [grids], in every combination. */
+    private fun union(grids: List<KeyformGrid<*>>): List<Map<String, Float>> {
         val axes = LinkedHashMap<String, MutableSet<Float>>()
         for (grid in grids) for (axis in grid.axes) axes.getOrPut(axis.parameterId.raw) { sortedSetOf() } += axis.keys.toList()
         if (axes.isEmpty()) return emptyList()
@@ -335,7 +455,13 @@ internal object KeyformTools {
         val axes: List<String> = grid?.axes.orEmpty().map { it.parameterId.raw }
         private val rest = if (kind == "rotation") null else RigGeometryTools.geometry(model, kind, id, emptyMap())
         val rows: Int? = rest?.rows
+        val columns: Int? = rest?.columns
         val pointCount: Int = rest?.let { it.base.size / 2 } ?: 0
+        val parent: String? = when (kind) {
+            "mesh" -> model.drawables.first { it.id.raw == id }.parentDeformerId?.raw
+            else -> model.deformers.first { it.id.raw == id }.parent?.raw
+        }
+        val indices: IntArray? = if (kind == "mesh") model.drawables.first { it.id.raw == id }.mesh?.indices else null
 
         /** The shape at [key]: points for a mesh or warp, `originX, originY, angle, scale` for a rotation. */
         fun at(key: Map<String, Float>): FloatArray {
@@ -352,34 +478,8 @@ internal object KeyformTools {
             return form
         }
 
-        /**
-         * [shape] flipped across a line through [center] (default its own middle): a mesh's or warp's points reflected
-         * in x ([horizontal]) or y, a rotation's angle turned the other way.
-         */
-        fun flipped(shape: FloatArray, horizontal: Boolean, center: Float?): FloatArray {
-            val result = shape.copyOf()
-            if (kind == "rotation") {
-                result[2] = -result[2]
-                center?.let { c -> if (horizontal) result[0] = 2 * c - result[0] else result[1] = 2 * c - result[1] }
-                return result
-            }
-            val axis = if (horizontal) 0 else 1
-            val values = shape.indices.filter { it % 2 == axis }.map { shape[it] }
-            val c = center ?: ((values.minOrNull() ?: 0f) + (values.maxOrNull() ?: 0f)) / 2f
-            for (i in result.indices) if (i % 2 == axis) result[i] = 2 * c - result[i]
-            return result
-        }
-
-        /** A mesh's undeformed positions. */
-        fun rest(): FloatArray = requireNotNull(rest).base.copyOf()
-
-        /** [shape] of this object carried onto [other]: a mesh's moves from rest, a warp's or rotation's form as it is. */
-        fun moved(shape: FloatArray, other: Shape): FloatArray {
-            if (kind != "mesh") return shape
-            val from = requireNotNull(rest).base
-            val to = requireNotNull(other.rest).base
-            return FloatArray(shape.size) { to[it] + shape[it] - from[it] }
-        }
+        /** What a move is measured from: a mesh's undeformed positions, a warp's or rotation's default-key form. */
+        fun reference(): FloatArray = if (kind == "mesh") requireNotNull(rest).base.copyOf() else at(emptyMap())
 
         fun geometry(shape: FloatArray): JsonObject = buildJsonObject {
             when (kind) {
