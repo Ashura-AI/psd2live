@@ -2124,7 +2124,16 @@ internal class CanvasEditor(
         session.jumpToStroke(index)
     }
 
+    /**
+     * Lets go of the paint session without discarding a commit under way. Called from a commit's thread too, it runs
+     * on the UI thread, where the session and its background edits are kept - and only if that session is still in hand.
+     */
     fun resetPaintSession() {
+        if (!java.awt.EventQueue.isDispatchThread()) {
+            val session = paintSession
+            java.awt.EventQueue.invokeLater { if (paintSession === session) resetPaintSession() }
+            return
+        }
         retirePaintSession { it.dismiss() }
         paintSession = null
         isPainting = false
