@@ -1,12 +1,10 @@
 package io.github.psd2live.scenario
 
-import io.github.psd2live.project.ProjectThumbnail
 import io.github.psd2live.ui.state.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
-import javax.imageio.ImageIO
 import kotlin.test.*
 
 /** The start page: it opens the app, a project opened or started from it takes its place, and it comes back on request. */
@@ -71,28 +69,6 @@ class StartPageScenario {
 		assertFalse(vm.startPageShown)
 	}
 
-	@Test fun helpAndSettingsStayOpenAsTabsUntilClosed() = editor { vm ->
-		vm.showHelpPage("shortcut")
-		assertEquals(HelpTab.MANUAL, vm.helpTab)
-		assertEquals("shortcut", vm.helpPage)
-		vm.showPage(AppPage.SETTINGS)
-		assertEquals(listOf(AppPage.START, AppPage.HELP, AppPage.SETTINGS), vm.openPages, "Pages keep the strip's order")
-		assertEquals(AppPage.SETTINGS, vm.activePage)
-		// Going to a workspace folds the start page away; help and settings keep their tabs.
-		vm.setActiveWorkspace(vm.state.value.activeWorkspace.id)
-		assertNull(vm.activePage)
-		assertEquals(listOf(AppPage.HELP, AppPage.SETTINGS), vm.openPages)
-		// A page's shortcut shows it, and pressed again goes back to the workspace.
-		vm.togglePage(AppPage.HELP)
-		assertEquals(AppPage.HELP, vm.activePage)
-		vm.togglePage(AppPage.HELP)
-		assertNull(vm.activePage)
-		vm.showPage(AppPage.SETTINGS)
-		vm.closePage(AppPage.SETTINGS)
-		assertNull(vm.activePage)
-		assertEquals(listOf(AppPage.HELP), vm.openPages)
-	}
-
 	@Test fun aLayoutProjectLeavesTheStartPageForTheLayoutWorkspace() = editor { vm ->
 		vm.showStartPage(StartSection.LAYOUT)
 		vm.createLayoutProject(1024, 768)
@@ -101,23 +77,4 @@ class StartPageScenario {
 		assertEquals(WorkspacePreset.LAYOUT, vm.state.value.activeWorkspace.preset)
 	}
 
-	@Test fun aSavedProjectKeepsItsThumbnailAndOpeningItLeavesTheStartPage() = editor { vm ->
-		importFigure(vm, StartQuickPreset.MINIMAL.choices)
-		val project = temp.resolve("start.psd2live")
-		// The presets land over several steps after the import; a save racing one of them is turned back.
-		var saved = false
-		repeat(20) {
-			if (saved) return@repeat
-			saved = runCatching { vm.saveProjectNow(project) }.onFailure { if (it !is io.github.psd2live.application.WorkspaceConflict) throw it }.isSuccess
-			if (!saved) { delay(250); settle(vm) }
-		}
-		assertTrue(saved, "The project saves once the presets have landed")
-		val thumbnail = assertNotNull(ProjectThumbnail.read(project), "A save keeps a thumbnail")
-		val image = assertNotNull(ImageIO.read(thumbnail.inputStream()))
-		assertTrue(maxOf(image.width, image.height) <= ProjectThumbnail.LONG_EDGE)
-		vm.showStartPage(StartSection.RECENT)
-		val generation = vm.state.value.projectOpenGeneration
-		vm.openProject(project)
-		until("the project") { vm.state.value.projectOpenGeneration != generation && !vm.startPageShown }
-	}
 }

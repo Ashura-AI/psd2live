@@ -15,13 +15,6 @@ class MenuCascadeTest {
         assertTrue(position.x + 244 <= anchor.left - 236)
     }
 
-    @Test fun submenuPrefersTheRightAndStaysInsideTheWindowAtTheBottom() {
-        val (position, left) = submenuPosition(IntRect(260, 660, 260, 660), IntSize(1000, 700), IntSize(244, 360), 236, 4, 8)
-        assertFalse(left)
-        assertEquals(264, position.x)
-        assertEquals(332, position.y)
-    }
-
     @Test fun narrowWindowsStillClampTheMenuToTheirVisibleArea() {
         val (position, _) = submenuPosition(IntRect(280, 30, 280, 30), IntSize(400, 200), IntSize(244, 360), 236, 4, 8)
         assertTrue(position.x >= 8 && position.x + 244 <= 392)

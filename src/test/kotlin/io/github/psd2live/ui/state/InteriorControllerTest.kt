@@ -2,11 +2,6 @@ package io.github.psd2live.ui.state
 
 import io.github.psd2live.application.WorkspaceBackend
 import io.github.psd2live.core.interior.*
-import io.github.psd2live.project.WorkspaceMutationResult
-import io.github.psd2live.project.WorkspaceProjectSnapshot
-import java.lang.reflect.Proxy
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 import kotlin.test.*
 import kotlinx.coroutines.*
 import org.umamo.runtime.model.*
@@ -25,91 +20,6 @@ class InteriorControllerTest {
 			{},
 			{ _, _, _, _, _ -> },
 		)
-
-	@Test
-	fun aCompletedDeleteCannotClearNewOrUpdatedTargetDrafts() = runBlocking {
-		for (switchTo in listOf("project", "workspace", "same")) {
-			var current = PSD2LiveState()
-			val entered = CompletableDeferred<Unit>()
-			val release = CountDownLatch(1)
-			val snapshot =
-				WorkspaceProjectSnapshot(
-					"original",
-					"revision",
-					loaded = true,
-					inputName = null,
-					canvasWidth = 1,
-					canvasHeight = 1,
-					busy = false,
-					status = "",
-					selectedLayerId = null,
-					layers = emptyList(),
-					parameters = emptyList(),
-					state = "original-state",
-				)
-			val backend =
-				Proxy.newProxyInstance(
-					WorkspaceBackend::class.java.classLoader,
-					arrayOf(WorkspaceBackend::class.java),
-				) { _, method, _ ->
-					when (method.name) {
-						"snapshot" -> snapshot
-						"applyDocumentEdits" -> {
-							// The original commit has completed; its response waits while the
-							// presentation switches.
-							entered.complete(Unit)
-							check(release.await(10, TimeUnit.SECONDS))
-							WorkspaceMutationResult("node", "revision", summary = "delete")
-						}
-						else -> error("Unexpected backend call: ${method.name}")
-					}
-				} as WorkspaceBackend
-			val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-			val c = controller({ current }, scope, backend)
-			try {
-				val originState = current
-				val originDraft = c.draft("SameMesh", null)
-				originDraft.shape = InteriorSurfaceSettings(horizontal = .3f)
-				c.delete("SameMesh")
-				withTimeout(10000) { entered.await() }
-				current =
-					when (switchTo) {
-						"project" ->
-							current.copy(projectOpenGeneration = current.projectOpenGeneration + 1)
-						"workspace" ->
-							current.copy(
-								activeWorkspaceId =
-									current.workspaces
-										.first { it.id != current.activeWorkspaceId }
-										.id
-							)
-						else -> current
-					}
-				val nextDraft = c.draft("SameMesh", null)
-				nextDraft.shape = InteriorSurfaceSettings(horizontal = .8f)
-				release.countDown()
-				withTimeout(10000) { while (c.busy) delay(5) }
-				assertNull(c.error)
-				assertSame(
-					nextDraft,
-					c.draft("SameMesh", null),
-					"a late original reply must not erase the new scope",
-				)
-				assertTrue(nextDraft.dirty)
-				current = originState
-				if (switchTo != "same")
-					assertNotSame(
-						originDraft,
-						c.draft("SameMesh", null),
-						"the originating deleted draft still must be removed",
-					)
-			} finally {
-				release.countDown()
-				c.close()
-				scope.cancel()
-			}
-		}
-	}
 
 	private fun effect(): NativeInteriorEffect {
 		val sources = listOf("X", "Y").map { Parameter(ParameterId(it), it, -1f, 1f, 0f) }

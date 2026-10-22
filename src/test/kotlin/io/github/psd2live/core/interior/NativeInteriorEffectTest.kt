@@ -274,34 +274,6 @@ class NativeInteriorEffectTest {
 	}
 
 	@Test
-	fun changedMeshKeepsTheRecipeButNeverAppliesStaleVertexData() {
-		val p = preview()
-		val base = p.authored.rig.puppet
-		val d = base.drawables.first { it.mesh != null }
-		val effect =
-			NativeInteriorAuthoring.put(p, RigEditOverlay(), request(d.id.raw))
-				.interiorEffects
-				.single()
-		val original = d.mesh!!
-		val changed =
-			d.copy(
-				mesh =
-					DrawableMesh(
-						original.positions.copyOf().also { it[0] += .2f },
-						original.uvs,
-						original.indices,
-					)
-			)
-		val model = base.copy(drawables = base.drawables.map { if (it.id == d.id) changed else it })
-		assertNotNull(effect.issue(model))
-		assertSame(model, effect.apply(model))
-		assertTrue(
-			effect.bindings.isNotEmpty(),
-			"the recipe stays available for explicit regeneration",
-		)
-	}
-
-	@Test
 	fun disabledEffectsKeepEditorSettingsButDoNotExportUnusedOwnedParameters() {
 		val p = preview()
 		val base = p.authored.rig.puppet

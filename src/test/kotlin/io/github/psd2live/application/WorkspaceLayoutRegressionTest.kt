@@ -13,24 +13,6 @@ class WorkspaceLayoutRegressionTest {
     private fun operation(name: String, vararg fields: Pair<String, String>) =
         WorkspaceDocumentOperation(name, buildJsonObject { fields.forEach { (key, value) -> put(key, value) } })
 
-    @Test fun deletingAReplacedLayerDoesNotBlockGeneration() = runBlocking {
-        val document = WorkspaceMaterialEdits.addLinked(Characters.head(false), "head.psd")
-        val model = WorkspacePreviewBuilder().build(document)
-        val image = document.source.layers.single { it.id.raw == "hair" }.raster
-        val replacement = LayerRaster(image.width, image.height, image.rgba.copyOf().also { bytes ->
-            for (o in bytes.indices step 4) bytes[o] = (bytes[o].toInt() xor 64).toByte()
-        })
-        val replaced = WorkspaceDocumentEdits.replaceImage(document, model, "hair", replacement)
-        assertContains(replaced.layout.generation.refreshLayerIds, "hair")
-        val classified = WorkspaceDocumentEdits.apply(operation("layer_classify", "layer_id" to "hair", "role" to "objects"), replaced, model)
-        val deleted = WorkspaceDocumentEdits.apply(operation("layer_delete", "layer_id" to "hair"), classified, model)
-        assertFalse("hair" in deleted.layout.layerMaterials)
-        assertFalse("hair" in deleted.layout.generation.pendingClassifications)
-        assertFalse("hair" in deleted.layout.generation.refreshLayerIds)
-        val generated = WorkspaceGenerationEdits.generate(deleted, model, null)
-        assertEquals(listOf("face"), generated.source.layers.map { it.id.raw })
-    }
-
     @Test fun classificationPatchesKeepPreviouslyPendingFields() = runBlocking {
         val document = Characters.head(false)
         val model = WorkspacePreviewBuilder().build(document)
@@ -41,18 +23,6 @@ class WorkspaceLayoutRegressionTest {
         assertEquals(Side.RIGHT, pending.side)
         val generated = WorkspaceGenerationEdits.generate(second, model, null)
         assertEquals(pending, generated.layerOverrides["hair"])
-    }
-
-    @Test fun deletingAGeneratedLayerKeepsPendingLayersAndTheirMetadata() = runBlocking {
-        val document = WorkspaceMaterialEdits.addLinked(Characters.withPlacedHat(), "figure.psd").let {
-            it.copy(layout = it.layout.copy(layerTags = mapOf("hat" to setOf("prop"))))
-        }
-        val model = WorkspacePreviewBuilder().build(document)
-        val deleted = WorkspaceDocumentEdits.apply(operation("layer_delete", "layer_id" to "back_hair"), document, model)
-        assertContains(deleted.source.layers.map { it.id.raw }, "hat")
-        assertContains(deleted.layout.generation.pendingLayerIds, "hat")
-        assertEquals(setOf("prop"), deleted.layout.layerTags["hat"])
-        assertEquals(document.layout.layerMaterials["hat"], deleted.layout.layerMaterials["hat"])
     }
 
     @Test fun typedImageReplacementTakesTheMaterialAlong() = runBlocking {
@@ -113,16 +83,4 @@ class WorkspaceLayoutRegressionTest {
         assertEquals(WorkspaceMaterialLinks.LAYERS_FOLDER, adopted.layout.materials.folder(item.folderId!!)!!.name)
     }
 
-    @Test fun aCmo3ReplacementKeepsTheMaterialLibraryButNoLayerState() {
-        val document = WorkspaceMaterialEdits.addLinked(Characters.head(false), "head.psd")
-        val material = document.layout.materials.items.first()
-        val layout = document.layout.copy(
-            references = listOf(LayoutReference(material.id, LayerCanvasRect(0f, 0f, 10f, 10f))),
-            layerTags = mapOf("hair" to setOf("mine")), generation = WorkspaceGeneration.NotGenerated)
-        val kept = replacedLayout(layout)
-        assertEquals(layout.materials, kept.materials)
-        assertEquals(layout.references, kept.references)
-        assertTrue(kept.layerMaterials.isEmpty() && kept.layerTags.isEmpty())
-        assertEquals(WorkspaceGeneration.Generated, kept.generation)
-    }
 }

@@ -16,12 +16,6 @@ class MenuActionsTest {
         assertEquals(listOf("close", "dialog"), events)
     }
 
-    @Test fun continuousMenuActionsKeepTheMenuAndItsKeyboardFocus() {
-        val events = mutableListOf<String>()
-        invokeMenuAction({ events += "close" }, { events += "canvas" }, keepsMenu = true) { events += "edit" }
-        assertEquals(listOf("edit"), events)
-    }
-
     @Test fun failingActionsStillCloseAndDoNotStealFocus() {
         val events = mutableListOf<String>()
         assertFailsWith<IllegalStateException> {

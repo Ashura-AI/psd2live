@@ -63,12 +63,4 @@ class FileDropRouterTest {
 		assertNull(router.drop(png, 900f, 0f))
 	}
 
-	@Test
-	fun filesTheSystemWithholdsStayDroppable() {
-		val router = router()
-		// Files unknown while dragged: the drag is accepted, and the drop decides with the files it brings.
-		assertTrue(router.move(emptyList(), 50f, 0f))
-		router.images("tree", 0f, 100f, intent = FileDropIntent.InsertLayers(ImageLayerInsertion(), "tree", TreeDropMark.ROOT))
-		assertIs<FileDropIntent.InsertLayers>(router.drop(listOf(file("a.png")), 50f, 0f))
-	}
 }

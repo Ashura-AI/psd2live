@@ -11,7 +11,7 @@ fun messageBundle(name: String = "Messages"): Properties = Properties().also { p
 }
 
 /**
- * The [keys] the base bundle lacks or leaves blank. MessageBundleParityTest holds every locale to the base bundle's
+ * The [keys] the base bundle lacks or leaves blank. CatalogContractsTest holds every locale to the base bundle's
  * keys, each with a value, so a key the base bundle has is in all of them.
  */
 fun missingMessages(keys: Iterable<String>): List<String> {

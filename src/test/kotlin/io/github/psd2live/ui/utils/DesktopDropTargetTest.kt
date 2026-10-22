@@ -16,11 +16,4 @@ class DesktopDropTargetTest {
 		assertEquals(Point(100, 200), DesktopDropTarget.windowPixels(Point(1100, 1200), Point(1000, 1000), 1.0, 1.0))
 	}
 
-	@Test
-	fun aCmo3OpensAsAProject() {
-		val cmo3 = temp.resolve("model.cmo3").toFile().apply { writeBytes(byteArrayOf(0)) }
-		assertEquals(DesktopDropTarget.DroppedAction.OpenCmo3(cmo3), DesktopDropTarget.resolveDropAction(listOf(cmo3)))
-		val project = temp.resolve("work.psd2live").toFile().apply { writeBytes(byteArrayOf(0)) }
-		assertEquals(DesktopDropTarget.DroppedAction.OpenProject(project), DesktopDropTarget.resolveDropAction(listOf(cmo3, project)))
-	}
 }

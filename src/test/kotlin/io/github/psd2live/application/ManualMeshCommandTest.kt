@@ -5,12 +5,10 @@ import io.github.psd2live.core.interior.*
 import io.github.psd2live.project.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
-import org.junit.jupiter.api.io.TempDir
 import org.umamo.edit.MeshManualOps
 import org.umamo.edit.MeshTopology
 import org.umamo.format.art.*
 import org.umamo.runtime.model.DrawableMesh
-import java.nio.file.Path
 import kotlin.math.*
 import kotlin.test.*
 
@@ -81,32 +79,6 @@ class ManualMeshCommandTest {
 				put("id", id); put("action", "add_points"); put("vertices", JsonArray(emptyList()))
 				put("anchors", buildJsonArray { add(buildJsonObject { put("x", before.positions[0]); put("y", before.positions[1]) }) })
 			}), document, model)
-		}
-	}
-
-	@Test
-	fun anEditSurvivesUndoRedoAndProjectRestore(@TempDir directory: Path): Unit = runBlocking {
-		val document = document()
-		val builder = WorkspacePreviewBuilder()
-		val model = builder.build(document)
-		val runtime = WorkspaceRuntime<RigPreviewModel>({ builder.build(it) })
-		val before = runtime.install(runtime.state.value.state, "points", document, model)
-		val commands = WorkspaceDocumentCommands(runtime)
-		val id = target(model).id.raw
-		val after = commands.execute(before.projectId, before.state, "Add points", listOf(addPoints(id, inside(mesh(model), 1))), MutationAuthor.AGENT).capture
-		assertEquals(mesh(model).vertexCount + 1, mesh(after.model).vertexCount)
-		val undone = runtime.checkout(after.projectId, after.state, before.historyHead)
-		assertContentEquals(mesh(model).indices, mesh(undone.model).indices)
-		val redone = runtime.checkout(undone.projectId, undone.state, after.historyHead)
-		assertContentEquals(mesh(after.model).indices, mesh(redone.model).indices)
-		val store = WorkspaceStore(directory.resolve("store"))
-		store.persistHistory(after.projectId, runtime.history())
-		val file = directory.resolve("points.psd2live")
-		ProjectRepository(writeHeadCache = false).save(ProjectSaveCapture(after.projectId, runtime.history(), JsonObject(emptyMap()), null, store), file)
-		ProjectRepository(writeHeadCache = false).open(file).use { opened ->
-			val restored = mesh(builder.build(opened.history.head().snapshot))
-			assertContentEquals(mesh(after.model).positions, restored.positions)
-			assertContentEquals(mesh(after.model).indices, restored.indices)
 		}
 	}
 

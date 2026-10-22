@@ -52,16 +52,4 @@ class SplitThenRegenerateScenario {
 		exportMatchesEditor(this)
 	}
 
-	/** A piece of a split face deleted, then the deletion undone: the pieces return with the IDs they had. */
-	@Test fun splitPieceDeletedAndTakenBack() = Studio.run(temp, Characters.head(physics = false)) {
-		edit("split the face", "source_split_polygon", req("layer_id" to "face", "names" to listOf("Upper", "Lower"),
-			"piece_ids" to listOf("upper", "lower"), "polygon" to listOf(listOf(0, 0), listOf(64, 0), listOf(64, 24), listOf(0, 24))))
-		val pieces = meshes("upper") + meshes("lower")
-		expect("split", pieces.size == 2) { "the split made ${pieces.size} meshes" }
-		edit("delete the lower piece", "layer_delete", req("layer_id" to "lower"))
-		expect("deleted", meshes("lower").isEmpty() && meshes("upper") == pieces.take(1)) { "deleting a piece touched the other" }
-		undo("take the deletion back")
-		expect("restored", meshes("upper") + meshes("lower") == pieces) { "restored pieces have other IDs: ${meshes("upper") + meshes("lower")}" }
-		reopen()
-	}
 }

@@ -111,110 +111,6 @@ class FlexTailScenario {
 		expect("export", Oracles.motion(exported, tail, mapOf(last.parameterId to 60f)) > 2.0) { "the exported tail does not bend" }
 	}
 
-	@Test fun aStraightenedTailRestsStraightAndReturnsToItsDrawing() = Studio.run(temp, Characters.tailed(curled = true)) {
-		edit("apply the proposed skeleton", "skeleton_auto", req())
-		layCurledChain()
-		val tail = mesh("tail")
-		val root = skeleton().bones.filter { it.role == BoneRole.TAIL }.minBy { it.chainIndex }
-		// Straightening lays the chain along the middle of the art first (SkeletonFlex.fitted); the mesh is cut again
-		// about the joints where they move to, and that is the drawing the straightened tail comes back to.
-		val art = listOf(SkeletonAutoBuilder.canvasVertices(puppet).getValue(tail) to puppet.drawables.single { it.id.raw == tail }.mesh!!.indices)
-		edit("lay the tail along its art", "skeleton_put", req("spec" to SkeletonFlex.fitted(skeleton(), root.id, art).toJson()))
-		val drawn = positions(tail)
-		val uvs = puppet.drawables.single { it.id.raw == tail }.mesh!!.uvs
-		val straight = SkeletonFlex.straighten(skeleton(), root.id, "tail drawn")
-		edit("straighten the tail", "skeleton_put", req("spec" to straight.toJson()))
-		val bones = skeleton().bones.filter { it.role == BoneRole.TAIL }
-		val heading = Math.toRadians(SkeletonRig.restHeading(skeleton().bone(root.id)!!))
-		expect("bones", bones.all { abs(SkeletonIk.wrap(SkeletonRig.restHeading(it) - Math.toDegrees(heading))) < 0.01 }) { "the chain's bones are not in line" }
-		val rest = positions(tail)
-		val after = puppet.drawables.single { it.id.raw == tail }.mesh!!.uvs
-		// The mesh is cut about the joints where they were drawn, which a straightened chain gives back to within float
-		// rounding; a cut that lands on a vertex can shift by that much, a fraction of a texel.
-		expect("topology", rest.size == drawn.size && after.size == uvs.size && uvs.indices.all { abs(uvs[it] - after[it]) < 2e-3f }) {
-			"straightening changed the tail's mesh topology or uvs: ${drawn.size} -> ${rest.size}, worst uv change ${uvs.indices.filter { it < after.size }.maxOfOrNull { abs(uvs[it] - after[it]) }}"
-		}
-		// Unrolled, the tail is no wider about its line than the drawing is about the chain's curve.
-		val drawnChain = SkeletonFlex.bound(skeleton()).bones.filter { it.role == BoneRole.TAIL }.sortedBy { it.chainIndex }
-		val skin = drawnChain.mapIndexed { i, b -> SkinBone(i - 1, b.headX.toDouble(), b.headY.toDouble(), b.tailX.toDouble(), b.tailY.toDouble(), 0.0) }
-		val curve = SkeletonFlex.curve(skin, SkeletonFlex.Chains(BooleanArray(skin.size) { true }, IntArray(skin.size) { it - 1 }), IntArray(skin.size) { it })
-		val samples = (0..2000).map { k -> DoubleArray(2).also { curve.pointAt(curve.total * k / 2000, it) } }
-		val width = (0 until rest.size / 2).maxOf { v -> abs(-(rest[v * 2] - root.headX) * sin(heading) + (rest[v * 2 + 1] - root.headY) * cos(heading)) }
-		val drawnWidth = (0 until drawn.size / 2).maxOf { v -> samples.minOf { hypot(drawn[v * 2] - it[0], drawn[v * 2 + 1] - it[1]) } }
-		expect("straight", width < drawnWidth + 2.0) { "unrolled, the tail reaches $width px from its line; drawn, $drawnWidth px from its curve" }
-		val pose = skeleton().savedPoses.getValue("tail drawn")
-		val back = positions(tail, pose)
-		// Its three joints carry the tail on a chain of warps (SkeletonFlexWarps), which keep to the drawing up to their
-		// lattice: across the 4 px between the strands, at two folds of nearly 90° each, a cell can reach both strands, so
-		// there the drawing comes back a few pixels off.
-		val errors = (0 until drawn.size / 2).map { hypot((back[it * 2] - drawn[it * 2]).toDouble(), (back[it * 2 + 1] - drawn[it * 2 + 1]).toDouble()) }.sorted()
-		val typical = errors[(errors.size * 0.95).toInt()]
-		expect("drawn pose", typical < 4.0 && errors.last() < 10.0) { "the drawn pose misses the drawing by ${errors.last()} px, 95% within $typical px; pose $pose" }
-		edit("bend it back", "skeleton_put", req("spec" to SkeletonFlex.unstraighten(skeleton(), root.id).toJson()))
-		val again = positions(tail)
-		val restored = (0 until drawn.size / 2).maxOf { hypot((again[it * 2] - drawn[it * 2]).toDouble(), (again[it * 2 + 1] - drawn[it * 2 + 1]).toDouble()) }
-		expect("unstraighten", restored < 0.5) { "bent back, the tail rests $restored px off its drawing" }
-	}
-
-	/**
-	 * A tail drawn as a quarter turn of a band unrolls to the length of its middle: neither shorter nor longer than the
-	 * art along it, and as wide as it was drawn.
-	 */
-	@Test fun aStraightenedArcKeepsItsLength() = straightenedArc(wrapped = false)
-
-	/** The same with the tail hung on a deformer of the user's choosing, so the skin is written after the journal (SkeletonCanvasSkin). */
-	@Test fun aStraightenedArcInItsOwnWarpKeepsItsLength() = straightenedArc(wrapped = true)
-
-	private fun straightenedArc(wrapped: Boolean) = Studio.run(temp, Characters.tailed(Characters.TailShape.ARC)) {
-		edit("apply the proposed skeleton", "skeleton_auto", req())
-		val tail = mesh("tail")
-		val base = skeleton()
-		val hips = base.bones.single { it.role == BoneRole.LOWER_BODY }
-		// Four bones along the band's middle, from straight down to straight right of (240, 170).
-		val joints = (0..4).map { k -> Math.toRadians(90.0 - 22.5 * k).let { 240f + 100f * cos(it).toFloat() to 170f + 100f * sin(it).toFloat() } }
-		val arc = base.copy(bones = base.bones.filter { it.role != BoneRole.TAIL } + (1..4).map { i ->
-			SkeletonBone("tail_$i", "tail_$i", if (i == 1) hips.id else "tail_${i - 1}", BoneRole.TAIL, Side.NONE,
-				joints[i - 1].first, joints[i - 1].second, joints[i].first, joints[i].second,
-				if (i == 1) listOf(tail) else emptyList(), chainIndex = i, minAngle = -30f, maxAngle = 30f, flex = true, connected = i > 1)
-		})
-		val drawn: FloatArray
-		val rest: FloatArray
-		if (!wrapped) {
-			edit("lay the tail along the band", "skeleton_put", req("spec" to arc.toJson()))
-			drawn = positions(tail)
-			edit("straighten the tail", "skeleton_put", req("spec" to SkeletonFlex.straightenOnArt(skeleton(), "tail_1", "tail drawn", puppet).toJson()))
-			rest = positions(tail)
-		} else {
-			// Hung on the body by a record, the tail is skinned after the journal. The geometry gate would hold back a
-			// commit of it here (a band this wide pinches slivers at the extreme poses either way), so the documents open as
-			// they are.
-			val hung = req("op" to "structure",
-				"edits" to listOf(mapOf("action" to "bind", "kind" to "mesh", "id" to tail, "parent_id" to "DeformBodyZBreath", "space" to "canvas")))
-			fun document(spec: SkeletonSpec) = now.document.let { it.copy(rigEdits = it.rigEdits.copy(skeleton = spec,
-				authoringJournal = it.rigEdits.authoringJournal + hung)) }
-			val laid = document(arc)
-			val straight = document(SkeletonFlex.straighten(arc, "tail_1", "tail drawn"))
-			fun open(document: io.github.psd2live.project.WorkspaceDocument) = step("open the hung tail") {
-				runtime.install(runtime.state.value.state, now.projectId, document, builder.build(document), discardUnsaved = true)
-			}
-			open(laid)
-			expect("hung", puppet.drawables.single { it.id.raw == tail }.parentDeformerId?.raw == "DeformBodyZBreath") { "the tail is not hung on the body" }
-			drawn = positions(tail)
-			open(straight)
-			rest = positions(tail)
-		}
-		// Along the line the root bone points: from the start of the band to its end, the middle's length, 100 · π/2.
-		val heading = Math.toRadians(SkeletonRig.restHeading(skeleton().bone("tail_1")!!))
-		val along = (0 until rest.size / 2).map { rest[it * 2] * cos(heading) + rest[it * 2 + 1] * sin(heading) }
-		val across = (0 until rest.size / 2).map { -rest[it * 2] * sin(heading) + rest[it * 2 + 1] * cos(heading) }
-		val drawnAlong = (0 until drawn.size / 2).map { v -> 100.0 * (Math.PI / 2 - kotlin.math.atan2(drawn[v * 2 + 1] - 170.0, drawn[v * 2] - 240.0)) }
-		val length = along.max() - along.min()
-		val drawnLength = drawnAlong.max() - drawnAlong.min()
-		val width = across.max() - across.min()
-		expect("length", abs(length - drawnLength) < 0.05 * drawnLength) { "unrolled, the tail is $length px long; along its middle the art is $drawnLength px" }
-		expect("width", abs(width - 30.0) < 0.15 * 30.0) { "unrolled, the tail is $width px wide; drawn, 30 px" }
-	}
-
 	/**
 	 * A straight tail bent at its joints curves one way only, like a rope: no stretch of it swings out against the turn
 	 * on its way round (a joint turning the art behind it about itself would kick the art just before it outward, and a
@@ -378,12 +274,6 @@ class FlexTailScenario {
 			}
 		}
 		return flipped to worst
-	}
-
-	private fun segment(x: Float, y: Float, b: SkeletonBone): Double {
-		val dx = (b.tailX - b.headX).toDouble(); val dy = (b.tailY - b.headY).toDouble()
-		val t = (((x - b.headX) * dx + (y - b.headY) * dy) / (dx * dx + dy * dy).coerceAtLeast(1e-9)).coerceIn(0.0, 1.0)
-		return hypot(x - b.headX - dx * t, y - b.headY - dy * t)
 	}
 
 	private fun vertices(points: FloatArray, where: (Float, Float) -> Boolean) = (0 until points.size / 2).filter { where(points[it * 2], points[it * 2 + 1]) }

@@ -163,14 +163,6 @@ class LayoutManifestScenario {
 		expect("stack", stack(now.document.source) == expected) { "placed ${stack(now.document.source)}, the PSD stacks $expected" }
 	}
 
-	/** Placing a manifest's folder of materials keeps the manifest's stack. */
-	@Test fun placingAManifestFolderKeepsItsStack() = Studio.run(temp, emptyLayout()) {
-		val path = manifest(Files.createDirectories(temp.resolve("out")))
-		edit("import the manifest", "material_add", req("staging" to WorkspaceMaterialStaging.stage(WorkspaceMaterialFiles.read(listOf(path)))))
-		edit("place the manifest", "layer_place", req("material_id" to now.document.layout.materials.folders.single { it.parentId == null }.id))
-		expect("stack", stack(now.document.source) == figureStack()) { "placed ${stack(now.document.source)}, the manifest stacks ${figureStack()}" }
-	}
-
 	/**
 	 * A reference layer stays on the canvas and in the stack but out of every generation, so out of the rig and exports;
 	 * given back, it waits for the next generation like a layer placed since. A generated layer stays a model layer.

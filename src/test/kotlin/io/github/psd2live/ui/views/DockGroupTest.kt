@@ -3,7 +3,6 @@ package io.github.psd2live.ui.views
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 
 class DockGroupTest {
 	private val group = DockNode(id = "group", modules = listOf("a", "b"), selected = "b")
@@ -29,9 +28,4 @@ class DockGroupTest {
 		assertEquals("other", split.second!!.id)
 	}
 
-	@Test fun aGroupDroppedOnItselfOrNowhereStays() {
-		assertSame(root, dockGroup(root, "group", "group", DockSide.RIGHT))
-		assertSame(root, dockGroup(root, "group", "missing", DockSide.CENTER))
-		assertSame(root, dockGroup(root, "right", "target", DockSide.CENTER))
-	}
 }

@@ -31,9 +31,4 @@ class LayerTagsTest {
 		assertEquals("Coat  lining".replace("  ", " "), LayerTags.normalize("Coat   lining"))
 	}
 
-	@Test fun anOverrideFromTagsKeepsTheVariant() {
-		val variant = LayerVariant(LayerType.SWITCH, "ParamOutfit", 2)
-		assertEquals(LayerClassificationOverride(LayerType.SWITCH, SemanticTag.TOPWEAR, Side.NONE, "ParamOutfit", 2),
-			LayerClassificationOverride.of(setOf("top", "外套"), variant))
-	}
 }

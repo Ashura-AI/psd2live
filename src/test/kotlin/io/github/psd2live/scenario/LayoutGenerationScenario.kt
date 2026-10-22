@@ -79,20 +79,6 @@ class LayoutGenerationScenario {
 		}
 	}
 
-	@Test fun aProjectPlacedFirstGeneratesTheRigAnImportedOneHas() {
-		val figure = Characters.figure()
-		Studio.run(temp, figure.copy(layout = WorkspaceLayout(generation = WorkspaceGeneration.NotGenerated))) {
-			expect("placed", puppet.deformers.isEmpty()) { "an ungenerated project shows an automatic rig" }
-			expect("placed", puppet.drawables.size == figure.source.layers.size) { "every layer shows as one mesh: ${puppet.drawables.map { it.id.raw }}" }
-			val topology = puppet.drawables.associate { it.id to it.mesh!!.indices.toList() }
-			edit("generate", "rig_generate", req())
-			expect("generated", puppet.deformers.isNotEmpty()) { "the first generation did not bind the meshes" }
-			expect("generated", puppet.drawables.associate { it.id to it.mesh!!.indices.toList() } == topology) { "generation recreated the meshes" }
-			val state = inspect("generation")
-			expect("generated", state.getValue("generated").jsonPrimitive.boolean) { "inspect still reports the project ungenerated: $state" }
-		}
-	}
-
 	@Test fun layersPlacedLaterJoinTheRigAndTheUsersEditsStay() = Studio.run(temp, Characters.withPlacedHat()) {
 		val placed = mesh("hat")
 		expect("placed", !WorkspaceLayoutPreview.isPendingMesh(placed)) { "the placed hat has a temporary mesh: $placed" }

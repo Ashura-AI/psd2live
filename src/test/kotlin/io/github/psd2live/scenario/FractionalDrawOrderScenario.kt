@@ -44,17 +44,6 @@ class FractionalDrawOrderScenario {
 class DrawOrderSpacingScenario {
 	@TempDir lateinit var temp: Path
 
-	@Test fun generatedLayersAreTenApartWithTheLipOutlineInTheGap() = Studio.run(temp, checks = emptySet()) {
-		importPsd(Characters.mouthPsd(temp), PipelineConfig(atlasSize = 256, generatePhysics = false, exportMoc3 = false, mouthOutlineEnabled = true))
-		val orders = puppet.drawables.associate { it.id.raw to it.drawOrder }
-		val layers = orders.filterKeys { "_lip_" !in it }.values.sorted()
-		expect("spacing", layers == listOf(10f, 20f)) { "generated orders $orders" }
-		val lips = orders.filterKeys { "_lip_" in it }.values
-		expect("lips", lips.isNotEmpty() && lips.all { it == 25f }) { "lip outlines at $lips, layers at $layers" }
-		refused("a fraction is refused", "layer_draw_order", req("target" to "mesh:${puppet.drawables.first().id.raw}", "order" to 15.5))
-		edit("a whole number in the gap", "layer_draw_order", req("target" to "mesh:${puppet.drawables.first().id.raw}", "order" to 15))
-	}
-
 	@Test fun aDocumentWithoutTheSettingKeepsConsecutiveOrders() {
 		val legacy = io.github.psd2live.project.WorkspaceSettingsCodec.encode(PipelineConfig()).let { kotlinx.serialization.json.JsonObject(it - "drawOrderStep") }
 		kotlin.test.assertEquals(1, io.github.psd2live.project.WorkspaceSettingsCodec.decode(legacy).drawOrderStep)

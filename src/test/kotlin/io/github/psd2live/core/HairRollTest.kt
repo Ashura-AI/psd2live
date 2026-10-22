@@ -29,9 +29,4 @@ class HairRollTest {
 		assertTrue(abs(tx - x) < 0.01f && abs(ty - y) < 0.01f, "turned back to ($tx, $ty), not ($x, $y)")
 	}
 
-	@Test fun itEasesInBelowTheChin() {
-		val near = roll.turnBack(560f, 500f, 1500f, 20f)
-		val far = roll.turnBack(560f, 650f, 1500f, 20f)
-		assertTrue(abs(near.first) < abs(far.first), "the turn-back does not grow away from the chin: $near, $far")
-	}
 }

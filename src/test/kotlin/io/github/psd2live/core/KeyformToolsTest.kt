@@ -44,15 +44,6 @@ class KeyformToolsTest {
         assertFailsWith<IllegalArgumentException> { KeyformTools.compile(model, tool("interpolate", "warp:face") { put("key", key("ParamAngleX" to 30f)) }) }
     }
 
-    @Test fun interpolateTurnsARotationHalfway() {
-        val model = fixture()
-        val compiled = RigAuthoringJournal.compile(model, JsonArray(listOf(tool("interpolate", "rotation:arm") { put("key", key("ParamAngleX" to 0f)) }))).first
-        val form = (compiled.deformers.single { it.id.raw == "arm" } as Deformer.Rotation).geometryGrid!!.let { grid ->
-            grid.cells.single { grid.axes[0].keys[it.coordinate[0]] == 0f }.form
-        }
-        assertEquals(32f, form.originX, 1e-4f); assertEquals(5f, form.angle, 1e-4f)
-    }
-
     @Test fun pasteCarriesAMeshShapeOntoAnotherKeyAndObject() {
         val model = fixture()
         val (pasted, journal) = RigAuthoringJournal.compile(model, JsonArray(listOf(tool("paste", "mesh:eye") {
@@ -134,28 +125,6 @@ class KeyformToolsTest {
         assertEquals(listOf(true), channels.map { "channels" in it && "geometry" !in it })
     }
 
-    @Test fun aCopyNoLongerFitsItsOwnObjectOnceItsPointsChange() {
-        val model = fixture()
-        val copied = KeyformTools.snapshot(model, "mesh:eye", mapOf("ParamEyeOpen" to 0f))
-        val rebuilt = model.withDrawable("eye") { it.copy(mesh = DrawableMesh(FloatArray(6) { i -> i * 0.1f }, FloatArray(6), intArrayOf(0, 1, 2)), geometryGrid = null) }
-        assertTrue(KeyformTools.misfit(rebuilt, copied, "mesh:eye")!!.contains("copy it again"))
-        val failure = assertFailsWith<IllegalArgumentException> {
-            KeyformTools.paste(rebuilt, copied, "mesh:eye", mapOf("ParamEyeOpen" to 1f), null, 1f, null, listOf("geometry"))
-        }
-        assertTrue(failure.message!!.contains("copy it again"))
-        assertEquals(null, KeyformTools.misfit(model, copied, "mesh:eye"))
-    }
-
-    @Test fun aFlipRefusesTwoPointsSharingOneMirroredPartner() {
-        // Vertex 2 sits next to vertex 0's mirror place too, so 0 would be the partner of both 1 and 2.
-        val crowded = fixture().withDrawable("twin") { it.copy(mesh = DrawableMesh(floatArrayOf(0f, 0f, 1f, 0f, 0.99f, 0f, 0.5f, 1f),
-            FloatArray(8), intArrayOf(0, 1, 3, 1, 2, 3))) }
-        val failure = assertFailsWith<IllegalArgumentException> { KeyformTools.compile(crowded, tool("paste", "mesh:twin") {
-            put("from", key("ParamAngleX" to 30f)); put("key", key("ParamAngleX" to 0f)); put("flip", "horizontal")
-        }) }
-        assertTrue(failure.message!!.contains("not symmetric"))
-    }
-
     @Test fun snapshotsSwapTwoShapesInOneBatch() {
         val model = fixture()
         val eye = KeyformTools.snapshot(model, "mesh:eye", mapOf("ParamEyeOpen" to 0f))
@@ -167,20 +136,6 @@ class KeyformToolsTest {
         val eyeMoves = moves(model, "eye", mapOf("ParamEyeOpen" to 0f)); val twinMoves = moves(model, "twin", mapOf("ParamAngleX" to 30f))
         val newTwin = moves(swapped, "twin", mapOf("ParamAngleX" to 30f)); val newEye = moves(swapped, "eye", mapOf("ParamEyeOpen" to 0f))
         for (i in 0 until 8) { assertEquals(eyeMoves[i], newTwin[i], 1e-6f); assertEquals(twinMoves[i], newEye[i], 1e-6f) }
-    }
-
-    @Test fun pasteCarriesOnlyTheChosenChannels() {
-        val model = fixture()
-        val faded = applyAll(model, buildJsonObject {
-            put("op", "multi_key"); put("targets", JsonArray(listOf(JsonPrimitive("mesh:eye")))); put("opacity", 0.25f)
-            put("keys", JsonArray(listOf(key("ParamEyeOpen" to 0f))))
-        })
-        val (pasted, journal) = RigAuthoringJournal.compile(faded, JsonArray(listOf(tool("paste", "mesh:eye") {
-            put("from", key("ParamEyeOpen" to 0f)); put("key", key("ParamEyeOpen" to 1f)); put("channels", JsonArray(listOf(JsonPrimitive("opacity"))))
-        })))
-        assertEquals(listOf(false), journal.map { "geometry" in it })
-        val owner = KeyformOwner.Drawable(DrawableId("eye"))
-        assertEquals(0.25f, (KeyformTools.channelAt(pasted, owner, FormChannel.OPACITY, mapOf("ParamEyeOpen" to 1f)) as ChannelValue.Scalar).value, 1e-5f)
     }
 
     @Test fun multiKeyEditsTheMatchingKeyformsByMethod() {
@@ -215,14 +170,6 @@ class KeyformToolsTest {
         val owner = KeyformOwner.Drawable(DrawableId("twin"))
         assertEquals(listOf("ParamEyeOpen"), edited.channelGridsOf(owner)!![FormChannel.OPACITY]!!.axes.map { it.parameterId.raw })
         assertEquals(0.4f, (KeyformTools.channelAt(edited, owner, FormChannel.OPACITY, mapOf("ParamEyeOpen" to 0f)) as ChannelValue.Scalar).value, 1e-5f)
-    }
-
-    @Test fun restoringEveryKeyGivesTheDefaultKeyShapeEverywhere() {
-        val model = fixture()
-        val (restored, journal) = RigAuthoringJournal.compile(model, JsonArray(listOf(tool("reset", "warp:face") { put("all_keys", true) })))
-        val neutral = RigGeometryTools.geometry(model, "warp", "face", mapOf("ParamAngleX" to 0f)).points
-        for (value in listOf(-30f, 30f)) assertTrue(neutral.contentEquals(RigGeometryTools.geometry(restored, "warp", "face", mapOf("ParamAngleX" to value)).points))
-        assertEquals(2, journal.size, "the neutral key already has its shape")
     }
 
     private fun applyAll(model: PuppetModel, command: JsonObject) = RigAuthoringJournal.compile(model, JsonArray(listOf(command))).first

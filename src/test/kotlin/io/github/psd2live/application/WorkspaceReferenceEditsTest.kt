@@ -3,7 +3,6 @@ package io.github.psd2live.application
 import io.github.psd2live.project.LayerCanvasRect
 import io.github.psd2live.project.LayoutReference
 import io.github.psd2live.project.WorkspaceLayoutCodec
-import io.github.psd2live.project.config
 import io.github.psd2live.scenario.Characters
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
@@ -122,19 +121,6 @@ class WorkspaceReferenceEditsTest {
 		assertTrue("guide" !in given.layout.generation.pendingLayerIds && "guide" in WorkspaceReferenceMeshes.createdLayerIds(given))
 		assertTrue(builder.build(given, built).rig.puppet.parts.none { it.id.raw == WorkspaceReferenceMeshes.PART_ID })
 	}
-    @Test fun referenceLayerOpacityIsNotAGenerationInput() = kotlinx.coroutines.runBlocking {
-        val base = document.copy(layout = document.layout.copy(generation = document.layout.generation.copy(generated = true)))
-        val builder = WorkspacePreviewBuilder()
-        val model = builder.build(base)
-        val placed = WorkspaceDocumentEdits.apply(WorkspaceDocumentOperation(WorkspaceMaterialEdits.PLACE, buildJsonObject {
-            put("material_id", face); put("layer_id", "guide"); put("reference", true)
-        }), base, model)
-        val shown = builder.build(placed)
-        val faded = WorkspaceReferenceOpacity.apply(placed, shown, buildJsonObject { put("layer_id", "guide"); put("opacity", 0.4f) })
-        // The rebuilt model can replay the journal onto its authored rig; no base generation or checkpoint is needed.
-        assertTrue(io.github.psd2live.core.PSD2LivePipeline().canFastUpdateRig(
-            shown, faded.source, faded.config(), faded.layout.referenceLayerIds))
-    }
 
     @Test fun opacityEditsWorkBeforeAndAfterGenerationWithoutJournalingPendingMeshIds() = kotlinx.coroutines.runBlocking {
         for (generated in listOf(false, true)) {

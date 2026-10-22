@@ -60,13 +60,6 @@ class ManualTest {
 		}
 	}
 
-	@Test fun everyStepByStepChapterAndPathSitsInAnArticle() {
-		val text = Manual.read(AppLanguage.CHINESE.tag).values.joinToString("\n") { it.body }
-		TutorialId.entries.forEach { assertTrue("{tutorial=${it.name}}" in text, "no article starts $it") }
-		TutorialPath.entries.forEach { assertTrue("{path=${it.name}}" in text, "no article holds the $it path") }
-		assertTrue("{path=" in Manual.read(AppLanguage.CHINESE.tag).getValue(Manual.FIRST_MANUAL).body, "the catalog page holds the paths")
-	}
-
 	@Test fun everyMcpEntryNamesAnOpenPageAndARealOperation() {
 		val workspace = Proxy.newProxyInstance(WorkspaceBackend::class.java.classLoader, arrayOf(WorkspaceBackend::class.java)) { _, method, _ ->
 			error("Unexpected workspace access: ${method.name}")

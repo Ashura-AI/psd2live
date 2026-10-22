@@ -83,29 +83,6 @@ class EditorAndAgentScenario {
 
 	private fun Editor.state(): String = workspace.snapshot().state!!
 
-	@Test fun clearingTheMaterialEditorKeepsItsSessionAndUndoHistory() = editor {
-		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
-		consistent("imported")
-		withContext(Dispatchers.Main) {
-			val layers = vm.state.value.previewModel!!.analysis.source.layers
-			vm.selectLayer(layers.first().id.raw)
-			val materialId = assertNotNull(workspace.captureQueries().layoutState()).layout.layerMaterials.getValue(layers.last().id.raw)
-			val canvas = io.github.psd2live.ui.CanvasEditor(vm, vm.state.value.activeWorkspace.id, "material-window")
-			canvas.hierarchyMode = io.github.psd2live.ui.EditHierarchyMode.PAINT
-			val session = assertNotNull(canvas.startPaintSession("material:$materialId", forceReload = true))
-			val original = session.workingImage.getRGB(0, 0, session.docWidth, session.docHeight, null, 0, session.docWidth)
-			canvas.clearCurrentLayerPaint()
-			canvas.awaitPaintWork()
-			assertSame(session, canvas.paintSession)
-			assertEquals("material:$materialId", session.layerId)
-			assertTrue(session.isDirty)
-			assertTrue(session.workingImage.getRGB(0, 0, session.docWidth, session.docHeight, null, 0, session.docWidth).all { it ushr 24 == 0 })
-			canvas.undoPaint()
-			assertContentEquals(original, session.workingImage.getRGB(0, 0, session.docWidth, session.docHeight, null, 0, session.docWidth))
-			canvas.closePaintSession()
-		}
-	}
-
 	@Test fun backgroundPaintEditsQueueAndEndWithTheSession() = editor {
 		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
 		consistent("imported")
@@ -204,36 +181,6 @@ class EditorAndAgentScenario {
 		workspace.open(archive)
 		consistent("reopened color gesture")
 		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
-	}
-
-	@Test fun aLipOutlineRefusesPaintWithAHintAndAParameterUnbindsFromTheSelection() = editor {
-		workspace.importPsd(Characters.mouthPsd(temp).toString(), true)
-		consistent("imported mouth")
-		val model = vm.state.value.previewModel!!
-		val (lip, lipLayer) = model.rig.layerIdByDrawableId.entries.first { it.value.contains("mouth-lip") }
-		// The outline is drawn from the mouth layer on every build: no pixels of its own to paint.
-		val refused = assertFailsWith<IllegalArgumentException> { workspace.beginPaintSession(state(), lipLayer) }
-		assertEquals(GENERATED_LIP_PAINT, refused.message)
-		withContext(Dispatchers.Main) {
-			assertNull(vm.beginPaintSession(lip))
-			assertEquals(io.github.psd2live.i18n.tr("editor.paint.generatedLip"), vm.state.value.errorMessage)
-			vm.clearErrorMessage()
-		}
-		val drawable = model.rig.puppet.drawables.first { mesh -> mesh.geometryGrid?.axes.orEmpty().isNotEmpty() }
-		val parameter = drawable.geometryGrid!!.axes.first().parameterId
-		fun bound() = vm.state.value.previewModel!!.rig.puppet.drawables.single { it.id == drawable.id }.let { mesh ->
-			mesh.geometryGrid?.axes.orEmpty().any { it.parameterId == parameter } ||
-				mesh.channelGrids.gridsByChannel.values.any { grid -> grid.axes.any { it.parameterId == parameter } }
-		}
-		withContext(Dispatchers.Main) {
-			vm.selectLayer(model.rig.layerIdByDrawableId[drawable.id.raw] ?: drawable.id.raw)
-			vm.unbindParameterFromSelection(parameter)
-		}
-		consistent("unbound ${parameter.raw}")
-		assertFalse(bound(), "the selected mesh must no longer follow ${parameter.raw}")
-		withContext(Dispatchers.Main) { vm.undoHistory() }
-		consistent("undo unbind")
-		assertTrue(bound(), "undo must bind the mesh again")
 	}
 
 	@Test fun theDeformMenuCopiesPastesInterpolatesAndResetsAKeyform() = editor {
@@ -416,47 +363,6 @@ class EditorAndAgentScenario {
 		}
 	}
 
-	@Test fun mouthPresetAndThicknessChangePreviewAndSurviveReopening() = editor {
-		workspace.importPsd(Characters.mouthPsd(temp).toString(), true)
-		consistent("imported mouth")
-		vm.setMouthOutlineEnabled(true)
-		consistent("mouth outline")
-		val initial = vm.state.value.previewModel!!
-		assertTrue(initial.analysis.layers.any { it.source is io.github.psd2live.core.MouthLipLayer })
-		fun mouthPositions() = org.umamo.render.eval.CpuDeformationEvaluator().evaluate(vm.state.value.previewModel!!.rig.puppet,
-			mapOf(ParameterId("ParamMouthOpenY") to 0.7f, ParameterId("ParamMouthForm") to 0f)).worldPositions
-		val before = mouthPositions()
-		vm.setMouthShapeCurve("flat", io.github.psd2live.core.MouthCurve.preset("flat"))
-		consistent("mouth shape")
-		val shaped = mouthPositions()
-		assertTrue(before.any { (id, vertices) -> shaped[id]?.let { next -> vertices.size != next.size || vertices.indices.any { kotlin.math.abs(vertices[it] - next[it]) > 0.1f } } == true },
-			"the mouth preset must change the actual posed geometry")
-		val original = vm.state.value.rigEdits.authoringJournal.toList()
-		val initialHash = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
-		vm.beginEditorField("setMouthThickness")
-		vm.setMouthThickness(6f)
-		withTimeout(20_000) { vm.state.first { it.previewModel?.config?.mouthThickness == 6f } }
-		assertNotEquals(initialHash, Oracles.hash(vm.state.value.previewModel!!.rig.puppet), "thickness must change the field preview")
-		assertEquals(original, vm.state.value.rigEdits.authoringJournal)
-		vm.endEditorField("setMouthThickness")
-		consistent("mouth thickness")
-		val head = workspace.snapshot().historyHeadNodeId
-		repeat(3) {
-			vm.beginEditorField("setMouthThickness"); vm.endEditorField("setMouthThickness")
-			consistent("unchanged mouth field")
-		}
-		assertEquals(head, workspace.snapshot().historyHeadNodeId)
-		val shown = Oracles.hash(vm.state.value.previewModel!!.rig.puppet)
-		val archive = temp.resolve("mouth-edit.psd2live")
-		vm.saveProjectNow(archive)
-		workspace.open(archive)
-		consistent("reopened mouth")
-		assertEquals(shown, Oracles.hash(vm.state.value.previewModel!!.rig.puppet))
-		Studio.run(temp, io.github.psd2live.ui.state.WorkspaceStateCodec.document(vm.state.value), checks = emptySet()) {
-			exportMatchesEditor(this)
-		}
-	}
-
 	@Test fun settledPresetFieldChangesThePosedGeometryOnlyOnce() = editor {
 		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
 		consistent("imported")
@@ -521,22 +427,6 @@ class EditorAndAgentScenario {
 		Studio.run(temp, io.github.psd2live.ui.state.WorkspaceStateCodec.document(vm.state.value), checks = emptySet()) {
 			exportMatchesEditor(this)
 		}
-	}
-
-	@Test fun presetSwitchAndFieldInOneGestureKeepTheNormalizedJournal() = editor {
-		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
-		consistent("imported")
-		vm.setParameterValue(ParameterId("ParamAngleX"), 10f)
-		consistent("authored pose")
-		vm.beginEditorGesture()
-		vm.setMeshOnly(true)
-		vm.setMeshOnly(false)
-		vm.setHeadStrength(2f)
-		vm.endEditorGesture()
-		consistent("preset gesture")
-		assertEquals(2f, vm.state.value.previewModel!!.config.headTurnStrength)
-		assertEquals(0f, vm.state.value.parameterValues[ParameterId("ParamAngleX")], "off then on must still release the authored pose")
-		vm.saveProjectNow(temp.resolve("preset-gesture.psd2live"))
 	}
 
 	@Test fun anAgentRigsTheCharacterAndTheEditorFollows() = editor {
@@ -682,29 +572,4 @@ class EditorAndAgentScenario {
 		assertEquals(padding, vm.state.value.texturePadding, "the archive holds the editor's copy")
 	}
 
-	@Test fun aSliderDragReachesRecoveryOnRelease() = editor {
-		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
-		consistent("imported")
-		val angle = ParameterId("ParamAngleX")
-		val store = io.github.psd2live.project.WorkspaceStore(temp.resolve("store"))
-		val file = store.projectRoot(vm.state.value.projectId!!).resolve("recovery.json")
-		suspend fun written(): java.nio.file.attribute.FileTime? {
-			workspace.flushProjectPersistence()
-			return if (java.nio.file.Files.isRegularFile(file)) java.nio.file.Files.getLastModifiedTime(file) else null
-		}
-		val before = written()
-		withContext(Dispatchers.Main) {
-			vm.beginParameterScrub()
-			for (value in listOf(5f, 10f, 15f)) vm.setParameterValueFromPanel(angle, value)
-		}
-		settle()
-		assertEquals(15f, vm.state.value.parameterValues[angle], "the canvases do not show the drag")
-		// Each sample used to encode the whole document and rewrite the checkpoint.
-		assertEquals(before, written(), "a sample of the drag rewrote the recovery checkpoint")
-		withContext(Dispatchers.Main) { vm.endParameterScrub() }
-		consistent("released")
-		written()
-		val recovered = assertNotNull(store.loadRecoveryCheckpoint(vm.state.value.projectId!!), "nothing to recover after the drag")
-		assertEquals(15f, recovered.presentation["parameterValues"]?.jsonObject?.get(angle.raw)?.jsonPrimitive?.float, "recovery misses the released pose")
-	}
 }

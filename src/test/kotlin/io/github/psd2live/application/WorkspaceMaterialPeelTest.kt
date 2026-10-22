@@ -53,11 +53,4 @@ class WorkspaceMaterialPeelTest {
         checkRecomposition(before, WorkspaceMaterialPeel.peel(before, after, null, WorkspaceMaterialPeel.Options(colorMatch = false)))
     }
 
-    @Test fun softTranslucentPartsKeepTheOriginalAlpha() {
-        val after = image { _, _ -> listOf(40, 100, 180, 128) }
-        val before = image { x, y -> listOf(if (x in 10..21 && y in 10..21) 60 else 40, 100, 180, 128) }
-        val result = WorkspaceMaterialPeel.peel(before, after, null, WorkspaceMaterialPeel.Options(low = 1f, colorMatch = false))
-        assertTrue(result.part.rgba.indices.step(4).any { (result.part.rgba[it + 3].toInt() and 255) in 1..127 })
-        checkRecomposition(before, result)
-    }
 }

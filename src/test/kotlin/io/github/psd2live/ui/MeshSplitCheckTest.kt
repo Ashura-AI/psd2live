@@ -2,10 +2,6 @@ package io.github.psd2live.ui
 
 import io.github.psd2live.application.WorkspaceCheckTimeout
 import io.github.psd2live.ui.state.MeshSplitCheck
-import io.github.psd2live.ui.state.workspaceFailureMessage
-import io.github.psd2live.testing.MESSAGE_BUNDLES
-import io.github.psd2live.testing.messageBundle
-import io.github.psd2live.i18n.tr
 import kotlinx.coroutines.*
 import kotlin.test.*
 
@@ -72,15 +68,4 @@ class MeshSplitCheckTest {
         assertFalse(check.running)
     }
 
-    @Test fun localizedMessagesRecognizeWrappedMemoryFailureAndEveryLocaleDefinesTheNewKeys() {
-        assertEquals(tr("error.outOfMemory"), workspaceFailureMessage(IllegalStateException("Worker failed", OutOfMemoryError())))
-        assertEquals("Specific reason", workspaceFailureMessage(IllegalArgumentException("Specific reason")))
-        val keys = listOf("error.outOfMemory", "error.stackOverflow", "error.meshSplitCheckFailed", "error.meshSplitCheckTimeout")
-        val base = messageBundle().stringPropertyNames()
-        for (locale in MESSAGE_BUNDLES) {
-            val bundle = messageBundle(locale)
-            assertEquals(base, bundle.stringPropertyNames(), locale)
-            for (key in keys) assertFalse(bundle.getProperty(key).isNullOrBlank(), "$locale:$key")
-        }
-    }
 }

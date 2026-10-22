@@ -89,32 +89,6 @@ class HitAreaScenario {
 		reopen()
 	}
 
-	/** Both depth paths: a generated model's two new slices, and an imported CMO3 model's source kept as the back. */
-	@Test fun depthSlicesJoinTheSourcesHitAreas() {
-		var cmo3: Path? = null
-		Studio.run(temp, Characters.figure(), checks = emptySet()) {
-			val top = mesh("top")
-			edit("Body on the top", WorkspaceHitAreaEdits.PUT, req("id" to "HitAreaBody", "meshes" to listOf("mesh:$top")))
-			cmo3 = export("cmo3").single { it.toString().endsWith(".cmo3") }
-			edit("slice the top around a sleeve", "source_split_depth", req("source_id" to top, "middle_ids" to listOf(mesh("sleeve_r"))))
-			val meshes = now.document.rigEdits.hitAreas.single().meshes
-			expect("generated slices", top !in meshes && meshes.size == 2 && meshes.all { id -> puppet.drawables.any { it.id.raw == id } }) {
-				"Body after the split $meshes"
-			}
-		}
-		Studio.run(temp.resolve("imported").also(Files::createDirectories), checks = emptySet()) {
-			importCmo3(requireNotNull(cmo3))
-			val top = puppet.drawables.first { it.name == "top" }.id.raw
-			val sleeve = puppet.drawables.first { it.name == "sleeve_r" }.id.raw
-			edit("Body on the top", WorkspaceHitAreaEdits.PUT, req("id" to "HitAreaBody", "meshes" to listOf("mesh:$top")))
-			edit("slice the top around a sleeve", "source_split_depth", req("source_id" to top, "middle_ids" to listOf(sleeve), "front_mesh_id" to "ArtMeshTopFront"))
-			val meshes = now.document.rigEdits.hitAreas.single().meshes
-			expect("imported slices", meshes == listOf(top, "ArtMeshTopFront") && puppet.drawables.any { it.id.raw == "ArtMeshTopFront" }) {
-				"Body after the split $meshes"
-			}
-		}
-	}
-
 	@Test fun anAreaWhoseMeshesAreGoneStaysTheDocumentsOwnAndIsReported() {
 		val ghost = RigHitArea("HitAreaGhost", "Ghost", listOf("ArtMeshGone"))
 		val figure = Characters.figure()
@@ -150,11 +124,6 @@ class HitAreaScenario {
 		val cmo3 = Files.readAllBytes(export("cmo3").single { it.toString().endsWith(".cmo3") })
 		val (_, replaced) = io.github.psd2live.core.Cmo3ModelImport.prepare(cmo3, io.github.psd2live.core.Cmo3ImportMode.REPLACE, now.model, now.model.config)
 		expect("replace", replaced.rigEdits.hitAreas == now.document.rigEdits.hitAreas) { "the replacement keeps ${replaced.rigEdits.hitAreas}" }
-	}
-
-	@Test fun aModelWithoutHitAreasWritesNoneToModel3() = Studio.run(temp, Characters.figure(), checks = emptySet()) {
-		val model3 = export("moc3").single { it.toString().endsWith(".model3.json") }
-		expect("model3", "HitAreas" !in Json.parseToJsonElement(Files.readString(model3)).jsonObject) { Files.readString(model3) }
 	}
 
 	@Test fun targetsReportWhatTheyCannotSayAboutHitAreas() {

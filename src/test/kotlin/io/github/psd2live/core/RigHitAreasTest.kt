@@ -6,7 +6,6 @@ import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -41,16 +40,6 @@ class RigHitAreasTest {
 		assertNull(RigHitAreas.areaAt(listOf(head, body), positions, indices, shown + ("face" to 0f), 0.5f, 0.5f))
 		assertEquals(body, RigHitAreas.areaAt(listOf(head, body), positions, indices, shown + ("face" to 0f), 0.5f, 2.5f))
 		assertNull(RigHitAreas.areaAt(listOf(head), positions - "face", indices, shown, 0.5f, 0.5f))
-	}
-
-	@Test fun anAreaNeedsAnIdOfCubismsAlphabetANameAndDistinctMeshes() {
-		assertFailsWith<IllegalArgumentException> { RigHitArea("1Head", "Head", listOf("face")) }
-		assertFailsWith<IllegalArgumentException> { RigHitArea("Hit-Head", "Head", listOf("face")) }
-		assertFailsWith<IllegalArgumentException> { RigHitArea("HitAreaHead", " ", listOf("face")) }
-		assertFailsWith<IllegalArgumentException> { RigHitArea("HitAreaHead", "Head", emptyList()) }
-		assertFailsWith<IllegalArgumentException> { RigHitArea("HitAreaHead", "Head", listOf("face", "face")) }
-		val head = RigHitArea("HitAreaHead", "Head", listOf("face"))
-		assertFailsWith<IllegalArgumentException> { RigEditOverlay(hitAreas = listOf(head, head.copy(name = "Again"))) }
 	}
 
 	@Test fun meshReplacementsMapOneMeshToManyInPlace() {

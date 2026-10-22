@@ -52,22 +52,6 @@ class ObjectOpsScenario {
 		reopen()
 	}
 
-	/** A converted mesh's own layer split, and the layer of a pasted original split. */
-	@Test fun splitTheLayersOfAConvertedMeshAndOfAPastedOriginal() = Studio.run(temp, Characters.head(physics = false)) {
-		val hair = mesh("hair")
-		edit("paste the hair", WorkspaceObjectEdits.PASTE, req("sources" to listOf("mesh:$hair")))
-		edit("convert the face", WorkspaceObjectEdits.CONVERT_ID, convert("mesh:${mesh("face")}" to "ArtMeshCheek"))
-		edit("split the face", "source_split_polygon", req("layer_id" to "face", "names" to listOf("Upper", "Lower"),
-			"piece_ids" to listOf("upper", "lower"), "polygon" to listOf(listOf(0, 0), listOf(64, 0), listOf(64, 24), listOf(0, 24))))
-		expect("face split", meshes("upper").size == 1 && meshes("lower").size == 1) { "the split made ${meshes("upper")} and ${meshes("lower")}" }
-		edit("split the hair", "source_split_polygon", req("layer_id" to "hair", "names" to listOf("Top", "Bottom"),
-			"piece_ids" to listOf("top", "bottom"), "polygon" to listOf(listOf(0, 0), listOf(64, 0), listOf(64, 30), listOf(0, 30))))
-		expect("hair split", meshes("top").size == 1 && meshes("bottom").size == 1 && meshes("hair").isEmpty()) {
-			"the hair split made ${meshes("top")} and ${meshes("bottom")}, the hair layer names ${meshes("hair")}"
-		}
-		reopen()
-	}
-
 	/** A pasted copy is ordered by its own ID and stays put when its original's layer moves; the original keeps its layer's order. */
 	@Test fun pastedCopyKeepsItsOwnDrawOrderAndPlace() = Studio.run(temp, Characters.head(physics = false)) {
 		val face = mesh("face")

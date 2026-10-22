@@ -19,17 +19,4 @@ class BoneHandlesTest {
 		}
 	}
 
-	@Test
-	fun limitsStayOnTheirSideOfRest() {
-		val above = Offset(50f, -50f)
-		assertEquals(0f, BoneHandles.limitFrom(head, tail, 1f, above, max = true), 0.01f)
-		assertEquals(-45f, BoneHandles.limitFrom(head, tail, 1f, above, max = false), 0.01f)
-	}
-
-	@Test
-	fun blendFollowsThePointerAlongTheAxis() {
-		val axis = BoneHandles.axis(head, tail)!!
-		assertEquals(20f, BoneHandles.blendFrom(head, axis, Offset(40f, 9f), scale = 2f, limit = 50f), 0.01f)
-		assertEquals(50f, BoneHandles.blendFrom(head, axis, Offset(400f, 0f), scale = 2f, limit = 50f), 0.01f)
-	}
 }

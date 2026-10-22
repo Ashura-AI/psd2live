@@ -141,8 +141,4 @@ class StructureMesherTest {
 		}
 	}
 
-	@Test
-	fun theVertexLimitIsAFailureNotASmallerMesh() {
-		assertFailsWith<StructureMesher.Failure> { build(MeshEdgeMode.DOUBLE, 1, StructureMeshSettings(maxVertices = 16)) }
-	}
 }

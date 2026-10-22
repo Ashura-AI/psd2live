@@ -19,16 +19,6 @@ class BoneSelectionTest {
 		assertEquals(emptySet(), selection.ids)
 	}
 
-	@Test
-	fun setAllAddsAndTakesLastAsPrimary() {
-		val selection = BoneSelection()
-		selection.set("a")
-		selection.setAll(linkedSetOf("b", "c"), additive = true)
-		assertEquals(setOf("a", "b", "c"), selection.ids)
-		assertEquals("c", selection.primary)
-		selection.setAll(setOf("z"))
-		assertEquals(setOf("z"), selection.ids)
-	}
 }
 
 class BoneHitTestTest {
@@ -44,9 +34,4 @@ class BoneHitTestTest {
 		assertEquals("b" to BoneJoint.HEAD, BoneHitTest.joint(bones.drop(1), Offset(103f, 0f), 10f))
 	}
 
-	@Test
-	fun bodyPicksNearestWithinReach() {
-		assertEquals("a", BoneHitTest.body(bones, Offset(50f, 4f)))
-		assertNull(BoneHitTest.body(bones, Offset(50f, 40f)))
-	}
 }

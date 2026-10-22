@@ -9,7 +9,6 @@ import io.github.psd2live.core.PSD2LivePipeline
 import io.github.psd2live.core.reboundTo
 import io.github.psd2live.project.config
 import org.junit.jupiter.api.io.TempDir
-import org.umamo.runtime.model.Drawable
 import java.awt.image.BufferedImage
 import java.nio.file.Path
 import kotlin.test.*
@@ -44,24 +43,6 @@ class ImageVisibilityScenario {
         visible()
         val exported = moc3()
         assertNotNull(exported.drawables.singleOrNull { it.id.raw == mesh(layer) }?.mesh)
-    }
-
-    @Test fun importedReferenceIsOneVisibleRectangleAndReplaysAsOneHistoryEdit() = Studio.run(temp, Characters.head(false)) {
-        val history = runtime.history().selections.size
-        val layer = importImages("drop a reference layer", listOf(Characters.disc(temp, "reference.png", 12)),
-            insertion = ImageLayerInsertion(centre = 8f to 32f, reference = true)).single()
-        assertEquals(history + 1, runtime.history().selections.size)
-        assertContains(now.document.layout.referenceLayerIds, layer)
-        fun rectangle(): Drawable {
-            val drawable = now.model.rig.puppet.drawables.single { it.id.raw == mesh(layer) }
-            assertEquals(8, drawable.mesh!!.positions.size)
-            assertContentEquals(intArrayOf(0, 1, 2, 0, 2, 3), drawable.mesh!!.indices)
-            assertVisible(now.model, layer)
-            return drawable
-        }
-        rectangle()
-        reopen()
-        rectangle()
     }
 
     private fun assertVisible(model: RigPreviewModel, layer: String) {

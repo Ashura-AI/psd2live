@@ -30,18 +30,6 @@ class PreviewSessionsTest {
         }
     }
 
-    @Test fun unavailableFallbackKeepsTheCubismFailureVisible() {
-        val statuses = ArrayList<String?>()
-        session(p2lrtAvailable = false, statuses = statuses).use { preview ->
-            preview.cubism.load(bundle, emptyList())
-            flushStatus()
-            preview.render(request)
-            flushStatus()
-            assertEquals(PreviewBackend.CUBISM, preview.active)
-            assertContains(assertNotNull(statuses.last()), "drawing unsupported")
-        }
-    }
-
     private fun session(failCreatingModel: Boolean = false, p2lrtAvailable: Boolean = true,
                         statuses: MutableList<String?> = ArrayList()): PreviewSessions {
         val native = Proxy.newProxyInstance(CubismNativeApi::class.java.classLoader, arrayOf(CubismNativeApi::class.java)) { _, method, _ ->

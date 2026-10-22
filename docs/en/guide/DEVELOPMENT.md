@@ -221,7 +221,7 @@ For new editing features this means:
 - The UI and MCP should use the same editing commands. Low-level methods in `org.umamo.edit` are not automatically public interfaces.
 - Acceptance path: domain data → history replay → project save and reopen → target Cubism version handling → export read-back → visual check. See the [runtime and export reference](../../zh/spec/RUNTIME_EXPORT_ARCHITECTURE_AND_GAPS.md) (Chinese).
 
-New UI strings go into `Messages.properties`, `Messages_zh_CN.properties`, `Messages_ja.properties` and `Messages_ko.properties` together so the key counts stay equal (`MessageBundleParityTest` checks).
+New UI strings go into `Messages.properties`, `Messages_zh_CN.properties`, `Messages_ja.properties` and `Messages_ko.properties` together so the key counts stay equal (`CatalogContractsTest` checks).
 
 ## Checking exports
 

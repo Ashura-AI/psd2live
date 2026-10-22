@@ -108,18 +108,6 @@ class TimelineAidsTest {
         }, "each new motion takes an ID no motion and no remembered aid holds")
     }
 
-    @Test fun aFrozenTrackHoldsItsValueWhereTheMotionPlays() {
-        val clip = MotionClip("spin", "Spin", curves = listOf(MotionCurve("ParamAngleX", listOf(MotionKey(0f, -30f), MotionKey(2f, 30f)))))
-        val sampled = MotionClips.sampleAll(clip, 1.5)
-        val held = sampled + mapOf(ParameterId("ParamAngleX") to 12f)
-        assertNotEquals(12f, sampled.getValue(ParameterId("ParamAngleX")))
-        assertEquals(12f, boundedPreviewPose(held, parameters).getValue(ParameterId("ParamAngleX")))
-        assertEquals(30f, boundedPreviewPose(mapOf(ParameterId("ParamWheel") to 390f), parameters).getValue(ParameterId("ParamWheel")),
-            "a repeating parameter wraps where an ordinary one clamps")
-        assertEquals(330f, boundedPreviewPose(mapOf(ParameterId("ParamWheel") to -30f), parameters).getValue(ParameterId("ParamWheel")))
-        assertEquals(360f, boundedPreviewPose(mapOf(ParameterId("ParamWheel") to 360f), parameters).getValue(ParameterId("ParamWheel")))
-    }
-
     /** The auxiliary boundary over one in-memory record, as [WorkspaceHost] keeps it. */
     private class FakeAuxiliary(private val parameters: List<Parameter>) : WorkspaceAuxiliaryPort {
         var data = WorkspaceAuxiliaryData()

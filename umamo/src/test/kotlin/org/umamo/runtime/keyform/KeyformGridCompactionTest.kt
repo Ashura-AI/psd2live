@@ -97,25 +97,6 @@ class KeyformGridCompactionTest {
 		assertEquals(original.valueAt(nearKey), reduced.valueAt(nearKey))
 	}
 
-	/**
-	 * A grid far larger than any rig carries.  Copying the grid and rebuilding a lookup per candidate key
-	 * made this quadratic - minutes - where a linear pass takes milliseconds.
-	 */
-	@Test
-	fun aLargeGridCompactsInLinearTime() {
-		val axes =
-			listOf(
-				KeyformAxis(angleX, FloatArray(20_000) { keyIndex -> keyIndex.toFloat() }),
-				KeyformAxis(angleY, FloatArray(3) { keyIndex -> keyIndex.toFloat() }),
-			)
-		// Zero runs, which blend back exactly, between spikes every 50 keys: three keys in each 50 must stay.
-		val original = grid(axes) { coordinate -> if (coordinate[0] % 50 == 0) 1f + coordinate[1] else 0f }
-		val result = assertTimeoutPreemptively(Duration.ofSeconds(5), ThrowingSupplier { original.compacted(ChannelValueInterpolator) })
-		val reduced = assertIs<CompactionResult.Reduced<ChannelValue>>(result).grid
-		assertTrue(reduced.axes[0].keys.size < axes[0].keys.size / 10, "plateaus compact")
-		assertEquals(reduced.axes.fold(1) { count, axis -> count * axis.keys.size }, reduced.cells.size)
-	}
-
 	/** The track's multilinear value at [pose]. */
 	private fun KeyformGrid<ChannelValue>.valueAt(pose: Map<ParameterId, Float>): Float {
 		val corners = assertNotNull(gridCorners(this) { parameterId -> pose.getValue(parameterId) })

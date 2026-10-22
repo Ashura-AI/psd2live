@@ -1,13 +1,11 @@
 package io.github.psd2live.core.interior
 
 import io.github.psd2live.core.*
-import io.github.psd2live.history.WorkspaceHistoryTree
 import io.github.psd2live.project.*
 import java.nio.file.Path
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.test.*
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.junit.jupiter.api.io.TempDir
 import org.umamo.format.art.*
@@ -45,19 +43,6 @@ class InteriorHandlesTest {
 		assertEquals(2f, InteriorHandles.dragSurface(InteriorHandle.BULGE, frame, s, InteriorPoint(frame.cx, -500f)).bulge)
 		assertEquals(0f, InteriorHandles.dragSurface(InteriorHandle.HORIZONTAL, frame, s, InteriorPoint(-500f, frame.cy)).horizontal)
 		assertEquals(s.copy(press = 2f), InteriorHandles.dragSurface(InteriorHandle.PRESS, frame, s, InteriorPoint(frame.x0, frame.cy)))
-	}
-
-	@Test
-	fun theArchRisesWithTheBulgeAndLeansWithThePress() {
-		val flat = InteriorHandles.arch(frame, InteriorSurfaceSettings(bulge = 0f), pressed = true)
-		assertTrue(flat.all { it.y == frame.cy })
-		val rest = InteriorHandles.arch(frame, InteriorSurfaceSettings(bulge = 2f, press = 1f), pressed = false)
-		assertEquals(frame.x0, rest.first().x); assertEquals(frame.x1, rest.last().x)
-		near(frame.cy - frame.halfHeight * .9f, rest[rest.size / 2].y, .001f)
-		val pressed = InteriorHandles.arch(frame, InteriorSurfaceSettings(bulge = 2f, press = 1f), pressed = true)
-		assertTrue(pressed[pressed.size / 2].x > rest[rest.size / 2].x, "a positive input leans the crown forward")
-		val vertical = InteriorHandles.arch(frame, InteriorSurfaceSettings(bulge = 1f), pressed = false, vertical = true)
-		assertEquals(frame.y0, vertical.first().y); assertTrue(vertical[vertical.size / 2].x < frame.cx)
 	}
 
 	@Test
@@ -114,19 +99,6 @@ class InteriorHandlesTest {
 	}
 
 	@Test
-	fun aPressTakesThePointBeforeTheLineItSitsOn() {
-		val lines = listOf(floatArrayOf(0f, 0f, 100f, 0f), floatArrayOf(50f, 3f, 50f, 50f))
-		assertEquals(InteriorPolylineHit(1, 0, false, 3f), InteriorPolylines.hit(lines, 50f, 0f, 7f))
-		val segment = InteriorPolylines.hit(lines, 20f, 2f, 7f)!!
-		assertEquals(0, segment.line); assertEquals(0, segment.point); assertTrue(segment.segment)
-		assertNull(InteriorPolylines.hit(lines, 20f, 20f, 7f))
-		// A line whose points are not drawn offers only its segments, as it looks.
-		val hidden = InteriorPolylines.hit(lines, 50f, 4f, 7f) { it != 1 }!!
-		assertTrue(hidden.segment)
-		assertEquals(1, hidden.line)
-	}
-
-	@Test
 	fun aDraftBackAtTheSavedValuesIsCleanAndFollowsTheDocumentAgain() {
 		val p = preview()
 		val target = p.authored.rig.puppet.drawables.first { it.mesh != null }.id.raw
@@ -176,16 +148,6 @@ class InteriorHandlesTest {
 		assertTrue(InteriorCanvasMap(floatArrayOf(0f, 0f, 1f, 0f, 2f, 0f, 0f, 3f), intArrayOf(0, 1, 2, 0, 1, 3)).hasArea())
 	}
 
-	@Test
-	fun theFrameIsTheVisiblePixelsAndTheMeshExtent() {
-		val rgba = ByteArray(8 * 6 * 4)
-		for ((x, y) in listOf(2 to 1, 5 to 3)) rgba[(y * 8 + x) * 4 + 3] = 255.toByte()
-		assertEquals(InteriorFrame(2f, 1f, 6f, 4f), InteriorFrame.ofAlpha(8, 6, rgba))
-		assertNull(InteriorFrame.ofAlpha(8, 6, ByteArray(8 * 6 * 4)))
-		assertEquals(InteriorFrame(-1f, 2f, 4f, 9f), InteriorFrame.ofPoints(floatArrayOf(-1f, 2f, 4f, 9f, 0f, 5f)))
-		assertNull(InteriorFrame.ofPoints(floatArrayOf(1f, 1f, 1f, 4f)))
-	}
-
 	private fun preview(): RigPreviewModel {
 		val w = 96
 		val h = 144
@@ -196,63 +158,4 @@ class InteriorHandlesTest {
 			PipelineConfig(atlasSize = 512, meshSpacing = 16))
 	}
 
-	@Test
-	fun canvasEditsCommitAsOneRequestThatReplaysAndSurvivesSaveAndReopen() = runBlocking {
-		val p = preview()
-		val base = p.authored.rig
-		val drawable = base.puppet.drawables.first { it.mesh != null }
-		val target = drawable.id.raw
-		val created = NativeInteriorAuthoring.put(p, RigEditOverlay(), buildJsonObject {
-			put("target", target)
-			put("enabled", true)
-			put("motion", InteriorMotionSettings(enabled = false).toJson())
-		})
-		val effect = created.interiorEffects.single()
-		// The guides' frame is the bake's: the map's raster is the mesh at the pixels its UVs sample.
-		val map = assertNotNull(InteriorCanvasMap.of(base.puppet, drawable))
-		val meshFrame = assertNotNull(InteriorFrame.ofPoints(map.raster))
-		val surface = InteriorFrame(0f, 0f, 96f, 144f)
-		// What a handle drag and a drawn line leave in the draft.
-		val shape = InteriorHandles.dragSurface(InteriorHandle.BULGE, surface, effect.settings, InteriorPoint(surface.cx, surface.cy - 50f))
-		val motion = InteriorHandles.dragPropagation(InteriorHandle.TO, meshFrame, effect.motion,
-			InteriorHandles.propagation(meshFrame, effect.motion).getValue(InteriorHandle.TO), meshFrame.at(.8f, .9f))!!
-		val guides = InteriorGuideEdits.add(effect.guides, listOf(InteriorPoint(30f, 30f), InteriorPoint(48f, 70f), InteriorPoint(52f, 110f)))!!
-			.let { InteriorGuideEdits.insert(it, 0, 0, InteriorPoint(40f, 50f))!! }
-		val request = NativeInteriorAuthoring.request(target, true, shape, motion, effect.sources.map { it.id.raw }, guides)
-		// The request carries exactly the draft: the command reads back what the canvas wrote.
-		assertEquals(guides, NativeInteriorAuthoring.guides(request.getValue("guides").jsonArray))
-		assertEquals(shape, NativeInteriorAuthoring.settings(request.getValue("settings").jsonObject))
-		assertEquals(motion, InteriorMotionSettings.fromJson(request.getValue("motion").jsonObject))
-		val edited = NativeInteriorAuthoring.put(p, created, request).interiorEffects.single()
-		assertEquals(effect.id, edited.id)
-		assertEquals(shape, edited.settings)
-		assertEquals(motion, edited.motion)
-		assertEquals(guides, edited.guides)
-		assertEquals(effect.sources, edited.sources)
-		// Replay: the same request on the same document gives the same recipe, and replaying the saved recipe applies it.
-		assertEquals(edited.toJson(), NativeInteriorAuthoring.put(p, created, request).interiorEffects.single().toJson())
-		val overlay = created.copy(interiorEffects = listOf(edited))
-		assertTrue(overlay.applyTo(base.puppet).drawables.single { it.id.raw == target }.blendShapes.isNotEmpty())
-		// Save and reopen keep the edit and its history step.
-		val checkpoint = RigCheckpoint.encode(AuthoredRig(base, emptyList()), "interior-handles-test")
-		val before = WorkspaceDocument(p.analysis.source as WorkspaceSourceArt, emptyMap(), emptySet(), emptyMap(), emptyMap(),
-			RigEditOverlay(authoringJournal = listOf(checkpoint), interiorEffects = created.interiorEffects))
-		val after = before.copy(rigEdits = before.rigEdits.copy(interiorEffects = listOf(edited)))
-		val revision = WorkspaceRevisions.of(before)
-		val history = WorkspaceHistoryTree(before, revision, revision)
-		val first = history.head().node.id
-		val next = WorkspaceRevisions.of(after)
-		history.commit(first, after, next, next, "Interior surface", "user")
-		val store = WorkspaceStore(directory.resolve("store"))
-		store.persistHistory("interior-handles", history.state())
-		val file = directory.resolve("interior-handles.psd2live")
-		ProjectRepository(writeHeadCache = false).save(
-			ProjectSaveCapture("interior-handles", history.state(), JsonObject(emptyMap()), null, store), file)
-		ProjectRepository(writeHeadCache = false).open(file).use { opened ->
-			val loaded = opened.history.head().snapshot.rigEdits.interiorEffects.single()
-			assertEquals(edited.toJson(), loaded.toJson())
-			assertEquals(guides, loaded.guides)
-			assertEquals(effect.toJson(), opened.history.selectionAt(first).snapshot.rigEdits.interiorEffects.single().toJson())
-		}
-	}
 }

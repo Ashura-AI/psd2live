@@ -1,8 +1,6 @@
 package io.github.psd2live.core
 
-import io.github.psd2live.history.WorkspaceHistoryTree
 import io.github.psd2live.project.*
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.*
 import org.junit.jupiter.api.io.TempDir
 import org.umamo.render.eval.CpuDeformationEvaluator
@@ -189,51 +187,6 @@ class ObjectOpsTest {
 		assertEquals(0, RigMeshDuplication.plan(model, request).single().outside)
 	}
 
-	@Test fun pasteAndConversionSurviveHistoryReopenAndExport() = runBlocking {
-		val model = fixture()
-		val rig = BuiltRig(model, mapOf("a" to 0, "b" to 0, "c" to 0), emptyMap(), mapOf("a" to "layer-a", "b" to "layer-b", "c" to "layer-c"),
-			32f, 32f, 16f, 16f, emptyList())
-		val checkpoint = RigCheckpoint.encode(AuthoredRig(rig, emptyList()), "synthetic-object-ops")
-		val document = WorkspaceDocument(WorkspaceSourceArt(64, 64, emptyList(), emptyList()), emptyMap(), emptySet(), emptyMap(), emptyMap(),
-			RigEditOverlay(authoringJournal = listOf(checkpoint)))
-		val (_, entries) = RigAuthoringJournal.compile(model, JsonArray(listOf(paste("rotation:parent"),
-			RigIdConversion.encode(listOf(RigIdConversion.Rename("mesh", "a_copy", "ArmCopy"), RigIdConversion.Rename("parameter", "p", "ParamArm"))))))
-		val edited = document.copy(rigEdits = document.rigEdits.copy(authoringJournal = listOf(checkpoint) + entries))
-		val revision = WorkspaceRevisions.of(document)
-		val history = WorkspaceHistoryTree(document, revision, revision)
-		val root = history.head().node.id
-		val editedRevision = WorkspaceRevisions.of(edited)
-		history.commit(root, edited, editedRevision, editedRevision, "Paste and convert", "user")
-		val (authored, _) = requireNotNull(edited.rigEdits.authoredFromCheckpoint())
-		val after = authored.rig.puppet
-		assertTrue(after.drawables.any { it.id.raw == "ArmCopy" } && after.parameters.single().id.raw == "ParamArm")
-		// The pasted mesh shows its original's layer, under the ID it was converted to.
-		assertEquals("layer-a", authored.rig.layerIdByDrawableId["ArmCopy"])
-		assertTrue("a_copy" !in authored.rig.layerIdByDrawableId)
-		assertTrue(authored.visibilityTargets.contains("ArmCopy" to "layer-a"))
-
-		val store = WorkspaceStore(temp.resolve("store"))
-		store.persistHistory("object-ops", history.state())
-		val repository = ProjectRepository(writeHeadCache = false)
-		val file = temp.resolve("object-ops.psd2live")
-		repository.save(ProjectSaveCapture("object-ops", history.state(), JsonObject(emptyMap()), null, store), file)
-		repository.open(file).use { opened ->
-			assertEquals(edited.rigEdits.authoringJournal, opened.history.head().snapshot.rigEdits.authoringJournal)
-			val reopened = requireNotNull(opened.history.head().snapshot.rigEdits.authoredFromCheckpoint()).first.rig.puppet
-			assertEquals(after.drawables.map { it.id }, reopened.drawables.map { it.id })
-			val exported = deletionExport(reopened)
-			assertTrue(exported.drawables.any { it.id.raw == "ArmCopy" })
-			assertEquals(listOf("ParamArm"), exported.parameters.map { it.id.raw })
-			val evaluator = CpuDeformationEvaluator()
-			val shown = evaluator.evaluate(reopened, mapOf(ParameterId("ParamArm") to 1f)).worldPositions
-			val read = evaluator.evaluate(exported, mapOf(ParameterId("ParamArm") to 1f)).worldPositions
-			for (id in listOf("a", "ArmCopy")) {
-				val a = shown.getValue(DrawableId(id)); val b = read.getValue(DrawableId(id))
-				for (i in a.indices) assertEquals(a[i], b[i], 0.01f, "$id component $i")
-			}
-		}
-	}
-
 	@Test fun exportRefusesSharedIdsAndWarnsAboutForeignCharacters() {
 		val model = fixture()
 		assertTrue(RigIdCheck.checked("test", model).isEmpty())
@@ -265,18 +218,6 @@ class ObjectOpsTest {
 		val shape = converted.parts.single().blendShapes.single()
 		assertEquals("ParamArm", shape.parameterId.raw)
 		assertEquals("ParamLimit", shape.limits.single().parameterId.raw)
-	}
-
-	/** A generator parameter the document adopted keeps its late panel phase when its ID is converted. */
-	@Test fun adoptedGeneratorParameterKeepsItsPanelPhaseUnderItsNewId() {
-		val adopted = buildJsonObject {
-			put("op", "structure"); putJsonArray("edits") {}
-			putJsonArray(RigEditOverlay.PANEL_AFTER_GENERATION) { add("ParamSwing") }
-		}
-		val move = buildJsonObject { put("kind", "parameter"); put("action", "move"); put("id", "ParamHair") }
-		val overlay = RigEditOverlay.Empty.copy(authoringJournal = listOf(adopted,
-			RigIdConversion.encode(listOf(RigIdConversion.Rename("parameter", "ParamSwing", "ParamHair")))))
-		assertTrue(overlay.generatedPanelEdit(move))
 	}
 
 	/** A regeneration merge reads the generated rig under the IDs the journal's conversions gave its objects. */

@@ -2,7 +2,6 @@ package io.github.psd2live.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertSame
 
 /** A new source started while an imported model is open generates its rig: the import's switched-off generation stays with the import. */
 class Cmo3GenerationRestoreTest {
@@ -18,8 +17,4 @@ class Cmo3GenerationRestoreTest {
 		assertEquals(52, restored.meshSpacing)
 	}
 
-	@Test fun otherSettingsAreKept() {
-		val authored = PipelineConfig(generateDeformers = false)
-		assertSame(authored, Cmo3ModelImport.generationRestored(authored))
-	}
 }

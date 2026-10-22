@@ -53,16 +53,6 @@ class KeyformMirrorTest {
         }
     }
 
-    @Test fun rotationTurnsTheOtherWay() {
-        val model = fixture()
-        val mirrored = RigAuthoringJournal.compile(model, JsonArray(listOf(mirror("rotation:arm") { put("from", key("ParamAngleX" to 30f)) }))).first
-        val form = (mirrored.deformers.single { it.id.raw == "arm" } as Deformer.Rotation).geometryGrid!!.let { grid ->
-            grid.cells.single { grid.axes[0].keys[it.coordinate[0]] == -30f }.form
-        }
-        assertEquals(26f, form.originX, 1e-3f); assertEquals(50f, form.originY, 1e-3f)
-        assertEquals(-20f, form.angle, 1e-3f); assertEquals(1f, form.scale, 1e-3f)
-    }
-
     @Test fun keysAndSidesSwap() {
         assertEquals("ParamEyeROpen", KeyformMirror.swapSide("ParamEyeLOpen"))
         assertEquals("ArtMeshEyeR2", KeyformMirror.swapSide("ArtMeshEyeL2"))

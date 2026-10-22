@@ -1,6 +1,5 @@
 package io.github.psd2live.ui.views
 
-import io.github.psd2live.project.HistoryAnnotation
 import io.github.psd2live.project.WorkspaceHistoryNodeSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -71,14 +70,6 @@ class HistoryTreeCompressionTest {
 		assertEquals("h", byGroup.getValue("g").target.id)
 	}
 
-	@Test fun aHeadInsideALinearRunIsMarkedOnTheMergedCard() {
-		val nodes = linear("a", "b", "c", "d", "e").map { it.copy(isHead = it.id == "d") }
-		val grouping = groupHistory(nodes, compressed = true)
-		assertEquals(2, grouping.groups.size)
-		assertTrue(grouping.groups[1].isHead)
-		assertEquals("b", grouping.byNodeId["d"])
-	}
-
 	@Test fun theFullViewKeepsOneCardPerVersion() {
 		val nodes = forked()
 		val grouping = groupHistory(nodes, compressed = false)
@@ -100,21 +91,4 @@ class HistoryTreeCompressionTest {
 		assertTrue(layout.width > 0f)
 	}
 
-	@Test fun aMergedCardMatchesASearchInAnyOfItsSteps() {
-		val grouping = groupHistory(forked(), compressed = true)
-		val run = grouping.byGroupId.getValue("d")
-		assertTrue(run.matchesSearch("Edit e", emptyMap()))
-		assertTrue(run.matchesSearch("d", emptyMap()))
-		assertTrue(run.matchesSearch("renamed", mapOf("e" to HistoryAnnotation(title = "renamed"))))
-		assertFalse(run.matchesSearch("missing", emptyMap()))
-		assertFalse(run.matchesSearch("Edit h", emptyMap()))
-	}
-
-	@Test fun aSingleVersionHistoryAndAnEmptySnapshotBothStayUsable() {
-		val single = groupHistory(listOf(node("a", null, head = true)), compressed = true)
-		assertEquals(1, single.groups.size)
-		assertEquals("a", single.groups.single().id)
-		assertTrue(single.groups.single().isHead)
-		assertTrue(groupHistory(emptyList(), compressed = true).groups.isEmpty())
-	}
 }

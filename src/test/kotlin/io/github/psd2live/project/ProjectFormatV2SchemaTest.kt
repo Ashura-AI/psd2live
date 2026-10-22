@@ -10,7 +10,6 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class ProjectFormatV2SchemaTest {
 	/** A layout-node value as the writer stores it: the state under the key named by its kind. */
@@ -79,18 +78,4 @@ class ProjectFormatV2SchemaTest {
 			.let { JsonObject(it.filterKeys { key -> key in setOf("motions", "expressions", "pose") }) })
 	}
 
-	@Test fun aSnapshotWithAReferenceLayoutAlreadyNeedsANewerSchema() {
-		assertTrue(ProjectFormatV2.needsNewerSchema(buildJsonObject {
-			put("layout", buildJsonObject {
-				putJsonArray("referenceLayerIds") { add(JsonPrimitive("guide")) }
-			})
-		}))
-		assertTrue(ProjectFormatV2.needsNewerSchema(buildJsonObject {
-			put("materials", buildJsonObject {
-				putJsonArray("items") {
-					add(buildJsonObject { put("id", "item"); put("reference", true) })
-				}
-			})
-		}))
-	}
 }

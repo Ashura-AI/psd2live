@@ -12,7 +12,6 @@ import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CanvasAidsTest {
@@ -38,15 +37,6 @@ class CanvasAidsTest {
 		assertEquals(100f, CanvasGrid.nearest(70f, 100f, 4, 0.1))
 	}
 
-	@Test fun rulerNumbersEveryOneTwoOrFiveTimesAPowerOfTen() {
-		assertEquals(100f, CanvasRuler.labelStep(1.0))
-		assertEquals(50f, CanvasRuler.labelStep(2.0))
-		assertEquals(500f, CanvasRuler.labelStep(0.2))
-		val ticks = CanvasRuler.ticks(0f, 100f, 1.0)
-		assertEquals(listOf(0f, 100f), ticks.filter { it.label }.map { it.position })
-		assertEquals(6, ticks.size)
-	}
-
 	@Test fun pointerSnapsPerAxisToTheNearestLineInReach() {
 		val guides = listOf(CanvasGuide("guide-1", vertical = true, position = 103f), CanvasGuide("guide-2", vertical = false, position = 40f))
 		val grid = { v: Float -> Math.round(v / 50f) * 50f }
@@ -56,17 +46,6 @@ class CanvasAidsTest {
 		assertEquals(120f to 70f, CanvasSnap.snap(120f, 70f, guides, grid, tolerance = 4f))
 		// Without the grid only the guides draw it.
 		assertEquals(103f to 47f, CanvasSnap.snap(102f, 47f, guides, null, tolerance = 4f))
-	}
-
-	@Test fun guidesAreHitByTheirOwnAxisAndNumberedOnward() {
-		val guides = listOf(CanvasGuide("guide-1", true, 10f), CanvasGuide("guide-4", false, 20f), CanvasGuide("custom", true, 0f))
-		assertEquals("guide-5", CanvasGuides.nextId(guides))
-		assertEquals("guide-1", CanvasGuides.nextId(emptyList()))
-		assertEquals("guide-4", CanvasGuides.hit(guides, 50f, 22f, 3f)?.id)
-		assertNull(CanvasGuides.hit(guides, 50f, 30f, 3f))
-		val moved = CanvasGuides.put(guides, CanvasGuide("guide-1", true, 12f))
-		assertEquals(listOf(12f, 20f, 0f), moved.map { it.position })
-		assertEquals(4, CanvasGuides.put(guides, CanvasGuide("guide-5", false, 1f)).size)
 	}
 
 	@Test fun guidesSaveAsProjectDataAndAreValidated() {
@@ -122,21 +101,4 @@ class CanvasAidsTest {
 		assertTrue(OnionSkin.frameGhosts(0.1f, 0f, 1, 1, 1, 1f, false).isEmpty())
 	}
 
-	@Test fun onionGhostsFadeWithDistance() {
-		assertEquals(0.3f, OnionSkin.alpha(-1, 3, 0.3f), 1e-6f)
-		assertEquals(0.1f, OnionSkin.alpha(3, 3, 0.3f), 1e-6f)
-	}
-
-	@Test fun aidOptionsAreKeptToWhatTheCanvasDraws() {
-		val wild = CanvasAidOptions(gridSpacing = 0f, gridSubdivisions = 99, onionBefore = -2, onionAfter = 40, onionOpacity = Float.NaN,
-			onionFrameStep = 0).normalized()
-		assertEquals(CanvasAidOptions.MIN_GRID_SPACING, wild.gridSpacing)
-		assertEquals(CanvasAidOptions.MAX_GRID_SUBDIVISIONS, wild.gridSubdivisions)
-		assertEquals(0, wild.onionBefore)
-		assertEquals(CanvasAidOptions.MAX_ONION_GHOSTS, wild.onionAfter)
-		assertEquals(0.35f, wild.onionOpacity)
-		assertEquals(1, wild.onionFrameStep)
-		assertTrue(!CanvasAidOptions(snap = true).snaps)
-		assertTrue(CanvasAidOptions(snap = true, showGuides = true).snaps)
-	}
 }

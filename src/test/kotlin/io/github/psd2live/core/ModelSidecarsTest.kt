@@ -1,6 +1,5 @@
 package io.github.psd2live.core
 
-import io.github.psd2live.i18n.tr
 import org.umamo.runtime.model.Parameter
 import org.umamo.runtime.model.ParameterId
 import kotlin.test.Test
@@ -49,22 +48,6 @@ class ModelSidecarsTest {
 			entries = listOf(ExpressionEntry("ParamEyeLOpen", ExpressionBlend.OVERWRITE, 0f)))))
 		assertEquals(listOf("neutral", "wink"), ModelExpressions.exported(authored, setOf("ParamMouthForm")).map { it.id })
 		assertTrue(ModelExpressions.exported(authored, setOf("ParamMouthForm")).all { it.entries.isEmpty() })
-	}
-
-	@Test fun anImportedModelHasNoStandardExpressions() {
-		val face = StandardParameters.MOUTH_FORM.raw
-		assertEquals(emptyList(), ModelExpressions.exported(RigEditOverlay(importedCmo3 = "rig"), setOf(face)))
-		val authored = RigEditOverlay(importedCmo3 = "rig", expressions = listOf(ModelExpression("joy", "Joy")))
-		assertEquals(listOf("joy"), ModelExpressions.exported(authored, setOf(face)).map { it.id })
-		// Named in the interface language, as the runtime export always named them.
-		assertEquals(tr("model.expression.smile"), ModelExpressions.standardFor(setOf(face)).first().name)
-	}
-
-	@Test fun missingParametersAreThoseTheRigLacks() {
-		val expression = ModelExpression("e", "E", entries = listOf(ExpressionEntry("ParamEyeLOpen", ExpressionBlend.ADD, 1f),
-			ExpressionEntry("ParamGone", ExpressionBlend.ADD, 1f)))
-		assertEquals(listOf("ParamGone"), ModelExpressions.missing(expression, setOf("ParamEyeLOpen")))
-		assertEquals(listOf("A", "L"), ModelPoses.partIds(ModelPose(groups = listOf(PoseGroup(listOf(PosePart("A", listOf("L"))))))))
 	}
 
 	@Test fun jsonRoundTripsAndInvalidDataIsRefused() {

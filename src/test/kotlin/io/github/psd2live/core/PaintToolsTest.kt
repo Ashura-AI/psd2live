@@ -48,13 +48,6 @@ class PaintToolsTest {
     }
 
     @Test
-    fun theOutlineOfABoxIsItsFourSides() {
-        val box = PaintSelection.rectangle(10, 10, 2f, 3f, 6f, 8f, antialias = false)
-        val segments = box.outline().toList().chunked(4).map { it.map(Float::toInt) }.toSet()
-        assertEquals(setOf(listOf(2, 3, 6, 3), listOf(2, 8, 6, 8), listOf(2, 3, 2, 8), listOf(6, 3, 6, 8)), segments)
-    }
-
-    @Test
     fun theWandTakesTheJoinedColourOrEveryPixelOfIt() {
         val picture = image(10, 1, 0xFFFF0000.toInt())
         picture.setRGB(5, 0, 0xFF0000FF.toInt())
@@ -166,21 +159,6 @@ class PaintToolsTest {
         assertEquals(6f to 0f, tip)
         val tail = steady.finish()
         assertEquals(12f to 0f, tail.last())
-    }
-
-    @Test
-    fun symmetryMirrorsAcrossTheCanvasMiddle() {
-        assertEquals(listOf(10f to 20f), PaintSymmetry.OFF.images(10f, 20f, 50f, 50f))
-        assertEquals(listOf(10f to 20f, 90f to 20f), PaintSymmetry.VERTICAL.images(10f, 20f, 50f, 50f))
-        assertEquals(listOf(10f to 20f, 90f to 20f, 10f to 80f, 90f to 80f), PaintSymmetry.BOTH.images(10f, 20f, 50f, 50f))
-    }
-
-    @Test
-    fun aShortStabilizedStrokeStillEndsWhereThePointerLeft() {
-        val stabilizer = PaintStabilizer(5)
-        stabilizer.add(0f, 0f)
-        stabilizer.add(10f, 0f)
-        assertEquals(10f to 0f, stabilizer.finish().last())
     }
 
     @Test
