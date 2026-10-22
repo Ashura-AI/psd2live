@@ -230,6 +230,10 @@ private fun runGui() {
 						undecorated = true,
 						transparent = transparent,
 					) {
+						DisposableEffect(window) {
+							val uninstall = io.github.psd2live.ui.utils.MaximizedWorkArea.install(window)
+							onDispose { uninstall() }
+						}
 						androidx.compose.runtime.CompositionLocalProvider(io.github.psd2live.ui.views.LocalAwtWindow provides window) {
 							PSD2LiveApp(
 								viewModel = viewModel,

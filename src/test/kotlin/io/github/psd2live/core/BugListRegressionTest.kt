@@ -7,6 +7,7 @@ import io.github.psd2live.format.model.Clip
 import io.github.psd2live.format.model.Curve
 import io.github.psd2live.format.model.CurveSegment
 import io.github.psd2live.targets.raster.gifCentisecondDelays
+import io.github.psd2live.ui.utils.MaximizedWorkArea
 import java.awt.image.BufferedImage
 import java.nio.file.Files
 import kotlin.test.Test
@@ -31,6 +32,16 @@ class BugListRegressionTest {
 		val small = fitWindowSize(1280f, 820f, usable)
 		assertEquals(1280f, small.width.value); assertEquals(820f, small.height.value)
 		assertEquals(2560f, fitWindowSize(2560f, 1500f, null).width.value)
+	}
+
+	@Test
+	fun aMaximizedUndecoratedWindowLeavesTheTaskbarAndNeverCoversTheMonitor() {
+		val screen = java.awt.Rectangle(1707, 0, 1707, 1067)
+		assertEquals(java.awt.Rectangle(1707, 0, 1707, 1019),
+			MaximizedWorkArea.workArea(screen, java.awt.Insets(0, 0, 48, 0), windows = true))
+		assertEquals(java.awt.Rectangle(1707, 0, 1707, 1066),
+			MaximizedWorkArea.workArea(screen, java.awt.Insets(0, 0, 0, 0), windows = true))
+		assertEquals(screen, MaximizedWorkArea.workArea(screen, java.awt.Insets(0, 0, 0, 0), windows = false))
 	}
 
 	@Test
