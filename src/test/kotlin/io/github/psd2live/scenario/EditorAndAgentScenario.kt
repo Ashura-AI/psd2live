@@ -106,6 +106,33 @@ class EditorAndAgentScenario {
 		}
 	}
 
+	@Test fun backgroundPaintEditsQueueAndEndWithTheSession() = editor {
+		workspace.importPsd(Characters.figurePsd(temp).toString(), true)
+		consistent("imported")
+		withContext(Dispatchers.Main) {
+			val layers = vm.state.value.previewModel!!.analysis.source.layers
+			vm.selectLayer(layers.first().id.raw)
+			val materialId = assertNotNull(workspace.captureQueries().layoutState()).layout.layerMaterials.getValue(layers.last().id.raw)
+			val canvas = io.github.psd2live.ui.CanvasEditor(vm, vm.state.value.activeWorkspace.id, "material-window")
+			canvas.hierarchyMode = io.github.psd2live.ui.EditHierarchyMode.PAINT
+			val session = assertNotNull(canvas.startPaintSession("material:$materialId", forceReload = true))
+			// A selection change made while a clear runs waits for it rather than being dropped.
+			canvas.clearCurrentLayerPaint()
+			canvas.selectAllPaint()
+			canvas.awaitPaintWork()
+			assertTrue(session.isDirty)
+			assertTrue(session.hasSelection)
+			assertFalse(canvas.paintWorking)
+			// Ending the session with edits queued lets go of it at once and runs nothing more on it.
+			canvas.clearCurrentLayerPaint()
+			canvas.deselectPaint()
+			canvas.closePaintSession()
+			assertNull(canvas.paintSession)
+			assertFalse(canvas.paintWorking)
+			assertNull(canvas.error)
+		}
+	}
+
 	@Test fun presetPatchesKeepTheCommittedJournalEvenWithStalePreviewMetadata() = editor {
 		workspace.importPsd(Characters.mouthPsd(temp).toString(), true)
 		consistent("imported mouth")

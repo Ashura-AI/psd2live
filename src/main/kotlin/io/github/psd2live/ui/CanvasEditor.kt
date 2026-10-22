@@ -17,6 +17,7 @@ import io.github.psd2live.project.transform
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.tutorial.expandShortcutMarkup
 import io.github.psd2live.ui.state.*
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
 import org.umamo.edit.MeshElement
@@ -1291,33 +1292,62 @@ internal class CanvasEditor(
 
     /**
      * Whether a fill, gradient, clear or selection change is being worked out off the UI thread: they can cover the
-     * whole layer, so they run on [Dispatchers.Default] one at a time, and the paint tools, undo and apply wait.
+     * whole layer, so they run on [Dispatchers.Default] one after another, and the paint tools, undo and apply wait.
      */
-    var paintWorking by mutableStateOf(false)
-        private set
+    val paintWorking: Boolean get() = paintPending > 0
+    private var paintPending by mutableStateOf(0)
     private val paintWork = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
-
+    /** The session's background edits; cancelled with the session, a fresh one for the next. */
+    private var paintSessionWork = kotlinx.coroutines.SupervisorJob(paintWork.coroutineContext[kotlinx.coroutines.Job])
     private var paintJob: kotlinx.coroutines.Job? = null
 
-    /** Waits for the background session edit in flight, if any, to land. */
+    /** Waits for the background session edits queued, if any, to land. */
     internal suspend fun awaitPaintWork() { paintJob?.join() }
 
-    /** Runs [block] - one session edit - in the background; a failure lands in [error] as any canvas failure does. */
+    /**
+     * Queues [block] - one session edit - behind the ones already running in the background; a failure lands in
+     * [error] as any canvas failure does. Nothing queued runs once the session has ended.
+     */
     private fun paintInBackground(block: () -> Unit) {
-        if (paintWorking) return
-        paintWorking = true
-        paintJob = paintWork.launch {
+        val work = paintSessionWork
+        val previous = paintJob
+        paintPending++
+        paintJob = kotlinx.coroutines.CoroutineScope(work + kotlinx.coroutines.Dispatchers.Default).launch {
             val failure = try {
+                previous?.join()
+                ensureActive()
                 block(); null
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                throw cancelled
+                null
             } catch (failure: Exception) {
                 failure
             }
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                paintWorking = false
-                failure?.let { error = it.message?.takeIf(String::isNotBlank) ?: "Failed requirement." }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + kotlinx.coroutines.Dispatchers.Main) {
+                // A session ended meanwhile has already let go of its count and its errors.
+                if (work === paintSessionWork) {
+                    paintPending--
+                    failure?.let { error = it.message?.takeIf(String::isNotBlank) ?: "Failed requirement." }
+                }
             }
+        }
+    }
+
+    /**
+     * Ends the paint session through [end] once its background edits are done: right away when none runs, else
+     * after the one running has landed - off the UI thread, which would otherwise wait on the session's lock - with
+     * the ones still queued dropped. The editor lets go of the session at once either way.
+     */
+    private fun retirePaintSession(end: (PaintSession) -> Unit) {
+        val session = paintSession ?: return
+        val work = paintSessionWork
+        paintSessionWork = kotlinx.coroutines.SupervisorJob(paintWork.coroutineContext[kotlinx.coroutines.Job])
+        paintJob = null
+        paintPending = 0
+        work.cancel()
+        if (work.children.all { it.isCompleted }) { end(session); return }
+        paintWork.launch {
+            work.join()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { end(session) }
         }
     }
 
@@ -2049,7 +2079,7 @@ internal class CanvasEditor(
     }
 
     fun resetPaintSession() {
-        paintSession?.dismiss()
+        retirePaintSession { it.dismiss() }
         paintSession = null
         isPainting = false
         paintStrokeStart = null
@@ -2067,8 +2097,8 @@ internal class CanvasEditor(
 
     /** Drops the session's strokes and closes it, for a switch to another target or out of painting. */
     fun closePaintSession() {
-        val session = paintSession ?: return
-        session.discard()
+        if (paintSession == null) return
+        retirePaintSession { it.discard() }
         paintSession = null
         isPainting = false
         paintStrokeStart = null
