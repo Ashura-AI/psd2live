@@ -363,7 +363,57 @@ class EditorAndAgentScenario {
 		val moves = (0 until beforeLattice.size / 2).map { kotlin.math.hypot(afterLattice[it * 2] - beforeLattice[it * 2], afterLattice[it * 2 + 1] - beforeLattice[it * 2 + 1]) }
 		assertTrue(moves.max() > 1f, "the lattice drag moved nothing: ${moves.max()}")
 		assertTrue(moves.min() < moves.max() * 0.2f, "the far points must barely follow: ${moves.min()} of ${moves.max()}")
-		withContext(Dispatchers.Main) { canvas.endTemporaryWarp(); assertNull(canvas.temporaryWarp) }
+
+		// After an undo the moved lattice no longer matches the shape: a press lays it again over what the canvas shows
+		// and writes nothing; the next drag moves the points from the undone shape by the lattice's own move only.
+		withContext(Dispatchers.Main) { vm.undoHistory() }
+		consistent("undo the lattice drag")
+		assertTrue(differs(beforeLattice, shape(range.min)) < 1e-4f, "undo did not take back the lattice drag")
+		val history = workspace.history().nodes.size
+		withContext(Dispatchers.Main) {
+			val puppet = vm.state.value.previewModel!!.rig.puppet
+			val viewport = io.github.psd2live.core.CanvasViewport(1.0, 0.0, 0.0, puppet.canvasWidth, puppet.canvasHeight)
+			val stale = canvas.temporaryWarpScreen(viewport).last()
+			canvas.press(stale, viewport, shift = false, alt = false)
+			canvas.release()
+			val laid = canvas.temporaryWarpScreen(viewport)
+			assertTrue((laid.last() - stale).getDistance() > 5f, "the lattice was not laid again over the undone shape")
+			val first = laid.first()
+			canvas.press(first, viewport, shift = false, alt = false)
+			canvas.move(first + androidx.compose.ui.geometry.Offset(-6f, 0f), viewport, shift = false)
+			canvas.release()
+		}
+		consistent("drag after undo")
+		assertEquals(history + 1, workspace.history().nodes.size, "the re-laying press must not commit, the drag once")
+		val again = shape(range.min)
+		val near = (0 until again.size / 2).maxBy { kotlin.math.hypot(again[it * 2] - beforeLattice[it * 2], again[it * 2 + 1] - beforeLattice[it * 2 + 1]) }
+		assertTrue(kotlin.math.abs(again[near * 2] - beforeLattice[near * 2]) <= 6.5f && kotlin.math.abs(again[near * 2 + 1] - beforeLattice[near * 2 + 1]) < 1e-2f,
+			"the drag must start from the undone shape, not the first drag's")
+
+		// Between keys a lattice press first snaps the pose onto the keys, so no key is added.
+		val keysBefore = (vm.state.value.previewModel!!.rig.puppet.deformers.single { it.id == warp.id } as org.umamo.runtime.model.Deformer.Warp)
+			.geometryGrid!!.axes.single { it.parameterId == angle }.keys.toList()
+		withContext(Dispatchers.Main) { vm.setParameterValue(angle, range.max / 2f) }
+		settle()
+		withContext(Dispatchers.Main) {
+			val puppet = vm.state.value.previewModel!!.rig.puppet
+			val viewport = io.github.psd2live.core.CanvasViewport(1.0, 0.0, 0.0, puppet.canvasWidth, puppet.canvasHeight)
+			val point = canvas.temporaryWarpScreen(viewport).first()
+			canvas.press(point, viewport, shift = false, alt = false)
+			canvas.move(point + androidx.compose.ui.geometry.Offset(4f, 0f), viewport, shift = false)
+			canvas.release()
+		}
+		consistent("lattice press between keys")
+		val keysAfter = (vm.state.value.previewModel!!.rig.puppet.deformers.single { it.id == warp.id } as org.umamo.runtime.model.Deformer.Warp)
+			.geometryGrid!!.axes.single { it.parameterId == angle }.keys.toList()
+		assertEquals(keysBefore, keysAfter, "a lattice drag between keys added a key")
+
+		// Shift+T's action ends it, and leaving Deform drops it.
+		withContext(Dispatchers.Main) {
+			canvas.endTemporaryWarp(); assertNull(canvas.temporaryWarp)
+			canvas.beginTemporaryWarp(); assertNotNull(canvas.activeTemporaryWarp())
+			canvas.setHierarchyMode(io.github.psd2live.ui.EditHierarchyMode.SELECT); assertNull(canvas.temporaryWarp)
+		}
 	}
 
 	@Test fun mouthPresetAndThicknessChangePreviewAndSurviveReopening() = editor {

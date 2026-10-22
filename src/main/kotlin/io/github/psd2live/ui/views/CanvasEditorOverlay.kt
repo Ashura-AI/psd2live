@@ -546,8 +546,8 @@ internal fun BoxScope.CanvasEditorOverlay(
             }
         }
 
-        // 2b. The temporary warp's lattice, in the mesh look with square control points.
-        editor.temporaryWarp?.let { warp ->
+        // 2b. The temporary warp's lattice, in the mesh look with square control points, as a warp's level-1 lattice.
+        editor.activeTemporaryWarp()?.let { warp ->
             val pts = editor.temporaryWarpScreen(viewport)
             val columns = warp.columns + 1
             val wires = ArrayList<Offset>()
@@ -555,8 +555,8 @@ internal fun BoxScope.CanvasEditorOverlay(
                 if (i % columns < columns - 1) { wires += pts[i]; wires += pts[i + 1] }
                 if (i + columns < pts.size) { wires += pts[i]; wires += pts[i + columns] }
             }
-            drawMeshWires(wires, colors.accent)
-            pts.forEach { p -> drawMeshHandle(p, colors.accent, colors.accent, selected = false, hovered = false, shape = HandleShape.SQUARE) }
+            drawMeshWires(wires, MeshLook.Structure)
+            pts.forEach { p -> drawMeshHandle(p, MeshLook.Structure, colors.accent, selected = false, hovered = false, shape = HandleShape.SQUARE) }
         }
 
         // 3. Transform box (shared by TRANSFORM tool and points)

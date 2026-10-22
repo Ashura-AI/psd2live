@@ -1018,6 +1018,7 @@ internal class CanvasEditor(
         get() = viewModel.uiState.value.forCanvas(canvasId, workspaceId, CanvasMode.EDIT)
     internal fun selectLayer(id: String?) {
 		if (id != null && viewModel.tryApplyClipMaskPick(id)) return
+        endTemporaryWarp()
         viewModel.updateCanvasPresentation(workspaceId, canvasId, CanvasMode.EDIT) {
             it.copy(
                 selectedReferenceId = null,
@@ -1028,9 +1029,12 @@ internal class CanvasEditor(
         }
         viewModel.noteSelectionAnchor(id)
     }
-    private fun selectDeformer(id: String?) = viewModel.updateCanvasPresentation(workspaceId, canvasId, CanvasMode.EDIT) {
-        it.copy(selectedDeformerId = id, selectedLayerId = if (id != null) null else it.selectedLayerId,
-            selectedLayerIds = if (id != null) emptySet() else it.selectedLayerIds)
+    private fun selectDeformer(id: String?) {
+        endTemporaryWarp()
+        viewModel.updateCanvasPresentation(workspaceId, canvasId, CanvasMode.EDIT) {
+            it.copy(selectedDeformerId = id, selectedLayerId = if (id != null) null else it.selectedLayerId,
+                selectedLayerIds = if (id != null) emptySet() else it.selectedLayerIds)
+        }
     }
     // Hover is an input-frame detail. Keeping it on this editor prevents a mouse move in one
     // canvas from emitting a document-wide state update and recomposing all dock panels.
@@ -3231,6 +3235,7 @@ internal class CanvasEditor(
     @JvmName("changeHierarchyMode")
     fun setHierarchyMode(next: EditHierarchyMode) {
         if (busy) return
+        if (next != EditHierarchyMode.DEFORM) endTemporaryWarp()
         if (next != EditHierarchyMode.SKELETON) skeletonEntrySerial++
         endTemporarySelection()
         if (next == EditHierarchyMode.SKELETON) {
@@ -4196,13 +4201,17 @@ internal class CanvasEditor(
         if (!committed && error == null) error = tr("editor.mirror.nothing")
     }
 
-    /** A keyform copied in Deform: the object, the key it was copied at and what the paste rows name it. */
-    internal data class KeyformClip(val kind: String, val id: String, val key: Map<String, Float>, val count: Int, val label: String)
-
     /**
-     * What a paste writes: one clip per object copied together. Each is read from the model when pasting, so a later
-     * edit of a source carries over.
+     * A keyform copied in Deform: what it was copied from, taken when copied ([KeyformTools.Snapshot] - so a paste
+     * writes what was copied, however the source changes after), the key it was copied at and what the paste rows
+     * name it.
      */
+    internal class KeyformClip(val snapshot: KeyformTools.Snapshot, val key: Map<String, Float>, val label: String) {
+        val kind: String get() = snapshot.kind
+        val id: String get() = snapshot.id
+    }
+
+    /** What a paste writes: one clip per object copied together. */
     var keyformClipboard by mutableStateOf<List<KeyformClip>>(emptyList())
 
     /** A keyform tool the deform menu runs on the keys in hand (see [KeyformTools]). */
@@ -4241,6 +4250,19 @@ internal class CanvasEditor(
     /** [keyformTarget] when its key is one of the target's keyforms. */
     private fun keyedTarget(): Pair<CanvasTarget, Map<String, Float>>? = keyformTarget()?.takeIf { (t, key) -> onKey(t, key) }
 
+    /**
+     * Why the shape rows of the keyform menu are off for the target in hand, or null when they are not: it binds no
+     * parameter yet, or the parameters are between its keys.
+     */
+    fun keyformOffKeyNote(): String? {
+        val (t, key) = keyformTarget() ?: return null
+        return when {
+            t.geometry.axes.isEmpty() -> tr("editor.keyform.unbound")
+            !onKey(t, key) -> tr("editor.keyform.offKey")
+            else -> null
+        }
+    }
+
     /** The points a keyform tool keeps to: the picked ones, but none of a warp's at the Bezier level or of a rotation. */
     private fun keyformPoints(t: CanvasTarget): Set<Int> =
         if (t.kind == "rotation" || (t.kind == "warp" && editLevel != 1)) emptySet() else vertices
@@ -4248,12 +4270,17 @@ internal class CanvasEditor(
     /** How many points the keyform tools would keep to: 0 when they write the whole shape. */
     fun keyformPointCount(): Int = keyformTarget()?.first?.let { keyformPoints(it).size } ?: 0
 
-    /** The parameters the key in hand sits between two keys of, which [KeyformToolAction.INTERPOLATE] can run along. */
+    /**
+     * The ordinary parameters the key in hand sits between two keys of, which [KeyformToolAction.INTERPOLATE] can run
+     * along; a blend shape's keys are not interpolated between.
+     */
     fun keyformInterpolationAxes(): List<String> {
         val (t, key) = keyedTarget() ?: return emptyList()
+        val source = state.previewModel?.rig?.puppet ?: return emptyList()
         return t.geometry.axes.filter { axis ->
             val value = key.getValue(axis.parameterId.raw)
-            axis.keys.any { it < value - org.umamo.runtime.eval.EPS_KEY } && axis.keys.any { it > value + org.umamo.runtime.eval.EPS_KEY }
+            source.parameters.firstOrNull { it.id == axis.parameterId }?.kind == ParameterKind.NORMAL &&
+                axis.keys.any { it < value - org.umamo.runtime.eval.EPS_KEY } && axis.keys.any { it > value + org.umamo.runtime.eval.EPS_KEY }
         }.map { it.parameterId.raw }
     }
 
@@ -4267,12 +4294,13 @@ internal class CanvasEditor(
 
     fun canCopyKeyform(): Boolean = keyformTarget() != null
 
-    /** Copies the shape of each object in hand at the key the canvas shows it at, for [KeyformToolAction.PASTE]. */
+    /** Copies the shape and look of each object in hand at the key the canvas shows it at, for [KeyformToolAction.PASTE]. */
     fun copyKeyform() {
         val source = state.previewModel?.rig?.puppet ?: return
-        keyformClipboard = keyformTargets().map { (t, key) ->
+        keyformClipboard = keyformTargets().mapNotNull { (t, key) ->
+            val snapshot = runCatching { KeyformTools.snapshot(source, "${t.kind}:${t.id}", key) }.getOrNull() ?: return@mapNotNull null
             val name = objectLabel(t.id)
-            KeyformClip(t.kind, t.id, key, t.count, if (key.isEmpty()) name else "$name · ${describeKey(source, key)}")
+            KeyformClip(snapshot, key, if (key.isEmpty()) name else "$name · ${describeKey(source, key)}")
         }
     }
 
@@ -4283,43 +4311,55 @@ internal class CanvasEditor(
     /** The objects in hand a paste can write to now: those whose key the canvas shows is one of their keyforms. */
     fun keyformPasteDestinations(): List<String> = keyformTargets().filter { (t, key) -> onKey(t, key) }.map { it.first.id }
 
-    /** Whether the copied shape [clip] can go onto [destination]: the same kind and point count. */
-    fun keyformPasteFits(clip: KeyformClip, destination: String): Boolean =
-        keyformTargets().firstOrNull { it.first.id == destination }?.first?.let { it.kind == clip.kind && it.count == clip.count } == true
+    /**
+     * Whether [clip] can be pasted onto [destination] with [channels]: its shape only onto the same object or one of its
+     * kind with the same points under the same parent ([KeyformTools.misfit]); a draw order only onto a mesh.
+     */
+    fun keyformPasteFits(clip: KeyformClip, destination: String, channels: Set<String> = setOf("geometry")): Boolean {
+        val source = state.previewModel?.rig?.puppet ?: return false
+        val t = keyformTargets().firstOrNull { it.first.id == destination }?.first ?: return false
+        if ("geometry" in channels && KeyformTools.misfit(source, clip.snapshot, "${t.kind}:${t.id}") != null) return false
+        return "drawOrder" !in channels || t.kind == "mesh"
+    }
 
     /**
      * Each copied shape with the object in hand it pastes onto: itself when it is in hand, else the next one not yet
-     * taken of its kind and point count; null leaves a shape out.
+     * taken that it fits ([keyformPasteFits]); null leaves a shape out.
      */
-    fun keyformPastePairs(): List<Pair<KeyformClip, String?>> {
+    fun keyformPastePairs(channels: Set<String> = setOf("geometry")): List<Pair<KeyformClip, String?>> {
         val free = keyformPasteDestinations().toMutableList()
-        val own = keyformClipboard.map { clip -> clip.id.takeIf { it in free && keyformPasteFits(clip, it) } }
+        val own = keyformClipboard.map { clip -> clip.id.takeIf { it in free && keyformPasteFits(clip, it, channels) } }
         own.filterNotNull().forEach { free -= it }
         return keyformClipboard.zip(own).map { (clip, mine) ->
-            clip to (mine ?: free.firstOrNull { keyformPasteFits(clip, it) }?.also { free -= it })
+            clip to (mine ?: free.firstOrNull { keyformPasteFits(clip, it, channels) }?.also { free -= it })
         }
     }
 
-    /** The paste commands of [pairs] written with [options]; empty when none can be written. */
+    /** Why the last paste wrote less than asked, for the paste dialog; null when it wrote everything. */
+    var keyformPasteProblem by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * The `set`s [pairs] paste with [options], each computed from the model as it is before any of them, so pasting A
+     * onto B and B onto A swaps them; empty when none can be written.
+     */
     internal fun keyformPasteCommands(pairs: List<Pair<KeyformClip, String?>> = keyformPastePairs(),
                                       options: KeyformPasteOptions = KeyformPasteOptions()): List<JsonObject> {
         if (options.channels.isEmpty()) return emptyList()
+        val source = state.previewModel?.rig?.puppet ?: return emptyList()
         val targets = keyformTargets().filter { (t, key) -> onKey(t, key) }.associateBy { it.first.id }
         val primary = keyformTarget()?.first?.id
-        fun Map<String, Float>.json() = JsonObject(mapValues { JsonPrimitive(it.value) })
-        return pairs.mapNotNull { (clip, destination) ->
-            val (t, key) = targets[destination] ?: return@mapNotNull null
-            if (!keyformPasteFits(clip, t.id) && options.channels.contains("geometry")) return@mapNotNull null
-            buildJsonObject {
-                put("op", KeyformTools.PASTE); put("target", "${clip.kind}:${clip.id}"); put("from", clip.key.json())
-                put("destination", "${t.kind}:${t.id}"); put("key", key.json())
-                if (options.channels != setOf("geometry")) put("channels", JsonArray(options.channels.map(::JsonPrimitive)))
-                if (options.ratio < 1f) put("ratio", options.ratio)
-                options.flip?.let { put("flip", it) }
-                val points = if (t.id == primary && "geometry" in options.channels) keyformPoints(t) else emptySet()
-                if (points.isNotEmpty()) put("vertices", JsonArray(points.sorted().map(::JsonPrimitive)))
-            }
+        var problem: String? = null
+        val commands = pairs.flatMap { (clip, destination) ->
+            val (t, key) = targets[destination] ?: return@flatMap emptyList()
+            if (!keyformPasteFits(clip, t.id, options.channels)) return@flatMap emptyList()
+            val points = if (t.id == primary && "geometry" in options.channels) keyformPoints(t).takeIf { it.isNotEmpty() } else null
+            runCatching {
+                KeyformTools.paste(source, clip.snapshot, "${t.kind}:${t.id}", key, points, options.ratio, options.flip, options.channels.toList())
+            }.getOrElse { problem = it.message; emptyList() }
         }
+        if (keyformPasteProblem != problem) keyformPasteProblem = problem
+        return commands
     }
 
     /**
@@ -4389,35 +4429,44 @@ internal class CanvasEditor(
     /**
      * Deform's temporary deform tool: a disposable lattice over the picked points (or the whole object) whose control
      * points carry those points by bilinear interpolation, as a temporary warp does in Live2D editors. Nothing of the
-     * lattice is kept: each drag of one of its points commits the ordinary geometry edit it makes, one history step,
-     * and Enter, Esc or another target ends it. [startWorld] is the target's canvas points when it began and [uv] each
-     * carried point's place in the box the lattice started as.
+     * lattice is kept: each drag of one of its points moves the carried points from where they show at the press by
+     * the lattice's own move - so an undo, another key or another author's edit in between is never written back - and
+     * commits that ordinary geometry edit, one history step. The lattice was laid at [key] on workspace [state]; a
+     * press after either changed lays it again over what the canvas shows. Enter, Esc, Done, another target or leaving
+     * Deform ends it. [uv] is each carried point's place in the box the lattice was laid as.
      */
     internal data class TemporaryWarp(
         val targetId: String,
+        val key: Map<String, Float>,
+        val state: String?,
         val rows: Int,
         val columns: Int,
         val lattice: FloatArray,
-        val startWorld: FloatArray,
         val uv: Map<Int, Pair<Float, Float>>,
     )
 
     var temporaryWarp by mutableStateOf<TemporaryWarp?>(null)
 
+    /** [temporaryWarp] while it still applies: in Deform, on the object it was laid over. */
+    fun activeTemporaryWarp(): TemporaryWarp? = temporaryWarp?.takeIf { hierarchyMode == EditHierarchyMode.DEFORM && target()?.id == it.targetId }
+
     /** The lattice's rows and columns when a temporary warp begins. */
     var temporaryWarpDivisions by mutableStateOf(2)
     private var temporaryWarpHandle = -1
+    private var temporaryWarpPressLattice: FloatArray? = null
+    private var temporaryWarpPressWorld: FloatArray? = null
 
     fun canBeginTemporaryWarp(): Boolean = hierarchyMode == EditHierarchyMode.DEFORM &&
         target()?.let { it.kind == "mesh" || (it.kind == "warp" && editLevel == 1) } == true
 
-    /** Lays a [temporaryWarpDivisions] lattice over the picked points of the target in hand, or all of them. */
-    fun beginTemporaryWarp() {
+    /** Lays a [temporaryWarpDivisions] lattice over [carried] points of the target in hand (default the picked ones, or all). */
+    fun beginTemporaryWarp(carried: Collection<Int>? = null) {
         if (!canBeginTemporaryWarp()) return
         val t = target() ?: return
+        val source = state.previewModel?.rig?.puppet ?: return
         val world = t.mapping.localToWorld(t.geometry.points)
-        val carried = vertices.filter { it < t.count }.ifEmpty { (0 until t.count).toList() }
-        val xs = carried.map { world[it * 2] }; val ys = carried.map { world[it * 2 + 1] }
+        val points = (carried ?: vertices).filter { it < t.count }.ifEmpty { (0 until t.count).toList() }
+        val xs = points.map { world[it * 2] }; val ys = points.map { world[it * 2 + 1] }
         val padX = max((xs.max() - xs.min()) * 0.05f, 1f); val padY = max((ys.max() - ys.min()) * 0.05f, 1f)
         val x0 = xs.min() - padX; val x1 = xs.max() + padX; val y0 = ys.min() - padY; val y1 = ys.max() + padY
         val n = temporaryWarpDivisions.coerceIn(1, 8)
@@ -4426,49 +4475,59 @@ internal class CanvasEditor(
             val i = (r * (n + 1) + c) * 2
             lattice[i] = x0 + (x1 - x0) * c / n; lattice[i + 1] = y0 + (y1 - y0) * r / n
         }
-        temporaryWarp = TemporaryWarp(t.id, n, n, lattice, world,
-            carried.associateWith { ((world[it * 2] - x0) / (x1 - x0)) to ((world[it * 2 + 1] - y0) / (y1 - y0)) })
+        temporaryWarp = TemporaryWarp(t.id, canvasDeformationCoordinate(source, t.geometry.axes, pose, deformationParameters),
+            viewModel.currentWorkspaceState(), n, n, lattice,
+            points.associateWith { ((world[it * 2] - x0) / (x1 - x0)) to ((world[it * 2 + 1] - y0) / (y1 - y0)) })
     }
 
-    fun endTemporaryWarp() { temporaryWarp = null; temporaryWarpHandle = -1 }
+    fun endTemporaryWarp() {
+        temporaryWarp = null; temporaryWarpHandle = -1; temporaryWarpPressLattice = null; temporaryWarpPressWorld = null
+    }
 
     /** A new lattice size: an active temporary warp starts again over what the canvas now shows. */
     fun changeTemporaryWarpDivisions(n: Int) {
         temporaryWarpDivisions = n
-        if (temporaryWarp != null) { endTemporaryWarp(); beginTemporaryWarp() }
+        temporaryWarp?.let { warp -> endTemporaryWarp(); beginTemporaryWarp(warp.uv.keys) }
     }
 
     /** The lattice's points on screen, row by row. */
-    fun temporaryWarpScreen(viewport: CanvasViewport): List<Offset> = temporaryWarp?.lattice?.let { lattice ->
+    fun temporaryWarpScreen(viewport: CanvasViewport): List<Offset> = activeTemporaryWarp()?.lattice?.let { lattice ->
         List(lattice.size / 2) { Offset((viewport.offsetX + lattice[it * 2] * viewport.scale).toFloat(), (viewport.offsetY - lattice[it * 2 + 1] * viewport.scale).toFloat()) }
     }.orEmpty()
 
-    /** [warp]'s carried points where its lattice now puts them, the rest where they started, in canvas units. */
-    private fun temporaryWarpWorld(warp: TemporaryWarp): FloatArray {
-        val world = warp.startWorld.copyOf()
-        val columns = warp.columns + 1
-        for ((i, place) in warp.uv) {
-            val fu = (place.first * warp.columns).coerceIn(0f, warp.columns.toFloat()); val fv = (place.second * warp.rows).coerceIn(0f, warp.rows.toFloat())
-            val c = min(fu.toInt(), warp.columns - 1); val r = min(fv.toInt(), warp.rows - 1)
-            val s = fu - c; val u = fv - r
-            for (axis in 0..1) {
-                fun at(rr: Int, cc: Int) = warp.lattice[(rr * columns + cc) * 2 + axis]
-                world[i * 2 + axis] = (at(r, c) * (1 - s) + at(r, c + 1) * s) * (1 - u) + (at(r + 1, c) * (1 - s) + at(r + 1, c + 1) * s) * u
-            }
-        }
-        return world
+    /** Where [lattice] puts the place [uv] of a lattice of [rows] × [columns], in canvas units. */
+    private fun latticePoint(lattice: FloatArray, rows: Int, columns: Int, uv: Pair<Float, Float>): Pair<Float, Float> {
+        val fu = (uv.first * columns).coerceIn(0f, columns.toFloat()); val fv = (uv.second * rows).coerceIn(0f, rows.toFloat())
+        val c = min(fu.toInt(), columns - 1); val r = min(fv.toInt(), rows - 1)
+        val s = fu - c; val u = fv - r
+        fun at(rr: Int, cc: Int, axis: Int) = lattice[(rr * (columns + 1) + cc) * 2 + axis]
+        fun axis(a: Int) = (at(r, c, a) * (1 - s) + at(r, c + 1, a) * s) * (1 - u) + (at(r + 1, c, a) * (1 - s) + at(r + 1, c + 1, a) * s) * u
+        return axis(0) to axis(1)
     }
 
-    /** Takes the press when it lands on a lattice point of the temporary warp in hand; true when one is active. */
-    private fun pressTemporaryWarp(pos: Offset, viewport: CanvasViewport): Boolean {
+    /**
+     * Takes the press while a temporary warp is in hand: off the lattice it does nothing; on a lattice point it first
+     * brings the pose onto the target's keys, as any deform drag does, and lays the lattice again when the key or the
+     * workspace changed since it was laid; then the drag starts from what the canvas shows now.
+     */
+    private fun pressTemporaryWarp(pos: Offset, viewport: CanvasViewport, shift: Boolean, alt: Boolean, ctrl: Boolean): Boolean {
         val warp = temporaryWarp ?: return false
-        val t = target()
-        if (t == null || t.id != warp.targetId || hierarchyMode != EditHierarchyMode.DEFORM) { endTemporaryWarp(); return false }
+        if (activeTemporaryWarp() == null) { endTemporaryWarp(); return false }
         val points = temporaryWarpScreen(viewport)
         val hit = points.indices.minByOrNull { (points[it] - pos).getDistance() }?.takeIf { (points[it] - pos).getDistance() <= 10f } ?: return true
+        val t = target() ?: return true
+        if (viewModel.snapToNearestKeys(t.kind, t.id) { press(pos, viewport, shift, alt, ctrl) }) return true
+        val source = state.previewModel?.rig?.puppet ?: return true
+        val key = canvasDeformationCoordinate(source, t.geometry.axes, pose, deformationParameters)
+        if (key != warp.key || viewModel.currentWorkspaceState() != warp.state) {
+            beginTemporaryWarp(warp.uv.keys)
+            return true
+        }
         temporaryWarpHandle = hit
+        temporaryWarpPressLattice = warp.lattice.copyOf()
+        temporaryWarpPressWorld = t.mapping.localToWorld(t.geometry.points)
         targetAtPress = t
-        original = state.previewModel?.rig?.puppet
+        original = source
         dragging = true
         return true
     }
@@ -4476,27 +4535,43 @@ internal class CanvasEditor(
     private fun moveTemporaryWarp(pos: Offset, viewport: CanvasViewport) {
         val warp = temporaryWarp ?: return
         val t = targetAtPress ?: return; val source = original ?: return
+        val pressLattice = temporaryWarpPressLattice ?: return; val pressWorld = temporaryWarpPressWorld ?: return
         val lattice = warp.lattice.copyOf()
         lattice[temporaryWarpHandle * 2] = ((pos.x - viewport.offsetX) / viewport.scale).toFloat()
         lattice[temporaryWarpHandle * 2 + 1] = -((pos.y - viewport.offsetY) / viewport.scale).toFloat()
-        val moved = warp.copy(lattice = lattice)
-        temporaryWarp = moved
-        val cmd = geometryCommand(t, t.mapping.worldToLocal(temporaryWarpWorld(moved), t.geometry.points, moved.uv.keys))
+        temporaryWarp = warp.copy(lattice = lattice)
+        // Each carried point moves from where it shows now by the lattice's move at its place.
+        val world = pressWorld.copyOf()
+        for ((i, place) in warp.uv) {
+            val (nx, ny) = latticePoint(lattice, warp.rows, warp.columns, place)
+            val (px, py) = latticePoint(pressLattice, warp.rows, warp.columns, place)
+            world[i * 2] += nx - px; world[i * 2 + 1] += ny - py
+        }
+        val moved = warp.uv.keys.toMutableSet()
+        // As a box drag does: a glued point stays one point when rest meshes are edited.
+        if (editsMeshGeometry()) keepWeldsTogether(listOf(t), listOf(world), listOf(moved))
+        val cmd = geometryCommand(t, t.mapping.worldToLocal(world, t.geometry.points, moved))
         preview = RigAuthoringJournal.apply(source, cmd); pending = cmd
     }
 
     private fun releaseTemporaryWarp() {
-        temporaryWarpHandle = -1
+        temporaryWarpHandle = -1; temporaryWarpPressLattice = null; temporaryWarpPressWorld = null
         dragging = false
         targetAtPress = null; original = null
         val cmd = pending
         if (cmd == null) { preview = null; return }
-        if (!commitBatch(listOf(cmd))) preview = null
+        val committed = commitBatch(listOf(cmd)) {
+            // The lattice now matches what the workspace holds.
+            temporaryWarp = temporaryWarp?.copy(state = viewModel.currentWorkspaceState())
+        }
+        if (!committed) preview = null
     }
 
     /** Whether a drag of picked points carries the points around them: Deform's point tools with [softSelection] on. */
     fun softSelectionActive(): Boolean = softSelection && hierarchyMode == EditHierarchyMode.DEFORM &&
-        (tool in SELECTION_TOOLS || tool == CanvasTool.TRANSFORM)
+        (tool in SELECTION_TOOLS || tool == CanvasTool.TRANSFORM) &&
+        // A warp's lattice points are what it picks only at the vertex level; its Bezier handles take no soft drag.
+        target()?.let { it.kind != "warp" || editLevel == 1 } != false
 
     private var softReachKey: List<Any?>? = null
     private var softReach: Map<String, FloatArray> = emptyMap()
@@ -5885,7 +5960,7 @@ internal class CanvasEditor(
             return true
         }
         // A temporary warp owns the canvas until it ends: a press off its lattice does nothing.
-        if (pressTemporaryWarp(pos, viewport)) return true
+        if (pressTemporaryWarp(pos, viewport, shift, alt, ctrl)) return true
 
         // 0. The pose tool turns bones; a press off every bone does nothing, so a stray click cannot
         //    select or move points while the tool is armed.

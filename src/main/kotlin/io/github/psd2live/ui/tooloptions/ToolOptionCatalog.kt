@@ -504,7 +504,7 @@ private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
         // The whole mesh, made again from the layer's pixels, beside the edits to its points.
         addLayerActions(editor, editor.targetLayerId(target), target?.id)
     }
-    if (!editing && editor.temporaryWarp != null) {
+    if (!editing && editor.activeTemporaryWarp() != null) {
         add(TEMPORARY_WARP_DIVISIONS)
         add(ActionOption("tempWarp.end", "editor.tempWarp.end", { true }, { it.endTemporaryWarp() }, OptionIcon.CONFIRM, primary = true, place = OptionPlace.TOP))
     } else if (!editing && editor.canBeginTemporaryWarp()) {
@@ -547,6 +547,8 @@ private fun MutableList<ToolOption>.addKeyformMirror() {
 private fun MutableList<ToolOption>.addKeyformTools(editor: CanvasEditor) {
     add(SectionOption("keyform", "editor.keyform.menu", OptionPlace.MENU, submenu = true, icon = OptionIcon.KEYFORM, alwaysFolds = true))
     fun scope(e: CanvasEditor): String = e.keyformPointCount().let { if (it > 0) tr("editor.keyform.points", it) else "" }
+    // Why the shape rows are off: nothing bound yet, or the pose between keys.
+    add(NoteOption("keyform.offKey", { it.keyformOffKeyNote() }, warning = { true }, place = OptionPlace.MENU))
     fun tool(id: String, labelKey: String, icon: OptionIcon, action: CanvasEditor.KeyformToolAction, parameter: String? = null,
              args: (CanvasEditor) -> List<Any> = { listOf(scope(it)) }) =
         ActionOption("keyform.$id", labelKey, { it.editable && it.keyformToolCommands(action, parameter).isNotEmpty() },

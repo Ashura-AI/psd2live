@@ -46,6 +46,8 @@ private fun KeyformPasteDialog(editor: CanvasEditor, onDismiss: () -> Unit) {
     var flip by remember { mutableStateOf<String?>(null) }
     val destinations = remember { editor.keyformPasteDestinations() }
     var pairs by remember { mutableStateOf(editor.keyformPastePairs()) }
+    // Without the shape any object in hand takes the channels; with it only one the shape fits.
+    LaunchedEffect("geometry" in channels) { pairs = editor.keyformPastePairs(channels) }
     val options = CanvasEditor.KeyformPasteOptions(channels, ratio, flip)
     val commands = editor.keyformPasteCommands(pairs, options)
     val paste = { editor.runKeyformCommands(commands); onDismiss() }
@@ -74,12 +76,13 @@ private fun KeyformPasteDialog(editor: CanvasEditor, onDismiss: () -> Unit) {
         }
         Text(tr("keyform.paste.targets"), style = typography.caption, color = colors.textMuted)
         if (destinations.isEmpty()) Text(tr("keyform.paste.noTarget"), style = typography.caption, color = colors.warning)
+        editor.keyformPasteProblem?.let { Text(it, style = typography.caption, color = colors.warning) }
         pairs.forEachIndexed { index, (clip, destination) ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(clip.label, style = typography.body, color = colors.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f))
                 Text("→", style = typography.body, color = colors.textMuted)
-                CompactDropdown(items = listOf<String?>(null) + destinations.filter { editor.keyformPasteFits(clip, it) }, selectedItem = destination,
+                CompactDropdown(items = listOf<String?>(null) + destinations.filter { editor.keyformPasteFits(clip, it, channels) }, selectedItem = destination,
                     onItemSelected = { chosen -> pairs = pairs.mapIndexed { i, pair -> if (i == index) pair.first to chosen else pair } },
                     itemLabel = { it?.let(editor::objectLabel) ?: tr("keyform.paste.skip") }, modifier = Modifier.weight(1f))
             }
@@ -110,7 +113,8 @@ private fun MultiKeyDialog(editor: CanvasEditor, onDismiss: () -> Unit) {
         screen?.let { put("screenColor", JsonArray(it.map(::JsonPrimitive))) }
         put("method", method)
     }
-    val ready = count > 0 && listOf(opacity, drawOrder, multiply, screen).any { it != null } && !(deformers && drawOrder != null)
+    val drawOrderMethod = drawOrder == null || method == "overwrite" || method == "add"
+    val ready = count > 0 && listOf(opacity, drawOrder, multiply, screen).any { it != null } && !(deformers && drawOrder != null) && drawOrderMethod
     val apply = { editor.runKeyformCommands(listOf(command)); onDismiss() }
     ModalDialogFrame(
         title = tr("keyform.multi.title"),
@@ -146,6 +150,7 @@ private fun MultiKeyDialog(editor: CanvasEditor, onDismiss: () -> Unit) {
         CompactCheckbox(drawOrder != null, { drawOrder = if (it) 500f else null }, label = tr("keyform.channel.drawOrder"))
         drawOrder?.let { value -> CompactNumberSpinner(value.toDouble(), { drawOrder = it.toFloat() }, min = 0.0, max = 1000.0, modifier = Modifier.width(120.dp)) }
         if (deformers && drawOrder != null) Text(tr("keyform.multi.noDrawOrder"), style = typography.caption, color = colors.warning)
+        if (!drawOrderMethod) Text(tr("keyform.multi.drawOrderMethod"), style = typography.caption, color = colors.warning)
         for ((label, get, set, identity) in listOf(
             ColorRow("keyform.channel.multiplyColor", { multiply }, { multiply = it }, listOf(1f, 1f, 1f)),
             ColorRow("keyform.channel.screenColor", { screen }, { screen = it }, listOf(0f, 0f, 0f)),

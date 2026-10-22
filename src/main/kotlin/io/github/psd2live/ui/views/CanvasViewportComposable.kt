@@ -972,8 +972,10 @@ fun CanvasViewportComposable(
 			ShortcutAction.MIRROR_KEYFORM -> editor.editable && editor.keyformMirrorPlan(CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_KEY) != null &&
 				true.also { editor.mirrorKeyform(CanvasEditor.KeyformMirrorAction.TO_OPPOSITE_KEY) }
 			ShortcutAction.SOFT_SELECTION_TOGGLE -> (editor.hierarchyMode == EditHierarchyMode.DEFORM) && true.also { editor.softSelection = !editor.softSelection }
-			ShortcutAction.TEMPORARY_DEFORM -> editor.canBeginTemporaryWarp() && true.also {
-				if (editor.temporaryWarp != null) editor.endTemporaryWarp() else editor.beginTemporaryWarp()
+			ShortcutAction.TEMPORARY_DEFORM -> when {
+				editor.temporaryWarp != null -> { editor.endTemporaryWarp(); true }
+				editor.canBeginTemporaryWarp() -> { editor.beginTemporaryWarp(); true }
+				else -> false
 			}
 			ShortcutAction.KEYFORM_COPY -> editor.canCopyKeyform() && true.also { editor.copyKeyform() }
 			ShortcutAction.KEYFORM_PASTE -> editor.keyformToolCommands(CanvasEditor.KeyformToolAction.PASTE).isNotEmpty() &&
@@ -1007,7 +1009,7 @@ fun CanvasViewportComposable(
 			}
 			ShortcutAction.FINISH_PATH -> {
 				when {
-					editor.temporaryWarp != null -> { editor.endTemporaryWarp(); true }
+					editor.activeTemporaryWarp() != null -> { editor.endTemporaryWarp(); true }
 					viewModel.swingSession != null -> { viewModel.commitSwing(); true }
 					editor.hierarchyMode == EditHierarchyMode.PAINT && editor.paintSelectDraft.isNotEmpty() -> editor.finishPaintPolygon()
 					editor.tool == CanvasTool.KNIFE -> { editor.finishKnife(); true }
