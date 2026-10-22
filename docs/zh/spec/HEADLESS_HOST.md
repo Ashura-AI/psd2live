@@ -80,7 +80,9 @@ flowchart TD
 
 风险：若仍有编辑器路径只改状态字段而不经 `editorChanged` / 命令提交（"幽灵草稿"），此前会被保存"兜底"提交，现在不会进入工程，但工程保持为脏；这类路径应视为缺陷，结束时还原或改为草稿提交。已修正的来源：动作关键帧拖动结束时总是还原为已提交的片段；删除变形器不再在本地删除旧 v1 父级覆盖（由日志里的删除命令负责）。
 
-动作关键帧拖动与字段草稿同一规则：拖动期间别的作者提交了，若被拖动的片段在已提交文档里仍是拖动开始时的样子，拖动按当前状态提交；片段被改过则拖动让出并警告。
+动作关键帧拖动与字段草稿同一规则：拖动期间别的作者提交了，若被拖动的片段在已提交文档里仍是拖动开始时的样子，拖动按当前状态提交；片段被改过则拖动让出并警告。拖动结束时读到的状态可能早于已展示的提交，提交冲突时按冲突给出的状态再判断片段并重试（`MOTION_DRAG_REBASES`）；拖动是否提交只看它是否产生过拖动请求，展示提交时被冲突换掉的拖动预览不影响。
+
+字段草稿的提交在一段状态锁内取走会话（切换、让出与被改过的设置键、效果）并读取草稿与 `origin`，两者之间不会有提交插入。每个设置切换的预览效果（触发动作、重置物理等）与它的改动成对保存，切换因让出被整体撤回时效果也不执行。
 
 模拟烘焙的进度与取消对两个宿主相同：命令用 `WorkspaceSimulationWork.cancellable` 把进度报给运行它的进程任务（`WorkspaceJobContext`）并随任务取消而停止；`simulationBake` 只是展示的观察入口，桌面用它显示烘焙条与取消按钮，无窗口为空。
 
@@ -115,5 +117,6 @@ flowchart TD
   - `SaveAndCloseTest.aCheckoutDiscardingAFieldWarnsAndForgetsItsSwitches`：检出丢弃草稿时警告，会话结束不再把切换重放到检出后的文档；
   - `SaveAndCloseTest.deletingADeformerLeavesNoDraftBehind`、`aMotionKeyDragOvertakenByAnAgentCommitLeavesNoDraftBehind`：这两条路径结束后编辑器只显示运行时文档，被未改动片段的提交超过的拖动照常提交；
   - `SaveAndCloseTest.aFieldClosingBetweenACommitsShowAndItsPublicationStillLands`：用运行时的测试钩子让字段恰在提交已展示、尚未发布时读取状态，并在发布之后才入队，草稿凭 `origin` 落地；
+  - `SaveAndCloseTest.aYieldedSwitchLeavesOutWhatItDoesToThePreview`、`aMotionKeyDragEndingBeforeACommitsPublicationFollowsIt`：让出的切换不触发预览效果；在提交发布前结束、带旧状态的拖动跟上该提交后落地；
   - `SaveAndCloseTest.aValueTheEditorTakesBackAfterYieldingItIsCommitted`、`aReplacingImportIsWhatTheEditorMirrorsAfterwards`、`aCheckoutRightAfterOpeningDiscardsAFieldWithAWarning`、`aReplacingShowEndsTheSessionsSwitchesBeforeTheHostDiscardsItsQueues`：让出后改回的值、替换导入后的镜像文档、打开后立即检出的警告、检出展示时即清空会话；
   - `HeadlessSimulationBakeTest`：无窗口烘焙向进程任务报告进度，任务取消即停止。

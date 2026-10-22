@@ -732,6 +732,60 @@ class SaveAndCloseTest {
         assertTrue(showsTheRuntime(vm, workspace))
     }
 
+    @Test fun aYieldedSwitchLeavesOutWhatItDoesToThePreview() = editor { vm, workspace ->
+        fun nod() = workspace.captureQueries().projectSettings().getValue("motionNod").jsonPrimitive.boolean
+        val triggers = AtomicInteger()
+        vm.attachWorkspace(object : WorkspaceBackend by workspace {
+            override fun controlPlayback(arguments: JsonObject): JsonObject {
+                if (arguments["mode"]?.jsonPrimitive?.content == "trigger") triggers.incrementAndGet()
+                return workspace.controlPlayback(arguments)
+            }
+        })
+        if (nod()) { workspace.updateProjectSettings(workspace.stateToken()!!, buildJsonObject { put("motionNod", false) }); idle(vm, workspace) }
+        // A switch that lands plays its preview.
+        vm.beginEditorField("probe-nod"); vm.setMotionNod(true); vm.endEditorField("probe-nod")
+        idle(vm, workspace)
+        assertTrue(nod())
+        assertEquals(1, triggers.get())
+        workspace.updateProjectSettings(workspace.stateToken()!!, buildJsonObject { put("motionNod", false) })
+        idle(vm, workspace)
+        // The agent makes the same switch during the session: the session's switch is withdrawn, its preview too.
+        vm.beginEditorField("probe-nod"); vm.setMotionNod(true)
+        workspace.updateProjectSettings(workspace.stateToken()!!, buildJsonObject { put("motionNod", true) })
+        vm.endEditorField("probe-nod")
+        idle(vm, workspace)
+        assertTrue(nod())
+        assertEquals(1, triggers.get(), "the withdrawn switch still played its preview")
+    }
+
+    @Test fun aMotionKeyDragEndingBeforeACommitsPublicationFollowsIt() = editor { vm, workspace ->
+        vm.createMotionClip()
+        idle(vm, workspace)
+        vm.addMotionCurve("ParamAngleX")
+        idle(vm, workspace)
+        val dragged = vm.editingMotionClip()!!
+        val stale = workspace.stateToken()!!
+        val first = AtomicBoolean(true)
+        // The drag's first attempt carries the state it read before the agent's commit was published.
+        vm.attachWorkspace(object : WorkspaceBackend by workspace {
+            override suspend fun applyDocumentEdits(state: String, summary: String, edits: List<io.github.psd2live.application.WorkspaceDocumentOperation>,
+                                                    author: MutationAuthor) =
+                workspace.applyDocumentEdits(if (first.getAndSet(false)) stale else state, summary, edits, author)
+        })
+        vm.beginMotionKeyDrag()
+        vm.dragMotionKeys(0.1f)
+        // The drag ends while the agent's commit is shown but not yet published: it reads the older state.
+        workspace.host.beforePublishingForTest {
+            workspace.host.beforePublishingForTest(null)
+            vm.endMotionKeyDrag()
+        }
+        workspace.updateProjectSettings(workspace.stateToken()!!, buildJsonObject { put("alphaThreshold", 40) })
+        idle(vm, workspace)
+        assertNull(vm.state.value.errorMessage)
+        assertNotEquals(dragged, workspace.captureQueries().motionClips().single { it.id == dragged.id }, "the drag was lost")
+        assertTrue(showsTheRuntime(vm, workspace))
+    }
+
     @Test fun failuresBeforeArchiveCaptureAreReportedAndRetryCanSucceed() = editor { vm, workspace ->
         val fail = AtomicBoolean(true)
         vm.attachWorkspace(object : WorkspaceBackend by workspace {
