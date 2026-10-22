@@ -96,6 +96,7 @@ import io.github.psd2live.ui.ValueViewport
 import io.github.psd2live.ui.components.CompactButton
 import io.github.psd2live.ui.components.CompactDropdown
 import io.github.psd2live.ui.components.CompactIconButton
+import io.github.psd2live.ui.components.IconChevron
 import io.github.psd2live.ui.components.CompactMenuItem
 import io.github.psd2live.ui.components.CompactNumberSpinner
 import io.github.psd2live.ui.components.CompactTextField
@@ -255,7 +256,11 @@ private fun EditorToolbar(state: PSD2LiveState, viewModel: PSD2LiveViewModel, cl
 				if (editor.playing) IconPause(modifier = Modifier.size(11.dp), tint = colors.textPrimary)
 				else IconPlay(modifier = Modifier.size(11.dp), tint = colors.accent)
 			}
-			if (clip == null) return@Row
+			if (clip == null) {
+				PanelToolbarSeparator()
+				OnionSkinControl(state, viewModel, null)
+				return@Row
+			}
 			CompactNumberSpinner(
 				value = editor.playhead.toDouble(),
 				onValueChange = { viewModel.setMotionPlayhead(it.toFloat()) },
@@ -347,6 +352,51 @@ private fun EditorToolbar(state: PSD2LiveState, viewModel: PSD2LiveViewModel, cl
 			)
 			PanelToolbarSeparator()
 			TimelineAidControls(viewModel, clip, state)
+			PanelToolbarSeparator()
+			OnionSkinControl(state, viewModel, clip)
+		}
+	}
+}
+
+/**
+ * The onion skin of the edit canvas the editor works with ([PSD2LiveViewModel.aidCanvas]): its switch, saying what
+ * the ghosts show, and its settings beside it. With [clip] open they are its frames around the playhead; otherwise
+ * the keys of the parameter being edited around its value.
+ */
+@Composable
+private fun OnionSkinControl(state: PSD2LiveState, viewModel: PSD2LiveViewModel, clip: MotionClip?) {
+	val colors = LocalToolColors.current
+	val canvas = viewModel.aidCanvas(state)
+	val aids = canvas?.view?.aids ?: io.github.psd2live.ui.CanvasAidOptions()
+	val on = canvas != null && aids.onionSkin
+	val parameter = canvas?.let { viewModel.canvasEditorFor(it.id).parameter }
+	val source = when {
+		canvas == null -> tr("canvas.aids.onion.noCanvas")
+		clip != null -> tr("canvas.aids.onion.frames", clip.name)
+		parameter != null -> tr("canvas.aids.onion.keys",
+			state.previewModel?.rig?.puppet?.parameters?.firstOrNull { it.id.raw == parameter }?.name ?: parameter)
+		else -> tr("canvas.aids.onion.none")
+	}
+	val shortcut = state.keymap.labelFor(ShortcutAction.TOGGLE_ONION_SKIN)
+	var menu by remember { mutableStateOf(false) }
+	Row(verticalAlignment = Alignment.CenterVertically) {
+		CompactToggleChip(
+			text = tr("canvas.aids.onion"),
+			selected = on,
+			onToggle = { viewModel.setOnionSkin { it.copy(onionSkin = !it.onionSkin) } },
+			enabled = canvas != null,
+			leadingIcon = { IconOnionSkin(if (on) colors.accent else colors.textMuted) },
+			showCheckWhenSelected = false,
+			tooltip = if (shortcut != null) "$source ($shortcut)" else source,
+			height = 22.dp,
+		)
+		Box {
+			CompactIconButton(onClick = { menu = !menu }, enabled = canvas != null, tooltip = tr("canvas.aids.onion.settings"), size = 22.dp) {
+				IconChevron(expanded = true, modifier = Modifier.size(10.dp))
+			}
+			io.github.psd2live.ui.views.texture.FloatingMenu(expanded = menu, onDismiss = { menu = false }, width = 260.dp) {
+				OnionSkinMenuContent(aids, { updated -> viewModel.setOnionSkin { updated } }, source)
+			}
 		}
 	}
 }

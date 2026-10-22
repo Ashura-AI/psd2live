@@ -48,7 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.*
 import io.github.psd2live.i18n.tr
-import io.github.psd2live.ui.components.ViewOptionsMenuItems
+import io.github.psd2live.ui.state.AppSettings
+import io.github.psd2live.ui.state.CanvasViewContent
 import io.github.psd2live.ui.state.*
 import io.github.psd2live.ui.theme.*
 import io.github.psd2live.ui.tutorial.TutorialTargetId
@@ -1033,13 +1034,18 @@ private fun DockHeader(id: String, session: DockSession, modifier: Modifier,
                     },
                 )
                 TabStripDropdown(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
-                    ViewOptionsMenuItems(
+                    val editor = viewModel.canvasEditorFor(canvas.id)
+                    val pins by AppSettings.canvasRailFlow.collectAsState()
+                    CanvasViewMenuItems(
                         options = canvas.view,
                         onOptionsChange = { viewModel.setCanvasViewOptions(canvas.id, it, canvas.mode) },
                         onDismiss = { viewMenu = false },
-                        showHeaders = true,
-                        showPathGuides = canvas.mode == CanvasMode.EDIT,
-                        showSelectionFocus = canvas.mode == CanvasMode.EDIT,
+                        content = CanvasViewContent.of(state, canvas.mode,
+                            skeleton = canvas.mode == CanvasMode.EDIT && editor.committedSkeleton != null),
+                        pins = pins,
+                        onPinsChange = { AppSettings.canvasRail = it },
+                        skinWeights = editor.showSkeletonWeights,
+                        onSkinWeightsChange = { editor.showSkeletonWeights = it },
                         onReset = {
                             viewMenu = false
                             viewModel.resetCanvasViewOptions(canvas.id, canvas.mode)

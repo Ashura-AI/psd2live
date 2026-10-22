@@ -7433,6 +7433,22 @@ class PSD2LiveViewModel : AutoCloseable {
 		}
 	}
 
+	/**
+	 * The edit canvas a panel's canvas aid acts on - the onion skin, the random pose's parameters being edited: the
+	 * active canvas when it edits, else the first shown edit canvas; null with none.
+	 */
+	internal fun aidCanvas(state: PSD2LiveState = _state.value): CanvasWindowState? {
+		val workspace = state.activeWorkspace
+		return workspace.activeCanvas.takeIf { it.mode == CanvasMode.EDIT && it.id !in workspace.hiddenModules }
+			?: workspace.canvases.firstOrNull { it.mode == CanvasMode.EDIT && it.id !in workspace.hiddenModules }
+	}
+
+	/** Turns the onion skin of [aidCanvas] on or off, or changes its settings. */
+	fun setOnionSkin(update: (io.github.psd2live.ui.CanvasAidOptions) -> io.github.psd2live.ui.CanvasAidOptions) {
+		val canvas = aidCanvas() ?: return
+		setCanvasViewOptions(canvas.id, canvas.view.copy(aids = update(canvas.view.aids)), CanvasMode.EDIT)
+	}
+
 	/** The random pose's settings, and the pose it replaced while one is shown. Session only. */
 	internal val randomPose = RandomPoseControls()
 

@@ -144,6 +144,8 @@ import io.github.psd2live.ui.componentsAtParameterKey
 import io.github.psd2live.ui.componentsAtParameterKeys
 import io.github.psd2live.ui.selectedParameterOwner
 import io.github.psd2live.ui.utils.DesktopUtils
+import io.github.psd2live.ui.state.ShortcutAction
+import io.github.psd2live.ui.views.texture.FloatingMenu
 import io.github.psd2live.ui.views.texture.FloatingMenuDivider
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
 import io.github.psd2live.ui.views.tooloptions.GlidingColumn
@@ -592,7 +594,7 @@ internal fun ParametersListView(
 		val labels = listOf(tr("parameters.newParameterShort"), tr("parameters.newFolderShort"), tr("parameters.relatedOnly"))
 		PanelToolbar(
 			labels = labels,
-			iconCount = if (state.previewLive) 7 else 6,
+			iconCount = if (state.previewLive) 9 else 8,
 			search = PanelSearch(state.parameterSearchQuery, viewModel::setParameterSearchQuery, tr("parameters.search")),
 			secondary = { ParameterSnapshotBar(state, viewModel, renamingSnapshotId) { renamingSnapshotId = it } },
 		) { labelsShown ->
@@ -637,6 +639,8 @@ internal fun ParametersListView(
 				)
 			}
 			Spacer(Modifier.weight(1f))
+			RandomPoseButtons(state, viewModel, enabled = puppet != null)
+			PanelToolbarSeparator()
 			PanelExpandCollapseButtons(
 				onExpandAll = { for (id in collectParameterGroupIds(puppet)) openOverrides[id] = true },
 				onCollapseAll = { for (id in collectParameterGroupIds(puppet)) openOverrides[id] = false },
@@ -2677,3 +2681,29 @@ private fun ParameterKeyOwnerIcon(component: ParameterKeyBoundComponent, tint: C
 	}
 }
 
+/**
+ * The random pose: a press sets the unlocked parameters to random values to look for the combinations that break;
+ * the menu beside it picks which parameters move and how far, and puts back the pose the first one replaced.
+ */
+@Composable
+private fun RandomPoseButtons(state: PSD2LiveState, viewModel: PSD2LiveViewModel, enabled: Boolean) {
+	val colors = LocalToolColors.current
+	val canvasId = (viewModel.aidCanvas(state) ?: state.activeCanvas).id
+	val keyLabel = state.keymap::labelFor
+	var menu by remember { mutableStateOf(false) }
+	val apply = { viewModel.applyRandomPose(canvasId) }
+	val restore = viewModel.randomPose.restore?.takeIf { viewModel.randomPoseRestorable(it, state) }?.let { { viewModel.restoreRandomPose() } }
+	PanelIconButton(onClick = apply, enabled = enabled,
+		tooltip = tr("canvas.aids.random.apply") + (keyLabel(ShortcutAction.RANDOM_POSE)?.let { " ($it)" } ?: "")) {
+		IconRandomPose(colors.textPrimary)
+	}
+	Box {
+		PanelIconButton(onClick = { menu = !menu }, enabled = enabled, tooltip = tr("canvas.aids.random.settings")) {
+			IconChevron(expanded = true, modifier = Modifier.size(10.dp))
+		}
+		FloatingMenu(expanded = menu, onDismiss = { menu = false }, width = 260.dp, alignment = Alignment.TopEnd) {
+			RandomPoseMenuContent(viewModel.randomPose, viewModel.canvasEditorFor(canvasId).deformationParameterIds().size,
+				apply, restore, keyLabel)
+		}
+	}
+}

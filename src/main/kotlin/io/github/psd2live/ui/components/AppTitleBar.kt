@@ -1134,6 +1134,8 @@ fun AppMenuItem(
 	isLastChild: Boolean = false,
 	modifier: Modifier = Modifier,
 	onHover: (() -> Unit)? = null,
+	/** A control of its own at the row's end, after the shortcut: a pin, say. */
+	trailing: (@Composable () -> Unit)? = null,
 	onClick: () -> Unit,
 ) {
 	val colors = LocalToolColors.current
@@ -1228,6 +1230,10 @@ fun AppMenuItem(
 				color = if (enabled) colors.textMuted else colors.textDisabled,
 				maxLines = 1,
 			)
+		}
+		if (trailing != null) {
+			Spacer(modifier = Modifier.width(12.dp))
+			trailing()
 		}
 	}
 }

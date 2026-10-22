@@ -203,8 +203,7 @@ private fun rulerNumber(value: Float): String {
 }
 
 /**
- * The canvas aids' settings, in the display rail's menu: grid, guides, snapping, onion skin and the random pose.
- * Changes apply as they are made; the onion skin's source line says what its ghosts show at the moment.
+ * The grid and guides' settings, in the display rail's menu: grid, guides and snapping. Changes apply as they are made.
  */
 @Composable
 internal fun CanvasAidsMenuContent(
@@ -214,42 +213,6 @@ internal fun CanvasAidsMenuContent(
 	onClearGuides: () -> Unit,
 	/** Puts back the guides the last clear removed, while there are some to put back. */
 	onRestoreGuides: (() -> Unit)?,
-	onionSource: String?,
-	randomPose: RandomPoseControls?,
-	editingParameters: Int,
-	onRandomPose: () -> Unit,
-	/** Puts back the pose the first random pose replaced, while it still belongs to the project on screen. */
-	onRestorePose: (() -> Unit)?,
-	keyLabel: (io.github.psd2live.ui.state.ShortcutAction) -> String?,
-	/** The grid, guides and onion skin are the edit canvas's; a preview canvas has only the random pose. */
-	showCanvasAids: Boolean = true,
-) {
-	if (showCanvasAids) CanvasAidsSections(aids, onAidsChange, guideCount, onClearGuides, onRestoreGuides, onionSource)
-	if (randomPose != null) {
-		if (showCanvasAids) FloatingMenuDivider()
-		FloatingMenuSection(tr("canvas.aids.random"))
-		FloatingMenuRadio(tr("canvas.aids.random.all"), randomPose.scope == RandomPoseScope.ALL,
-			onSelect = { randomPose.scope = RandomPoseScope.ALL })
-		FloatingMenuRadio(tr("canvas.aids.random.editing", editingParameters), randomPose.scope == RandomPoseScope.EDITING,
-			onSelect = { randomPose.scope = RandomPoseScope.EDITING },
-			hint = if (editingParameters == 0) tr("canvas.aids.random.editingNone") else null)
-		FloatingMenuSlider(tr("canvas.aids.random.amount"), randomPose.amount, { randomPose.amount = it }, 0.1f..1f,
-			"${(randomPose.amount * 100).roundToInt()}%")
-		FloatingMenuRow(tr("canvas.aids.random.apply"), onRandomPose,
-			trailing = keyLabel(io.github.psd2live.ui.state.ShortcutAction.RANDOM_POSE))
-		FloatingMenuRow(tr("canvas.aids.random.restore"), { onRestorePose?.invoke() }, enabled = onRestorePose != null,
-			trailing = keyLabel(io.github.psd2live.ui.state.ShortcutAction.RESTORE_RANDOM_POSE))
-	}
-}
-
-@Composable
-private fun CanvasAidsSections(
-	aids: CanvasAidOptions,
-	onAidsChange: (CanvasAidOptions) -> Unit,
-	guideCount: Int,
-	onClearGuides: () -> Unit,
-	onRestoreGuides: (() -> Unit)?,
-	onionSource: String?,
 ) {
 	FloatingMenuSection(tr("canvas.aids.grid"))
 	FloatingMenuSwitch(tr("canvas.aids.grid.show"), aids.showGrid, { onAidsChange(aids.copy(showGrid = it)) })
@@ -274,11 +237,12 @@ private fun CanvasAidsSections(
 	FloatingMenuDivider()
 	FloatingMenuSwitch(tr("canvas.aids.snap"), aids.snap, { onAidsChange(aids.copy(snap = it)) },
 		hint = tr("canvas.aids.snap.hint"))
-	FloatingMenuDivider()
+}
 
-	FloatingMenuSection(tr("canvas.aids.onion"))
-	FloatingMenuSwitch(tr("canvas.aids.onion.show"), aids.onionSkin, { onAidsChange(aids.copy(onionSkin = it)) },
-		hint = onionSource)
+/** The onion skin's settings, in the animation editor's menu; [source] says what its ghosts show at the moment. */
+@Composable
+internal fun OnionSkinMenuContent(aids: CanvasAidOptions, onAidsChange: (CanvasAidOptions) -> Unit, source: String) {
+	FloatingMenuSwitch(tr("canvas.aids.onion.show"), aids.onionSkin, { onAidsChange(aids.copy(onionSkin = it)) }, hint = source)
 	FloatingMenuSlider(tr("canvas.aids.onion.before"), aids.onionBefore.toFloat(), { onAidsChange(aids.copy(onionBefore = it.roundToInt())) },
 		0f..CanvasAidOptions.MAX_ONION_GHOSTS.toFloat(), "${aids.onionBefore}")
 	FloatingMenuSlider(tr("canvas.aids.onion.after"), aids.onionAfter.toFloat(), { onAidsChange(aids.copy(onionAfter = it.roundToInt())) },
@@ -289,6 +253,30 @@ private fun CanvasAidsSections(
 		"${(aids.onionOpacity * 100).roundToInt()}%")
 	AidColorRow(tr("canvas.aids.onion.beforeColor"), aids.onionBeforeColor) { onAidsChange(aids.copy(onionBeforeColor = it)) }
 	AidColorRow(tr("canvas.aids.onion.afterColor"), aids.onionAfterColor) { onAidsChange(aids.copy(onionAfterColor = it)) }
+}
+
+/** The random pose's settings and actions, in the parameters panel's menu. */
+@Composable
+internal fun RandomPoseMenuContent(
+	randomPose: RandomPoseControls,
+	editingParameters: Int,
+	onRandomPose: () -> Unit,
+	/** Puts back the pose the first random pose replaced, while it still belongs to the project on screen. */
+	onRestorePose: (() -> Unit)?,
+	keyLabel: (io.github.psd2live.ui.state.ShortcutAction) -> String?,
+) {
+	FloatingMenuRadio(tr("canvas.aids.random.all"), randomPose.scope == RandomPoseScope.ALL,
+		onSelect = { randomPose.scope = RandomPoseScope.ALL })
+	FloatingMenuRadio(tr("canvas.aids.random.editing", editingParameters), randomPose.scope == RandomPoseScope.EDITING,
+		onSelect = { randomPose.scope = RandomPoseScope.EDITING },
+		hint = if (editingParameters == 0) tr("canvas.aids.random.editingNone") else null)
+	FloatingMenuSlider(tr("canvas.aids.random.amount"), randomPose.amount, { randomPose.amount = it }, 0.1f..1f,
+		"${(randomPose.amount * 100).roundToInt()}%")
+	FloatingMenuDivider()
+	FloatingMenuRow(tr("canvas.aids.random.apply"), onRandomPose,
+		trailing = keyLabel(io.github.psd2live.ui.state.ShortcutAction.RANDOM_POSE))
+	FloatingMenuRow(tr("canvas.aids.random.restore"), { onRestorePose?.invoke() }, enabled = onRestorePose != null,
+		trailing = keyLabel(io.github.psd2live.ui.state.ShortcutAction.RESTORE_RANDOM_POSE))
 }
 
 /** The colour swatches of an aid, one per [CanvasAidColor]. */

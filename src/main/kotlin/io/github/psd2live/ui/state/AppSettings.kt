@@ -130,6 +130,20 @@ object AppSettings {
 			runCatching { preferences.putBoolean("preview_advanced", value) }
 		}
 
+	private val canvasRailState = kotlinx.coroutines.flow.MutableStateFlow(
+		runCatching { preferences.get("canvas_rail", null)?.let(CanvasRailEntry::parse) }.getOrNull() ?: CanvasRailEntry.Defaults,
+	)
+
+	/** The display toggles pinned to the canvas's display rail; the View menu carries all of them. */
+	val canvasRailFlow: kotlinx.coroutines.flow.StateFlow<Set<CanvasRailEntry>> get() = canvasRailState
+
+	var canvasRail: Set<CanvasRailEntry>
+		get() = canvasRailState.value
+		set(value) {
+			canvasRailState.value = value
+			runCatching { preferences.put("canvas_rail", CanvasRailEntry.encode(value)) }
+		}
+
 	/** The preview frame rates offered; 0 follows the display. */
 	val previewFrameRates = listOf(0, 30, 60, 120)
 

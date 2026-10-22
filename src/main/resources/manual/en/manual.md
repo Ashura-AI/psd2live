@@ -205,7 +205,7 @@ The **View** menu in the title bar manages workspace tabs and the scale of the w
 | Workspace | Next workspace / Previous workspace | {key:NEXT_TAB} / {key:PREV_TAB} |
 | Interface and scale | Zoom in UI / Zoom out UI / Reset zoom | {key:ZOOM_IN} / {key:ZOOM_OUT} / {key:ZOOM_RESET} |
 ## Display toggles on the canvas
-Toggles for mesh wireframe, deformers, rotation deformers, deform paths, skeleton, texture density, source pixels, reference images and so on are in the display bar at the lower right of the canvas; the background (checkerboard / solid / transparent) is under "View ▾" in the canvas title bar. They are stored per canvas, so two canvases in the same workspace can show wireframe on one and the finished result on the other (see [[about-viewarea]]).
+Every display toggle - texture, mesh wireframe, deformers, rotation deformers, deform paths, skeleton, texture density, source pixels, reference images, grid, guides and so on - is under "View ▾" in the canvas title bar; the common ones are also in the display rail at the lower right of the canvas, and the pin at the right of each item in "View ▾" adds it to the rail or takes it off. The rail lists only the toggles the model can use: with no deform paths in the model there is no "Deform paths" row, for instance. The background (checkerboard / solid / transparent) is under "Background ▾" in the canvas title bar. The toggles are stored per canvas, so two canvases in the same workspace can show wireframe on one and the finished result on the other (see [[about-viewarea]]).
 
 @@ modeling-menu | Modeling Menu
 The **Model** menu in the title bar holds commands that act on the whole model. Modeling for a single object (creating deformers, editing meshes, making keyforms) is done on the canvas; see [[canvas-modes]].
@@ -387,14 +387,14 @@ With **Snap to grid and guides** on ({key:TOGGLE_SNAP}), a mesh or deformer poin
 @@ onion-skin | Onion Skin
 The onion skin lays the shape at neighbouring keys or frames translucently over the current view: while shaping you see the keys either side, while animating the path through the neighbouring frames. It shows on edit canvases only, is not written to the project and is never exported.
 ## Showing the onion skin
-Click **Onion skin** in the display rail at the lower right of the canvas ({key:TOGGLE_ONION_SKIN}). What it shows depends on the moment:
+Click **Onion skin** at the right end of the animation panel's toolbar ({key:TOGGLE_ONION_SKIN}). It acts on the current edit canvas; while the current canvas is a preview canvas, on the first edit canvas. What it shows depends on the moment:
 | State | Shapes laid over |
 |---|---|
 | A motion is open in the animation panel | Frames around the playhead, every "Frame step" frames |
 | No motion is open | The keys around the current value of the parameter last set in the parameters panel: the selected object's keys on it when it has any, else the whole model's |
-The tooltip of the onion skin's row in the display rail says which of the two it is showing.
+The onion skin button's tooltip says which of the two it is showing.
 ## Settings
-In the "Onion skin" group of **Canvas aids…**: how many before and after (0–5), the frame step, the opacity, and a colour each for before and after. Layers farther from the current pose are fainter.
+Click the arrow beside the onion skin to set how many before and after (0–5), the frame step, the opacity, and a colour each for before and after. Layers farther from the current pose are fainter.
 *> The onion skin follows the canvas's display filters (selected only, layer visibility); it is not shown while a parameter snapshot is previewed on hover or in Paint mode.
 
 @@ multiview | Multiview
@@ -413,10 +413,10 @@ So when you drag a parameter on the editing canvas, the preview canvas shows the
 @@ random-pose | Random Pose
 The random pose sets parameters to random values in their ranges, to check many parameter combinations at once and find clipping, tearing or runaway deformation.
 ## How to use
-1. Click **Random pose** in the display rail at the lower right of the canvas ({key:RANDOM_POSE}); each click gives a new pose.
-2. When done, click **Restore pose** ({key:RESTORE_RANDOM_POSE}); the parameters return to the values they had before the first random pose.
+1. Click the die, **Random pose**, in the parameters panel's toolbar ({key:RANDOM_POSE}); each click gives a new pose.
+2. When done, click **Restore pose** in the arrow menu beside the die ({key:RESTORE_RANDOM_POSE}); the parameters return to the values they had before the first random pose.
 ## Choosing the parameters
-In the "Random pose" group of **Canvas aids…**:
+In the arrow menu beside the die:
 | Item | Effect |
 |---|---|
 | All unlocked parameters | Every parameter takes part; parameters locked in the parameters panel stay put |
@@ -1490,7 +1490,7 @@ When a whole mesh that spans a joint (such as an arm that has not been split, or
 2. Weights are computed automatically over the whole limb: each vertex follows at most the two bones on either side of the joint, with a smooth transition within the **Joint band**.
 3. To correct them, use the **Weights** sub-tool: select a bound mesh and a bone in the same limb, and paint with add, subtract, replace or smooth.
 4. In **Tool Details** you can clean up and restore the automatic weights, or copy / mirror the weights to another mesh.
-5. While posing, turn on **Show skin weights** in the display bar to check the transitions at the joints by bone color.
+5. While posing, turn on **Show skin weights** under "View ▾" (or pin it to the display rail) to check the transitions at the joints by bone color.
 {tutorial=SKELETON}
 Vertices inside the joint band blend by angle and rotate around the joint, so the limb keeps its width when it bends.
 *> Cubism's skinning converts the mesh directly into a chain of rotation deformers and you then edit on that chain; here the weights belong to the skeleton, and changing the bones bakes again. For the full description see [[skeleton]].

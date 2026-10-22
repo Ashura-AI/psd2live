@@ -46,6 +46,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.i18n.tr
+import io.github.psd2live.ui.components.AppMenuHeader
+import io.github.psd2live.ui.components.AppMenuItem
+import io.github.psd2live.ui.components.AppMenuSeparator
+import io.github.psd2live.ui.components.CompactIconButton
+import io.github.psd2live.ui.components.IconContextualWarp
+import io.github.psd2live.ui.components.IconDimUnselected
+import io.github.psd2live.ui.components.IconPin
+import io.github.psd2live.ui.components.IconReset
+import io.github.psd2live.ui.components.IconSelectionBounds
+import io.github.psd2live.ui.components.IconWarpShowIndices
+import io.github.psd2live.ui.components.IconWarpShowNames
 import io.github.psd2live.ui.components.IconDeformPath
 import io.github.psd2live.ui.components.IconPathHardness
 import io.github.psd2live.ui.components.IconPathWidth
@@ -57,6 +68,8 @@ import io.github.psd2live.ui.components.IconTextureView
 import io.github.psd2live.ui.components.IconWarpDeformer
 import io.github.psd2live.ui.components.GridIcon
 import io.github.psd2live.ui.components.ICON_FINE
+import io.github.psd2live.ui.state.CanvasRailEntry
+import io.github.psd2live.ui.state.CanvasViewContent
 import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.state.TabViewOptions
 import io.github.psd2live.ui.theme.LocalToolColors
@@ -271,194 +284,246 @@ private fun RailKeyLabel(keyLabel: String, keyCap: Boolean, selected: Boolean) {
 }
 
 /**
- * Bottom-right mirror of the left tool palette: the most-used per-tab display toggles, so the
- * View menu does not have to be opened mid-edit.
- *
- * Path guides and selection-focus toggles are Edit-only overlays, so [showPathGuides] /
- * [showSelectionFocus] hide those rows on Preview tabs.
+ * Bottom-right mirror of the left tool palette: the display toggles the user pinned ([pins]), so the View menu does
+ * not have to be opened mid-edit. A pinned toggle shows only while [content] has something for it to show; the View
+ * menu carries every toggle and pins them. Nothing to show leaves the rail out.
  */
 @Composable
 internal fun CanvasViewOptionsBar(
 	options: TabViewOptions,
 	onOptionsChange: (TabViewOptions) -> Unit,
-	showPathGuides: Boolean = true,
-	showSelectionFocus: Boolean = true,
-	/** Edit canvases can sample layer rasters (source pixels) instead of the atlas. */
-	showSourcePixels: Boolean = false,
-	/** The document has a Layout reference image to lay over the canvas. */
-	hasReference: Boolean = false,
-	/** Shown with no reference image yet: the toggle then adds one instead. */
-	onAddReference: (() -> Unit)? = null,
-	hasReferenceLayers: Boolean = false,
-	/** Edit canvases can tint layers by their texture density. */
-	showDensity: Boolean = false,
-	/** The skin weight wash over the skeleton's meshes: shown, hidden, or null with no skeleton to show it for. */
-	skinWeights: Boolean? = null,
+	content: CanvasViewContent,
+	pins: Set<CanvasRailEntry>,
+	/** The skin weight wash over the skeleton's meshes. */
+	skinWeights: Boolean = false,
 	onSkinWeightsChange: (Boolean) -> Unit = {},
-	/** The grid, guides, onion skin and random pose rows; null leaves them out. */
+	/** The grid and guides' rows and settings: the edit canvas's; null leaves them out. */
 	aids: CanvasAidsRail? = null,
 	modifier: Modifier = Modifier,
 ) {
 	fun apply(updated: TabViewOptions) {
 		onOptionsChange(updated.normalized())
 	}
+	fun shown(entry: CanvasRailEntry) = entry in pins && content.shows(entry) && when (entry) {
+		// A path's width and hardness are drawn on the paths, so they come with them.
+		CanvasRailEntry.PATH_WIDTH, CanvasRailEntry.PATH_HARDNESS -> options.showDeformPaths
+		else -> true
+	}
+	val display = CanvasRailEntry.entries.filter { it !in RAIL_FOCUS_AND_AIDS && shown(it) }
+	val focus = shown(CanvasRailEntry.SELECTED_ONLY)
+	if (display.isEmpty() && !focus && aids == null) return
 	var aidsMenu by remember { mutableStateOf(false) }
 	// An open settings menu keeps the rail open under it.
 	CanvasOptionsRail(modifier.tutorialTarget(TutorialTargetId.VIEW_OPTIONS_BAR), pinned = aidsMenu) {
-		RailToggle(
-			label = tr("canvas.visibility.texture"),
-			isChecked = options.showTexture,
-			icon = { IconTextureView(tint = it, modifier = Modifier.size(14.dp)) },
-			onClick = { apply(options.copy(showTexture = !options.showTexture)) },
-		)
-		if (showSourcePixels) {
+		for (entry in display) {
+			val toggle = canvasViewToggle(entry, options, skinWeights)
 			RailToggle(
-				label = tr("canvas.visibility.sourcePixels"),
-				isChecked = options.sourcePixels,
-				icon = { IconPixelSource(source = options.sourcePixels, tint = it, modifier = Modifier.size(14.dp)) },
-				onClick = { apply(options.copy(sourcePixels = !options.sourcePixels)) },
+				label = toggle.label,
+				isChecked = toggle.checked,
+				icon = toggle.icon,
+				onClick = { if (entry == CanvasRailEntry.SKIN_WEIGHTS) onSkinWeightsChange(!skinWeights) else apply(toggle.toggled()) },
 			)
 		}
-		if (hasReference) {
-			RailToggle(
-				label = tr("canvas.visibility.reference"),
-				isChecked = options.showReference,
-				icon = { IconReferenceImage(tint = it) },
-				onClick = { apply(options.copy(showReference = !options.showReference)) },
-			)
-		} else if (onAddReference != null) {
-			RailToggle(
-				label = tr("references.add"),
-				isChecked = false,
-				icon = { IconReferenceImage(tint = it) },
-				onClick = onAddReference,
-			)
-		}
-		if (hasReferenceLayers) {
-			RailToggle(
-				label = tr("canvas.visibility.referenceLayersOver"),
-				isChecked = options.referenceLayersOver,
-				icon = { IconReferenceImage(tint = it) },
-				onClick = { apply(options.copy(referenceLayersOver = !options.referenceLayersOver)) },
-			)
-		}
-		if (showDensity) {
-			RailToggle(
-				label = tr("canvas.visibility.density"),
-				isChecked = options.densityHeatmap,
-				icon = { io.github.psd2live.ui.views.texture.IconHeatmap() },
-				onClick = { apply(options.copy(densityHeatmap = !options.densityHeatmap)) },
-			)
-		}
-		RailToggle(
-			label = tr("canvas.visibility.mesh"),
-			isChecked = options.showMesh,
-			icon = { IconMeshWireframe(tint = it, modifier = Modifier.size(14.dp)) },
-			onClick = { apply(options.copy(showMesh = !options.showMesh)) },
-		)
-		RailToggle(
-			label = tr("canvas.visibility.warp"),
-			isChecked = options.showWarp,
-			icon = { IconWarpDeformer(tint = it, modifier = Modifier.size(14.dp)) },
-			onClick = { apply(options.copy(showWarp = !options.showWarp)) },
-		)
-		RailToggle(
-			label = tr("canvas.visibility.rotation"),
-			isChecked = options.showRotation,
-			icon = { IconRotationDeformer(tint = it, modifier = Modifier.size(14.dp)) },
-			onClick = { apply(options.copy(showRotation = !options.showRotation)) },
-		)
-		if (showPathGuides) {
-			RailToggle(
-				label = tr("canvas.visibility.paths"),
-				isChecked = options.showDeformPaths,
-				icon = { IconDeformPath(tint = it, modifier = Modifier.size(14.dp)) },
-				onClick = { apply(options.copy(showDeformPaths = !options.showDeformPaths)) },
-			)
-			if (options.showDeformPaths) {
-				RailToggle(
-					label = tr("canvas.information.pathWidth"),
-					isChecked = options.pathShowWidth,
-					icon = { IconPathWidth(tint = it) },
-					onClick = { apply(options.copy(pathShowWidth = !options.pathShowWidth)) },
-				)
-				RailToggle(
-					label = tr("canvas.information.pathHardness"),
-					isChecked = options.pathShowHardness,
-					icon = { IconPathHardness(tint = it) },
-					onClick = { apply(options.copy(pathShowHardness = !options.pathShowHardness)) },
-				)
-			}
-			RailToggle(
-				label = tr("canvas.visibility.skeleton"),
-				isChecked = options.showSkeleton,
-				icon = { IconSkeleton(tint = it, modifier = Modifier.size(14.dp)) },
-				onClick = { apply(options.copy(showSkeleton = !options.showSkeleton)) },
-			)
-			if (skinWeights != null) RailToggle(
-				label = tr("skeleton.pose.weights"),
-				isChecked = skinWeights,
-				icon = { IconSkinWeights(tint = it) },
-				onClick = { onSkinWeightsChange(!skinWeights) },
-			)
-		}
-
-		if (showSelectionFocus) {
-			RailDivider()
-
-			RailToggle(
-				label = tr("canvas.information.selectedOnly"),
-				isChecked = options.filterSelectedOnly,
-				icon = { IconSelectedOnly(tint = it, modifier = Modifier.size(14.dp)) },
-				onClick = { apply(options.copy(filterSelectedOnly = !options.filterSelectedOnly)) },
-			)
+		if (focus) {
+			if (display.isNotEmpty()) RailDivider()
+			val toggle = canvasViewToggle(CanvasRailEntry.SELECTED_ONLY, options, skinWeights)
+			RailToggle(toggle.label, toggle.checked, toggle.icon) { apply(toggle.toggled()) }
 		}
 		if (aids != null) {
-			RailDivider()
+			if (display.isNotEmpty() || focus) RailDivider()
 			val a = options.aids
 			fun applyAids(updated: io.github.psd2live.ui.CanvasAidOptions) = apply(options.copy(aids = updated))
-			if (aids.canvasAids) {
-				RailItem(tr("canvas.aids.grid"), a.showGrid, keyLabel = aids.keyLabel(ShortcutAction.TOGGLE_GRID).orEmpty(),
-					icon = { IconCanvasGrid(it) }, onClick = { applyAids(a.copy(showGrid = !a.showGrid)) })
-				RailItem(tr("canvas.aids.guides"), a.showGuides, keyLabel = aids.keyLabel(ShortcutAction.TOGGLE_GUIDES).orEmpty(),
-					icon = { IconCanvasGuides(it) }, onClick = { applyAids(a.copy(showGuides = !a.showGuides)) })
-				RailItem(tr("canvas.aids.onion"), a.onionSkin, keyLabel = aids.keyLabel(ShortcutAction.TOGGLE_ONION_SKIN).orEmpty(),
-					tooltip = aids.onionSource.takeIf { a.onionSkin },
-					icon = { IconOnionSkin(it) }, onClick = { applyAids(a.copy(onionSkin = !a.onionSkin)) })
-			}
-			RailItem(tr("canvas.aids.random.apply"), false, keyLabel = aids.keyLabel(ShortcutAction.RANDOM_POSE).orEmpty(),
-				icon = { IconRandomPose(it) }, onClick = aids.onRandomPose)
-			aids.onRestorePose?.let { restore ->
-				RailItem(tr("canvas.aids.random.restore"), false, keyLabel = aids.keyLabel(ShortcutAction.RESTORE_RANDOM_POSE).orEmpty(),
-					icon = { IconRestorePose(it) }, onClick = restore)
-			}
+			if (shown(CanvasRailEntry.GRID)) RailItem(tr("canvas.aids.grid"), a.showGrid,
+				keyLabel = aids.keyLabel(ShortcutAction.TOGGLE_GRID).orEmpty(),
+				icon = { IconCanvasGrid(it) }, onClick = { applyAids(a.copy(showGrid = !a.showGrid)) })
+			if (shown(CanvasRailEntry.GUIDES)) RailItem(tr("canvas.aids.guides"), a.showGuides,
+				keyLabel = aids.keyLabel(ShortcutAction.TOGGLE_GUIDES).orEmpty(),
+				icon = { IconCanvasGuides(it) }, onClick = { applyAids(a.copy(showGuides = !a.showGuides)) })
 			Box {
 				RailItem(tr("canvas.aids.settings"), aidsMenu, icon = { IconAidSettings(it) }, onClick = { aidsMenu = !aidsMenu })
 				FloatingMenu(expanded = aidsMenu, onDismiss = { aidsMenu = false; aids.onMenuClosed() }, width = 260.dp,
 					alignment = Alignment.BottomEnd, rise = true) {
-					CanvasAidsMenuContent(a, ::applyAids, aids.guideCount, aids.onClearGuides, aids.onRestoreGuides, aids.onionSource, aids.randomPose,
-						aids.editingParameters, aids.onRandomPose, aids.onRestorePose, aids.keyLabel, showCanvasAids = aids.canvasAids)
+					CanvasAidsMenuContent(a, ::applyAids, aids.guideCount, aids.onClearGuides, aids.onRestoreGuides)
 				}
 			}
 		}
 	}
 }
 
-/** What the display rail's canvas-aid rows need beyond the view options. */
+/** The rail's own groups after the display toggles: the selection focus, then the grid and guides. */
+private val RAIL_FOCUS_AND_AIDS = setOf(CanvasRailEntry.SELECTED_ONLY, CanvasRailEntry.GRID, CanvasRailEntry.GUIDES)
+
+/** One display toggle as the rail and the View menu show it: its label, state and icon, and the options it sets. */
+internal class CanvasViewToggle(
+	val label: String,
+	val checked: Boolean,
+	val icon: @Composable (Color) -> Unit,
+	val toggled: () -> TabViewOptions,
+)
+
+/**
+ * [entry]'s toggle over [options]. [skinWeights] is the edit canvas's own state rather than a view option, so its
+ * [CanvasViewToggle.toggled] leaves the options as they are.
+ */
+@Composable
+internal fun canvasViewToggle(entry: CanvasRailEntry, options: TabViewOptions, skinWeights: Boolean): CanvasViewToggle {
+	val o = options
+	val a = o.aids
+	return when (entry) {
+		CanvasRailEntry.TEXTURE -> CanvasViewToggle(tr("canvas.visibility.texture"), o.showTexture,
+			{ IconTextureView(tint = it, modifier = Modifier.size(14.dp)) }) { o.copy(showTexture = !o.showTexture) }
+		CanvasRailEntry.SOURCE_PIXELS -> CanvasViewToggle(tr("canvas.visibility.sourcePixels"), o.sourcePixels,
+			{ IconPixelSource(source = o.sourcePixels, tint = it, modifier = Modifier.size(14.dp)) }) { o.copy(sourcePixels = !o.sourcePixels) }
+		CanvasRailEntry.REFERENCE -> CanvasViewToggle(tr("canvas.visibility.reference"), o.showReference,
+			{ IconReferenceImage(tint = it) }) { o.copy(showReference = !o.showReference) }
+		CanvasRailEntry.REFERENCE_LAYERS_OVER -> CanvasViewToggle(tr("canvas.visibility.referenceLayersOver"), o.referenceLayersOver,
+			{ IconReferenceImage(tint = it) }) { o.copy(referenceLayersOver = !o.referenceLayersOver) }
+		CanvasRailEntry.DENSITY -> CanvasViewToggle(tr("canvas.visibility.density"), o.densityHeatmap,
+			{ io.github.psd2live.ui.views.texture.IconHeatmap() }) { o.copy(densityHeatmap = !o.densityHeatmap) }
+		CanvasRailEntry.MESH -> CanvasViewToggle(tr("canvas.visibility.mesh"), o.showMesh,
+			{ IconMeshWireframe(tint = it, modifier = Modifier.size(14.dp)) }) { o.copy(showMesh = !o.showMesh) }
+		CanvasRailEntry.WARP -> CanvasViewToggle(tr("canvas.visibility.warp"), o.showWarp,
+			{ IconWarpDeformer(tint = it, modifier = Modifier.size(14.dp)) }) { o.copy(showWarp = !o.showWarp) }
+		CanvasRailEntry.ROTATION -> CanvasViewToggle(tr("canvas.visibility.rotation"), o.showRotation,
+			{ IconRotationDeformer(tint = it, modifier = Modifier.size(14.dp)) }) { o.copy(showRotation = !o.showRotation) }
+		CanvasRailEntry.PATHS -> CanvasViewToggle(tr("canvas.visibility.paths"), o.showDeformPaths,
+			{ IconDeformPath(tint = it, modifier = Modifier.size(14.dp)) }) { o.copy(showDeformPaths = !o.showDeformPaths) }
+		CanvasRailEntry.PATH_WIDTH -> CanvasViewToggle(tr("canvas.information.pathWidth"), o.pathShowWidth,
+			{ IconPathWidth(tint = it) }) { o.copy(pathShowWidth = !o.pathShowWidth) }
+		CanvasRailEntry.PATH_HARDNESS -> CanvasViewToggle(tr("canvas.information.pathHardness"), o.pathShowHardness,
+			{ IconPathHardness(tint = it) }) { o.copy(pathShowHardness = !o.pathShowHardness) }
+		CanvasRailEntry.SKELETON -> CanvasViewToggle(tr("canvas.visibility.skeleton"), o.showSkeleton,
+			{ IconSkeleton(tint = it, modifier = Modifier.size(14.dp)) }) { o.copy(showSkeleton = !o.showSkeleton) }
+		CanvasRailEntry.SKIN_WEIGHTS -> CanvasViewToggle(tr("skeleton.pose.weights"), skinWeights, { IconSkinWeights(tint = it) }) { o }
+		CanvasRailEntry.SELECTED_ONLY -> CanvasViewToggle(tr("canvas.information.selectedOnly"), o.filterSelectedOnly,
+			{ IconSelectedOnly(tint = it, modifier = Modifier.size(14.dp)) }) { o.copy(filterSelectedOnly = !o.filterSelectedOnly) }
+		CanvasRailEntry.GRID -> CanvasViewToggle(tr("canvas.aids.grid"), a.showGrid, { IconCanvasGrid(it) }) {
+			o.copy(aids = a.copy(showGrid = !a.showGrid))
+		}
+		CanvasRailEntry.GUIDES -> CanvasViewToggle(tr("canvas.aids.guides"), a.showGuides, { IconCanvasGuides(it) }) {
+			o.copy(aids = a.copy(showGuides = !a.showGuides))
+		}
+	}
+}
+
+/**
+ * The canvas's View menu: every per-tab display toggle, the single place for the ones that are not pinned to the
+ * display rail. A toggle's pin puts it on the rail or takes it off ([pins]); the rail still shows a pinned toggle only
+ * while the canvas has something for it to show.
+ *
+ * Sections: the canvas and model, the selection and focus (edit canvases), the annotations and canvas aids.
+ * Path guides, the skeleton and the selection chrome are edit-canvas overlays, so a preview canvas leaves them out.
+ */
+@Composable
+internal fun CanvasViewMenuItems(
+	options: TabViewOptions,
+	onOptionsChange: (TabViewOptions) -> Unit,
+	onDismiss: () -> Unit,
+	content: CanvasViewContent,
+	pins: Set<CanvasRailEntry>,
+	onPinsChange: (Set<CanvasRailEntry>) -> Unit,
+	skinWeights: Boolean,
+	onSkinWeightsChange: (Boolean) -> Unit,
+	onReset: () -> Unit,
+) {
+	val edit = content.edit
+	fun apply(updated: TabViewOptions) {
+		onOptionsChange(updated.normalized())
+		onDismiss()
+	}
+	@Composable
+	fun Entry(entry: CanvasRailEntry, enabled: Boolean = true, isChild: Boolean = false, isLastChild: Boolean = false) {
+		val toggle = canvasViewToggle(entry, options, skinWeights)
+		val pinned = entry in pins
+		AppMenuItem(
+			text = toggle.label,
+			icon = toggle.icon,
+			isChecked = toggle.checked,
+			enabled = enabled,
+			isChild = isChild,
+			isLastChild = isLastChild,
+			trailing = {
+				CompactIconButton(
+					onClick = { onPinsChange(if (pinned) pins - entry else pins + entry) },
+					tooltip = tr(if (pinned) "canvas.rail.unpin" else "canvas.rail.pin"),
+					size = 18.dp,
+				) { IconPin(pinned, tint = if (pinned) LocalToolColors.current.accent else LocalToolColors.current.textDisabled) }
+			},
+			onClick = {
+				if (entry == CanvasRailEntry.SKIN_WEIGHTS) { onSkinWeightsChange(!skinWeights); onDismiss() } else apply(toggle.toggled())
+			},
+		)
+	}
+	@Composable
+	fun Plain(label: String, checked: Boolean, icon: @Composable (Color) -> Unit, updated: () -> TabViewOptions) =
+		AppMenuItem(text = label, icon = icon, isChecked = checked, onClick = { apply(updated()) })
+
+	AppMenuHeader(tr("menu.view.category.canvas"))
+	Entry(CanvasRailEntry.TEXTURE)
+	if (edit) Entry(CanvasRailEntry.SOURCE_PIXELS)
+	if (edit && content.reference) Entry(CanvasRailEntry.REFERENCE)
+	if (edit && content.referenceLayers) Entry(CanvasRailEntry.REFERENCE_LAYERS_OVER)
+	if (edit) Entry(CanvasRailEntry.DENSITY)
+	Entry(CanvasRailEntry.MESH)
+	Entry(CanvasRailEntry.WARP)
+	Entry(CanvasRailEntry.ROTATION)
+	if (edit) {
+		Entry(CanvasRailEntry.PATHS)
+		// A path's width and hardness hang off the paths: disabled, not hidden, while they are off, so the pair never
+		// jumps out of the menu and their remembered state stays in sight.
+		Entry(CanvasRailEntry.PATH_WIDTH, enabled = options.showDeformPaths, isChild = true)
+		Entry(CanvasRailEntry.PATH_HARDNESS, enabled = options.showDeformPaths, isChild = true, isLastChild = true)
+		Entry(CanvasRailEntry.SKELETON)
+		if (content.skeleton) Entry(CanvasRailEntry.SKIN_WEIGHTS)
+
+		AppMenuSeparator()
+		AppMenuHeader(tr("menu.view.category.selection"))
+		Plain(tr("canvas.information.selectionBounds"), options.showSelectionBounds, { IconSelectionBounds(tint = it) }) {
+			options.copy(showSelectionBounds = !options.showSelectionBounds)
+		}
+		Plain(tr("canvas.information.contextualWarp"), options.contextualWarp, { IconContextualWarp(tint = it) }) {
+			options.copy(contextualWarp = !options.contextualWarp)
+		}
+		Entry(CanvasRailEntry.SELECTED_ONLY)
+		Plain(tr("canvas.visibility.dimUnselected"), options.dimUnselected, { IconDimUnselected(tint = it) }) {
+			options.copy(dimUnselected = !options.dimUnselected)
+		}
+	}
+
+	AppMenuSeparator()
+	AppMenuHeader(tr("menu.view.category.overlays"))
+	Plain(tr("canvas.information.names"), options.warpShowNames, { IconWarpShowNames(tint = it) }) {
+		options.copy(warpShowNames = !options.warpShowNames)
+	}
+	Plain(tr("canvas.information.indices"), options.warpShowIndices, { IconWarpShowIndices(tint = it) }) {
+		options.copy(warpShowIndices = !options.warpShowIndices)
+	}
+	if (edit) {
+		Entry(CanvasRailEntry.GRID)
+		Entry(CanvasRailEntry.GUIDES)
+	}
+
+	AppMenuSeparator()
+	AppMenuItem(
+		text = tr("tab.resetView"),
+		icon = { IconReset(tint = it, modifier = Modifier.size(14.dp)) },
+		indentCheckSpace = true,
+		onClick = onReset,
+	)
+	AppMenuItem(
+		text = tr("canvas.rail.resetPins"),
+		indentCheckSpace = true,
+		enabled = pins != CanvasRailEntry.Defaults,
+		onClick = { onPinsChange(CanvasRailEntry.Defaults) },
+	)
+}
+
+/** What the display rail's grid and guide rows need beyond the view options. */
 internal class CanvasAidsRail(
-	/** The grid, guides and onion skin rows: the edit canvas's. */
-	val canvasAids: Boolean,
 	val guideCount: Int,
 	val onClearGuides: () -> Unit,
 	/** Puts back the guides the last clear removed; null when there are none to put back. */
 	val onRestoreGuides: (() -> Unit)?,
-	/** What the onion skin's ghosts show now, or why there are none. */
-	val onionSource: String?,
-	val randomPose: io.github.psd2live.ui.state.RandomPoseControls,
-	val editingParameters: Int,
-	val onRandomPose: () -> Unit,
-	/** Puts back the pose the random poses replaced; null when there is none for the project on screen. */
-	val onRestorePose: (() -> Unit)?,
 	val keyLabel: (ShortcutAction) -> String?,
 	/** Hands the focus back to the canvas. */
 	val onMenuClosed: () -> Unit,
@@ -474,7 +539,7 @@ internal fun IconReferenceImage(tint: Color, size: Dp = 14.dp) = GridIcon(Modifi
 
 /** Atlas pixels: a coarse 2x2 grid; source pixels: a fine 4x4 grid. */
 @Composable
-private fun IconPixelSource(source: Boolean, tint: Color, modifier: Modifier) = GridIcon(modifier, tint) {
+internal fun IconPixelSource(source: Boolean, tint: Color, modifier: Modifier) = GridIcon(modifier, tint) {
 	val cells = if (source) 4 else 2
 	val side = 13.2f / cells
 	for (y in 0 until cells) for (x in 0 until cells) {
@@ -485,7 +550,7 @@ private fun IconPixelSource(source: Boolean, tint: Color, modifier: Modifier) = 
 
 /** Skin weights: a bone over a wash that fades from it. */
 @Composable
-private fun IconSkinWeights(tint: Color) = GridIcon(Modifier.size(14.dp), tint) {
+internal fun IconSkinWeights(tint: Color) = GridIcon(Modifier.size(14.dp), tint) {
 	fillBox(2.4f, 9.6f, 4.4f, 6f, 0.8f, tint.copy(alpha = 0.9f))
 	fillBox(6.8f, 9.6f, 4.4f, 6f, 0f, tint.copy(alpha = 0.55f))
 	fillBox(11.2f, 9.6f, 4.4f, 6f, 0.8f, tint.copy(alpha = 0.25f))

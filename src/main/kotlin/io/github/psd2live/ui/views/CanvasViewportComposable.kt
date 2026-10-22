@@ -421,13 +421,6 @@ fun CanvasViewportComposable(
 		})
 	}
 	val onionGeometry = onionFrame?.ghosts.orEmpty()
-	val onionSource = when {
-		!aids.onionSkin -> null
-		onionClip != null -> tr("canvas.aids.onion.frames", onionClip.name)
-		onionParameter != null -> tr("canvas.aids.onion.keys",
-			previewModel?.rig?.puppet?.parameters?.firstOrNull { it.id == onionParameter }?.name ?: onionParameter.raw)
-		else -> tr("canvas.aids.onion.none")
-	}
 	val guideDrag = remember { CanvasGuideDrag() }
 	val guideState = if (allowSelectionChrome) canvasState else canvasState.copy(
 		selectedLayerId = null,
@@ -2411,34 +2404,20 @@ fun CanvasViewportComposable(
 				CanvasDropTiles(viewModel, canvasId, selected?.let { it.id.raw to it.name }, Modifier.align(Alignment.BottomCenter).padding(bottom = 56.dp, start = 16.dp, end = 16.dp))
 			}
 			// Bottom-right: display-toggle rail (mirrors the left tool palette).
+			val railPins by io.github.psd2live.ui.state.AppSettings.canvasRailFlow.collectAsState()
 			CanvasViewOptionsBar(
 				options = viewOptions,
 				onOptionsChange = { viewModel.setCanvasViewOptions(canvasId, it, mode) },
-				showPathGuides = mode == CanvasMode.EDIT,
-				showSelectionFocus = mode == CanvasMode.EDIT,
-				showSourcePixels = mode == CanvasMode.EDIT,
-				hasReference = mode == CanvasMode.EDIT && layoutReferences.isNotEmpty(),
-				onAddReference = if (mode == CanvasMode.EDIT && canvasState.analysis != null) ({
-					val files = io.github.psd2live.ui.utils.NativeFilePicker.chooseMaterialFiles(awtWindow)
-					if (files.isNotEmpty()) viewModel.importMaterials(files.take(1).map { it.toPath() }, null, asReference = true)
-				}) else null,
-				hasReferenceLayers = mode == CanvasMode.EDIT && canvasState.previewModel?.referenceLayerIds?.isNotEmpty() == true,
-				showDensity = mode == CanvasMode.EDIT,
-				// The skin weights belong to the skeleton's meshes, so the toggle comes with an armature.
-				skinWeights = editor.showSkeletonWeights.takeIf { mode == CanvasMode.EDIT && editor.committedSkeleton != null },
+				content = io.github.psd2live.ui.state.CanvasViewContent.of(canvasState, mode,
+					skeleton = mode == CanvasMode.EDIT && editor.committedSkeleton != null),
+				pins = railPins,
+				skinWeights = editor.showSkeletonWeights,
 				onSkinWeightsChange = { editor.showSkeletonWeights = it },
-				aids = CanvasAidsRail(
-					canvasAids = mode == CanvasMode.EDIT,
+				aids = if (mode != CanvasMode.EDIT) null else CanvasAidsRail(
 					guideCount = shownGuides.size,
 					onClearGuides = { viewModel.clearCanvasGuides() },
 					onRestoreGuides = viewModel.clearedCanvasGuides?.takeIf { it.first == canvasState.projectOpenGeneration }
 						?.let { { viewModel.restoreClearedCanvasGuides() } },
-					onionSource = onionSource,
-					randomPose = viewModel.randomPose,
-					editingParameters = editor.deformationParameterIds().size,
-					onRandomPose = { viewModel.applyRandomPose(canvasId); focusRequester.requestFocus() },
-					onRestorePose = viewModel.randomPose.restore?.takeIf { viewModel.randomPoseRestorable(it, canvasState) }
-						?.let { { viewModel.restoreRandomPose(); focusRequester.requestFocus() } },
 					keyLabel = canvasState.keymap::labelFor,
 					onMenuClosed = { focusRequester.requestFocus() },
 				),
