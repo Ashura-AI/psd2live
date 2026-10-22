@@ -78,6 +78,24 @@ internal object RigIdConversion {
 		)
 	}
 
+	fun remap(renames: Renames): RigIdRemap = RigIdRemap(
+		parameters = renames.of("parameter").entries.associate { ParameterId(it.key) to ParameterId(it.value) },
+		groups = renames.of("param_group").entries.associate { ParameterGroupId(it.key) to ParameterGroupId(it.value) },
+		drawables = renames.of("mesh").entries.associate { DrawableId(it.key) to DrawableId(it.value) },
+		deformers = renames.of("deformer").entries.associate { DeformerId(it.key) to DeformerId(it.value) },
+		parts = renames.of("part").entries.associate { PartId(it.key) to PartId(it.value) },
+	)
+
+	/**
+	 * [generated] - a rig as the generators make it, under the IDs they give - with the conversions in [journal]
+	 * applied: under the IDs the authored rig holds, so a regeneration merge matches a converted object with its
+	 * generated self rather than reading it as deleted and made anew.
+	 */
+	fun converted(generated: PuppetModel, journal: List<JsonObject>): PuppetModel {
+		val renames = renames(journal)
+		return if (renames.isEmpty) generated else remap(renames).model(generated)
+	}
+
 	fun apply(model: PuppetModel, command: JsonObject): PuppetModel {
 		require(command.keys == setOf("op", "renames")) { "Invalid ID conversion" }
 		val renames = renames(command)
@@ -169,9 +187,19 @@ internal object RigIdConversion {
  * be told apart by a runtime or by Cubism, so an export refuses them; an ID outside Cubism's alphabet only warns.
  */
 object RigIdCheck {
-	private fun all(model: PuppetModel): List<Pair<String, String>> =
-		model.parameters.map { "parameter" to it.id.raw } + model.parts.map { "part" to it.id.raw } +
-			model.deformers.map { "deformer" to it.id.raw } + model.drawables.map { "mesh" to it.id.raw }
+	private fun all(model: PuppetModel): List<Pair<String, String>> = buildList {
+		model.parameters.mapTo(this) { "parameter" to it.id.raw }; model.parts.mapTo(this) { "part" to it.id.raw }
+		model.deformers.mapTo(this) { "deformer" to it.id.raw }; model.drawables.mapTo(this) { "mesh" to it.id.raw }
+		fun walk(nodes: List<ParameterNode>) { for (n in nodes) if (n is ParameterNode.Group) { add("param_group" to n.id.raw); walk(n.children) } }
+		walk(model.parameterTree)
+	}
+
+	/** The model [preview] exports: interior effects lowered or dropped as the export resolves them ([RigIrCompiler]). */
+	fun exported(preview: RigPreviewModel): PuppetModel {
+		val (analysis, _, rig, config) = preview
+		return io.github.psd2live.core.interior.InteriorLifecycle.exportModel(rig.puppet, config.rigEdits,
+			PhysicsCatalog.active(analysis, config, rig.puppet.parameters.mapTo(linkedSetOf()) { it.id.raw }, rig.puppet))
+	}
 
 	/** `kind id` for each ID more than one object of its kind holds. */
 	fun conflicts(model: PuppetModel): List<String> =

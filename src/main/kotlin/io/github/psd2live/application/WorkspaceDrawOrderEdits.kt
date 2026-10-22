@@ -16,7 +16,7 @@ internal object WorkspaceDrawOrderEdits {
         validateOperationSchema(request, WorkspaceDrawOrderSchemas.request)
         val raw = request.getValue("target").jsonPrimitive.content.removePrefix("mesh:").removePrefix("layer:")
         val drawable = model.rig.puppet.drawables.singleOrNull { it.id.raw == raw }
-            ?: model.rig.puppet.drawables.singleOrNull { model.rig.layerIdByDrawableId[it.id.raw] == raw }
+            ?: model.rig.puppet.drawables.singleOrNull { model.rig.ownLayerIdByDrawableId[it.id.raw] == raw }
             ?: throw IllegalArgumentException("Draw-order target not found: $raw")
         // A copy over the bangs draws where its bangs are: an override would not last.
         model.rig.seeThroughCopies[drawable.id.raw]?.let { throw WorkspaceGeneratedCopyEdit(drawable.id.raw, it) }
@@ -44,7 +44,7 @@ internal object WorkspaceDrawOrderEdits {
     fun beside(document: WorkspaceDocument, model: RigPreviewModel, anchor: String, layerIds: List<String>, inFront: Boolean): WorkspaceDocument {
         if (layerIds.isEmpty()) return document
         val drawables = model.rig.puppet.drawables
-        val target = drawables.firstOrNull { model.rig.layerIdByDrawableId[it.id.raw] == anchor } ?: drawables.firstOrNull { it.id.raw == anchor }
+        val target = drawables.firstOrNull { model.rig.ownLayerIdByDrawableId[it.id.raw] == anchor } ?: drawables.firstOrNull { it.id.raw == anchor }
             ?: return document
         val at = target.drawOrder
         val others = drawables.filter { it !== target && model.rig.layerIdByDrawableId[it.id.raw] !in layerIds }.map { it.drawOrder }

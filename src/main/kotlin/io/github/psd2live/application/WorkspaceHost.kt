@@ -1181,6 +1181,9 @@ internal class WorkspaceHost<V>(
 
     override fun findObjects(request: JsonObject): JsonObject = captureQueries().findObjects(request)
 
+    override fun planObjectEdit(operation: String, request: JsonObject): Pair<JsonObject, JsonObject> =
+        captureQueries().planObjectEdit(operation, request)
+
     private suspend fun partitionSource(expectedState: String, operations: List<WorkspaceDocumentOperation>, author: MutationAuthor): WorkspaceMutationResult = editMutex.withLock {
         val before = captureForMutation()
         requireExpected(expectedState, before)

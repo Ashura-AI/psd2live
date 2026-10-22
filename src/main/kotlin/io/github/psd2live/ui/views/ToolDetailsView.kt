@@ -689,7 +689,7 @@ private fun PaintToolDetailsColumn(editor: CanvasEditor, target: CanvasTarget?) 
     val layerId = editor.targetLayerId(paintT)
     val layerName = layerId?.let { lid ->
         editor.state.previewModel?.rig?.puppet?.drawables
-            ?.firstOrNull { editor.state.previewModel?.rig?.layerIdByDrawableId?.get(it.id.raw) == lid }
+            ?.firstOrNull { editor.state.previewModel?.rig?.ownLayerIdByDrawableId?.get(it.id.raw) == lid }
             ?.name ?: lid
     }
 

@@ -1840,7 +1840,7 @@ internal class CanvasEditor(
         val resolvedSource = source ?: return null
         val rig = state.previewModel?.rig ?: return null
         val deformer = resolvedSource.deformers.firstOrNull { it.id.raw == deformerId }
-        val drawable = resolvedSource.drawables.firstOrNull { rig.layerIdByDrawableId[it.id.raw] == layerId }
+        val drawable = resolvedSource.drawables.firstOrNull { rig.ownLayerIdByDrawableId[it.id.raw] == layerId }
         val kind: String; val id: String; val parent: DeformerId?; val indices: IntArray
         if (deformer is Deformer.Warp) {
             if (!deformer.isSelectable || !deformer.isVisible || state.deformerVisibility[deformer.id.raw] == false) return null
@@ -5149,7 +5149,7 @@ internal class CanvasEditor(
     private fun meshDrawableId(layerOrDrawableId: String): String? {
         val puppet = preview ?: state.previewModel?.rig?.puppet ?: return null
         val rig = state.previewModel?.rig ?: return null
-        val byLayer = puppet.drawables.firstOrNull { rig.layerIdByDrawableId[it.id.raw] == layerOrDrawableId && it.mesh != null }
+        val byLayer = puppet.drawables.firstOrNull { rig.ownLayerIdByDrawableId[it.id.raw] == layerOrDrawableId && it.mesh != null }
         if (byLayer != null) return byLayer.id.raw
         return puppet.drawables.firstOrNull { it.id.raw == layerOrDrawableId && it.mesh != null }?.id?.raw
     }
@@ -5813,7 +5813,7 @@ internal class CanvasEditor(
         val ring = mutableListOf<HierarchyPick>()
         val seen = mutableSetOf<String>()
         layerCandidates(pos, viewport).forEach { layerId ->
-            val drawable = source.drawables.firstOrNull { preview.rig.layerIdByDrawableId[it.id.raw] == layerId }
+            val drawable = source.drawables.firstOrNull { preview.rig.ownLayerIdByDrawableId[it.id.raw] == layerId }
             if (drawable != null && seen.add("mesh:$layerId")) ring += HierarchyPick(layerId = layerId)
             var parent = drawable?.parentDeformerId
             while (parent != null) {

@@ -84,6 +84,35 @@ class ObjectEditsCommandTest {
 		assertEquals(model.rig.puppet.parameters.map { it.id }, rebuilt.parameters.map { it.id })
 	}
 
+	/** What an MCP call returns names what its commit records: the paste's pinned IDs, the rename's matches, the duplicated meshes. */
+	@Test
+	fun plannedResultsNameWhatTheCommitRecords() = runBlocking {
+		val builder = WorkspacePreviewBuilder()
+		val document = document()
+		val model = builder.build(document)
+		val eye = mesh(model, "EyeL"); val closed = mesh(model, "EyeClosedL")
+		val paste = buildJsonObject { putJsonArray("sources") { add("mesh:${eye.id.raw}"); add("mesh:${closed.id.raw}") } }
+		val (pinned, result) = WorkspaceObjectEdits.planned(WorkspaceObjectEdits.PASTE, model, paste)
+		val pasted = WorkspaceDocumentEdits.apply(op(WorkspaceObjectEdits.PASTE, pinned), document, model)
+		val recorded = pasted.rigEdits.authoringJournal.last { it["op"]?.jsonPrimitive?.content == RigObjectPaste.OP }
+		assertEquals(result.getValue("ids").jsonObject.mapValues { it.value.jsonPrimitive.content },
+			RigObjectPaste.copies(recorded).associate { "${it.kind}:${it.id}" to it.newId })
+		// The copies are not their layers' meshes: each layer still names its own.
+		val after = builder.build(pasted)
+		assertEquals(eye.id.raw, after.rig.ownLayerIdByDrawableId.entries.single { it.value == "EyeL" }.key)
+		assertEquals("EyeL", after.rig.layerIdByDrawableId["${eye.id.raw}_copy"])
+
+		val rename = buildJsonObject { putJsonArray("kinds") { add("mesh") }; put("swap_sides", true) }
+		val (renamePinned, renamed) = WorkspaceObjectEdits.planned(WorkspaceObjectEdits.RENAME, after, rename)
+		assertEquals(renamed.getValue("renamed").jsonArray.map { it.jsonObject.getValue("target") }, renamePinned.getValue("targets").jsonArray.toList())
+
+		val duplicate = buildJsonObject { put("source", "mesh:${eye.id.raw}"); putJsonArray("targets") { add("mesh:${closed.id.raw}") } }
+		val duplicated = builder.build(WorkspaceDocumentEdits.apply(op(WorkspaceObjectEdits.MESH_DUPLICATE, duplicate), document, model))
+		val target = WorkspaceObjectEdits.duplicated(duplicated.rig.puppet, duplicate).getValue("targets").jsonArray.single().jsonObject
+		assertEquals(eye.mesh!!.vertexCount, target.getValue("vertices").jsonPrimitive.int)
+		assertEquals(RigMeshDuplication.plan(model.rig.puppet, duplicate).single().outside, target.getValue("outside").jsonPrimitive.int)
+	}
+
 	@Test
 	fun sidesSwapOnlyWhereTheyAreWordsOfTheirOwn() {
 		assertEquals("ArmR", WorkspaceObjectEdits.swapSides("ArmL"))

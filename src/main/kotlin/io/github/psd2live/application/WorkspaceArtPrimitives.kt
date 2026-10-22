@@ -28,13 +28,19 @@ internal object WorkspaceArtPrimitives {
                     replace: Map<DrawableId, List<DrawableId>>, masks: Map<DrawableId, List<DrawableId>>, extra: JsonObject,
                     userRecord: JsonObject, work: WorkspaceRasterWork): WorkspaceDocument {
         work.progress(0.78f, "Splitting the generated rig")
-        val generated = model.baseRig.resolvedPuppet()
+        // The generated rig under the IDs the journal's conversions gave its objects, as [original] is named; the record
+        // replays on the generated rig itself, so it names the original as the generators do.
+        val journal = model.config.rigEdits.authoringJournal
+        val generated = io.github.psd2live.core.RigIdConversion.converted(model.baseRig.resolvedPuppet(), journal)
+        val generatedIds = model.config.rigEdits.idRenames.of("mesh").entries.associate { (from, to) -> DrawableId(to) to DrawableId(from) }
+        fun generatedId(id: DrawableId) = generatedIds[id] ?: id
         val generatedParts = if (generated.drawables.none { it.id == original }) null else split.split(generated, user = false)
         work.checkpoint()
         val authoredParts = requireNotNull(split.split(model.authored.rig.puppet, user = true)) { "The split original is not in the rig: ${original.raw}" }
         val record = if (generatedParts == null) userRecord else JsonObject(ArtPrimitiveJournal.encode(origin, PuppetSourceAtlas.SOURCE_ID_RAW,
-            listOf(original), listOf(originalLayer), replace, parts.map { declaration(generatedParts, authoredParts, it) }, emptyList(), emptyList(),
-            masks, version = ArtPrimitiveV2.VERSION_V2) + extra)
+            listOf(generatedId(original)), listOf(originalLayer), replace.mapKeys { generatedId(it.key) },
+            parts.map { declaration(generatedParts, authoredParts, it) }, emptyList(), emptyList(),
+            masks.mapKeys { generatedId(it.key) }, version = ArtPrimitiveV2.VERSION_V2) + extra)
         val placed = document(generatedParts != null)
         val candidate = placed.copy(rigEdits = placed.rigEdits.copy(authoringJournal = placed.rigEdits.authoringJournal + record))
         val decoded = candidate.config()

@@ -41,13 +41,20 @@ internal object RigMeshDuplication {
 				for (k in 0..1) positions[v * 2 + k] = w.wa * previous.positions[w.a * 2 + k] + w.wb * previous.positions[w.b * 2 + k] +
 					w.wc * previous.positions[w.c * 2 + k]
 			}
-			val layer = texture.layer
-			val outside = (0 until canvas.size / 2).count { v ->
-				val x = canvas[v * 2]; val y = canvas[v * 2 + 1]
-				x < layer.left || y < layer.top || x > layer.left + layer.width || y > layer.top + layer.height
-			}
-			Target(target.id, DrawableMesh(positions, texture.toUvs(canvas), sourceMesh.indices.copyOf()), canvas, outside)
+			Target(target.id, DrawableMesh(positions, texture.toUvs(canvas), sourceMesh.indices.copyOf()), canvas, outside(canvas, texture.layer))
 		}
+	}
+
+	/** How many of [drawable]'s vertices sample outside its artwork. */
+	fun outside(model: PuppetModel, drawable: Drawable): Int {
+		val mesh = drawable.mesh ?: return 0
+		val texture = RasterMeshJournal.TextureCoordinates(model, drawable)
+		return outside(texture.toCanvas(mesh.uvs), texture.layer)
+	}
+
+	private fun outside(canvas: FloatArray, layer: ArtSourceLayer): Int = (0 until canvas.size / 2).count { v ->
+		val x = canvas[v * 2]; val y = canvas[v * 2 + 1]
+		x < layer.left || y < layer.top || x > layer.left + layer.width || y > layer.top + layer.height
 	}
 
 	fun compile(model: PuppetModel, request: JsonObject): List<JsonObject> = plan(model, request).map { target ->

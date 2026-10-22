@@ -529,6 +529,16 @@ data class RigPreviewModel(
 	 */
 	val baseRig: BuiltRig get() = sources.base
 
+	/**
+	 * [BuiltRig.layerIdByDrawableId] keyed by the IDs base generation gives the meshes: the journal's ID conversions
+	 * ([RigIdConversion]) rename them again where they replay, so what pins a mesh's ID for a regeneration names it
+	 * as it was before them.
+	 */
+	val stableLayerIdByDrawableId: Map<String, String> get() {
+		val back = config.rigEdits.idRenames.of("mesh").entries.associate { (from, to) -> to to from }
+		return if (back.isEmpty()) rig.ownLayerIdByDrawableId else rig.ownLayerIdByDrawableId.mapKeys { (id, _) -> back[id] ?: id }
+	}
+
 	/** The authored state of [config]'s edits ([AuthoredRig]): stored, or replayed from [baseRig]. */
 	internal val authored: AuthoredRig get() = sources.authored(config.rigEdits)
 

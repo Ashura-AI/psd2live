@@ -71,6 +71,8 @@ interface WorkspaceQueries : WorkspaceStatePort {
     fun structureMeshPreview(request: JsonObject, checkpoint: () -> Unit = {}): JsonObject
     /** [WorkspaceObjectEdits.find] on the captured version: the objects a find matches and what a replace makes of them. */
     fun findObjects(request: JsonObject): JsonObject
+    /** [WorkspaceObjectEdits.planned] on the captured version: the request that records exactly what the result fields name. */
+    fun planObjectEdit(operation: String, request: JsonObject): Pair<JsonObject, JsonObject>
     fun projectSettings(): JsonObject
     fun listRigObjectSummaries(): List<JsonObject>
     fun inspectRigGeometry(arguments: JsonObject): JsonObject

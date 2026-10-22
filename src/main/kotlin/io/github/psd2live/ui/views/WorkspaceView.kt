@@ -822,7 +822,7 @@ private fun HierarchyTreeList(
 						}
 					}
 					state.selectedLayerId?.let { layerId ->
-						val drawableId = model.rig.layerIdByDrawableId.entries.firstOrNull { it.value == layerId }?.key
+						val drawableId = model.rig.ownLayerIdByDrawableId.entries.firstOrNull { it.value == layerId }?.key
 						val drawable = drawableId?.let { id -> model.rig.puppet.drawables.firstOrNull { it.id.raw == id } }
 						collectAncestors(drawable?.let { state.hierarchyParentOverrides[it.id.raw] ?: it.parentDeformerId?.raw })
 					}
@@ -840,7 +840,7 @@ private fun HierarchyTreeList(
 					else {
 						val label = when {
 							state.selectedLayerId != null -> {
-								val drawableId = model.rig.layerIdByDrawableId.entries.firstOrNull { it.value == state.selectedLayerId }?.key
+								val drawableId = model.rig.ownLayerIdByDrawableId.entries.firstOrNull { it.value == state.selectedLayerId }?.key
 								model.rig.puppet.drawables.firstOrNull { it.id.raw == drawableId }?.name
 									?: state.selectedLayerId
 							}

@@ -27,7 +27,9 @@ internal object WorkspaceObjectEdits {
 	fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel): WorkspaceDocument {
 		val request = JsonObject(operation.request - setOf("state", "dry_run"))
 		return when (operation.operation) {
-			PASTE -> WorkspaceDocumentEdits.journal(document, model, JsonArray(listOf(JsonObject(request + ("op" to JsonPrimitive(RigObjectPaste.OP))))))
+			// Planned on the authored rig: what only the shown rig holds - a swing's, simulation's or interior effect's
+			// objects - is not there where the paste replays.
+			PASTE -> WorkspaceDocumentEdits.journal(document, model, JsonArray(RigObjectPaste.compile(model.authored.rig.puppet, request, model.rig.puppet)))
 			MESH_DUPLICATE -> WorkspaceDocumentEdits.journal(document, model, JsonArray(listOf(JsonObject(request + ("op" to JsonPrimitive(RigMeshDuplication.OP))))))
 			RENAME -> rename(document, model, request)
 			CONVERT_ID -> convert(document, model, request.getValue("renames").jsonArray.map { element ->
@@ -36,6 +38,44 @@ internal object WorkspaceObjectEdits {
 				RigIdConversion.Rename(target.substringBefore(':', ""), target.substringAfter(':', ""), o.getValue("id").jsonPrimitive.content)
 			})
 			else -> throw IllegalArgumentException("Not an object edit: ${operation.operation}")
+		}
+	}
+
+	/**
+	 * What [operation] would record on [model]: the request that records exactly that - a paste with every new ID
+	 * fixed, a rename with its matches named - and the result fields naming what it records. Committed on the same
+	 * state, the pinned request records what the fields say or fails.
+	 */
+	fun planned(operation: String, model: RigPreviewModel, request: JsonObject): Pair<JsonObject, JsonObject> = when (operation) {
+		PASTE -> {
+			val ids = RigObjectPaste.plan(model.authored.rig.puppet, request, model.rig.puppet).ids
+			JsonObject(request + ("ids" to JsonObject(ids.mapValues { JsonPrimitive(it.value) }))) to
+				buildJsonObject { put("ids", JsonObject(ids.mapValues { JsonPrimitive(it.value) })) }
+		}
+		RENAME -> {
+			val matches = find(model, JsonObject(request - setOf("offset", "limit")))
+			require(matches.isNotEmpty()) { "Nothing matches" }
+			JsonObject(request + ("targets" to JsonArray(matches.map { JsonPrimitive(it.target) }))) to buildJsonObject {
+				put("field", request["field"]?.jsonPrimitive?.content ?: "name")
+				putJsonArray("renamed") { for (m in matches) add(buildJsonObject { put("target", m.target); put("before", m.before); put("after", m.after) }) }
+			}
+		}
+		CONVERT_ID -> request to buildJsonObject {
+			putJsonObject("ids") { for (r in request.getValue("renames").jsonArray) put(r.jsonObject.getValue("target").jsonPrimitive.content, r.jsonObject.getValue("id")) }
+		}
+		else -> request to JsonObject(emptyMap())
+	}
+
+	/** What [MESH_DUPLICATE] made of each target in the committed [model]: its vertex count and copied vertices outside its artwork. */
+	fun duplicated(model: PuppetModel, request: JsonObject): JsonObject = buildJsonObject {
+		putJsonArray("targets") {
+			for (target in request.getValue("targets").jsonArray) {
+				val id = target.jsonPrimitive.content.removePrefix("mesh:")
+				val drawable = model.drawables.single { it.id.raw == id }
+				add(buildJsonObject {
+					put("target", "mesh:$id"); put("vertices", drawable.mesh!!.vertexCount); put("outside", RigMeshDuplication.outside(model, drawable))
+				})
+			}
 		}
 	}
 
@@ -80,6 +120,9 @@ internal object WorkspaceObjectEdits {
 	 * regular expression with `regex`), `match_case` (default true), `replace`, `prefix`, `suffix` and `swap_sides`
 	 * (left and right exchanged: L/R, Left/Right, 左/右). With nothing to replace, it lists what `find` matches.
 	 */
+	/** [find] among the objects of [model]'s authored rig: what the generators add after the journal is theirs to name. */
+	fun find(model: RigPreviewModel, request: JsonObject): List<Match> = find(model.authored.rig.puppet, request)
+
 	fun find(model: PuppetModel, request: JsonObject): List<Match> {
 		val allowed = setOf("field", "kinds", "targets", "find", "regex", "match_case", "replace", "prefix", "suffix", "swap_sides", "standard_ids", "offset", "limit")
 		require(request.keys.all { it in allowed }) { "Unknown find field: ${(request.keys - allowed).sorted().joinToString()}" }
@@ -143,7 +186,7 @@ internal object WorkspaceObjectEdits {
 
 	/** The find [request] applied: names as one structure entry, IDs as one ID conversion. */
 	fun rename(document: WorkspaceDocument, model: RigPreviewModel, request: JsonObject): WorkspaceDocument {
-		val matches = find(model.rig.puppet, JsonObject(request - setOf("offset", "limit")))
+		val matches = find(model, JsonObject(request - setOf("offset", "limit")))
 		require(matches.isNotEmpty()) { "Nothing matches" }
 		require(matches.size <= 4096) { "Replace at most 4096 objects at once" }
 		if (matches.first().field == "id") return convert(document, model, matches.map { RigIdConversion.Rename(it.kind, it.id, it.after) })
@@ -164,6 +207,18 @@ internal object WorkspaceObjectEdits {
 		if (RigIdConversion.ids(shown, rename.namespace).contains(id) && !RigIdConversion.ids(authored, rename.namespace).contains(id))
 			return "${rename.kind} $id belongs to a swing, simulation or interior effect; its ID follows that generator"
 		val overlay = document.rigEdits
+		// The skeleton bakes into the generated rig before the journal replays, under the IDs it names; renaming what
+		// it binds would leave the bake and the conversion naming different objects.
+		overlay.skeleton?.let { skeleton ->
+			val bones = skeleton.bones
+			when (rename.kind) {
+				"mesh" -> if (bones.any { id in it.drawableIds } || id in skeleton.manualWeights)
+					return "Mesh $id is bound to the skeleton; unbind it before converting its ID"
+				"parameter" -> if (bones.any { it.parameterId == id } || skeleton.savedPoses.values.any { id in it })
+					return "Parameter $id belongs to the skeleton; its ID follows the bone"
+				"warp", "rotation" -> bones.firstOrNull { it.deformerId == id }?.let { return "Deformer $id belongs to the bone ${it.id}; its ID follows the bone" }
+			}
+		}
 		when (rename.kind) {
 			"mesh" -> {
 				overlay.simEdits.firstOrNull { sim -> id in sim.targets || sim.colliders.any { it.mesh == id } }

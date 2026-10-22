@@ -243,5 +243,46 @@ class ObjectOpsTest {
 		val foreign = model.copy(parameters = model.parameters.map { it.copy(id = ParameterId("パラメータ")) })
 		assertEquals(listOf("parameter パラメータ"), RigIdCheck.invalid(foreign))
 		assertEquals(1, RigIdCheck.checked("test", foreign).size)
+		// Parameter folders are exported by ID too.
+		val folders = model.copy(parameterTree = model.parameterTree + ParameterNode.Group(ParameterGroupId("G"), "Again", true, emptyList()))
+		assertEquals(listOf("param_group G"), RigIdCheck.conflicts(folders))
+	}
+
+	/** A part's blend shapes - its draw order over a parameter - name the parameter by ID like any keyform. */
+	@Test fun convertIdRenamesThePartBlendShapesParameterAndLimits() {
+		val model = fixture()
+		val q = ParameterId("q")
+		val binding = BlendShapeBinding(p, floatArrayOf(0f, 1f), 0, listOf<PartForm?>(null, PartForm(600f)),
+			listOf(BlendWeightLimit(q, listOf(BlendWeightLimitPoint(0f, 1f)))))
+		val withShape = model.copy(parameters = model.parameters + Parameter(q, "Q", 0f, 1f, 0f),
+			parts = model.parts.map { it.copy(blendShapes = listOf(binding)) })
+		val converted = RigIdConversion.apply(withShape, RigIdConversion.encode(listOf(RigIdConversion.Rename("parameter", "p", "ParamArm"),
+			RigIdConversion.Rename("parameter", "q", "ParamLimit"))))
+		val shape = converted.parts.single().blendShapes.single()
+		assertEquals("ParamArm", shape.parameterId.raw)
+		assertEquals("ParamLimit", shape.limits.single().parameterId.raw)
+	}
+
+	/** A generator parameter the document adopted keeps its late panel phase when its ID is converted. */
+	@Test fun adoptedGeneratorParameterKeepsItsPanelPhaseUnderItsNewId() {
+		val adopted = buildJsonObject {
+			put("op", "structure"); putJsonArray("edits") {}
+			putJsonArray(RigEditOverlay.PANEL_AFTER_GENERATION) { add("ParamSwing") }
+		}
+		val move = buildJsonObject { put("kind", "parameter"); put("action", "move"); put("id", "ParamHair") }
+		val overlay = RigEditOverlay.Empty.copy(authoringJournal = listOf(adopted,
+			RigIdConversion.encode(listOf(RigIdConversion.Rename("parameter", "ParamSwing", "ParamHair")))))
+		assertTrue(overlay.generatedPanelEdit(move))
+	}
+
+	/** A regeneration merge reads the generated rig under the IDs the journal's conversions gave its objects. */
+	@Test fun generatedRigTakesTheJournalsConversionsForTheMerge() {
+		val generated = fixture()
+		val journal = listOf(RigIdConversion.encode(listOf(RigIdConversion.Rename("mesh", "a", "Arm"))),
+			RigIdConversion.encode(listOf(RigIdConversion.Rename("mesh", "Arm", "ArtMeshArm"), RigIdConversion.Rename("rotation", "parent", "RotationArm"))))
+		val converted = RigIdConversion.converted(generated, journal)
+		assertEquals(listOf("ArtMeshArm", "b", "c"), converted.drawables.map { it.id.raw })
+		assertEquals("RotationArm", converted.drawables.first().parentDeformerId?.raw)
+		assertEquals(generated, RigIdConversion.converted(generated, emptyList()))
 	}
 }

@@ -453,7 +453,7 @@ internal fun ParametersListView(
 		}
     }
 	val owner = remember(puppet, state.selectedLayerId, state.selectedDeformerId, model?.rig?.layerIdByDrawableId) {
-        puppet?.selectedParameterOwner(state.selectedLayerId, state.selectedDeformerId, model.rig.layerIdByDrawableId.orEmpty())
+        puppet?.selectedParameterOwner(state.selectedLayerId, state.selectedDeformerId, model.rig.ownLayerIdByDrawableId.orEmpty())
     }
     val keyMarksByParameter = remember(puppet) { puppet?.parameterKeyMarks().orEmpty() }
     val selectedKeyMarks = remember(puppet, owner) { if (owner == null) emptyMap() else puppet?.parameterKeyMarks(owner).orEmpty() }

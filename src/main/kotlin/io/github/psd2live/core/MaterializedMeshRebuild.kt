@@ -52,7 +52,7 @@ internal object MaterializedMeshRebuild {
             val generated = if (layer is MouthLipLayer) {
                 // A ribbon is generated from its owner's aperture and stroke, not from an
                 // isolated alpha crop. Rebuild that real source context with stable mesh IDs.
-                val stable = current.rig.layerIdByDrawableId.entries.associate { it.value to it.key }
+                val stable = current.stableLayerIdByDrawableId.entries.associate { it.value to it.key }
                 pipeline.buildPreview(config.meshSource ?: source, config.copy(generatePhysics = false,
                     generationSource = null, meshSource = null, parentOverrides = emptyMap(), deletedLayerIds = emptySet(),
                     rigEdits = RigEditOverlay.Empty.copy(splitDrawableIds = stable,

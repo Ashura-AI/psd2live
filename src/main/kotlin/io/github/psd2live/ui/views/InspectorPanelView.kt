@@ -104,7 +104,7 @@ internal fun InspectorPanelView(
     // Resolve active selection
     val selectedDeformerId = state.selectedDeformerId
     val selectedLayerId = state.selectedLayerId
-    val layerDrawableId = state.previewModel?.rig?.layerIdByDrawableId?.entries?.firstOrNull { it.value == selectedLayerId }?.key
+    val layerDrawableId = state.previewModel?.rig?.ownLayerIdByDrawableId?.entries?.firstOrNull { it.value == selectedLayerId }?.key
         ?: selectedLayerId
 
     val selectedDeformer = puppet?.deformers?.firstOrNull { it.id.raw == selectedDeformerId }

@@ -1737,7 +1737,7 @@ class PSD2LiveViewModel : AutoCloseable {
         val current = _state.value
         val preview = current.previewModel ?: return emptyList()
         val layers = current.selectedLayerIds.ifEmpty { setOfNotNull(current.selectedLayerId) }
-        val meshes = preview.rig.puppet.drawables.filter { d -> d.mesh != null && (d.id.raw in layers || preview.rig.layerIdByDrawableId[d.id.raw] in layers) }
+        val meshes = preview.rig.puppet.drawables.filter { d -> d.mesh != null && (d.id.raw in layers || preview.rig.ownLayerIdByDrawableId[d.id.raw] in layers) }
             .map { "mesh:${it.id.raw}" }
         val deformer = current.selectedDeformerId?.let { id -> preview.rig.puppet.deformers.firstOrNull { it.id.raw == id } }
             ?.let { "${if (it is Deformer.Warp) "warp" else "rotation"}:${it.id.raw}" }
@@ -1780,21 +1780,59 @@ class PSD2LiveViewModel : AutoCloseable {
 
     /** What a find or replace with [request] matches on the shown rig; the dialog's live list. */
     internal fun findObjects(request: kotlinx.serialization.json.JsonObject): Result<List<io.github.psd2live.application.WorkspaceObjectEdits.Match>> {
-        val puppet = _state.value.previewModel?.rig?.puppet ?: return Result.success(emptyList())
-        return runCatching { io.github.psd2live.application.WorkspaceObjectEdits.find(puppet, request) }
+        val model = _state.value.previewModel ?: return Result.success(emptyList())
+        return runCatching { io.github.psd2live.application.WorkspaceObjectEdits.find(model, request) }
     }
 
-    internal fun replaceObjects(request: kotlinx.serialization.json.JsonObject, count: Int) =
-        objectEdit(tr("objectOps.renamed", count), io.github.psd2live.application.WorkspaceObjectEdits.RENAME, request) { objectDialog = null }
+    internal fun replaceObjects(request: kotlinx.serialization.json.JsonObject, count: Int) {
+        // A replace of IDs converts them: the editor's own references follow as for Convert IDs.
+        val converted = findObjects(request).getOrNull().orEmpty().filter { it.field == "id" }
+            .map { io.github.psd2live.core.RigIdConversion.Rename(it.kind, it.id, it.after) }
+        val follow = followConvertedIds(converted)
+        objectEdit(tr("objectOps.renamed", count), io.github.psd2live.application.WorkspaceObjectEdits.RENAME, request) { objectDialog = null; follow() }
+    }
 
     /** Converts each `kind:id` key of [renames] to its value, with every reference, as one undoable edit. */
     internal fun convertObjectIds(renames: Map<String, String>) {
         if (renames.isEmpty()) return
+        val follow = followConvertedIds(renames.map { (target, id) ->
+            io.github.psd2live.core.RigIdConversion.Rename(target.substringBefore(':'), target.substringAfter(':'), id) })
         objectEdit(tr("objectOps.converted", renames.size), io.github.psd2live.application.WorkspaceObjectEdits.CONVERT_ID,
             kotlinx.serialization.json.buildJsonObject {
                 put("renames", kotlinx.serialization.json.JsonArray(renames.map { (target, id) ->
                     kotlinx.serialization.json.buildJsonObject { put("target", target); put("id", id) } }))
-            }) { objectDialog = null }
+            }) { objectDialog = null; follow() }
+    }
+
+    /**
+     * What makes the editor's own references - the pose and each workspace's, parameter snapshots, deformer
+     * visibility, the object clipboard - name [renames]' objects by their new IDs once the conversion commits. The
+     * pose is read now, before the rebuilt model drops values of parameters it no longer has.
+     */
+    private fun followConvertedIds(renames: List<io.github.psd2live.core.RigIdConversion.Rename>): () -> Unit {
+        if (renames.isEmpty()) return {}
+        val parameters = renames.filter { it.kind == "parameter" }.associate { ParameterId(it.from) to ParameterId(it.to) }
+        val deformers = renames.filter { it.namespace == "deformer" }.associate { it.from to it.to }
+        val objects = renames.associate { "${it.kind}:${it.from}" to "${it.kind}:${it.to}" }
+        fun <V> Map<ParameterId, V>.renamed() = if (parameters.isEmpty()) this else mapKeys { parameters[it.key] ?: it.key }
+        fun Set<ParameterId>.renamed() = if (parameters.isEmpty()) this else mapTo(HashSet()) { parameters[it] ?: it }
+        val before = _state.value
+        val values = before.parameterValues.renamed(); val preview = before.previewParameterValues.renamed()
+        val locked = before.lockedParameters.renamed()
+        val poses = before.workspaces.associate { w -> w.id to w.pose?.let { p -> p.copy(parameterValues = p.parameterValues.renamed(),
+            lockedParameters = p.lockedParameters.renamed(), previewParameterValues = p.previewParameterValues.renamed()) } }
+        return {
+            objectClipboard = objectClipboard.map { objects[it] ?: it }
+            updateState { s -> s.copy(
+                parameterValues = if (parameters.isEmpty()) s.parameterValues else s.parameterValues + values.filterKeys { it in parameters.values },
+                previewParameterValues = if (parameters.isEmpty()) s.previewParameterValues else s.previewParameterValues + preview.filterKeys { it in parameters.values },
+                lockedParameters = if (parameters.isEmpty()) s.lockedParameters else s.lockedParameters + locked.filter { it in parameters.values },
+                deformerVisibility = if (deformers.isEmpty()) s.deformerVisibility else s.deformerVisibility.mapKeys { deformers[it.key] ?: it.key },
+                workspaces = if (parameters.isEmpty()) s.workspaces else s.workspaces.map { w -> poses[w.id]?.let { w.copy(pose = it) } ?: w },
+            ) }
+            if (parameters.isNotEmpty()) for (snapshot in _state.value.parameterSnapshots) if (snapshot.values.keys.any { it in parameters })
+                editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.UpdateSnapshot(snapshot.id, values = snapshot.values.renamed()))
+        }
     }
 
     private fun objectEdit(summary: String, operation: String, request: kotlinx.serialization.json.JsonObject, done: () -> Unit = {}) {
@@ -6041,7 +6079,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		val current = _state.value
 		val sourceId = current.clipMaskPickSourceId ?: return false
 		val preview = current.previewModel ?: return false
-		val pickedId = preview.rig.layerIdByDrawableId.entries.firstOrNull { it.value == layerId }?.key ?: layerId
+		val pickedId = preview.rig.ownLayerIdByDrawableId.entries.firstOrNull { it.value == layerId }?.key ?: layerId
 		val source = preview.rig.puppet.drawables.firstOrNull { it.id.raw == sourceId }
 		val picked = preview.rig.puppet.drawables.firstOrNull { it.id.raw == pickedId }
 		if (source == null) {
@@ -7131,7 +7169,7 @@ class PSD2LiveViewModel : AutoCloseable {
 		val current = _state.value
 		val model = current.previewModel ?: return
 		val puppet = model.rig.puppet
-		val owner = puppet.selectedParameterOwner(current.selectedLayerId, current.selectedDeformerId, model.rig.layerIdByDrawableId) ?: return
+		val owner = puppet.selectedParameterOwner(current.selectedLayerId, current.selectedDeformerId, model.rig.ownLayerIdByDrawableId) ?: return
 		val target = when (owner.kind) {
 			"mesh" -> "mesh:${owner.id}"
 			else -> when (puppet.deformers.firstOrNull { it.id.raw == owner.id }) {

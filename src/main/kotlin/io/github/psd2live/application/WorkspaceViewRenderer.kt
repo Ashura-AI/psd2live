@@ -283,7 +283,7 @@ object WorkspaceViewRenderer {
 	                                 viewport: CanvasViewport, included: Set<String>) {
 		val ids = model.referenceLayerIds.filter { it in included }.toSet()
 		if (ids.isEmpty()) return
-		val quadOf = model.rig.puppet.drawables.associateBy { model.rig.layerIdByDrawableId[it.id.raw] }
+		val quadOf = model.rig.puppet.drawables.associateBy { model.rig.ownLayerIdByDrawableId[it.id.raw] }
 		val g = image.createGraphics()
 		try {
 			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)

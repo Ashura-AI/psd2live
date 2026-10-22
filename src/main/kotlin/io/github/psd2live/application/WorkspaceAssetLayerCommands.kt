@@ -81,7 +81,7 @@ internal object WorkspaceAssetLayerEdits {
         val candidate = placement(document.replacePlacedLayer(id, placedAsset(asset, registration), checkCancelled), id, asset, registration,
             resources.record(registration.text("reference_id"), "reference"))
         // The layer's own mesh is made again over the new placement, under the parent it hangs from.
-        val parent = model.rig.puppet.drawables.firstOrNull { model.rig.layerIdByDrawableId[it.id.raw] == id }?.parentDeformerId?.raw
+        val parent = model.rig.puppet.drawables.firstOrNull { model.rig.ownLayerIdByDrawableId[it.id.raw] == id }?.parentDeformerId?.raw
             ?: document.parentOverrides[id]
         return WorkspaceLayerInsertionEdits.materialize(candidate, model, setOf(id), parent, checkCancelled)
     }

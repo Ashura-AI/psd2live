@@ -293,7 +293,7 @@ internal object DepthSplit {
         }
         // Freeze the pre-copy frames and identities. Adding art must never renumber existing meshes
         // or change the coordinate systems against which their authored keyforms were written.
-        val ids = current.rig.layerIdByDrawableId.entries.associate { it.value to it.key } + (frontId to frontDrawableId)
+        val ids = current.stableLayerIdByDrawableId.entries.associate { it.value to it.key } + (frontId to frontDrawableId)
         val orders = current.rig.puppet.drawables.associate { it.id.raw to it.drawOrder } +
             config.drawOrderOverrides + placedOrders.mapKeys { (id, _) ->
                 current.rig.layerIdByDrawableId[id] ?: id

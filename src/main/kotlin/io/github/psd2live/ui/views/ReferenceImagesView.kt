@@ -240,7 +240,7 @@ internal fun referenceRows(state: PSD2LiveState, under: Boolean): List<Reference
 /** A reference layer row: in the stack with the ArtMeshes. */
 internal fun referenceLayerRow(state: PSD2LiveState, layerId: String, name: String): ReferenceRow {
 	val model = state.previewModel
-	val opacity = model?.rig?.puppet?.drawables?.firstOrNull { model.rig.layerIdByDrawableId[it.id.raw] == layerId }?.opacity
+	val opacity = model?.rig?.puppet?.drawables?.firstOrNull { model.rig.ownLayerIdByDrawableId[it.id.raw] == layerId }?.opacity
 		?: state.analysis?.source?.layers?.firstOrNull { it.id.raw == layerId }?.opacity
 	return ReferenceRow(ReferenceTarget.Layer(layerId), name, ReferenceMode.LAYER, state.isLayerVisible(layerId),
 		layerId in state.layout.referencePins, false, opacity)

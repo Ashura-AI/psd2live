@@ -26,7 +26,7 @@ internal object RigLayerDeletion {
         }
         val existing = config.rigEdits.splitDrawableIds +
             current.baseRig.layerIdByDrawableId.entries.associate { it.value to it.key } +
-            current.rig.layerIdByDrawableId.entries.associate { it.value to it.key }
+            current.stableLayerIdByDrawableId.entries.associate { it.value to it.key }
         val fullConfig = config.copy(deletedLayerIds = emptySet(), rigEdits = config.rigEdits.copy(
             splitBaselineLayerIds = baseline, authoringJournal = journal))
         val all = RigGenerationSource.prepare(RigGenerationSource.analyze(current.analysis.source, fullConfig), fullConfig).geometry

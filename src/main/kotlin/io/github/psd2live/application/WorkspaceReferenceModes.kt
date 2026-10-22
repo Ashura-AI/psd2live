@@ -62,7 +62,7 @@ internal object WorkspaceReferenceModes {
             putJsonObject("rect") { put("left", space.left); put("top", space.top); put("width", space.width); put("height", space.height) }
             put("under", mode == Mode.BACKGROUND)
             put("visible", document.layerVisibility[id] ?: layer.visible)
-            put("opacity", model.rig.puppet.drawables.firstOrNull { model.rig.layerIdByDrawableId[it.id.raw] == id }?.opacity ?: layer.opacity)
+            put("opacity", model.rig.puppet.drawables.firstOrNull { model.rig.ownLayerIdByDrawableId[it.id.raw] == id }?.opacity ?: layer.opacity)
             if (pin.isNotEmpty()) put("points", JsonArray(pin.map { point -> JsonObject(point.mapValues { JsonPrimitive(it.value) }) }))
         })
         // A reference in the model goes with its mesh; one not in it yet leaves no trace.

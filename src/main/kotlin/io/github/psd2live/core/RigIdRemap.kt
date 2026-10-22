@@ -54,7 +54,7 @@ internal class RigIdRemap(
 	private fun composite(value: PartComposite) = value.copy(maskedBy = value.maskedBy.map(::drawable), maskedByParts = value.maskedByParts.map(::part))
 
 	fun part(value: Part): Part = value.copy(id = part(value.id), children = value.children.map(::child),
-		channelGrids = channels(value.channelGrids), composite = composite(value.composite))
+		channelGrids = channels(value.channelGrids), composite = composite(value.composite), blendShapes = blendShapes(value.blendShapes))
 
 	fun glue(value: Glue): Glue = value.copy(meshA = drawable(value.meshA), meshB = drawable(value.meshB), channelGrids = channels(value.channelGrids))
 

@@ -62,7 +62,7 @@ internal fun MeshPanelView(
 	val isBusy = state.isAnalyzing || state.isGenerating
 	val puppet = state.previewModel?.rig?.puppet
 	val selectedLayerId = state.selectedLayerId
-	val layerDrawableId = state.previewModel?.rig?.layerIdByDrawableId?.entries
+	val layerDrawableId = state.previewModel?.rig?.ownLayerIdByDrawableId?.entries
 		?.firstOrNull { it.value == selectedLayerId }?.key
 		?: selectedLayerId
 	val selectedDrawable = puppet?.drawables?.firstOrNull {

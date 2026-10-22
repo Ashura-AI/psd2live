@@ -257,7 +257,7 @@ class PSD2LivePipeline {
 	): RigPreviewModel {
 		val analysis = MouthLipLayers.prepare(CharacterAnalyzer.analyze(source, config), config)
 		val atlas = AtlasLayout.pack(analysis.layers, config)
-		val existingIds = current.rig.layerIdByDrawableId.map { (drawableId, layerId) -> layerId to DrawableId(drawableId) }.toMap() +
+		val existingIds = current.stableLayerIdByDrawableId.map { (drawableId, layerId) -> layerId to DrawableId(drawableId) }.toMap() +
 			config.rigEdits.splitDrawableIds.mapValues { DrawableId(it.value) }
 		val ids = RigBuilder.assignSplitDrawableIds(analysis, existingIds)
 		val committedConfig = config.copy(rigEdits = config.rigEdits.copy(
@@ -373,7 +373,7 @@ class PSD2LivePipeline {
 			val meshConfig = config.copy(parentOverrides = config.parentOverrides - customCreations.map { it.getValue("layer_id").jsonPrimitive.content })
 			val meshAnalysis = MouthLipLayers.prepare(CharacterAnalyzer.analyze(meshInput, meshConfig), meshConfig)
 			val meshAtlas = AtlasLayout.pack(meshAnalysis.layers, config, progress)
-			val stableIds = RigBuilder.assignSplitDrawableIds(meshAnalysis, current.rig.layerIdByDrawableId
+			val stableIds = RigBuilder.assignSplitDrawableIds(meshAnalysis, current.stableLayerIdByDrawableId
 				.map { (id, layer) -> layer to DrawableId(id) }.toMap())
 			val originalFrames = RigGenerationSource.prepare(current.analysis, current.config).geometry
 			val regenerated = RigBuilder.buildPreservingDeformers(meshAnalysis, meshAtlas, meshConfig, meshCache,
@@ -607,7 +607,6 @@ class PSD2LivePipeline {
 		val baseName = safeBaseName(sourceName.substringBeforeLast('.'))
 		val imported = config.rigEdits.importedCmo3 != null
 		val generatedLabel = tr("validation.generated")
-		val idWarnings = RigIdCheck.checked(generatedLabel, rig.puppet)
 		val neutralRig = RigIntegrityValidator.validateNeutralPose(generatedLabel, rig.puppet, rig.sourceBoundsByDrawableId)
 		val generatedAngleWarnings = RigIntegrityValidator.validateHeadAnglePoses(generatedLabel, rig.puppet, neutralRig.boundsByDrawableId)
 		val generatedWarpWarnings = RigIntegrityValidator.validateDirectionalWarpDimensions(generatedLabel, rig.puppet)
@@ -618,6 +617,7 @@ class PSD2LivePipeline {
 		// the authored PSD layer artwork and atlas UV coordinates, avoiding singular affine transforms in CMO3.
 		val cleaned = io.github.psd2live.core.interior.InteriorLifecycle.exportModel(rig.puppet, config.rigEdits,
 			PhysicsCatalog.active(analysis, config, rig.puppet.parameters.mapTo(HashSet()) { it.id.raw }, rig.puppet))
+		val idWarnings = RigIdCheck.checked(generatedLabel, cleaned)
 		val exportPuppet = restMeshesToCanvasSpace(cleaned, if (imported) emptyMap() else mapOf(StandardParameters.MOUTH_OPEN to 1.0f))
 		val outputRoot = outputDirectory.toAbsolutePath().normalize()
 		Files.createDirectories(outputRoot)

@@ -859,7 +859,7 @@ data class PSD2LiveState(
 			val layerHiddenByDeformer: (String) -> Boolean = if (hiddenDeformers.isEmpty()) {
 				{ false }
 			} else {
-				val drawableIdByLayerId = model.rig.layerIdByDrawableId.entries.associate { it.value to it.key }
+				val drawableIdByLayerId = model.rig.ownLayerIdByDrawableId.entries.associate { it.value to it.key }
 				val drawableById = model.rig.puppet.drawables.associateBy { it.id.raw }
 				val deformerById = model.rig.puppet.deformers.associateBy { it.id.raw }
 				fun isHidden(layerId: String): Boolean {

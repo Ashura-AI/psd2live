@@ -56,7 +56,7 @@ internal class WorkspacePreviewBuilder {
         val sameLayers = current.analysis.source.layers.size == layers.size && current.analysis.source.layers.all { it.id.raw in layers }
         if (sameLayers && !RigGenerationChange.changed(current, config)) return document
         val pins = document.rigEdits.splitDrawableIds
-        val owned = current.rig.layerIdByDrawableId.entries.groupBy({ it.value }, { it.key })
+        val owned = current.stableLayerIdByDrawableId.entries.groupBy({ it.value }, { it.key })
         val added = owned.filter { (layer, meshes) -> layer !in pins && meshes.size == 1 &&
             (layer in layers || layers.any { layer.startsWith("$it:") }) }.mapValues { it.value.single() }
         if (added.isEmpty()) return document

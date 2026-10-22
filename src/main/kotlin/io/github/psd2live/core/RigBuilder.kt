@@ -129,10 +129,23 @@ data class BuiltRig(
 	val seeThroughCopies: Map<String, String> = emptyMap(),
 	/** The candidates the finished rig made no copy of although asked to, and why. */
 	val seeThroughNotes: List<SeeThroughLayers.Note> = emptyList(),
+	/**
+	 * Pasted meshes ([RigObjectPaste]). [layerIdByDrawableId] maps them to the layer whose texture they show, as it
+	 * maps any mesh, but the layer is not theirs: what looks a layer's mesh up ([ownLayerIdByDrawableId]) never finds one.
+	 */
+	val copiedDrawableIds: Set<String> = emptySet(),
 ) {
 	/** The source layer whose art [drawableId] shows: its own, or for a copy over the bangs its original's. */
 	fun layerOf(drawableId: String): String? =
 		layerIdByDrawableId[drawableId] ?: seeThroughCopies[drawableId]?.let(layerIdByDrawableId::get)
+
+	/**
+	 * [layerIdByDrawableId] without pasted copies: each layer's own meshes, for every lookup from a layer to its mesh -
+	 * picking, the IDs a regeneration keeps - so a copy never stands in for its original.
+	 */
+	val ownLayerIdByDrawableId: Map<String, String> by lazy {
+		if (copiedDrawableIds.isEmpty()) layerIdByDrawableId else layerIdByDrawableId - copiedDrawableIds
+	}
 
 	/**
 	 * The puppet with v2 stubs removed and side-channel parts spliced in: what the document shows once every

@@ -63,40 +63,28 @@ internal object WorkspaceObjectSchemas {
 internal fun registerObjectOperations(registry: WorkspaceOperationRegistry, workspace: WorkspaceBackend) {
 	val schemas = WorkspaceObjectSchemas
 	fun register(id: String, description: String, schema: JsonObject, result: JsonObject, summary: (JsonObject) -> String,
-				 fields: (JsonObject) -> JsonObject) {
+				 committed: ((JsonObject) -> JsonObject)? = null) {
 		registry.register(WorkspaceOperationDefinition(id, description, schema, WorkspaceOperationKind.DOCUMENT, batchable = true,
 			resultSchema = result)) { request, context ->
-			// What the edit makes is decided on the captured version the state names; the commit checks that state.
-			val extra = fields(request)
-			val committed = workspace.applyDocumentEdits(request.getValue("state").jsonPrimitive.content, summary(request),
-				listOf(WorkspaceDocumentOperation(id, JsonObject(request - "state"))), context.author).compact()
-			WorkspaceOperationOutput(JsonObject(committed + extra))
+			// Planned on the captured version the state names: the pinned request records exactly what the fields name,
+			// or the commit fails on that state.
+			val (pinned, planned) = workspace.captureQueries().planObjectEdit(id, JsonObject(request - "state"))
+			val mutation = workspace.applyDocumentEdits(request.getValue("state").jsonPrimitive.content, summary(request),
+				listOf(WorkspaceDocumentOperation(id, pinned)), context.author).compact()
+			val extra = committed?.let { read -> read(JsonObject(request - "state")) } ?: planned
+			WorkspaceOperationOutput(JsonObject(mutation + extra))
 		}
 	}
 	fun puppet() = requireNotNull(workspace.captureQueries().currentPuppet()) { "No workspace is loaded" }
 
 	register(WorkspaceObjectEdits.PASTE, "Paste copies of objects, as Cubism's copy and paste: meshes, warp and rotation deformers with their descendants, parts with their contents, and parameters. Copies keep keyforms, blend shapes, masks, paths, vertex groups and the glue between copied meshes, share the original's texture and layer, and reference other copies in place of their originals; a copied parameter is a new axis with the original's range and no keyforms. Swings, simulations and interior effects are not copied. New IDs are fixed when the paste is recorded and returned in ids. One undoable history edit.",
-		schemas.paste, schemas.pasteResult, { "Pasted ${it.getValue("sources").jsonArray.size} objects" }) { request ->
-		buildJsonObject { put("ids", JsonObject(RigObjectPaste.plan(puppet(), JsonObject(request - "state")).ids.mapValues { JsonPrimitive(it.value) })) }
-	}
+		schemas.paste, schemas.pasteResult, { "Pasted ${it.getValue("sources").jsonArray.size} objects" })
 	register(WorkspaceObjectEdits.MESH_DUPLICATE, "Duplicate one mesh's topology onto other meshes, as Cubism's mesh duplication: each target takes the source's vertices and triangles where the source has them on the canvas and samples its own texture there; its keyforms, blend shapes, paths, vertex groups and glue migrate as for layer_mesh_rebuild. outside counts copied vertices that fall outside a target's artwork. One undoable history edit.",
-		schemas.meshDuplicate, schemas.meshDuplicateResult, { "Duplicated mesh ${it.getValue("source").jsonPrimitive.content}" }) { request ->
-		buildJsonObject { putJsonArray("targets") { for (t in RigMeshDuplication.plan(puppet(), JsonObject(request - "state"))) add(buildJsonObject {
-			put("target", "mesh:${t.id.raw}"); put("vertices", t.mesh.vertexCount); put("outside", t.outside)
-		}) } }
-	}
+		schemas.meshDuplicate, schemas.meshDuplicateResult, { "Duplicated mesh ${it.getValue("source").jsonPrimitive.content}" }) { request -> WorkspaceObjectEdits.duplicated(puppet(), request) }
 	register(WorkspaceObjectEdits.RENAME, "Find and replace object names or IDs, as Cubism's search and replace: the objects object_find matches with the same fields take what the replace makes of them. Names change as rig_edit_structure renames; IDs convert as object_convert_id, with every reference. Fails when nothing matches. One undoable history edit.",
-		schemas.rename, schemas.renameResult, { "Replaced ${it["field"]?.jsonPrimitive?.content ?: "name"}s" }) { request ->
-		val matches = WorkspaceObjectEdits.find(puppet(), JsonObject(request - "state"))
-		buildJsonObject {
-			put("field", request["field"]?.jsonPrimitive?.content ?: "name")
-			putJsonArray("renamed") { for (m in matches) add(buildJsonObject { put("target", m.target); put("before", m.before); put("after", m.after) }) }
-		}
-	}
+		schemas.rename, schemas.renameResult, { "Replaced ${it["field"]?.jsonPrimitive?.content ?: "name"}s" })
 	register(WorkspaceObjectEdits.CONVERT_ID, "Convert object IDs, as Cubism's ID conversion: each target takes its new ID and every reference follows - keyforms and blend shapes, parents, parts, masks, glue, paths, vertex groups, parameter links and folders, motions, user physics groups and swing targets; generated physics, motions and expressions find renamed standard parameters under their new IDs, and later edits use the new ones. A new ID must be free in its kind (warps and rotations share one). Objects a swing, simulation or interior effect owns or reads are refused. One undoable history edit.",
-		schemas.convert, schemas.convertResult, { "Converted ${it.getValue("renames").jsonArray.size} IDs" }) { request ->
-		buildJsonObject { putJsonObject("ids") { for (r in request.getValue("renames").jsonArray) put(r.jsonObject.getValue("target").jsonPrimitive.content, r.jsonObject.getValue("id")) } }
-	}
+		schemas.convert, schemas.convertResult, { "Converted ${it.getValue("renames").jsonArray.size} IDs" })
 	registry.register(WorkspaceOperationDefinition(WorkspaceObjectEdits.FIND, "Find objects by name or ID from one captured version, and show what a replace with the same fields would make of each (object_rename applies it). Lists every match, paged by offset and limit (default 64).",
 		schemas.find, WorkspaceOperationKind.QUERY, resultSchema = schemas.findResult)) { request, _ ->
 		WorkspaceOperationOutput(workspace.captureQueries().findObjects(request))

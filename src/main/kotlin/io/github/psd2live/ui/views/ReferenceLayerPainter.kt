@@ -55,7 +55,7 @@ internal object ReferenceLayerPainter {
 		if (ids.isEmpty()) return
 		val layers = model.analysis.source.layers.filter { it.id.raw in ids && (visibleLayerIds == null || it.id.raw in visibleLayerIds) }
 			.sortedByDescending { it.order }
-		val quadOf = model.rig.puppet.drawables.associateBy { model.rig.layerIdByDrawableId[it.id.raw] }
+		val quadOf = model.rig.puppet.drawables.associateBy { model.rig.ownLayerIdByDrawableId[it.id.raw] }
 		for (layer in layers) {
 			val quad = quadOf[layer.id.raw] ?: continue
 			val world = geometry.worldPositions[quad.id] ?: continue

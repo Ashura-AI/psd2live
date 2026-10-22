@@ -445,7 +445,7 @@ internal object RasterPaintCommit {
         if (targetDrawable == null && finalTargetClassified != null &&
             (0 until newRaster.width * newRaster.height).any { (newRaster.rgba[it * 4 + 3].toInt() and 255) > currentPreview.config.alphaThreshold }) {
             val stable = RigBuilder.assignSplitDrawableIds(effectiveAnalysis,
-                currentPreview.rig.layerIdByDrawableId.entries.associate { it.value to DrawableId(it.key) })
+                currentPreview.stableLayerIdByDrawableId.entries.associate { it.value to DrawableId(it.key) })
             val generated = RigBuilder.buildPreservingDeformers(effectiveAnalysis, newAtlas, currentPreview.config, null,
                 geometryAnalysis, currentPreview.config, stable)
             checkpoint()

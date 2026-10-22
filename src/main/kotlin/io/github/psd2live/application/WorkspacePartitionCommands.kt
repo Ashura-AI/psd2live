@@ -37,7 +37,7 @@ internal object WorkspacePartitionEdits {
         val source = model.analysis.source.layers.firstOrNull { it.id.raw == id }
             ?: model.analysis.layers.firstOrNull { it.source.id.raw == id }?.source ?: return null
         if (source.clipped || source.blend != LayerBlend.Normal || source.channelMask != ChannelMask.ALL) return null
-        val drawable = model.rig.puppet.drawables.firstOrNull { it.id.raw == id || model.rig.layerIdByDrawableId[it.id.raw] == id }
+        val drawable = model.rig.puppet.drawables.firstOrNull { it.id.raw == id || model.rig.ownLayerIdByDrawableId[it.id.raw] == id }
             ?: return null
         return drawable.mesh?.let { mesh ->
             MeshComponentSplit.detectCanvas(mesh, source, Cmo3ModelImport.textureCanvas(model, drawable), checkpoint)
@@ -85,7 +85,7 @@ internal object WorkspacePartitionEdits {
         work.progress(0.75f, "Preserving partition generation context")
         if (!imported) return materialize(document, model, id, pieces, sides, names, componentPlan, request, work)
         if (!migrate) return install(document, model, id, pieces, sides)
-        val drawable = model.rig.puppet.drawables.single { model.rig.layerIdByDrawableId[it.id.raw] == id || it.id.raw == id }
+        val drawable = model.rig.puppet.drawables.single { model.rig.ownLayerIdByDrawableId[it.id.raw] == id || it.id.raw == id }
         val geometry = geometry(model, drawable, componentPlan, request, pieces.size, work)
         val frozen = WorkspaceLayerInsertionEdits.freeze(document, model)
         var next = install(frozen, model, id, pieces, sides)
@@ -124,7 +124,7 @@ internal object WorkspacePartitionEdits {
     private fun materialize(document: WorkspaceDocument, model: RigPreviewModel, id: String, pieces: List<WorkspaceSourceLayer>,
                             sides: List<Side>, names: List<String>, componentPlan: MeshComponentSplit.Plan?, request: JsonObject,
                             work: WorkspaceRasterWork): WorkspaceDocument {
-        val drawable = model.rig.puppet.drawables.single { model.rig.layerIdByDrawableId[it.id.raw] == id || it.id.raw == id }
+        val drawable = model.rig.puppet.drawables.single { model.rig.ownLayerIdByDrawableId[it.id.raw] == id || it.id.raw == id }
         val geometry = geometry(model, drawable, componentPlan, request, pieces.size, work)
         val frozen = WorkspaceLayerInsertionEdits.freeze(document, model)
         val pieceIds = WorkspaceArtPrimitives.allocate(frozen, model, pieces)
@@ -194,7 +194,7 @@ internal object WorkspacePartitionEdits {
                 (document.source.layers.map { it.id.raw }.filterNot { it in document.deletedLayerIds } + model.analysis.layers.map { it.source.id.raw }).sorted().toSet()
             }))
         // Allocate identities before rebuilding, so subsequent batch members and reopen use the same names.
-        val existing = model.rig.layerIdByDrawableId.map { (drawable, layer) -> layer to DrawableId(drawable) }.toMap() +
+        val existing = model.stableLayerIdByDrawableId.map { (drawable, layer) -> layer to DrawableId(drawable) }.toMap() +
             document.rigEdits.splitDrawableIds.mapValues { DrawableId(it.value) }
         val analysis = MouthLipLayers.prepare(RigGenerationSource.analyze(next.source, next.config()), next.config())
         val stable = RigBuilder.assignSplitDrawableIds(analysis, existing).mapValues { it.value.raw }

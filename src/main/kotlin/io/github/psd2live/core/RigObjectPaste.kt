@@ -55,8 +55,10 @@ internal object RigObjectPaste {
 	 * or `root`) for the pasted meshes and deformers, `part` (`part:ID` or `root`) for the pasted roots' organizational
 	 * place, `parameter_group` (`param_group:ID` or `root`) for pasted parameters and `ids` fixing new IDs by source
 	 * `kind:id`. New IDs not given are the source ID with `_copy`, then `_copy_2`, ... - the first one free.
+	 * IDs [reserved] holds count as taken too: a paste planned on the authored rig is recorded on the shown one, which
+	 * also holds what the generators add.
 	 */
-	fun plan(model: PuppetModel, request: JsonObject): Plan {
+	fun plan(model: PuppetModel, request: JsonObject, reserved: PuppetModel? = null): Plan {
 		val allowed = setOf("op", "sources", "parent", "part", "parameter_group", "ids")
 		require(request.keys.all { it in allowed }) { "Unknown paste field: ${(request.keys - allowed).sorted().joinToString()}" }
 		val sources = request.getValue("sources").jsonArray.map { it.jsonPrimitive.content }
@@ -91,8 +93,10 @@ internal object RigObjectPaste {
 		val parameters = wanted.filter { it.first == "parameter" }.mapTo(HashSet()) { it.second }
 		val explicit = request["ids"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty()
 		val taken = HashMap<String, MutableSet<String>>()
-		fun taken(namespace: String) = taken.getOrPut(namespace) { RigIdConversion.ids(model, namespace).toMutableSet() }
-		val paths = model.deformPaths.mapTo(HashSet()) { it.id }
+		fun taken(namespace: String) = taken.getOrPut(namespace) {
+			(RigIdConversion.ids(model, namespace) + reserved?.let { RigIdConversion.ids(it, namespace) }.orEmpty()).toMutableSet()
+		}
+		val paths = (model.deformPaths + reserved?.deformPaths.orEmpty()).mapTo(HashSet()) { it.id }
 		fun copy(kind: String, id: String): Copy {
 			val namespace = namespace(kind)
 			val newId = explicit["$kind:$id"]?.also { chosen ->
@@ -161,8 +165,8 @@ internal object RigObjectPaste {
 	}
 
 	/** [request] as journal entries: the paste and, when it places its roots elsewhere, the structure edit that does. */
-	fun compile(model: PuppetModel, request: JsonObject): List<JsonObject> {
-		val plan = plan(model, request)
+	fun compile(model: PuppetModel, request: JsonObject, reserved: PuppetModel? = null): List<JsonObject> {
+		val plan = plan(model, request, reserved)
 		val paste = encode(plan.copies)
 		return if (plan.placement.isEmpty()) listOf(paste)
 			else listOf(paste, buildJsonObject { put("op", "structure"); put("edits", JsonArray(plan.placement)) })

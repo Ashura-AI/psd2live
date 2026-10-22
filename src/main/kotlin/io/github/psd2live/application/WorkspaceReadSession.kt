@@ -80,9 +80,12 @@ internal class WorkspaceReadSession(
         val limit = request["limit"]?.jsonPrimitive?.int ?: 64
         return buildJsonObject {
             put("project_id", captured.projectId); put("state", captured.state); put("revision", captured.revision)
-            WorkspaceObjectEdits.findResult(WorkspaceObjectEdits.find(captured.model.rig.puppet, request), offset, limit).forEach { (k, v) -> put(k, v) }
+            WorkspaceObjectEdits.findResult(WorkspaceObjectEdits.find(captured.model, request), offset, limit).forEach { (k, v) -> put(k, v) }
         }
     }
+
+    override fun planObjectEdit(operation: String, request: JsonObject): Pair<JsonObject, JsonObject> =
+        WorkspaceObjectEdits.planned(operation, capture().model, request)
 
     private fun buildSnapshot(): WorkspaceProjectSnapshot {
         val captured = read.runtime.capture
@@ -342,7 +345,7 @@ internal class WorkspaceReadSession(
             }
             RigTargetKind.ART_MESH -> {
                 val drawable = puppet.findDrawable(target.id)
-                    ?: puppet.drawables.firstOrNull { rig.layerIdByDrawableId[it.id.raw] == target.id }
+                    ?: puppet.drawables.firstOrNull { rig.ownLayerIdByDrawableId[it.id.raw] == target.id }
                     ?: throw IllegalArgumentException("Drawable not found: ${target.id}")
                 val grid = drawable.geometryGrid
                 val topo = mapOf(

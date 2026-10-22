@@ -150,7 +150,9 @@ internal fun FindReplaceDialog(state: PSD2LiveState, viewModel: PSD2LiveViewMode
 internal fun ConvertIdsDialog(state: PSD2LiveState, viewModel: PSD2LiveViewModel) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	val puppet = state.previewModel?.rig?.puppet ?: return
+	val model = state.previewModel ?: return
+	// The authored rig's objects: what a swing, simulation or interior effect adds keeps the ID its generator gives.
+	val puppet = remember(model) { model.authored.rig.puppet }
 	val objects = remember(puppet) { WorkspaceObjectEdits.objects(puppet) }
 	var kind by remember { mutableStateOf("parameter") }
 	var filter by remember { mutableStateOf("") }

@@ -362,6 +362,9 @@ data class RigEditOverlay(
 			(command[PANEL_AFTER_GENERATION] as? kotlinx.serialization.json.JsonArray)?.forEach {
 				retained += it.jsonPrimitive.content
 			}
+			// A converted parameter keeps its phase under its new ID.
+			if (RigIdConversion.isConversion(command)) for (rename in RigIdConversion.renames(command))
+				if (rename.kind == "parameter" && retained.remove(rename.from)) retained += rename.to
 			if (command["op"]?.jsonPrimitive?.contentOrNull == "structure") {
 				for (entry in (command["edits"] as? kotlinx.serialization.json.JsonArray).orEmpty()) {
 					val edit = entry.jsonObject
@@ -374,7 +377,7 @@ data class RigEditOverlay(
 		generatedIds + retained
 	}
 
-	private fun generatedPanelEdit(edit: kotlinx.serialization.json.JsonObject): Boolean =
+	internal fun generatedPanelEdit(edit: kotlinx.serialization.json.JsonObject): Boolean =
 		edit["kind"]?.jsonPrimitive?.contentOrNull == "parameter" &&
 			edit["action"]?.jsonPrimitive?.contentOrNull in setOf("move", "link") &&
 			listOf("id", "partner_id", "before_id").any { field ->
@@ -598,19 +601,22 @@ internal fun AuthoredRig.withJournalMeshes(commands: List<JsonObject>): Authored
 	val bounds = rig.sourceBoundsByDrawableId.toMutableMap()
 	val layers = rig.layerIdByDrawableId.toMutableMap()
 	val pages = rig.pageByDrawableId.toMutableMap()
+	val copied = rig.copiedDrawableIds.toMutableSet()
 	val visible = visibilityTargets.toMutableList()
 	for (command in commands) {
 		val op = command["op"]?.jsonPrimitive?.contentOrNull
 		if (op == LayerDeletionJournal.OP) {
 			for (id in LayerDeletionJournal.meshes(command)) {
-				layers -= id; bounds -= id; pages -= id
+				layers -= id; bounds -= id; pages -= id; copied -= id
 				visible.removeAll { it.first == id }
 			}
 			continue
 		}
-		// A pasted mesh shows its original's layer; a converted one keeps its layer under the new ID.
+		// A pasted mesh shows its original's layer without becoming that layer's mesh; a converted one keeps its layer
+		// under the new ID.
 		if (op == RigObjectPaste.OP) {
 			for (copy in RigObjectPaste.copies(command)) if (copy.kind == "mesh") {
+				copied += copy.newId
 				layers[copy.id]?.let { layers[copy.newId] = it; visible += copy.newId to it }
 				bounds[copy.id]?.let { bounds[copy.newId] = it }
 				pages[copy.id]?.let { pages[copy.newId] = it }
@@ -620,6 +626,7 @@ internal fun AuthoredRig.withJournalMeshes(commands: List<JsonObject>): Authored
 		if (op == RigIdConversion.OP) {
 			for (rename in RigIdConversion.renames(command)) if (rename.kind == "mesh") {
 				layers.remove(rename.from)?.let { layers[rename.to] = it }
+				if (copied.remove(rename.from)) copied += rename.to
 				bounds.remove(rename.from)?.let { bounds[rename.to] = it }
 				pages.remove(rename.from)?.let { pages[rename.to] = it }
 				visible.replaceAll { if (it.first == rename.from) rename.to to it.second else it }
@@ -670,7 +677,8 @@ internal fun AuthoredRig.withJournalMeshes(commands: List<JsonObject>): Authored
 		}
 		if (model.drawables.any { it.id.raw == id }) bounds[id] = Bounds(numbers[0], numbers[1], numbers[2], numbers[3])
 	}
-	return AuthoredRig(rig.copy(sourceBoundsByDrawableId = bounds, layerIdByDrawableId = layers, pageByDrawableId = pages), visible)
+	return AuthoredRig(rig.copy(sourceBoundsByDrawableId = bounds, layerIdByDrawableId = layers, pageByDrawableId = pages,
+		copiedDrawableIds = copied), visible)
 }
 
 /**

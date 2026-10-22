@@ -253,11 +253,11 @@ internal class Studio(private val temp: Path, private val checks: Set<Check> = C
 
 	// ---- Observation ------------------------------------------------------------------------------------------
 
-	/** The drawable generated for source layer [layer]. */
-	fun mesh(layer: String): String = now.model.rig.layerIdByDrawableId.entries.singleOrNull { it.value == layer }?.key
-		?: throw ScenarioFailure("No single mesh for layer $layer: ${now.model.rig.layerIdByDrawableId.filterValues { it == layer }.keys}", null)
+	/** The drawable generated for source layer [layer]; pasted copies showing it are not its mesh. */
+	fun mesh(layer: String): String = now.model.rig.ownLayerIdByDrawableId.entries.singleOrNull { it.value == layer }?.key
+		?: throw ScenarioFailure("No single mesh for layer $layer: ${now.model.rig.ownLayerIdByDrawableId.filterValues { it == layer }.keys}", null)
 
-	fun meshes(layer: String): List<String> = now.model.rig.layerIdByDrawableId.filterValues { it == layer }.keys.sorted()
+	fun meshes(layer: String): List<String> = now.model.rig.ownLayerIdByDrawableId.filterValues { it == layer }.keys.sorted()
 
 	fun inspect(scope: String = "project"): JsonObject = WorkspaceReadSession(runtime.read()).inspect(buildJsonObject { put("scope", scope) })
 

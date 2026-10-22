@@ -70,7 +70,7 @@ internal class WorkspaceAssetSessions(private val runtime: WorkspaceRuntime<RigP
                 "asset_prepare_reference" -> {
                     val id = arguments.text("layer_id")
                     val rig = before.model.rig
-                    val parent = rig.puppet.drawables.firstOrNull { rig.layerIdByDrawableId[it.id.raw] == id }?.parentDeformerId?.raw
+                    val parent = rig.puppet.drawables.firstOrNull { rig.ownLayerIdByDrawableId[it.id.raw] == id }?.parentDeformerId?.raw
                     api.prepare(if (parent == null) arguments else JsonObject(arguments + ("source_parent_id" to JsonPrimitive(parent))))
                 }
                 "asset_register" -> api.register(arguments)

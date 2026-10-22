@@ -29,6 +29,7 @@ internal object MaterializedRigCodec {
 			put("format", FORMAT); put("version", VERSION); put("build", Compiler.version); put("binding_key", bindingKey)
 			putJsonObject("pages") { rig.pageByDrawableId.toSortedMap().forEach { (id, page) -> put(id, page) } }
 			putJsonObject("layers") { rig.layerIdByDrawableId.toSortedMap().forEach { (id, layer) -> put(id, layer) } }
+			if (rig.copiedDrawableIds.isNotEmpty()) put("copied", JsonArray(rig.copiedDrawableIds.sorted().map(::JsonPrimitive)))
 			putJsonObject("bounds") {
 				rig.sourceBoundsByDrawableId.toSortedMap().forEach { (id, b) -> put(id, floats(b.left, b.top, b.right, b.bottom)) }
 			}
@@ -60,6 +61,7 @@ internal object MaterializedRigCodec {
 				numbers(value, 4).let { Bounds(it[0], it[1], it[2], it[3]) }
 			},
 			layerIdByDrawableId = strings("layers"),
+			copiedDrawableIds = header["copied"]?.jsonArray?.mapTo(HashSet()) { it.jsonPrimitive.content }.orEmpty(),
 			faceCenterX = face[0], faceCenterY = face[1], faceRadiusX = face[2], faceRadiusY = face[3],
 			warnings = header.getValue("warnings").jsonArray.map { it.jsonPrimitive.content },
 			initialHeadAngleZ = face[4],

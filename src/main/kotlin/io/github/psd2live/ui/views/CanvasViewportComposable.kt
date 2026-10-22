@@ -1422,7 +1422,7 @@ fun CanvasViewportComposable(
 					val effect =
 						canvasState.rigEdits.interiorEffects.singleOrNull {
 							it.target ==
-								previewModel.rig.layerIdByDrawableId.entries
+								previewModel.rig.ownLayerIdByDrawableId.entries
 									.firstOrNull { e -> e.value == canvasState.selectedLayerId }
 									?.key || it.target == canvasState.selectedLayerId
 						}
@@ -1757,7 +1757,7 @@ fun CanvasViewportComposable(
 						}
 						if (gpuBoxGuides && showSelectionBounds && !transformBoxOwnsSelection) {
 							selectedLayerId?.let { layerId ->
-								val drawableId = model.rig.layerIdByDrawableId.entries.firstOrNull { it.value == layerId }?.key
+								val drawableId = model.rig.ownLayerIdByDrawableId.entries.firstOrNull { it.value == layerId }?.key
 								drawableId?.let(drawableBounds::get)?.let { guides.selectionBox(it, ComponentPalette.strong(layerId).brighter()) }
 							}
 							if (mode == CanvasMode.EDIT) selectedDeformerId?.let { defId ->
@@ -1970,7 +1970,7 @@ fun CanvasViewportComposable(
 					// dragged. Every other tool leaves this as the only selection feedback.
 					if (!gpuBoxGuides && showSelectionBounds && !transformBoxOwnsSelection) {
 						selectedLayerId?.let { layerId ->
-							val drawableId = model.rig.layerIdByDrawableId.entries.firstOrNull { it.value == layerId }?.key
+							val drawableId = model.rig.ownLayerIdByDrawableId.entries.firstOrNull { it.value == layerId }?.key
 							val bounds = drawableId?.let(drawableBounds::get)
 							if (bounds != null) {
 								painted = true

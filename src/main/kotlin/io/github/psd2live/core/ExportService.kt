@@ -73,7 +73,7 @@ internal object ExportService {
 	/** Writes [target]'s files into [stage] and returns the report. The caller publishes them. */
 	internal fun writeStaged(preview: RigPreviewModel, target: ExportTarget, options: ExportOptions, stage: Path): ExportReport {
 		// Objects sharing an ID cannot be told apart in any target; the alphabet only matters to Cubism's own formats.
-		RigIdCheck.checked(target.id, preview.rig.puppet)
+		RigIdCheck.checked(target.id, RigIdCheck.exported(preview))
 		val ir = RigIrCompiler.compile(preview, tileArt = target.id == "cmo3", simulations = target.id == "p2lrt" || target.id == "web")
 		val root = stage.toAbsolutePath().normalize()
 		val report = Compiler.export(target, ir, options) { path, bytes ->
