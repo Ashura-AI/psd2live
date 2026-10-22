@@ -116,7 +116,7 @@ internal object WorkspaceRasterEdits {
         val pixels = if (DepthSplit.isFrontLayer(model, id) || WorkspaceMaterialLinks.shared(document, id) != null) request.pixels
             else PaintPixels(painted.raster, painted.rect ?: LayerCanvasRect.of(painted.bounds))
         val samePixels = painted.samePixels(PaintSpace.of(layer, canvasWidth, canvasHeight).cropLayer(layer, work::checkpoint))
-        val missingMesh = model.rig.puppet.drawables.none { drawable -> drawable.mesh != null && model.rig.layerIdByDrawableId[drawable.id.raw] == id }
+        val missingMesh = model.rig.puppet.drawables.none { drawable -> drawable.mesh != null && model.rig.ownLayerIdByDrawableId[drawable.id.raw] == id }
         val visiblePixels = (0 until painted.raster.width * painted.raster.height).any {
             if (it % painted.raster.width == 0) work.checkpoint()
             (painted.raster.rgba[it * 4 + 3].toInt() and 255) > model.config.alphaThreshold

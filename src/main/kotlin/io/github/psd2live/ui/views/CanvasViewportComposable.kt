@@ -384,7 +384,7 @@ fun CanvasViewportComposable(
 		if (model == null || onionParameter == null) emptyList() else {
 			val puppet = model.rig.puppet
 			// The keys of the object being edited, or of the whole rig when it has none on this parameter.
-			val owner = puppet.selectedParameterOwner(canvasState.selectedLayerId, canvasState.selectedDeformerId, model.rig.layerIdByDrawableId)
+			val owner = puppet.selectedParameterOwner(canvasState.selectedLayerId, canvasState.selectedDeformerId, model.rig.ownLayerIdByDrawableId)
 			(owner?.let { puppet.parameterKeyMarks(it)[onionParameter]?.allKeys }?.takeIf { it.isNotEmpty() }
 				?: puppet.parameterKeyMarks()[onionParameter]?.allKeys).orEmpty()
 		}
@@ -1803,7 +1803,7 @@ fun CanvasViewportComposable(
 									editor.target()?.kind == "mesh")
 							if (selectedId != null && !overlayDrawsMesh) {
 								for (drawable in model.rig.puppet.drawables) {
-									if (model.rig.layerIdByDrawableId[drawable.id.raw] == selectedId) wire(drawable, selected = true, dimmed = false)
+									if (model.rig.ownLayerIdByDrawableId[drawable.id.raw] == selectedId) wire(drawable, selected = true, dimmed = false)
 								}
 							}
 						} else {
@@ -1820,7 +1820,7 @@ fun CanvasViewportComposable(
 							}
 							if (selectedId != null) {
 								for (drawable in model.rig.puppet.drawables) {
-									if (model.rig.layerIdByDrawableId[drawable.id.raw] == selectedId) wire(drawable, selected = true, dimmed = false)
+									if (model.rig.ownLayerIdByDrawableId[drawable.id.raw] == selectedId) wire(drawable, selected = true, dimmed = false)
 								}
 							}
 						}

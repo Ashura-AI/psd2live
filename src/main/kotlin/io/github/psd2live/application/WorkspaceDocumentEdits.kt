@@ -300,14 +300,14 @@ internal object WorkspaceDocumentEdits {
     }
 
     /** The request fields that name a mesh to act on: the split's reference fields, an edited object's id, its masks and parent. */
-    private val copyReferenceFields = WorkspaceArtPrimitives.referenceFields + setOf("id", "ids", "masked_by", "mask_ids")
+    private val copyReferenceFields = WorkspaceArtPrimitives.referenceFields + setOf("id", "ids", "masked_by", "mask_ids", "source", "sources", "target", "targets")
 
     /**
      * Refuses [edits] whose reference fields ([copyReferenceFields]) name a copy over the bangs the shown rig holds - as
      * an id, or as `<kind>:<id>` - with [WorkspaceGeneratedCopyEdit]: the authored rig has no such mesh, and the finished
      * one would make it anew. Names, search text and other free strings are not references.
      */
-    private fun refuseCopies(model: RigPreviewModel, edits: JsonElement) {
+    fun refuseCopies(model: RigPreviewModel, edits: JsonElement) {
         val copies = model.rig.seeThroughCopies
         if (copies.isEmpty()) return
         fun visit(element: JsonElement, reference: Boolean) {
@@ -338,6 +338,7 @@ internal object WorkspaceDocumentEdits {
         }
         val spec = WorkspaceSkeletonMotionEdits.skeleton(document.rigEdits.skeleton, request) { SkeletonAutoBuilder.build(model.analysis, model.rig) }
         SkeletonDraftEdits.validated(spec, model.rig.puppet.drawables.mapTo(HashSet()) { it.id.raw })
+        WorkspaceObjectEdits.refuseConvertedBindings(spec, document.rigEdits)
         return document.copy(rigEdits = document.rigEdits.copy(skeleton = spec))
     }
 

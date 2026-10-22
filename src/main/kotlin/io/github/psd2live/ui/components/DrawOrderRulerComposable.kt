@@ -106,7 +106,7 @@ fun DrawOrderRuler(
 	fun computeFittedRange(): Pair<Float, Float> {
 		if (model == null || drawables.isEmpty()) return 500f to 1000f
 		val orders = drawables.map { drawable ->
-			val layerId = model.rig.layerIdByDrawableId[drawable.id.raw] ?: drawable.id.raw
+			val layerId = model.rig.ownLayerIdByDrawableId[drawable.id.raw] ?: drawable.id.raw
 			state.getEffectiveDrawOrder(drawable.id.raw, layerId, drawable.drawOrder)
 		}
 		val minO = orders.minOrNull() ?: 0f
@@ -139,7 +139,7 @@ fun DrawOrderRuler(
 	// Compute order entries with dynamically mapped y coordinates
 	val entries = remember(drawables, state.drawOrderOverrides, state.selectedLayerId, rulerHeightPx, visibleMin, visibleMax) {
 		drawables.mapNotNull { drawable ->
-			val layerId = model?.rig?.layerIdByDrawableId?.get(drawable.id.raw) ?: drawable.id.raw
+			val layerId = model?.rig?.ownLayerIdByDrawableId?.get(drawable.id.raw) ?: drawable.id.raw
 			val effective = state.getEffectiveDrawOrder(drawable.id.raw, layerId, drawable.drawOrder)
 			val isOverridden = state.drawOrderOverrides.containsKey(layerId) || state.drawOrderOverrides.containsKey(drawable.id.raw)
 			val isSelected = state.selectedLayerId != null && (state.selectedLayerId == layerId || state.selectedLayerId == drawable.id.raw)

@@ -20,7 +20,8 @@ internal object WorkspaceDrawOrderEdits {
             ?: throw IllegalArgumentException("Draw-order target not found: $raw")
         // A copy over the bangs draws where its bangs are: an override would not last.
         model.rig.seeThroughCopies[drawable.id.raw]?.let { throw WorkspaceGeneratedCopyEdit(drawable.id.raw, it) }
-        val layer = model.rig.layerIdByDrawableId[drawable.id.raw] ?: drawable.id.raw
+        // A pasted copy is ordered by its own ID: its original's layer key would move both.
+        val layer = model.rig.ownLayerIdByDrawableId[drawable.id.raw] ?: drawable.id.raw
         val before = document.settings["drawOrderOverrides"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float }
             ?: model.config.drawOrderOverrides
         val value = request.getValue("order")
@@ -47,7 +48,7 @@ internal object WorkspaceDrawOrderEdits {
         val target = drawables.firstOrNull { model.rig.ownLayerIdByDrawableId[it.id.raw] == anchor } ?: drawables.firstOrNull { it.id.raw == anchor }
             ?: return document
         val at = target.drawOrder
-        val others = drawables.filter { it !== target && model.rig.layerIdByDrawableId[it.id.raw] !in layerIds }.map { it.drawOrder }
+        val others = drawables.filter { it !== target && model.rig.ownLayerIdByDrawableId[it.id.raw] !in layerIds }.map { it.drawOrder }
         val bound = if (inFront) others.filter { it > at }.minOrNull() ?: 1001f else others.filter { it < at }.maxOrNull() ?: -1f
         val step = (bound - at) / (layerIds.size + 1)
         // The first image of the batch draws in front of the rest.

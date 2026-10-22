@@ -28,7 +28,7 @@ internal object WorkspaceObjectEdits {
 		val request = JsonObject(operation.request - setOf("state", "dry_run"))
 		return when (operation.operation) {
 			// Planned on the authored rig: what only the shown rig holds - a swing's, simulation's or interior effect's
-			// objects - is not there where the paste replays.
+			// objects, the copies over the bangs - is not there where the paste replays.
 			PASTE -> WorkspaceDocumentEdits.journal(document, model, JsonArray(RigObjectPaste.compile(model.authored.rig.puppet, request, model.rig.puppet)))
 			MESH_DUPLICATE -> WorkspaceDocumentEdits.journal(document, model, JsonArray(listOf(JsonObject(request + ("op" to JsonPrimitive(RigMeshDuplication.OP))))))
 			RENAME -> rename(document, model, request)
@@ -46,7 +46,13 @@ internal object WorkspaceObjectEdits {
 	 * fixed, a rename with its matches named - and the result fields naming what it records. Committed on the same
 	 * state, the pinned request records what the fields say or fails.
 	 */
-	fun planned(operation: String, model: RigPreviewModel, request: JsonObject): Pair<JsonObject, JsonObject> = when (operation) {
+	fun planned(operation: String, model: RigPreviewModel, request: JsonObject): Pair<JsonObject, JsonObject> {
+		// As the commit refuses it ([WorkspaceDocumentEdits]): a copy over the bangs is made anew on every build.
+		WorkspaceDocumentEdits.refuseCopies(model, request)
+		return plan(operation, model, request)
+	}
+
+	private fun plan(operation: String, model: RigPreviewModel, request: JsonObject): Pair<JsonObject, JsonObject> = when (operation) {
 		PASTE -> {
 			val ids = RigObjectPaste.plan(model.authored.rig.puppet, request, model.rig.puppet).ids
 			JsonObject(request + ("ids" to JsonObject(ids.mapValues { JsonPrimitive(it.value) }))) to
@@ -63,20 +69,13 @@ internal object WorkspaceObjectEdits {
 		CONVERT_ID -> request to buildJsonObject {
 			putJsonObject("ids") { for (r in request.getValue("renames").jsonArray) put(r.jsonObject.getValue("target").jsonPrimitive.content, r.jsonObject.getValue("id")) }
 		}
-		else -> request to JsonObject(emptyMap())
-	}
-
-	/** What [MESH_DUPLICATE] made of each target in the committed [model]: its vertex count and copied vertices outside its artwork. */
-	fun duplicated(model: PuppetModel, request: JsonObject): JsonObject = buildJsonObject {
-		putJsonArray("targets") {
-			for (target in request.getValue("targets").jsonArray) {
-				val id = target.jsonPrimitive.content.removePrefix("mesh:")
-				val drawable = model.drawables.single { it.id.raw == id }
-				add(buildJsonObject {
-					put("target", "mesh:$id"); put("vertices", drawable.mesh!!.vertexCount); put("outside", RigMeshDuplication.outside(model, drawable))
-				})
-			}
+		// The plan the commit compiles on the same state: each target's vertex count and copied vertices outside its artwork.
+		MESH_DUPLICATE -> request to buildJsonObject {
+			putJsonArray("targets") { for (t in RigMeshDuplication.plan(model.rig.puppet, request)) add(buildJsonObject {
+				put("target", "mesh:${t.id.raw}"); put("vertices", t.mesh.vertexCount); put("outside", t.outside)
+			}) }
 		}
+		else -> request to JsonObject(emptyMap())
 	}
 
 	// --- Find and replace ---------------------------------------------------------------------------------------------
@@ -240,7 +239,8 @@ internal object WorkspaceObjectEdits {
 
 	/**
 	 * [document] with [renames] converted: one `convert_id` entry for the rig, and the document's own references -
-	 * motion curves, the user's physics groups, swing targets - renamed with it in the same edit.
+	 * motion curves, expressions, the pose, hit areas, the user's physics groups, swing targets - renamed with it in the
+	 * same edit.
 	 */
 	fun convert(document: WorkspaceDocument, model: RigPreviewModel, renames: List<RigIdConversion.Rename>): WorkspaceDocument {
 		RigIdConversion.problem(model.rig.puppet, renames)?.let { throw IllegalArgumentException(it) }
@@ -249,16 +249,30 @@ internal object WorkspaceObjectEdits {
 		val journaled = WorkspaceDocumentEdits.journal(document, model, JsonArray(listOf(RigIdConversion.encode(renames))))
 		val parameters = renames.filter { it.kind == "parameter" }.associate { it.from to it.to }
 		val deformers = renames.filter { it.namespace == "deformer" }.associate { it.from to it.to }
-		val overlay = journaled.rigEdits
+		var overlay = journaled.rigEdits
+		// Motion curves and expression entries name parameters, the pose names parts, hit areas name meshes.
+		for (rename in renames) if (rename.kind == "parameter" || rename.kind == "part")
+			overlay = ModelSidecars.withIdRenamed(overlay, rename.kind, rename.from, rename.to)
+		overlay = RigHitAreas.replacingMeshes(overlay, renames.filter { it.kind == "mesh" }.associate { it.from to listOf(it.to) })
 		return journaled.copy(rigEdits = overlay.copy(
-			motionClips = if (parameters.isEmpty()) overlay.motionClips else overlay.motionClips.map { clip ->
-				clip.copy(curves = clip.curves.map { curve -> parameters[curve.parameterId]?.let { curve.copy(parameterId = it) } ?: curve })
-			},
 			physicsEdits = overlay.physicsEdits.map { RigIdConversion.forward(it, parameters) },
 			swingEdits = if (deformers.isEmpty()) overlay.swingEdits else overlay.swingEdits.map { swing ->
 				if (swing.targets.none { it in deformers }) swing else swing.copy(targets = swing.targets.map { deformers[it] ?: it })
 			},
 		))
+	}
+
+	/**
+	 * Refuses [spec] binding or weighting a mesh whose ID the journal converted: the skeleton bakes into the generated
+	 * rig before the journal replays, where that mesh still has its generated ID. Converting a bound mesh is refused
+	 * the other way round ([refusal]).
+	 */
+	fun refuseConvertedBindings(spec: SkeletonSpec, overlay: RigEditOverlay) {
+		val converted = overlay.idRenames.of("mesh").values.toSet()
+		if (converted.isEmpty()) return
+		(spec.bones.flatMap { it.drawableIds } + spec.manualWeights.keys).firstOrNull { it in converted }?.let {
+			throw IllegalArgumentException("Mesh $it had its ID converted; the skeleton bakes before ID conversions and cannot bind it")
+		}
 	}
 
 	// --- Results ----------------------------------------------------------------------------------------------------

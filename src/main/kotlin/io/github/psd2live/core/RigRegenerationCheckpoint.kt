@@ -53,7 +53,7 @@ internal object RigRegenerationCheckpoint {
 		if (PuppetIr.toIr(previous) == PuppetIr.toIr(seen)) return null
 		checkpoint()
 		val record = merged(named(previous, records), named(seen, records), current.authored, base,
-			bindingKey, seen, checkpoint).record
+			bindingKey, seen, records, checkpoint).record
 		val journal = ArrayList<JsonObject>(after.authoringJournal).apply { add(boundary, record) }
 		return next.copy(rigEdits = after.copy(authoringJournal = journal))
 	}
@@ -94,8 +94,8 @@ internal object RigRegenerationCheckpoint {
 		val overrides = earlier.filter { GeneratedOverrides.isOverride(it) && it["target"]?.jsonPrimitive?.contentOrNull == "mesh:${original.raw}" }
 		val m = authored.rig.puppet.let { if (overrides.isEmpty()) it else GeneratedOverrides.applyAll(it, overrides).model }.reboundTo(atlas, sources)
 		val splitAuthored = requireNotNull(parts.split(m, user = true)) { "The split original is not in the authored rig: ${original.raw}" }
-		// [original] is named as the authored rig names it; the generated rig holds it under any ID it was converted from.
-		val generatedOriginal = RigIdConversion.converted(previous, earlier)
+		// [original] is named as the authored rig names it: the generated rig is split under those names ([named]), once.
+		val generatedOriginal = named(previous, earlier)
 		val splitGenerated = parts.split(generatedOriginal, user = false) ?: generatedOriginal.withDrawablesDeleted(setOf(original))
 		checkpoint()
 		val ids = partLayers.keys.map { it.raw }
@@ -107,8 +107,8 @@ internal object RigRegenerationCheckpoint {
 		val targets = authored.visibilityTargets.flatMap { (id, target) ->
 			if (id != original.raw) listOf(id to target) else partLayers.entries.map { (part, partLayer) -> part.raw to partLayer }
 		}
-		val record = merged(named(splitGenerated, earlier), named(seen, earlier), AuthoredRig(rig, targets),
-			base, bindingKey, seen, checkpoint).record
+		val record = merged(splitGenerated, named(seen, earlier), AuthoredRig(rig, targets),
+			base, bindingKey, seen, earlier, checkpoint).record
 		return next.copy(rigEdits = next.rigEdits.copy(authoringJournal = journal + record))
 	}
 
@@ -144,7 +144,7 @@ internal object RigRegenerationCheckpoint {
 		checkpoint()
 		val authored = repair?.let { current.authored.copy(rig = current.authored.rig.copy(puppet = it.authored)) } ?: current.authored
 		val merged = merged(named(previous, journal), named(now, journal), authored, base, bindingKey,
-			now, checkpoint)
+			now, journal, checkpoint)
 		return Update(current.config.copy(rigEdits = overlay.copy(authoringJournal = journal + merged.record)), repair?.issues.orEmpty() + merged.issues)
 	}
 
@@ -162,11 +162,14 @@ internal object RigRegenerationCheckpoint {
 	 * the generation the checkpoint was made from.
 	 */
 	private fun merged(previous: PuppetModel, next: PuppetModel, authored: AuthoredRig, base: BuiltRig, bindingKey: String,
-	                   generated: PuppetModel, checkpoint: () -> Unit): Merged {
+	                   generated: PuppetModel, journal: List<JsonObject>, checkpoint: () -> Unit): Merged {
 		val result = RigRegeneration.merge(previous, next, authored.rig.puppet.reboundTo(base.puppet.atlas, base.puppet.sources), checkpoint)
 		val model = result.model
 		val ids = model.drawables.mapTo(HashSet()) { it.id.raw }
-		fun <V> joined(generatedMap: Map<String, V>, user: Map<String, V>) = (user + generatedMap).filterKeys { it in ids }
+		// The base's maps under the IDs the journal's conversions gave its meshes, as [previous] and [next] are named.
+		val renamed = RigIdConversion.renames(journal).of("mesh")
+		fun <V> joined(generatedMap: Map<String, V>, user: Map<String, V>) =
+			(user + if (renamed.isEmpty()) generatedMap else generatedMap.mapKeys { renamed[it.key] ?: it.key }).filterKeys { it in ids }
 		val rig = base.copy(puppet = model,
 			layerIdByDrawableId = joined(base.layerIdByDrawableId, authored.rig.layerIdByDrawableId),
 			sourceBoundsByDrawableId = joined(base.sourceBoundsByDrawableId, authored.rig.sourceBoundsByDrawableId),

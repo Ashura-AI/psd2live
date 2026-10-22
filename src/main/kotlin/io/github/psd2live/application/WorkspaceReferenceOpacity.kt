@@ -24,7 +24,7 @@ internal object WorkspaceReferenceOpacity {
         require(id in document.layout.referenceLayerIds && id !in document.deletedLayerIds) { "Not a reference layer: $id" }
         val layer = document.source.layers.single { it.id.raw == id }
         val meshes = model.rig.puppet.drawables.filter {
-            model.rig.layerIdByDrawableId[it.id.raw] == id && !WorkspaceLayoutPreview.isPendingMesh(it.id.raw)
+            model.rig.ownLayerIdByDrawableId[it.id.raw] == id && !WorkspaceLayoutPreview.isPendingMesh(it.id.raw)
         }
         var next = if (layer.opacity == opacity) document else document.copy(source = WorkspaceSourceArt(
             document.source.widthPx, document.source.heightPx,

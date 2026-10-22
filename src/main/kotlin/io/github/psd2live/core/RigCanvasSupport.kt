@@ -70,7 +70,7 @@ internal object RigCanvasSupport {
 		val drawables = model.rig.puppet.drawables
 			.filter { geometry.worldPositions.containsKey(it.id) && it.mesh != null }
 			.sortedBy {
-				val layerId = model.rig.layerIdByDrawableId[it.id.raw]
+				val layerId = model.rig.ownLayerIdByDrawableId[it.id.raw]
 				drawOrderOverrides[layerId] ?: drawOrderOverrides[it.id.raw] ?: geometry.drawOrder[it.id] ?: it.drawOrder
 			}
 		val drawableById = model.rig.puppet.drawables.associateBy { it.id }
@@ -411,7 +411,7 @@ internal object RigCanvasSupport {
 		drawable: org.umamo.runtime.model.Drawable,
 		geometry: DeformedGeometry? = null,
 		drawOrderOverrides: Map<String, Float> = emptyMap(),
-	): Float = drawOrderOverrides[model.rig.layerIdByDrawableId[drawable.id.raw]]
+	): Float = drawOrderOverrides[model.rig.ownLayerIdByDrawableId[drawable.id.raw]]
 		?: drawOrderOverrides[drawable.id.raw]
 		?: geometry?.drawOrder?.get(drawable.id)
 		?: drawable.drawOrder

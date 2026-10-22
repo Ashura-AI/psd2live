@@ -82,13 +82,14 @@ internal fun ArtMeshMenu(
             { close(); viewModel.requestDepthSplit(drawable.id.raw) }, enabled = editable && drawable.mesh != null,
             icon = { IconDrawOrder(Modifier.size(12.dp), it) }) }
         val order = state.getEffectiveDrawOrder(drawable.id.raw, layerId, drawable.drawOrder)
-        val overridden = layerId in state.drawOrderOverrides || drawable.id.raw in state.drawOrderOverrides
+        val ownLayer = layerId?.takeUnless { state.previewModel?.rig?.copiedDrawableIds?.contains(drawable.id.raw) == true }
+        val overridden = ownLayer in state.drawOrderOverrides || drawable.id.raw in state.drawOrderOverrides
         add(highlight = editable) { FloatingMenuRow(tr("canvas.hierarchy.setDrawOrder"),
-            { close(); onRequestSetOrder?.invoke(layerId, drawable.name, order, drawable.drawOrder, overridden) },
+            { close(); onRequestSetOrder?.invoke(ownLayer ?: drawable.id.raw, drawable.name, order, drawable.drawOrder, overridden) },
             selected = overridden, enabled = editable, trailing = order.roundToInt().toString(),
             icon = { IconDrawOrder(Modifier.size(12.dp), it) }) }
         if (overridden) add(highlight = editable) { FloatingMenuRow(tr("canvas.drawOrder.reset"),
-            { close(); viewModel.resetLayerDrawOrder(layerId) }, enabled = editable,
+            { close(); viewModel.resetLayerDrawOrder(ownLayer ?: drawable.id.raw) }, enabled = editable,
             icon = { IconReset(Modifier.size(12.dp), it) }) }
         add(highlight = editable && drawable.mesh != null) { FloatingMenuRow(tr("canvas.hierarchy.splitMeshComponents"),
             { close(); viewModel.requestMeshSplit(layerId) }, enabled = editable && drawable.mesh != null,

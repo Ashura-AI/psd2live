@@ -816,7 +816,8 @@ data class PSD2LiveState(
 	}
 
 	fun getEffectiveDrawOrder(drawableId: String, layerId: String?, defaultOrder: Float): Float {
-		if (layerId != null) {
+		// A pasted copy is ordered by its own ID, never by its original's layer.
+		if (layerId != null && previewModel?.rig?.copiedDrawableIds?.contains(drawableId) != true) {
 			drawOrderOverrides[layerId]?.let { return it }
 		}
 		return drawOrderOverrides[drawableId] ?: defaultOrder

@@ -101,6 +101,11 @@ data class BuiltRig(
 	val puppet: PuppetModel,
 	val pageByDrawableId: Map<String, Int>,
 	val sourceBoundsByDrawableId: Map<String, Bounds>,
+	/**
+	 * The source layer whose texture each mesh shows, pasted copies ([copiedDrawableIds]) included: for what a mesh
+	 * draws. Looking a layer's mesh up - picking, draw order, the IDs a regeneration keeps - goes through
+	 * [ownLayerIdByDrawableId], or a copy would stand in for its original.
+	 */
 	val layerIdByDrawableId: Map<String, String>,
 	val faceCenterX: Float,
 	val faceCenterY: Float,

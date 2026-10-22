@@ -45,13 +45,6 @@ internal object RigMeshDuplication {
 		}
 	}
 
-	/** How many of [drawable]'s vertices sample outside its artwork. */
-	fun outside(model: PuppetModel, drawable: Drawable): Int {
-		val mesh = drawable.mesh ?: return 0
-		val texture = RasterMeshJournal.TextureCoordinates(model, drawable)
-		return outside(texture.toCanvas(mesh.uvs), texture.layer)
-	}
-
 	private fun outside(canvas: FloatArray, layer: ArtSourceLayer): Int = (0 until canvas.size / 2).count { v ->
 		val x = canvas[v * 2]; val y = canvas[v * 2 + 1]
 		x < layer.left || y < layer.top || x > layer.left + layer.width || y > layer.top + layer.height

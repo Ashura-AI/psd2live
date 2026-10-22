@@ -611,7 +611,7 @@ private fun HierarchyTreeList(
 	val (deformerChildrenMap, drawableChildrenMap) = remember(deformers, drawables, parentOverrides, sort, meshBounds, sortDrawOrders) {
 		val (deformerChildren, drawableChildren) = buildHierarchyChildrenMaps(deformers, drawables, parentOverrides)
 		sortHierarchyChildren(deformerChildren, drawableChildren, sort, meshBounds) { drawable ->
-			val layerId = model.rig.layerIdByDrawableId[drawable.id.raw] ?: drawable.id.raw
+			val layerId = model.rig.ownLayerIdByDrawableId[drawable.id.raw] ?: drawable.id.raw
 			state.getEffectiveDrawOrder(drawable.id.raw, layerId, drawable.drawOrder)
 		}
 	}

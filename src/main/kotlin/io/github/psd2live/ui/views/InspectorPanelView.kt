@@ -571,7 +571,7 @@ private fun ArtMeshInspector(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 CompactNumberSpinner(
-                    value = (state.drawOrderOverrides[state.previewModel?.rig?.layerIdByDrawableId?.get(drawable.id.raw)]
+                    value = (state.drawOrderOverrides[state.previewModel?.rig?.ownLayerIdByDrawableId?.get(drawable.id.raw)]
                         ?: state.drawOrderOverrides[drawable.id.raw] ?: drawable.drawOrder).toDouble(),
                     onValueChange = { order ->
                         viewModel.beginEditorField("mesh.draw_order.${drawable.id.raw}")

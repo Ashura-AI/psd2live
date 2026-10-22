@@ -112,6 +112,7 @@ internal class WorkspaceSkeletonDraftSessions(private val runtime: WorkspaceRunt
         val draft = session.draft
         val result = commands.executeCandidate(lineage.projectId, lineage.state, "Edit skeleton", author, mutation = { document, model ->
             SkeletonDraftEdits.validated(draft, model.rig.puppet.drawables.mapTo(HashSet()) { it.id.raw })
+            WorkspaceObjectEdits.refuseConvertedBindings(draft, document.rigEdits)
             if (document.rigEdits.skeleton == draft) document else document.copy(rigEdits = document.rigEdits.copy(skeleton = draft))
         }, beforeCommit = project)
         // No suspension between the CAS and recording the session's terminal lineage.

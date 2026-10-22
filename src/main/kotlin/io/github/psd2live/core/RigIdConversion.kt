@@ -187,11 +187,20 @@ internal object RigIdConversion {
  * be told apart by a runtime or by Cubism, so an export refuses them; an ID outside Cubism's alphabet only warns.
  */
 object RigIdCheck {
-	private fun all(model: PuppetModel): List<Pair<String, String>> = buildList {
+	/**
+	 * Every ID [model] exports, by kind, and what the runtime's advanced mode carries beside it ([advanced]): the
+	 * skeleton's virtual bones among the deformers, the simulations and their colliders in kinds of their own.
+	 */
+	private fun all(model: PuppetModel, advanced: io.github.psd2live.format.model.AdvancedIR?): List<Pair<String, String>> = buildList {
 		model.parameters.mapTo(this) { "parameter" to it.id.raw }; model.parts.mapTo(this) { "part" to it.id.raw }
 		model.deformers.mapTo(this) { "deformer" to it.id.raw }; model.drawables.mapTo(this) { "mesh" to it.id.raw }
 		fun walk(nodes: List<ParameterNode>) { for (n in nodes) if (n is ParameterNode.Group) { add("param_group" to n.id.raw); walk(n.children) } }
 		walk(model.parameterTree)
+		if (advanced != null) {
+			advanced.virtualBones.mapTo(this) { "deformer" to it.id }
+			advanced.simulations.mapTo(this) { "simulation" to it.id }
+			advanced.colliders.mapTo(this) { "collider" to it.id }
+		}
 	}
 
 	/** The model [preview] exports: interior effects lowered or dropped as the export resolves them ([RigIrCompiler]). */
@@ -202,18 +211,18 @@ object RigIdCheck {
 	}
 
 	/** `kind id` for each ID more than one object of its kind holds. */
-	fun conflicts(model: PuppetModel): List<String> =
-		all(model).groupingBy { it }.eachCount().filterValues { it > 1 }.keys.map { (kind, id) -> "$kind $id" }
+	fun conflicts(model: PuppetModel, advanced: io.github.psd2live.format.model.AdvancedIR? = null): List<String> =
+		all(model, advanced).groupingBy { it }.eachCount().filterValues { it > 1 }.keys.map { (kind, id) -> "$kind $id" }
 
 	/** `kind id` for each ID outside Cubism's alphabet ([RigIdConversion.ID_PATTERN]). */
-	fun invalid(model: PuppetModel): List<String> =
-		all(model).filterNot { RigIdConversion.ID_PATTERN.matches(it.second) }.map { (kind, id) -> "$kind $id" }
+	fun invalid(model: PuppetModel, advanced: io.github.psd2live.format.model.AdvancedIR? = null): List<String> =
+		all(model, advanced).filterNot { RigIdConversion.ID_PATTERN.matches(it.second) }.map { (kind, id) -> "$kind $id" }
 
 	/** Fails an export of [model] that has [conflicts]; the warnings for [invalid] IDs otherwise. */
-	fun checked(label: String, model: PuppetModel): List<String> {
-		val conflicts = conflicts(model)
+	fun checked(label: String, model: PuppetModel, advanced: io.github.psd2live.format.model.AdvancedIR? = null): List<String> {
+		val conflicts = conflicts(model, advanced)
 		require(conflicts.isEmpty()) { io.github.psd2live.i18n.tr("validation.idConflict", label, conflicts.joinToString()) }
-		val invalid = invalid(model)
+		val invalid = invalid(model, advanced)
 		return if (invalid.isEmpty()) emptyList() else listOf(io.github.psd2live.i18n.tr("validation.idInvalid", label, invalid.take(12).joinToString() +
 			if (invalid.size > 12) " (+${invalid.size - 12})" else ""))
 	}

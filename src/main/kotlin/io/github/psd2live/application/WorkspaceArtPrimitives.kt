@@ -168,7 +168,7 @@ internal object WorkspaceArtPrimitives {
         } ?: LayerClassificationOverride()
         val ids = parts.map { it.id.raw }
         val parent = if (id in document.parentOverrides) document.parentOverrides[id] else model.rig.puppet.drawables.firstOrNull {
-            it.id.raw == id || model.rig.layerIdByDrawableId[it.id.raw] == id
+            it.id.raw == id || model.rig.ownLayerIdByDrawableId[it.id.raw] == id
         }?.parentDeformerId?.raw
         val owner = if (document.source.layers.any { it.id.raw == id }) id else document.source.layers
             .map { it.id.raw }.filter { id.startsWith("$it:") }.maxByOrNull(String::length)

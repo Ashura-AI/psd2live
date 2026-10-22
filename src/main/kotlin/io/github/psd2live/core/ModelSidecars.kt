@@ -128,9 +128,13 @@ object ModelExpressions {
 		)),
 	)
 
-	/** The standard expressions on the parameters [parameterIds] holds; one with none of them is left out. */
-	fun standardFor(parameterIds: Set<String>): List<ModelExpression> = standard.mapNotNull { expression ->
-		expression.entries.filter { it.parameterId in parameterIds }.takeIf { it.isNotEmpty() }?.let { expression.copy(entries = it) }
+	/**
+	 * The standard expressions on the parameters [parameterIds] holds; one with none of them is left out. [renames] are
+	 * the journal's ID conversions of parameters ([RigEditOverlay.idRenames]): a standard parameter is found under its new ID.
+	 */
+	fun standardFor(parameterIds: Set<String>, renames: Map<String, String> = emptyMap()): List<ModelExpression> = standard.mapNotNull { expression ->
+		expression.entries.map { entry -> renames[entry.parameterId]?.let { entry.copy(parameterId = it) } ?: entry }
+			.filter { it.parameterId in parameterIds }.takeIf { it.isNotEmpty() }?.let { expression.copy(entries = it) }
 	}
 
 	/**
@@ -138,7 +142,7 @@ object ModelExpressions {
 	 * ones on a generated rig, and none on an imported model, whose rigger made its face without them.
 	 */
 	fun effective(overlay: RigEditOverlay, parameterIds: Set<String>): List<ModelExpression> =
-		overlay.expressions ?: if (overlay.importedCmo3 != null) emptyList() else standardFor(parameterIds)
+		overlay.expressions ?: if (overlay.importedCmo3 != null) emptyList() else standardFor(parameterIds, overlay.idRenames.parameters)
 
 	/**
 	 * What an export writes: [effective], each without the parameters the rig no longer has. An authored expression

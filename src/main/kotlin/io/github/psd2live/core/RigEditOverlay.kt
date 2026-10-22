@@ -697,7 +697,12 @@ internal fun AuthoredRig.finished(overlay: RigEditOverlay, layerVisibility: Map<
 		model = model.copy(drawables = model.drawables.map { if (it.id.raw == id) it.copy(isVisible = visible) else it })
 	}
 	model = ArtPrimitiveJournal.pruneAtlas(model, overlay)
-	return rig.copy(puppet = model, overrideIssues = outcome.issues, supersededEntryNotes = outcome.notes)
+	// The base found the brows and bangs under the generators' IDs; the journal's conversions may have renamed them.
+	val renamed = overlay.idRenames.of("mesh")
+	val candidates = if (renamed.isEmpty()) rig.seeThrough else rig.seeThrough?.map { candidate ->
+		candidate.copy(original = renamed[candidate.original] ?: candidate.original, bangs = candidate.bangs.map { renamed[it] ?: it })
+	}
+	return rig.copy(puppet = model, overrideIssues = outcome.issues, supersededEntryNotes = outcome.notes, seeThrough = candidates)
 		.withDrawOrderOverrides(drawOrderOverrides).withSeeThrough(seeThrough)
 }
 

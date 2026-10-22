@@ -27,7 +27,8 @@ internal object WorkspaceLayerTransform {
         if (delta.isIdentity) return document
         val layer = document.source.layers.singleOrNull { it.id.raw == layerId } ?: throw IllegalArgumentException("Layer not found: $layerId")
         val puppet = model.rig.puppet
-        val meshes = puppet.drawables.filter { model.rig.layerIdByDrawableId[it.id.raw] == layerId && it.mesh != null }
+        // The layer's own meshes: a pasted copy shares the texture but stays where it was put.
+        val meshes = puppet.drawables.filter { model.rig.ownLayerIdByDrawableId[it.id.raw] == layerId && it.mesh != null }
         require(meshes.isNotEmpty()) { "Layer $layerId has no mesh to transform" }
         val edits = meshes.map { drawable -> moved(puppet, drawable.id.raw, delta) }
         val transformed = (WorkspaceSourceLayer.copyOf(layer, layer.order) as WorkspaceSourceLayer)

@@ -141,7 +141,7 @@ internal object RasterPaintCommit {
         // 2. Identify target Drawable, ClassifiedLayer, and SourceLayer
         val targetLid = layerId
         val targetDrawable = currentPreview.rig.puppet.drawables.firstOrNull {
-            it.id.raw == targetLid || currentPreview.rig.layerIdByDrawableId[it.id.raw] == targetLid
+            it.id.raw == targetLid || currentPreview.rig.ownLayerIdByDrawableId[it.id.raw] == targetLid
         }
         val targetClassified = classifiedLayerFor(currentPreview, currentAnalysis, targetLid)
         val oldLayer = sourceLayerFor(currentPreview, currentAnalysis, targetLid)

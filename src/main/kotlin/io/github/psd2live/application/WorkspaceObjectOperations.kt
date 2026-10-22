@@ -62,8 +62,7 @@ internal object WorkspaceObjectSchemas {
 
 internal fun registerObjectOperations(registry: WorkspaceOperationRegistry, workspace: WorkspaceBackend) {
 	val schemas = WorkspaceObjectSchemas
-	fun register(id: String, description: String, schema: JsonObject, result: JsonObject, summary: (JsonObject) -> String,
-				 committed: ((JsonObject) -> JsonObject)? = null) {
+	fun register(id: String, description: String, schema: JsonObject, result: JsonObject, summary: (JsonObject) -> String) {
 		registry.register(WorkspaceOperationDefinition(id, description, schema, WorkspaceOperationKind.DOCUMENT, batchable = true,
 			resultSchema = result)) { request, context ->
 			// Planned on the captured version the state names: the pinned request records exactly what the fields name,
@@ -71,16 +70,14 @@ internal fun registerObjectOperations(registry: WorkspaceOperationRegistry, work
 			val (pinned, planned) = workspace.captureQueries().planObjectEdit(id, JsonObject(request - "state"))
 			val mutation = workspace.applyDocumentEdits(request.getValue("state").jsonPrimitive.content, summary(request),
 				listOf(WorkspaceDocumentOperation(id, pinned)), context.author).compact()
-			val extra = committed?.let { read -> read(JsonObject(request - "state")) } ?: planned
-			WorkspaceOperationOutput(JsonObject(mutation + extra))
+			WorkspaceOperationOutput(JsonObject(mutation + planned))
 		}
 	}
-	fun puppet() = requireNotNull(workspace.captureQueries().currentPuppet()) { "No workspace is loaded" }
 
 	register(WorkspaceObjectEdits.PASTE, "Paste copies of objects, as Cubism's copy and paste: meshes, warp and rotation deformers with their descendants, parts with their contents, and parameters. Copies keep keyforms, blend shapes, masks, paths, vertex groups and the glue between copied meshes, share the original's texture and layer, and reference other copies in place of their originals; a copied parameter is a new axis with the original's range and no keyforms. Swings, simulations and interior effects are not copied. New IDs are fixed when the paste is recorded and returned in ids. One undoable history edit.",
 		schemas.paste, schemas.pasteResult, { "Pasted ${it.getValue("sources").jsonArray.size} objects" })
 	register(WorkspaceObjectEdits.MESH_DUPLICATE, "Duplicate one mesh's topology onto other meshes, as Cubism's mesh duplication: each target takes the source's vertices and triangles where the source has them on the canvas and samples its own texture there; its keyforms, blend shapes, paths, vertex groups and glue migrate as for layer_mesh_rebuild. outside counts copied vertices that fall outside a target's artwork. One undoable history edit.",
-		schemas.meshDuplicate, schemas.meshDuplicateResult, { "Duplicated mesh ${it.getValue("source").jsonPrimitive.content}" }) { request -> WorkspaceObjectEdits.duplicated(puppet(), request) }
+		schemas.meshDuplicate, schemas.meshDuplicateResult, { "Duplicated mesh ${it.getValue("source").jsonPrimitive.content}" })
 	register(WorkspaceObjectEdits.RENAME, "Find and replace object names or IDs, as Cubism's search and replace: the objects object_find matches with the same fields take what the replace makes of them. Names change as rig_edit_structure renames; IDs convert as object_convert_id, with every reference. Fails when nothing matches. One undoable history edit.",
 		schemas.rename, schemas.renameResult, { "Replaced ${it["field"]?.jsonPrimitive?.content ?: "name"}s" })
 	register(WorkspaceObjectEdits.CONVERT_ID, "Convert object IDs, as Cubism's ID conversion: each target takes its new ID and every reference follows - keyforms and blend shapes, parents, parts, masks, glue, paths, vertex groups, parameter links and folders, motions, user physics groups and swing targets; generated physics, motions and expressions find renamed standard parameters under their new IDs, and later edits use the new ones. A new ID must be free in its kind (warps and rotations share one). Objects a swing, simulation or interior effect owns or reads are refused. One undoable history edit.",

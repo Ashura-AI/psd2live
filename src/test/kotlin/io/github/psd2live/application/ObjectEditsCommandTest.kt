@@ -107,10 +107,11 @@ class ObjectEditsCommandTest {
 		assertEquals(renamed.getValue("renamed").jsonArray.map { it.jsonObject.getValue("target") }, renamePinned.getValue("targets").jsonArray.toList())
 
 		val duplicate = buildJsonObject { put("source", "mesh:${eye.id.raw}"); putJsonArray("targets") { add("mesh:${closed.id.raw}") } }
+		val (_, planned) = WorkspaceObjectEdits.planned(WorkspaceObjectEdits.MESH_DUPLICATE, model, duplicate)
 		val duplicated = builder.build(WorkspaceDocumentEdits.apply(op(WorkspaceObjectEdits.MESH_DUPLICATE, duplicate), document, model))
-		val target = WorkspaceObjectEdits.duplicated(duplicated.rig.puppet, duplicate).getValue("targets").jsonArray.single().jsonObject
-		assertEquals(eye.mesh!!.vertexCount, target.getValue("vertices").jsonPrimitive.int)
-		assertEquals(RigMeshDuplication.plan(model.rig.puppet, duplicate).single().outside, target.getValue("outside").jsonPrimitive.int)
+		val target = planned.getValue("targets").jsonArray.single().jsonObject
+		assertEquals("mesh:${closed.id.raw}", target.getValue("target").jsonPrimitive.content)
+		assertEquals(duplicated.rig.puppet.drawables.single { it.id == closed.id }.mesh!!.vertexCount, target.getValue("vertices").jsonPrimitive.int)
 	}
 
 	@Test

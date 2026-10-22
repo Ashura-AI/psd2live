@@ -246,6 +246,10 @@ class ObjectOpsTest {
 		// Parameter folders are exported by ID too.
 		val folders = model.copy(parameterTree = model.parameterTree + ParameterNode.Group(ParameterGroupId("G"), "Again", true, emptyList()))
 		assertEquals(listOf("param_group G"), RigIdCheck.conflicts(folders))
+		// A virtual bone the runtime's advanced mode carries shares the deformers' IDs.
+		val bone = io.github.psd2live.format.model.Deformer.Rotation("parent", "Bone", null, null, 0f, null)
+		assertEquals(listOf("deformer parent"), RigIdCheck.conflicts(model, io.github.psd2live.format.model.AdvancedIR(virtualBones = listOf(bone))))
+		assertFailsWith<IllegalArgumentException> { RigIdCheck.checked("test", model, io.github.psd2live.format.model.AdvancedIR(virtualBones = listOf(bone))) }
 	}
 
 	/** A part's blend shapes - its draw order over a parameter - name the parameter by ID like any keyform. */
