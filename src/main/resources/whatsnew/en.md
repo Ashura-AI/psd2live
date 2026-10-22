@@ -1,3 +1,28 @@
+## next
+
+### New
+
+- **Paint selections and tools**: a selection tool (`Alt+L`) with marquee, ellipse, lasso, polygon lasso and magic wand, adding, subtracting, intersecting, feathering and inverting; brushes, fills and gradients stay inside it. New gradient, blur brush and global fill, with a stabilizer, mirror symmetry and lock transparency.
+- **Mesh points**: the Edit-mode mesh point tool (`Alt+M`) adds points by click or stroke, drags them, connects with Shift-click and removes points or edges with Alt-click, optionally mirrored; the topology menu adds delete edges and re-triangulate.
+- **Interior handles on the canvas**: `Shift+I` drags bulge, pressure and the propagation arrow and draws and edits fold guides on the canvas, in step with the panel.
+- **Keyform tools**: the Deform keyform menu pastes a copied shape onto other keys or objects (blended or flipped), restores the default shape, interpolates between neighbouring keys and edits several keys at once; `Shift+T` lays a temporary lattice over the selected points.
+- **Canvas aids**: grid, ruler guides (with snapping, saved with the project), onion skin and random pose, toggled from the canvas's bottom-right corner.
+- **Copy, paste and rename**: `Ctrl+C` / `Ctrl+V` in Object mode copy meshes, deformers, parts and parameters; a mesh's topology can be duplicated onto other layers; find and replace by name or ID; convert IDs in bulk with every reference following.
+- **Expressions, pose and events**: the animation panel makes expressions from the current parameters (add / multiply / overwrite, fades), sets pose groups of which one shows at a time and puts events on motions; exports write exp3, pose3 and motion UserData, and generated models come with smile, sad, angry and surprised.
+- **Hit areas**: set hit areas from the inspector or the hierarchy and click in the preview to test them; exports write them to model3 and the VTube Studio package.
+- **Timeline aids and loops**: parameter bookmarks, shy, freeze, markers and motion trails; close a loop in one step, and let a parameter repeat for continuous spins.
+- **Brows through the bangs**: generation shows brows covered by bangs semi-transparently above them, with adjustable opacity, and can be turned off.
+
+### Improved
+
+- **Editing alongside the agent**: the runtime is the workspace's only authority; when an agent commit lands, the editor's pending changes yield only the conflicting fields and the rest still commit, and saving records what is really there.
+- **Screen blend**: a PSD's Screen layers export as Cubism 5.3 Screen and as an approximated Add for earlier versions, noted in the loss report; generated-result overrides now keep color, opacity and draw order edits too.
+
+### Compatibility
+
+- Projects holding expressions, a pose or hit areas are refused by earlier builds instead of losing that data.
+- Screen layers in older projects export as Screen (or Add) after reopening instead of Normal.
+
 ## v3.6.0 · 2026-10-20
 
 ### New

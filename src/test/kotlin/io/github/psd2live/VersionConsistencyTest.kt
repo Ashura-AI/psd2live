@@ -34,7 +34,8 @@ class VersionConsistencyTest {
 		val version = AppVersion.value
 		for (language in AppLanguage.entries) {
 			val releases = assertNotNull(WhatsNew.read(language.tag), "whatsnew/${language.tag}.md")
-			assertEquals("v$version", releases.first().version, "${language.tag} starts What's new with another release")
+			// Unreleased changes may sit above it under `## next`; the newest release is the build's.
+			assertEquals("v$version", releases.first { it.version != WhatsNew.NEXT }.version, "${language.tag} starts What's new with another release")
 		}
 	}
 }
