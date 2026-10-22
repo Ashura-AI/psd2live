@@ -10,6 +10,7 @@ import io.github.psd2live.core.RigPreviewModel
 import io.github.psd2live.core.textureLayer
 import org.jetbrains.skia.*
 import org.umamo.render.eval.DeformedGeometry
+import io.github.psd2live.render.ArtworkBlend
 import io.github.psd2live.render.ArtworkDraw
 import io.github.psd2live.render.ArtworkDrawList
 import io.github.psd2live.render.ArtworkOptions
@@ -60,6 +61,7 @@ internal class SkiaRigPainter(private val atlas: PackedAtlas) : AutoCloseable {
         val shaders = pages.shaders
         val byId = model.rig.puppet.drawables.associateBy { it.id }
         val maskPaint = Paint()
+        val blendPaint = Paint()
         val solidPaint = Paint().apply { color = 0xFF000000.toInt(); isAntiAlias = false }
         Paint().use { paint ->
             try {
@@ -90,9 +92,15 @@ internal class SkiaRigPainter(private val atlas: PackedAtlas) : AutoCloseable {
                     val masked = draw.maskIds.isNotEmpty()
                     val saved = canvas.save()
                     try {
+                        // Add and multiply: the part (masked and tinted) draws into a layer that then blends down.
+                        if (draw.blend != ArtworkBlend.NORMAL) {
+                            blendPaint.blendMode = if (draw.blend == ArtworkBlend.ADD) BlendMode.PLUS else BlendMode.MULTIPLY
+                            canvas.saveLayer(bounds(positions), blendPaint)
+                        }
                         if (masked) {
                             // The part draws into a layer the size of its own triangles; its masks then keep only
-                            // what they cover (DST_IN over their union), as the GPU painter's stencil does.
+                            // what they cover (DST_IN over their union), or what they leave bare when inverted
+                            // (DST_OUT), as the GPU painter's stencil does.
                             canvas.saveLayer(bounds(positions), null)
                         }
                         paint.shader = source?.shader ?: shaders[draw.page]
@@ -109,7 +117,7 @@ internal class SkiaRigPainter(private val atlas: PackedAtlas) : AutoCloseable {
                             canvas.drawVertices(VertexMode.TRIANGLES, positions, null, null, null, BlendMode.SRC_OVER, paint)
                         }
                         if (masked) {
-                            maskPaint.blendMode = BlendMode.DST_IN
+                            maskPaint.blendMode = if (draw.invertMask) BlendMode.DST_OUT else BlendMode.DST_IN
                             canvas.saveLayer(null, maskPaint)
                             for (id in draw.maskIds) {
                                 val maskMesh = byId[id]?.mesh ?: continue
@@ -121,7 +129,7 @@ internal class SkiaRigPainter(private val atlas: PackedAtlas) : AutoCloseable {
                         }
                     } finally { canvas.restoreToCount(saved) }
                 }
-            } finally { maskPaint.close(); solidPaint.close() }
+            } finally { maskPaint.close(); blendPaint.close(); solidPaint.close() }
         }
     }
 

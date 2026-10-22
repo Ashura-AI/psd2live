@@ -8,6 +8,7 @@ import org.jetbrains.skia.ImageInfo
 import org.lwjgl.opengl.GL11
 import org.lwjgl.opengl.GL12
 import org.lwjgl.opengl.GL13
+import org.lwjgl.opengl.GL14
 import org.lwjgl.opengl.GL15
 import org.lwjgl.opengl.GL20
 import org.lwjgl.opengl.GL30
@@ -310,7 +311,8 @@ internal class GlCanvasRenderer(
 					view.stencilRef = 0
 				}
 				val ref = ++view.stencilRef
-				// Mask triangles write the reference without colour; the part then draws where it matches.
+				// Mask triangles write the reference without colour; the part then draws where it matches, or where
+				// it does not for an inverted mask.
 				GL11.glEnable(GL11.GL_STENCIL_TEST)
 				GL11.glColorMask(false, false, false, false)
 				GL11.glStencilFunc(GL11.GL_ALWAYS, ref, 0xff)
@@ -321,13 +323,21 @@ internal class GlCanvasRenderer(
 					drawMesh(mask)
 				}
 				GL11.glColorMask(true, true, true, true)
-				GL11.glStencilFunc(GL11.GL_EQUAL, ref, 0xff)
+				GL11.glStencilFunc(if (draw.invertMask) GL11.GL_NOTEQUAL else GL11.GL_EQUAL, ref, 0xff)
 				GL11.glStencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP)
 			}
 			GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture(page.image))
 			GL20.glUniform4f(solid, 0f, 0f, 0f, -1f)
 			GL20.glUniform1f(opacity, draw.opacity)
-			drawMesh(buffers)
+			when (draw.blend) {
+				ArtworkBlend.NORMAL -> drawMesh(buffers)
+				ArtworkBlend.ADD, ArtworkBlend.MULTIPLY -> {
+					if (draw.blend == ArtworkBlend.ADD) GL14.glBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE)
+					else GL14.glBlendFuncSeparate(GL11.GL_DST_COLOR, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ZERO, GL11.GL_ONE)
+					drawMesh(buffers)
+					GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA)
+				}
+			}
 			if (draw.tintColor != 0) {
 				val a = draw.tintAlpha.coerceIn(0f, 1f)
 				val c = draw.tintColor

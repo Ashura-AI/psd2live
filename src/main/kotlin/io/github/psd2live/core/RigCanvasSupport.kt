@@ -91,9 +91,8 @@ internal object RigCanvasSupport {
 			val atlas = model.atlas.pages.getOrNull(pageIndex)?.image ?: continue
 			val opacity = ((geometry.opacity[drawable.id] ?: drawable.opacity) * effectiveAlpha).coerceIn(0f, 1f)
 			if (opacity <= 0.001f) continue
-			val maskClip = drawable.maskedBy
-				.takeIf { it.isNotEmpty() && !drawable.invertMask }
-				?.let { maskIds -> buildMaskArea(maskIds, drawableById, geometry, viewport) }
+			val maskClip = drawable.maskedBy.takeIf { it.isNotEmpty() }
+				?.let { maskIds -> maskClip(drawable, positions, maskIds, drawableById, geometry, viewport) }
 			g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity)
 			paintTriangles(g, mesh, positions, atlas, viewport, originalClip, maskClip)
 		}
@@ -121,8 +120,8 @@ internal object RigCanvasSupport {
 			val atlas = pages.getOrNull(pageOf(drawable)) ?: continue
 			val opacity = (geometry.opacity[drawable.id] ?: drawable.opacity).coerceIn(0f, 1f)
 			if (opacity <= 0.001f) continue
-			val maskClip = drawable.maskedBy.takeIf { it.isNotEmpty() && !drawable.invertMask }
-				?.let { buildMaskArea(it, drawableById, geometry, viewport) }
+			val maskClip = drawable.maskedBy.takeIf { it.isNotEmpty() }
+				?.let { maskClip(drawable, positions, it, drawableById, geometry, viewport) }
 			g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity)
 			paintTriangles(g, mesh, positions, atlas, viewport, originalClip, maskClip)
 		}
@@ -158,6 +157,28 @@ internal object RigCanvasSupport {
 				g.clip(triangle)
 				g.drawImage(atlas, transform, null)
 			}
+	}
+
+	/** Where [drawable] may paint: inside its masks, or for an inverted mask its own bounds less them; null for anywhere. */
+	private fun maskClip(
+		drawable: org.umamo.runtime.model.Drawable,
+		positions: FloatArray,
+		maskIds: List<org.umamo.runtime.model.DrawableId>,
+		drawableById: Map<org.umamo.runtime.model.DrawableId, org.umamo.runtime.model.Drawable>,
+		geometry: DeformedGeometry,
+		viewport: CanvasViewport,
+	): Area? {
+		val masks = buildMaskArea(maskIds, drawableById, geometry, viewport) ?: return null
+		if (!drawable.invertMask) return masks
+		if (positions.size < 2) return null
+		var left = Double.POSITIVE_INFINITY; var top = Double.POSITIVE_INFINITY
+		var right = Double.NEGATIVE_INFINITY; var bottom = Double.NEGATIVE_INFINITY
+		for (i in positions.indices step 2) {
+			val x = viewport.x(positions[i]); val y = viewport.yFromWorld(positions[i + 1])
+			left = minOf(left, x); right = maxOf(right, x); top = minOf(top, y); bottom = maxOf(bottom, y)
+		}
+		return Area(java.awt.geom.Rectangle2D.Double(left - 1.0, top - 1.0, right - left + 2.0, bottom - top + 2.0))
+			.apply { subtract(masks) }
 	}
 
 	private fun buildMaskArea(
