@@ -9,9 +9,12 @@ import java.awt.geom.Rectangle2D
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferByte
 import kotlin.math.abs
+import kotlin.math.floor
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /** How a new selection meets the one already there: Photoshop's new, add, subtract and intersect. */
 internal enum class PaintSelectionOp { REPLACE, ADD, SUBTRACT, INTERSECT }
@@ -80,6 +83,28 @@ internal class PaintSelection(val width: Int, val height: Int, val mask: ByteArr
     }
 
     /**
+     * The selection grown outwards by [radius] pixels ([radius] > 0) or drawn in by it ([radius] < 0): Photoshop's
+     * Expand and Contract. Measured as the true distance to the edge (coverage at or above one half), with a pixel's
+     * worth of antialiasing on the new edge; what was selected before keeps its own softness inside it. The raster's
+     * border is not an edge, so a selection reaching it is not drawn in from there.
+     */
+    fun grown(radius: Float): PaintSelection {
+        if (radius == 0f || !radius.isFinite()) return this
+        val expand = radius > 0f
+        val r = abs(radius)
+        // Distance to the nearest pixel on the other side: selected ones when growing, unselected ones when shrinking.
+        val distance = distanceSquared(width, height) { ((mask[it].toInt() and 0xFF) >= 128) == expand }
+        val out = ByteArray(mask.size)
+        for (i in mask.indices) {
+            val own = mask[i].toInt() and 0xFF
+            val d = sqrt(distance[i])
+            out[i] = if (expand) max(own, ((r + 1f - d).coerceIn(0f, 1f) * 255f).roundToInt()).toByte()
+            else min(own, ((d - r).coerceIn(0f, 1f) * 255f).roundToInt()).toByte()
+        }
+        return PaintSelection(width, height, out)
+    }
+
+    /**
      * The edge between selected and unselected pixels (coverage at or above one half), as segments `x0 y0 x1 y1` in
      * raster pixels along pixel borders: what the marching ants trace. Runs along a row or column are merged, so a
      * rectangle is four segments rather than its perimeter in pixels.
@@ -141,14 +166,15 @@ internal class PaintSelection(val width: Int, val height: Int, val mask: ByteArr
         /**
          * The magic wand: every pixel whose colour is within [tolerance] of the one at ([x], [y]) on each channel,
          * alpha included - joined to it when [contiguous], anywhere on the raster otherwise. Empty off the raster.
+         * Compared premultiplied, so a click on a transparent area takes all of it, whatever colour it hides.
          */
         fun wand(image: BufferedImage, x: Int, y: Int, tolerance: Int, contiguous: Boolean = true): PaintSelection {
             val width = image.width; val height = image.height
             val out = ByteArray(width * height)
             if (x !in 0 until width || y !in 0 until height) return PaintSelection(width, height, out)
-            val pixels = image.getRGB(0, 0, width, height, null, 0, width)
+            val pixels = premultiplied(image.getRGB(0, 0, width, height, null, 0, width))
             val target = pixels[y * width + x]
-            fun matches(argb: Int) = RasterPaintEngine.colorWithin(argb, target, tolerance)
+            fun matches(argb: Int) = premultipliedDistance(argb, target) <= tolerance
             if (!contiguous) {
                 for (i in pixels.indices) if (matches(pixels[i])) out[i] = -1
                 return PaintSelection(width, height, out)
@@ -167,6 +193,128 @@ internal class PaintSelection(val width: Int, val height: Int, val mask: ByteArr
                 if (py < height - 1) visit(at + width)
             }
             return PaintSelection(width, height, out)
+        }
+
+        /** The pixels by how opaque they are: Photoshop's Ctrl + click on a layer's thumbnail, alpha read as coverage. */
+        fun opaque(image: BufferedImage): PaintSelection {
+            val width = image.width; val height = image.height
+            val pixels = image.getRGB(0, 0, width, height, null, 0, width)
+            return PaintSelection(width, height, ByteArray(pixels.size) { (pixels[it] ushr 24).toByte() })
+        }
+
+        /**
+         * Quick selection: what a brush of [radius] raster pixels dragged along [points] (`x y` pairs) passes over,
+         * grown across joined pixels of the colours it passed over. A pixel joins when it is within [tolerance] of one
+         * of those colours and of the neighbour it is reached from, so the growth spreads through a region of like
+         * colour - shading included - and stops at an edge, where the colour jumps. Colours are compared
+         * premultiplied, so every transparent pixel is alike whatever colour it hides.
+         */
+        fun quick(image: BufferedImage, points: FloatArray, radius: Float, tolerance: Int): PaintSelection {
+            require(points.size >= 2 && points.size % 2 == 0) { "A quick selection needs at least one point" }
+            val width = image.width; val height = image.height
+            val out = ByteArray(width * height)
+            val pixels = premultiplied(image.getRGB(0, 0, width, height, null, 0, width))
+            val r = radius.coerceAtLeast(0.5f)
+            val stack = IntArray(width * height)
+            var size = 0
+            // The colours the brush passed over, one per bin of 16 levels a channel.
+            val palette = LinkedHashMap<Int, Int>()
+            fun stamp(cx: Float, cy: Float) {
+                val y0 = floor(cy - r).toInt().coerceAtLeast(0); val y1 = floor(cy + r).toInt().coerceAtMost(height - 1)
+                val x0 = floor(cx - r).toInt().coerceAtLeast(0); val x1 = floor(cx + r).toInt().coerceAtMost(width - 1)
+                for (y in y0..y1) for (x in x0..x1) {
+                    val dx = x + 0.5f - cx; val dy = y + 0.5f - cy
+                    if (dx * dx + dy * dy > r * r) continue
+                    val at = y * width + x
+                    if (out[at].toInt() != 0) continue
+                    out[at] = -1; stack[size++] = at
+                    val c = pixels[at]
+                    palette.putIfAbsent(c and 0xF0F0F0F0.toInt(), c)
+                }
+            }
+            stamp(points[0], points[1])
+            for (i in 2 until points.size step 2) {
+                val ax = points[i - 2]; val ay = points[i - 1]; val bx = points[i]; val by = points[i + 1]
+                val steps = (hypot(bx - ax, by - ay) / (r / 2f)).toInt().coerceIn(1, 4096)
+                for (k in 1..steps) stamp(ax + (bx - ax) * k / steps, ay + (by - ay) * k / steps)
+            }
+            if (size == 0) return PaintSelection(width, height, out)
+            val colours = palette.values.toIntArray().let { all ->
+                if (all.size <= MAX_QUICK_COLOURS) all else IntArray(MAX_QUICK_COLOURS) { all[it * all.size / MAX_QUICK_COLOURS] }
+            }
+            val known = HashMap<Int, Boolean>()
+            fun like(c: Int) = known.getOrPut(c) { colours.any { premultipliedDistance(it, c) <= tolerance } }
+            while (size > 0) {
+                val at = stack[--size]
+                val px = at % width; val py = at / width
+                val from = pixels[at]
+                fun visit(n: Int) {
+                    if (out[n].toInt() != 0) return
+                    val c = pixels[n]
+                    if (premultipliedDistance(from, c) <= tolerance && like(c)) { out[n] = -1; stack[size++] = n }
+                }
+                if (px > 0) visit(at - 1)
+                if (px < width - 1) visit(at + 1)
+                if (py > 0) visit(at - width)
+                if (py < height - 1) visit(at + width)
+            }
+            return PaintSelection(width, height, out)
+        }
+
+        /** The most colours a quick selection stroke matches against; a stroke over more keeps an even spread of them. */
+        private const val MAX_QUICK_COLOURS = 64
+
+        /** [argb] premultiplied by its alpha, alpha kept: a transparent pixel is 0 whatever colour it held. */
+        private fun premultiplied(argb: IntArray) = IntArray(argb.size) {
+            val c = argb[it]; val a = c ushr 24
+            if (a == 255) c else (a shl 24) or (((((c ushr 16) and 0xFF) * a + 127) / 255) shl 16) or
+                (((((c ushr 8) and 0xFF) * a + 127) / 255) shl 8) or (((c and 0xFF) * a + 127) / 255)
+        }
+
+        /** The largest difference on any channel of two premultiplied colours. */
+        private fun premultipliedDistance(a: Int, b: Int): Int = max(
+            max(abs(((a ushr 24) and 0xFF) - ((b ushr 24) and 0xFF)), abs(((a ushr 16) and 0xFF) - ((b ushr 16) and 0xFF))),
+            max(abs(((a ushr 8) and 0xFF) - ((b ushr 8) and 0xFF)), abs((a and 0xFF) - (b and 0xFF))))
+
+        /**
+         * The squared Euclidean distance from every pixel to the nearest one [feature] holds, between pixel centres:
+         * Felzenszwalb and Huttenlocher's two passes of lower parabola envelopes. Without any feature pixel every
+         * distance is [Float.MAX_VALUE].
+         */
+        private fun distanceSquared(width: Int, height: Int, feature: (Int) -> Boolean): FloatArray {
+            val far = 1e20f
+            val grid = FloatArray(width * height) { if (feature(it)) 0f else far }
+            val n = max(width, height)
+            val f = FloatArray(n); val d = FloatArray(n); val v = IntArray(n); val z = FloatArray(n + 1)
+            fun pass(count: Int) {
+                var k = 0
+                v[0] = 0; z[0] = -Float.MAX_VALUE; z[1] = Float.MAX_VALUE
+                fun meet(q: Int, p: Int) = ((f[q] + q.toFloat() * q) - (f[p] + p.toFloat() * p)) / (2f * (q - p))
+                for (q in 1 until count) {
+                    var s = meet(q, v[k])
+                    while (s <= z[k]) { k--; s = meet(q, v[k]) }
+                    k++; v[k] = q; z[k] = s; z[k + 1] = Float.MAX_VALUE
+                }
+                k = 0
+                for (q in 0 until count) {
+                    while (z[k + 1] < q) k++
+                    val p = v[k]
+                    d[q] = (q - p).toFloat() * (q - p) + f[p]
+                }
+            }
+            for (x in 0 until width) {
+                for (y in 0 until height) f[y] = grid[y * width + x]
+                pass(height)
+                for (y in 0 until height) grid[y * width + x] = d[y]
+            }
+            for (y in 0 until height) {
+                val row = y * width
+                for (x in 0 until width) f[x] = grid[row + x]
+                pass(width)
+                for (x in 0 until width) grid[row + x] = d[x]
+            }
+            for (i in grid.indices) if (grid[i] >= far / 2f) grid[i] = Float.MAX_VALUE
+            return grid
         }
 
         private fun shape(width: Int, height: Int, shape: Shape, antialias: Boolean): PaintSelection {

@@ -155,6 +155,9 @@ internal val PAINT_SELECT_OP = ChoiceOption("paint.selectOp", "editor.paintSelec
 internal val PAINT_FEATHER = SliderOption("paint.feather", "editor.paintSelect.feather", OptionUnit.PX, { 1f..256f },
     { it.paintFeather }, { e, v -> e.paintFeather = v }, logarithmic = true)
 
+internal val PAINT_SELECT_GROW = SliderOption("paint.selectGrow", "editor.paintSelect.grow", OptionUnit.PX, { 1f..256f },
+    { it.paintSelectGrow }, { e, v -> e.paintSelectGrow = v }, logarithmic = true)
+
 internal val PAINT_GRADIENT_KIND = ChoiceOption("paint.gradientKind", "editor.paintGradient.kind", { listOf(false, true) },
     { _, radial -> tr(if (radial) "editor.paintGradient.radial" else "editor.paintGradient.linear") }, { it.paintGradientRadial },
     { e, radial -> e.paintGradientRadial = radial })
@@ -685,7 +688,12 @@ private fun MutableList<ToolOption>.addPaint(editor: CanvasEditor) {
                 add(PAINT_TOLERANCE)
                 add(PAINT_CONTIGUOUS)
             }
+            if (editor.paintSelectShape == io.github.psd2live.ui.PaintSelectShape.QUICK) {
+                add(PAINT_BRUSH_SIZE)
+                add(PAINT_TOLERANCE)
+            }
             add(PAINT_FEATHER)
+            add(PAINT_SELECT_GROW)
         }
         else -> Unit
     }
@@ -699,6 +707,11 @@ private fun MutableList<ToolOption>.addPaint(editor: CanvasEditor) {
         place = OptionPlace.MENU))
     add(ActionOption("paint.featherSelection", "editor.paintSelect.featherAction", { it.paintHasSelection }, { it.featherPaintSelection() },
         labelArgs = { listOf(it.paintFeather.toInt()) }, place = OptionPlace.MENU))
+    add(ActionOption("paint.expandSelection", "editor.paintSelect.expandAction", { it.paintHasSelection }, { it.growPaintSelection() },
+        labelArgs = { listOf(it.paintSelectGrow.toInt()) }, place = OptionPlace.MENU))
+    add(ActionOption("paint.contractSelection", "editor.paintSelect.contractAction", { it.paintHasSelection },
+        { it.growPaintSelection(contract = true) }, labelArgs = { listOf(it.paintSelectGrow.toInt()) }, place = OptionPlace.MENU))
+    add(ActionOption("paint.selectOpaque", "editor.paintSelect.opaque", session, { it.selectOpaquePaint() }, place = OptionPlace.MENU))
     add(ActionOption("paint.fillSelection", "editor.paintSelect.fill", session, { it.fillPaintSelection() }, OptionIcon.FILL, place = OptionPlace.MENU))
     add(ActionOption("paint.deleteSelection", "editor.paintSelect.delete", { it.paintHasSelection }, { it.deletePaintSelection() },
         OptionIcon.ERASE, danger = true, place = OptionPlace.MENU))

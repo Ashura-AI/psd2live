@@ -41,9 +41,15 @@ internal object WorkspacePaintSessionSchemas {
             shape("lasso", mapOf("points" to s.array(s.vector(2), 3, 4096))),
             s.obj(op + mapOf("mode" to s.constant("wand"), "point" to s.vector(2), "tolerance" to s.integer(0, 255),
                 "contiguous" to s.boolean()), setOf("mode", "point")),
+            // A quick selection brush stroke: radius in canvas units, like a brush gesture's.
+            s.obj(op + mapOf("mode" to s.constant("quick"), "points" to s.array(s.vector(2), 1, 4096),
+                "radius" to s.number(0.5, 512), "tolerance" to s.integer(0, 255)), setOf("mode", "points", "radius")),
+            s.obj(op + mapOf("mode" to s.constant("opaque")), setOf("mode")),
             s.obj(mapOf("mode" to s.constant("all"))), s.obj(mapOf("mode" to s.constant("none"))),
             s.obj(mapOf("mode" to s.constant("invert"))),
             s.obj(mapOf("mode" to s.constant("feather"), "radius" to s.number(0.5, 256)), setOf("mode", "radius")),
+            s.obj(mapOf("mode" to s.constant("expand"), "radius" to s.number(0.5, 256)), setOf("mode", "radius")),
+            s.obj(mapOf("mode" to s.constant("contract"), "radius" to s.number(0.5, 256)), setOf("mode", "radius")),
         ))
     }
     private fun control(action: String, fields: Map<String, JsonObject> = emptyMap(), required: Set<String> = fields.keys) =
@@ -134,7 +140,7 @@ internal fun registerPaintSessionOperations(registry: WorkspaceOperationRegistry
     }
     registry.register(WorkspaceOperationDefinition("paint_session_control",
         "Edit, undo, redo or jump within the private paint candidate; cancel discards the entire session, abandon discards only the active live stroke. Sample and render read candidate pixels. " +
-            "select changes the session's selection (rectangle, ellipse, lasso or wand met with it by op replace/add/subtract/intersect, or all, none, invert, feather); every later gesture lands only inside it, and lock_alpha keeps a gesture to already painted pixels. The selection is not in the stroke history. Pass the latest session_state to prevent concurrent stroke loss. Mutations reject a changed committed workspace; inspection and cancellation remain available.",
+            "select changes the session's selection (rectangle, ellipse, lasso, wand, quick - a brush stroke grown across like colours up to edges - or opaque - the layer's alpha - met with it by op replace/add/subtract/intersect, or all, none, invert, feather, expand, contract); every later gesture lands only inside it, and lock_alpha keeps a gesture to already painted pixels. The selection is not in the stroke history. Pass the latest session_state to prevent concurrent stroke loss. Mutations reject a changed committed workspace; inspection and cancellation remain available.",
         s.obj(ids + ("edit" to WorkspacePaintSessionSchemas.edit)), WorkspaceOperationKind.SESSION,
         resultSchema = WorkspacePaintSessionSchemas.result)) { request, _ ->
         val result = port.controlPaintSession(request)

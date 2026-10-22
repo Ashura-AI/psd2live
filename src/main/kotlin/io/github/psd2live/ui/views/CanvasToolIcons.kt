@@ -567,6 +567,11 @@ private fun IconPen.paintSelect(shape: PaintSelectShape) {
             dot(16f, 9.6f, 0.9f)
             dot(7.6f, 2.6f, 0.9f)
         }
+        // A brush tip whose outline is marching ants, with the handle trailing off it.
+        PaintSelectShape.QUICK -> {
+            ring(7.4f, 7.4f, 5.2f, dash = ants)
+            line(11.2f, 11.2f, 15.6f, 15.6f, width = 2f)
+        }
     }
 }
 

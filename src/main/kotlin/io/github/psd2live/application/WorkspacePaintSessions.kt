@@ -141,8 +141,9 @@ class WorkspacePaintSession internal constructor(
 
     /**
      * Changes the selection: [request] is one [WorkspacePaintSessionSchemas.selection] - a shape in canvas units
-     * (`rectangle`, `ellipse`, `lasso`, `wand`) met with the current selection through `op`, or `all`, `none`,
-     * `invert` and `feather`. A selection that ends up empty is no selection.
+     * (`rectangle`, `ellipse`, `lasso`, `wand`, `quick`) or the layer's alpha (`opaque`) met with the current selection
+     * through `op`, or `all`, `none`, `invert`, `feather`, `expand` and `contract`. A selection that ends up empty is no
+     * selection.
      */
     fun select(request: JsonObject, expected: String? = null) = synchronized(lock) {
         writable(expected)
@@ -161,6 +162,12 @@ class WorkspacePaintSession internal constructor(
             // Nothing selected has nothing to turn inside out; Select All is the way to everything.
             "invert" -> selection?.inverted()
             "feather" -> selection?.feathered(space.imageLength(request.getValue("radius").jsonPrimitive.float))
+            "expand" -> selection?.grown(space.imageLength(request.getValue("radius").jsonPrimitive.float))
+            "contract" -> selection?.grown(-space.imageLength(request.getValue("radius").jsonPrimitive.float))
+            "opaque" -> PaintSelection.opaque(buffer.workingImage)
+            "quick" -> PaintSelection.quick(buffer.workingImage, request.getValue("points").jsonArray
+                .flatMap { point(it).toList() }.toFloatArray(), space.imageLength(request.getValue("radius").jsonPrimitive.float),
+                request["tolerance"]?.jsonPrimitive?.int ?: 32)
             "rectangle", "ellipse" -> {
                 val (x0, y0) = point(request.getValue("from")); val (x1, y1) = point(request.getValue("to"))
                 if (mode == "rectangle") PaintSelection.rectangle(w, h, x0, y0, x1, y1, antialias)
@@ -179,7 +186,7 @@ class WorkspacePaintSession internal constructor(
         val current = selection
         val next = when {
             // These act on the selection as a whole; the op is for a shape meeting it.
-            mode in setOf("all", "none", "invert", "feather") -> shape
+            mode in WHOLE_SELECTION_MODES -> shape
             // Nothing selected yet: a shape added is the selection, one taken away or intersected leaves none.
             current == null -> shape.takeIf { op == PaintSelectionOp.REPLACE || op == PaintSelectionOp.ADD }
             else -> current.combine(requireNotNull(shape), op)
@@ -280,6 +287,8 @@ class WorkspacePaintSession internal constructor(
     companion object {
         /** The [layerId] of a session painting material item `<id>`. */
         const val MATERIAL_PREFIX = "material:"
+        /** Selection modes that change the selection as a whole; the op is for a shape meeting it. */
+        private val WHOLE_SELECTION_MODES = setOf("all", "none", "invert", "feather", "expand", "contract")
         private fun copy(image: BufferedImage) = BufferedImage(image.width, image.height, BufferedImage.TYPE_INT_ARGB).also {
             it.setRGB(0, 0, image.width, image.height, image.getRGB(0, 0, image.width, image.height, null, 0, image.width), 0, image.width)
         }

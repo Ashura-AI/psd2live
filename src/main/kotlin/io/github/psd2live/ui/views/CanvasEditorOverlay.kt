@@ -2943,6 +2943,12 @@ private fun DrawScope.drawPaintSelectionOverlays(editor: CanvasEditor, viewport:
             if (symmetry.horizontal) drawLine(guide, screen(Offset(0f, h / 2f)), screen(Offset(w, h / 2f)), 1f, pathEffect = dash)
         }
     }
+    // The quick selection brush: its ring under the pointer, sized in the layer's frame as the paint tips are.
+    editor.cursor?.takeIf { editor.paintQuickSelectActive }?.let { cur ->
+        val r = (editor.paintQuickSelectSize / editor.paintPixelsPerUnit / 2f * editor.paintShownScale * viewport.scale.toFloat()).coerceAtLeast(1f)
+        drawCircle(Color.Black.copy(alpha = 0.7f), r, cur, style = Stroke(3f))
+        drawCircle(Color.White.copy(alpha = 0.9f), r, cur, style = Stroke(1.2f))
+    }
     // The lasso or polygon being drawn; the polygon's last side follows the pointer until the next click.
     val draft = editor.paintSelectDraft
     if (draft.isNotEmpty()) {

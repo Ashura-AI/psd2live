@@ -47,6 +47,39 @@ class PaintSessionSelectionTest {
     }
 
     @Test
+    fun quickSelectionOpaquePixelsAndExpandContractChangeTheSelection() {
+        val session = session()
+        // A red square on the left half, painted through the session so the selection sees it.
+        session.select(buildJsonObject { put("mode", "rectangle"); put("from", point(0, 0)); put("to", point(20, 40)); put("antialias", false) })
+        session.gesture(buildJsonObject { put("mode", "fill"); put("color", rgba(255, 0, 0)) }, "fill")
+        session.select(buildJsonObject { put("mode", "none") })
+
+        session.select(buildJsonObject { put("mode", "quick"); put("points", JsonArray(listOf(point(5, 5), point(10, 10))))
+            put("radius", 2); put("tolerance", 16) })
+        assertEquals(java.awt.Rectangle(0, 0, 20, 40), session.selectionBounds, "the red half, up to its edge")
+        // A stroke over the empty half, added: the whole raster.
+        session.select(buildJsonObject { put("mode", "quick"); put("op", "add"); put("points", JsonArray(listOf(point(30, 5))))
+            put("radius", 2) })
+        assertEquals(java.awt.Rectangle(0, 0, 40, 40), session.selectionBounds)
+
+        session.select(buildJsonObject { put("mode", "opaque") })
+        assertEquals(java.awt.Rectangle(0, 0, 20, 40), session.selectionBounds)
+        session.select(buildJsonObject { put("mode", "contract"); put("radius", 4) })
+        assertEquals(java.awt.Rectangle(0, 0, 16, 40), session.selectionBounds, "the raster's border is no edge")
+        session.select(buildJsonObject { put("mode", "expand"); put("radius", 10) })
+        assertEquals(java.awt.Rectangle(0, 0, 26, 40), session.selectionBounds)
+        session.select(buildJsonObject { put("mode", "opaque"); put("op", "subtract") })
+        assertEquals(java.awt.Rectangle(20, 0, 6, 40), session.selectionBounds)
+
+        validateOperationSchema(buildJsonObject { put("action", "select"); put("selection", buildJsonObject {
+            put("mode", "quick"); put("op", "subtract"); put("points", JsonArray(listOf(point(0, 0)))); put("radius", 3) }) },
+            WorkspacePaintSessionSchemas.edit)
+        assertFailsWith<Exception> {
+            validateOperationSchema(buildJsonObject { put("mode", "expand") }, WorkspacePaintSessionSchemas.selection)
+        }
+    }
+
+    @Test
     fun aFillWithoutASelectionCoversTheLayerNotTheCanvas() {
         val session = WorkspacePaintSession("s", "p", "state", "layer", "Layer", BufferedImage(40, 40, BufferedImage.TYPE_INT_ARGB),
             space = io.github.psd2live.core.PaintSpace.canvas(40, 40, java.awt.Rectangle(10, 10, 10, 10)), validateWorkspace = {})

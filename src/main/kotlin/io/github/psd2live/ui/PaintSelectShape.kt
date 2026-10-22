@@ -16,6 +16,11 @@ enum class PaintSelectShape(val labelKey: String) {
     POLYGON("editor.paintSelect.polygon"),
     /** The pixels of the colour clicked, within the tolerance. */
     WAND("editor.paintSelect.wand"),
+    /**
+     * A brush: what it passes over, grown across like colours up to the edges around it
+     * ([io.github.psd2live.core.PaintSelection.quick]). Each stroke adds to the selection; Alt takes away.
+     */
+    QUICK("editor.paintSelect.quick"),
 }
 
 /** How a selection gesture meets the selection already there; Shift adds, Alt subtracts, both intersect. */

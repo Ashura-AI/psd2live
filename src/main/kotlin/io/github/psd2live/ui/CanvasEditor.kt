@@ -1147,6 +1147,8 @@ internal class CanvasEditor(
     /** The line width of the shape tool; its own, so drawing a thin outline leaves the brush tip as it was. */
     var paintShapeSize by mutableStateOf(16f)
     var paintBlurSize by mutableStateOf(32f)
+    /** The quick selection brush's size; its own, since it is sized to the region being picked rather than to a mark. */
+    var paintQuickSelectSize by mutableStateOf(24f)
 
     /** The open document's longest side in pixels; 0 with nothing open. */
     val documentLongSide: Int
@@ -1185,6 +1187,7 @@ internal class CanvasEditor(
         paintEraserSize = (paintEraserSize * k).coerceIn(1f, limit)
         paintShapeSize = (paintShapeSize * k).coerceIn(1f, limit)
         paintBlurSize = (paintBlurSize * k).coerceIn(1f, limit)
+        paintQuickSelectSize = (paintQuickSelectSize * k).coerceIn(1f, limit)
         radius = (radius * k).coerceIn(1f, limit)
         skeletonWeightRadius = (skeletonWeightRadius * k).coerceIn(1f, limit)
         brushScaleApplied = scale
@@ -1200,6 +1203,7 @@ internal class CanvasEditor(
             CanvasTool.PAINT_ERASER -> paintEraserSize
             CanvasTool.PAINT_SHAPE -> paintShapeSize
             CanvasTool.PAINT_BLUR -> paintBlurSize
+            CanvasTool.PAINT_SELECT -> paintQuickSelectSize
             else -> paintBrushSize
         }
         set(value) {
@@ -1208,6 +1212,7 @@ internal class CanvasEditor(
                 CanvasTool.PAINT_ERASER -> paintEraserSize = value
                 CanvasTool.PAINT_SHAPE -> paintShapeSize = value
                 CanvasTool.PAINT_BLUR -> paintBlurSize = value
+                CanvasTool.PAINT_SELECT -> paintQuickSelectSize = value
                 else -> paintBrushSize = value
             }
         }
@@ -1248,12 +1253,17 @@ internal class CanvasEditor(
         paintEraserSize = (paintEraserSize * k).coerceIn(1f, limit)
         paintShapeSize = (paintShapeSize * k).coerceIn(1f, limit)
         paintBlurSize = (paintBlurSize * k).coerceIn(1f, limit)
+        paintQuickSelectSize = (paintQuickSelectSize * k).coerceIn(1f, limit)
         paintSizeDensity = density
     }
 
     /** Whether the active tool stamps the paint tip, which is what the brush keys and HUD act on. */
     val paintBrushActive: Boolean
         get() = hierarchyMode == EditHierarchyMode.PAINT && tool in PAINT_BRUSH_TOOLS
+
+    /** Whether the selection tool is the quick selection brush, whose ring the canvas shows under the pointer. */
+    val paintQuickSelectActive: Boolean
+        get() = hierarchyMode == EditHierarchyMode.PAINT && tool == CanvasTool.PAINT_SELECT && paintSelectShape == PaintSelectShape.QUICK
 
     /** Whether the active tool has a size at all: the shapes are drawn with one, the fills are not. */
     val paintSizeActive: Boolean
@@ -1295,6 +1305,8 @@ internal class CanvasEditor(
     var paintSelectOp by mutableStateOf(io.github.psd2live.core.PaintSelectionOp.REPLACE)
     /** The radius the Feather action softens the selection's edge over, in the layer's pixels. */
     var paintFeather by mutableStateOf(4f)
+    /** How far Expand and Contract move the selection's edge, in the layer's pixels. */
+    var paintSelectGrow by mutableStateOf(4f)
     var paintGradientRadial by mutableStateOf(false)
     var paintGradientEnd by mutableStateOf(PaintGradientEnd.BACKGROUND)
     /** How far the blur tip moves a pixel towards the blur under it, 0..1. */
@@ -2161,7 +2173,7 @@ internal class CanvasEditor(
         paintStrokeStart = null
         paintStrokeCurrent = null
         paintLastEnd = null
-        paintSelectDraft = emptyList()
+        paintSelectDraft = emptyList(); paintQuickStroke = mutableListOf()
     }
 
     /** Drops the session's strokes and paints on: a fresh session on the same target - a layer, or a material. */
@@ -2180,7 +2192,7 @@ internal class CanvasEditor(
         paintStrokeStart = null
         paintStrokeCurrent = null
         paintLastEnd = null
-        paintSelectDraft = emptyList()
+        paintSelectDraft = emptyList(); paintQuickStroke = mutableListOf()
     }
 
     fun clearCurrentLayerPaint() {
@@ -2349,6 +2361,15 @@ internal class CanvasEditor(
     fun deselectPaint() = paintSelect("none")
     fun invertPaintSelection() { if (paintHasSelection) paintSelect("invert") }
     fun featherPaintSelection() = paintSelect("feather") { put("radius", (paintFeather / paintPixelsPerUnit).coerceIn(0.5f, 256f)) }
+    /** Grows the selection's edge outwards by [paintSelectGrow], or draws it in by that with [contract]. */
+    fun growPaintSelection(contract: Boolean = false) {
+        if (paintHasSelection) paintSelect(if (contract) "contract" else "expand") {
+            put("radius", (paintSelectGrow / paintPixelsPerUnit).coerceIn(0.5f, 256f))
+        }
+    }
+    /** Selects the layer's pixels by their opacity, Photoshop's Ctrl + click on the thumbnail. */
+    fun selectOpaquePaint(op: io.github.psd2live.core.PaintSelectionOp = io.github.psd2live.core.PaintSelectionOp.REPLACE) =
+        paintSelect("opaque", op)
     val paintHasSelection: Boolean get() = paintSession?.hasSelection == true
 
     /** Fills the selection, or the whole layer without one, with the foreground colour - the background one for [secondary]. */
@@ -2419,11 +2440,55 @@ internal class CanvasEditor(
                 paintSelectDraft = listOf(here)
             }
             PaintSelectShape.RECTANGLE, PaintSelectShape.ELLIPSE -> paintSelectOpInHand = paintSelectOpFor(shift, alt)
+            PaintSelectShape.QUICK -> {
+                // Every stroke adds to what the last one picked, as Photoshop's quick selection switches to Add after
+                // its first: a new selection starts from Ctrl+D. Alt takes away, Shift + Alt intersects the stroke.
+                paintSelectOpInHand = paintSelectOpFor(shift, alt).let {
+                    if (it == io.github.psd2live.core.PaintSelectionOp.REPLACE) io.github.psd2live.core.PaintSelectionOp.ADD else it
+                }
+                paintQuickStroke = mutableListOf(here)
+                paintQuickLanded = 0
+                landPaintQuickSelect(viewport, final = false)
+            }
+        }
+    }
+
+    /** The quick selection stroke in hand, in canvas units; empty when none is. */
+    private var paintQuickStroke: MutableList<Offset> = mutableListOf()
+    /** How many points of [paintQuickStroke] have been sent to the session; the next piece starts at the last of them. */
+    private var paintQuickLanded = 0
+
+    /**
+     * Sends the part of the quick selection stroke not yet selected, so the selection grows under the brush as it moves:
+     * once it has moved [QUICK_SELECT_STEP_PX] on screen and no earlier piece is still being worked out, or all of it
+     * when the stroke ends ([final]). An intersection only makes sense for the stroke as a whole, so it waits for the end.
+     */
+    private fun landPaintQuickSelect(viewport: CanvasViewport, final: Boolean) {
+        val session = paintSession ?: return
+        val stroke = paintQuickStroke
+        val from = (paintQuickLanded - 1).coerceAtLeast(0)
+        if (stroke.isEmpty() || (paintQuickLanded > 0 && from >= stroke.size - 1)) return
+        val op = paintSelectOpInHand
+        val intersect = op == io.github.psd2live.core.PaintSelectionOp.INTERSECT
+        if (!final) {
+            if (intersect || paintWorking) return
+            if (paintQuickLanded > 0 && (screenPoint(stroke.last(), viewport) - screenPoint(stroke[from], viewport)).getDistance() < QUICK_SELECT_STEP_PX) return
+        }
+        val piece = if (intersect) stroke.toList() else stroke.subList(from, stroke.size).toList()
+        paintQuickLanded = stroke.size
+        val radius = (paintQuickSelectSize / paintPixelsPerUnit / 2f).coerceIn(0.5f, 512f)
+        paintSelect("quick", op) {
+            put("points", lassoPoints(session, piece)); put("radius", radius); put("tolerance", paintTolerance)
         }
     }
 
     /** The lasso follows the drag, a point every couple of screen pixels. */
     private fun movePaintSelect(pos: Offset, viewport: CanvasViewport) {
+        if (paintSelectShape == PaintSelectShape.QUICK && paintQuickStroke.isNotEmpty()) {
+            if ((screenPoint(paintQuickStroke.last(), viewport) - pos).getDistance() >= 2f) paintQuickStroke.add(canvasPoint(pos, viewport))
+            landPaintQuickSelect(viewport, final = false)
+            return
+        }
         if (paintSelectShape != PaintSelectShape.LASSO) return
         val draft = paintSelectDraft
         val last = draft.lastOrNull()
@@ -2472,6 +2537,11 @@ internal class CanvasEditor(
                 paintSelectDraft = emptyList()
                 if (draft.size >= 3) paintSelect("lasso", paintSelectOpInHand) { put("points", lassoPoints(session, draft)) }
                 else if (replacing) deselectPaint()
+            }
+            PaintSelectShape.QUICK -> {
+                landPaintQuickSelect(viewport, final = true)
+                paintQuickStroke = mutableListOf()
+                paintQuickLanded = 0
             }
             else -> Unit
         }
@@ -2545,7 +2615,7 @@ internal class CanvasEditor(
         endTransformBox()
         anchorDragging = false
         isPainting = false; isSampling = false; paintStrokeStart = null; paintStrokeCurrent = null
-        paintSelectDraft = emptyList(); paintStabilizerInHand = null
+        paintSelectDraft = emptyList(); paintQuickStroke = mutableListOf(); paintStabilizerInHand = null
         // The frame belongs to the tool session, so cancelling is the only thing that drops it, anchor and all.
         frameAngle = 0f
         transformAnchor = null
@@ -7023,6 +7093,9 @@ private const val POLYGON_CLOSE_PX = 8f
 
 /** The most points a lasso request carries ([io.github.psd2live.application.WorkspacePaintSessionSchemas.selection]). */
 private const val LASSO_MAX_POINTS = 4096
+
+/** How far, in screen pixels, the quick selection brush moves before the stretch since the last piece is selected. */
+private const val QUICK_SELECT_STEP_PX = 12f
 
 /** The brush size limit on documents smaller than this. */
 private const val MIN_BRUSH_SIZE_LIMIT = 512f
