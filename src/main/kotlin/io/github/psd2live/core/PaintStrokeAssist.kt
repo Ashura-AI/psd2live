@@ -28,8 +28,9 @@ internal class PaintStabilizer(level: Int) {
     fun finish(): List<Pair<Float, Float>> {
         if (level == 0 || xs.isEmpty()) return emptyList()
         val x = xs.last(); val y = ys.last()
-        val out = ArrayList<Pair<Float, Float>>(xs.size)
-        repeat(xs.size - 1) { out += add(x, y) }
+        val out = ArrayList<Pair<Float, Float>>(level + 1)
+        // Until the window holds nothing but the last position, whether or not a short stroke ever filled it.
+        while (xs.size <= level || xs.any { it != x } || ys.any { it != y }) out += add(x, y)
         return out
     }
 
@@ -37,6 +38,23 @@ internal class PaintStabilizer(level: Int) {
         /** The strongest level the options offer. */
         const val MAX_LEVEL = 30
     }
+}
+
+/**
+ * [points] thinned to at most [max]: points nearer than [minDistance] to the last one kept are dropped, then, if that
+ * is not enough, every n-th is kept. The first and last points stay, so a lasso closes where it was drawn.
+ */
+internal fun thinOutline(points: List<Pair<Float, Float>>, max: Int, minDistance: Float): List<Pair<Float, Float>> {
+    if (points.size <= max) return points
+    val spaced = ArrayList<Pair<Float, Float>>()
+    for (p in points) {
+        val last = spaced.lastOrNull()
+        if (last == null || kotlin.math.hypot(p.first - last.first, p.second - last.second) >= minDistance) spaced += p
+    }
+    if (spaced.last() != points.last()) spaced += points.last()
+    if (spaced.size <= max) return spaced
+    val step = (spaced.size + max - 2) / (max - 1)
+    return spaced.filterIndexed { i, _ -> i % step == 0 }.let { if (it.last() == spaced.last()) it else it + spaced.last() }
 }
 
 /** Which mirror axes a stroke is painted across, on the canvas as shown. */

@@ -85,7 +85,12 @@ internal class PaintSelection(val width: Int, val height: Int, val mask: ByteArr
      * rectangle is four segments rather than its perimeter in pixels.
      */
     fun outline(): FloatArray {
-        val out = ArrayList<Float>()
+        var out = FloatArray(256)
+        var size = 0
+        fun segment(x0: Int, y0: Int, x1: Int, y1: Int) {
+            if (size + 4 > out.size) out = out.copyOf(out.size * 2)
+            out[size++] = x0.toFloat(); out[size++] = y0.toFloat(); out[size++] = x1.toFloat(); out[size++] = y1.toFloat()
+        }
         fun inside(x: Int, y: Int) = at(x, y) >= 128
         // Horizontal borders: between row y-1 and row y.
         for (y in 0..height) {
@@ -94,7 +99,7 @@ internal class PaintSelection(val width: Int, val height: Int, val mask: ByteArr
                 val edge = x < width && inside(x, y - 1) != inside(x, y)
                 val top = x < width && inside(x, y - 1)
                 if (edge && start >= 0 && top == startTop) continue
-                if (start >= 0) { out += start.toFloat(); out += y.toFloat(); out += x.toFloat(); out += y.toFloat(); start = -1 }
+                if (start >= 0) { segment(start, y, x, y); start = -1 }
                 if (edge) { start = x; startTop = top }
             }
         }
@@ -105,11 +110,11 @@ internal class PaintSelection(val width: Int, val height: Int, val mask: ByteArr
                 val edge = y < height && inside(x - 1, y) != inside(x, y)
                 val left = y < height && inside(x - 1, y)
                 if (edge && start >= 0 && left == startLeft) continue
-                if (start >= 0) { out += x.toFloat(); out += start.toFloat(); out += x.toFloat(); out += y.toFloat(); start = -1 }
+                if (start >= 0) { segment(x, start, x, y); start = -1 }
                 if (edge) { start = y; startLeft = left }
             }
         }
-        return out.toFloatArray()
+        return out.copyOf(size)
     }
 
     companion object {

@@ -102,7 +102,9 @@ internal fun WorkspaceDocument.paintLayerImage(arguments: JsonObject,
  */
 internal fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
     work: WorkspaceRasterWork = WorkspaceRasterWork.Direct, before: (java.awt.Rectangle) -> Unit = {},
-    space: PaintSpace = PaintSpace.canvas(image.width, image.height)) {
+    space: PaintSpace = PaintSpace.canvas(image.width, image.height),
+    /** What `clear`, `fill` and `gradient` cover, in raster pixels; the whole raster when null. */
+    area: java.awt.Rectangle? = null) {
     val width = image.width; val height = image.height
     work.progress(0.05f, "Rasterizing paint gesture")
     val mode = arguments.getValue("mode").jsonPrimitive.content
@@ -117,7 +119,13 @@ internal fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
         return space.canvasToImageX(numbers[0]) to space.canvasToImageY(numbers[1])
     }
     when (mode) {
-        "clear" -> { before(java.awt.Rectangle(0, 0, width, height)); RasterPaintEngine.clear(image) }
+        "clear" -> {
+            val region = (area ?: java.awt.Rectangle(0, 0, width, height)).intersection(java.awt.Rectangle(0, 0, width, height))
+            if (!region.isEmpty) {
+                before(region)
+                image.setRGB(region.x, region.y, region.width, region.height, IntArray(region.width * region.height), 0, region.width)
+            }
+        }
         "brush", "pencil", "eraser" -> {
             val points = arguments.getValue("points").jsonArray.map(::point)
             require(points.size in 1..512) { "Use 1..512 stroke points" }
@@ -158,20 +166,24 @@ internal fun paintRasterGesture(image: BufferedImage, arguments: JsonObject,
             }
         }
         "fill" -> {
-            // The whole raster: a session confines it to its selection afterwards, the way every edit is.
-            val area = java.awt.Rectangle(0, 0, width, height)
-            before(area)
-            RasterPaintEngine.gradient(image, 0f, 0f, 0f, 0f, color, color, false, opacity, area, work::checkpoint)
+            // A session hands the selection's bounds, or the layer's own area, and confines the result afterwards.
+            val region = (area ?: java.awt.Rectangle(0, 0, width, height)).intersection(java.awt.Rectangle(0, 0, width, height))
+            if (!region.isEmpty) {
+                before(region)
+                RasterPaintEngine.gradient(image, 0f, 0f, 0f, 0f, color, color, false, opacity, region, work::checkpoint)
+            }
         }
         "gradient" -> {
             val (x0, y0) = point(arguments.getValue("from"))
             val (x1, y1) = point(arguments.getValue("to"))
             val end = arguments["end_color"]?.jsonArray?.map { it.jsonPrimitive.int } ?: listOf(rgba[0], rgba[1], rgba[2], 0)
             require(end.size == 4 && end.all { it in 0..255 }) { "end_color must be four RGBA bytes" }
-            val area = java.awt.Rectangle(0, 0, width, height)
-            before(area)
-            RasterPaintEngine.gradient(image, x0, y0, x1, y1, color, (end[3] shl 24) or (end[0] shl 16) or (end[1] shl 8) or end[2],
-                arguments["kind"]?.jsonPrimitive?.content == "radial", opacity, area, work::checkpoint)
+            val region = (area ?: java.awt.Rectangle(0, 0, width, height)).intersection(java.awt.Rectangle(0, 0, width, height))
+            if (!region.isEmpty) {
+                before(region)
+                RasterPaintEngine.gradient(image, x0, y0, x1, y1, color, (end[3] shl 24) or (end[0] shl 16) or (end[1] shl 8) or end[2],
+                    arguments["kind"]?.jsonPrimitive?.content == "radial", opacity, region, work::checkpoint)
+            }
         }
         "shape" -> {
             val (x0, y0) = point(arguments.getValue("from"))

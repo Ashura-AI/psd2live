@@ -174,4 +174,24 @@ class PaintToolsTest {
         assertEquals(listOf(10f to 20f, 90f to 20f), PaintSymmetry.VERTICAL.images(10f, 20f, 50f, 50f))
         assertEquals(listOf(10f to 20f, 90f to 20f, 10f to 80f, 90f to 80f), PaintSymmetry.BOTH.images(10f, 20f, 50f, 50f))
     }
+
+    @Test
+    fun aShortStabilizedStrokeStillEndsWhereThePointerLeft() {
+        val stabilizer = PaintStabilizer(5)
+        stabilizer.add(0f, 0f)
+        stabilizer.add(10f, 0f)
+        assertEquals(10f to 0f, stabilizer.finish().last())
+    }
+
+    @Test
+    fun aLongLassoThinsToTheLimitAndKeepsItsEnds() {
+        val points = List(20_000) { i -> i * 0.01f to (i % 7).toFloat() }
+        val thin = thinOutline(points, 4096, 0.5f)
+        assertTrue(thin.size <= 4096)
+        assertEquals(points.first(), thin.first())
+        assertEquals(points.last(), thin.last())
+        assertEquals(points.take(10), thinOutline(points.take(10), 4096, 0.5f))
+        val dense = List(10_000) { i -> i.toFloat() to 0f }
+        assertTrue(thinOutline(dense, 4096, 0.5f).size <= 4096)
+    }
 }

@@ -158,7 +158,8 @@ class WorkspacePaintSession internal constructor(
         val shape: PaintSelection? = when (mode) {
             "all" -> PaintSelection.all(w, h)
             "none" -> null
-            "invert" -> (selection ?: PaintSelection(w, h, ByteArray(w * h))).inverted()
+            // Nothing selected has nothing to turn inside out; Select All is the way to everything.
+            "invert" -> selection?.inverted()
             "feather" -> selection?.feathered(space.imageLength(request.getValue("radius").jsonPrimitive.float))
             "rectangle", "ellipse" -> {
                 val (x0, y0) = point(request.getValue("from")); val (x1, y1) = point(request.getValue("to"))
@@ -197,16 +198,36 @@ class WorkspacePaintSession internal constructor(
         expected: String? = null, checkpoint: () -> Unit = {}) = synchronized(lock) {
         writable(expected)
         validateOperationSchema(request, WorkspacePaintSessionSchemas.gesture)
+        val mode = request.getValue("mode").jsonPrimitive.content
+        val lockAlpha = request["lock_alpha"]?.jsonPrimitive?.boolean ?: false
+        // Keeping the alpha of what is painted while taking it away contradicts itself; the editor's eraser paints the
+        // background colour under lock transparency instead, which a public gesture asks for as a brush stroke.
+        require(!lockAlpha || (mode != "eraser" && mode != "clear")) { "lock_alpha does not apply to $mode: paint the colour with a brush instead" }
         // One tile patch is the rollback boundary for a fill, shape or complete public stroke.
         try {
             paintRasterGesture(buffer.workingImage, request, object : WorkspaceRasterWork {
                 override fun checkpoint() = checkpoint()
                 override fun progress(fraction: Float, message: String) {}
-            }, before = { checkpoint(); buffer.willWrite(it) }, space = space)
+            }, before = { checkpoint(); buffer.willWrite(it) }, space = space, area = gestureArea())
             // Every gesture lands through the selection, and with lock_alpha only on what is already painted.
-            buffer.confinePending(selection, request["lock_alpha"]?.jsonPrimitive?.boolean ?: false)
+            buffer.confinePending(selection, lockAlpha)
             checkpoint(); buffer.recordStroke(name); changed()
         } catch (failure: Throwable) { buffer.abandonStroke(); publish(); throw failure }
+    }
+    /**
+     * What a fill, gradient or clear covers: the selection's bounds, else the layer's own area and whatever the session
+     * has painted - so a fill without a selection fills the layer rather than the whole extended raster, and a commit
+     * keeping the meshes does not split a canvas-sized layer off it. A layer with nothing on it yet takes the canvas.
+     */
+    private fun gestureArea(): Rectangle {
+        selection?.bounds?.let { return it }
+        val layer = space.layerArea()
+        val painted = buffer.touched?.let { if (layer.isEmpty) it else layer.union(it) } ?: layer
+        if (!painted.isEmpty) return painted
+        val left = kotlin.math.floor(space.canvasToImageX(0f)).toInt(); val top = kotlin.math.floor(space.canvasToImageY(0f)).toInt()
+        val right = kotlin.math.ceil(space.canvasToImageX(canvasWidth.toFloat())).toInt()
+        val bottom = kotlin.math.ceil(space.canvasToImageY(canvasHeight.toFloat())).toInt()
+        return Rectangle(left, top, right - left, bottom - top).intersection(Rectangle(0, 0, imageWidth, imageHeight))
     }
     fun undo(expected: String? = null) = synchronized(lock) { writable(expected); buffer.undo(); changed() }
     fun redo(expected: String? = null) = synchronized(lock) { writable(expected); buffer.redo(); changed() }

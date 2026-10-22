@@ -83,4 +83,31 @@ class PaintSessionSelectionTest {
                 WorkspacePaintSessionSchemas.selection)
         }
     }
+
+    @Test
+    fun aFillWithoutASelectionCoversTheLayerNotTheCanvas() {
+        val session = WorkspacePaintSession("s", "p", "state", "layer", "Layer", BufferedImage(40, 40, BufferedImage.TYPE_INT_ARGB),
+            space = io.github.psd2live.core.PaintSpace.canvas(40, 40, java.awt.Rectangle(10, 10, 10, 10)), validateWorkspace = {})
+        session.gesture(buildJsonObject { put("mode", "fill"); put("color", rgba(255, 0, 0)) }, "fill")
+        assertEquals(0xFFFF0000.toInt(), session.sample(15, 15))
+        assertEquals(0, session.sample(30, 30))
+        assertEquals(0, session.sample(5, 15))
+    }
+
+    @Test
+    fun lockAlphaIsRefusedWhereItWouldOnlyErase() {
+        val session = session()
+        assertFailsWith<IllegalArgumentException> {
+            session.gesture(buildJsonObject { put("mode", "eraser"); put("points", JsonArray(listOf(point(1, 1), point(5, 5))))
+                put("lock_alpha", true) }, "eraser")
+        }
+        assertFailsWith<Exception> { session.gesture(buildJsonObject { put("mode", "clear"); put("lock_alpha", true) }, "clear") }
+    }
+
+    @Test
+    fun invertingNoSelectionLeavesNone() {
+        val session = session()
+        session.select(buildJsonObject { put("mode", "invert") })
+        assertNull(session.selectionBounds)
+    }
 }
