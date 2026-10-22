@@ -321,7 +321,7 @@ PSD2Live 用的大多是 Live2D 的通用术语，少数在界面上换了叫法
 2. 单击选中；{kbd:Shift} 加选，{kbd:Alt} 减选，{kbd:Ctrl} + 单击在命中的多个对象间切换层级，拖动框选，{key:SELECT_ALL} 全选。
 3. 选中与层级树同步；按 {key:FRAME_VIEW} 把所选对象放到视图中央。
 4. 选好目标后切到要用的模式。未选目标时，模式会提示先选择。
-在其他模式下按住 {key:TEMPORARY_SELECT} 可临时切到选择，松开即回。放置、切割等多步操作用模式条上的「确认」或 {kbd:Enter} 完成，{key:CANCEL} 取消。
+在其他模式下按住 {key:TEMPORARY_SELECT} 可临时切到选择，松开即回。{key:TOGGLE_OBJECT_MODE} 在物体模式与上次使用的模式（默认变形）之间切换。放置、切割等多步操作用模式条上的「确认」或 {kbd:Enter} 完成，{key:CANCEL} 取消。
 {tutorial=SELECT_MODE}
 *> 模拟、骨骼、绘画是 Cubism 里没有的模式；它们的结果在导出时烘焙成参数、关键形与摆锤，或直接写进纹理。
 

@@ -131,6 +131,7 @@ These are the default (Photoshop-style) bindings. **Settings** can switch to Ble
 | Paint: select all / deselect / invert / fill selection / clear selection | `Ctrl+A` / `Ctrl+D` / `Ctrl+I` (or `Ctrl+Shift+I`) / `Alt+Backspace` / `Del`; hold `Shift` to add and `Alt` to subtract with the selection tool |
 | Paint: swap / default colours, lock transparency, straight line | `X` / `Alt+D`, `/`, `Shift` + click |
 | Temporary selection / toggle quick preview | Hold `Z`, release to restore / grave accent key (below Esc) |
+| Object mode / last mode | `Tab`: from any other mode to Object mode, and from Object mode back to the mode last used (Deform by default) |
 | Confirm / cancel | `Enter` / `Esc`; the current tool shows its own gestures |
 | Motion timeline: play / key the pose / step a frame | `Space` / `K` / `Left` `Right` (while the timeline has focus) |
 

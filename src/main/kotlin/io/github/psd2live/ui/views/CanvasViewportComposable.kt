@@ -938,6 +938,12 @@ fun CanvasViewportComposable(
 			}
 			else -> Unit
 		}
+		if (action == ShortcutAction.TOGGLE_OBJECT_MODE) {
+			if (previewModel == null) return false
+			if (!editor.busy && !canvasState.workspaceEditBusy)
+				editor.chooseCanvasMode(CanvasModeChoice.of(editor.objectModeToggleTarget))
+			return true
+		}
 		CanvasModeChoice.entries.firstOrNull { it.shortcut == action }?.let { choice ->
 			if (previewModel == null) return false
 			if (!editor.busy && !canvasState.workspaceEditBusy) editor.chooseCanvasMode(choice)

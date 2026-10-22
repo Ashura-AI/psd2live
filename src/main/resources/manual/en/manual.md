@@ -321,7 +321,7 @@ Deform changes shape and Edit changes mesh structure; this is the pair most easi
 2. Click to select; {kbd:Shift} adds, {kbd:Alt} subtracts, {kbd:Ctrl} + click cycles the hierarchy level among overlapping hit objects, drag for a box selection, {key:SELECT_ALL} selects all.
 3. The selection stays in sync with the hierarchy tree; press {key:FRAME_VIEW} to bring the selected objects to the center of the view.
 4. After choosing a target, switch to the mode you need. With no target selected, the mode tells you to select one first.
-In other modes, hold {key:TEMPORARY_SELECT} to switch to selection temporarily and release to return. Multi-step operations such as placing or cutting are finished with "Confirm" on the mode bar or {kbd:Enter}, and cancelled with {key:CANCEL}.
+In other modes, hold {key:TEMPORARY_SELECT} to switch to selection temporarily and release to return. {key:TOGGLE_OBJECT_MODE} switches between Object mode and the mode last used (Deform by default). Multi-step operations such as placing or cutting are finished with "Confirm" on the mode bar or {kbd:Enter}, and cancelled with {key:CANCEL}.
 {tutorial=SELECT_MODE}
 *> Simulate, Skeleton and Paint are modes Cubism does not have; their results are baked into parameters, keyforms and pendulums on export, or written straight into the textures.
 

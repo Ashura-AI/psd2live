@@ -1059,9 +1059,21 @@ internal class CanvasEditor(
         set(value) {
             if (value == hierarchyModeState) return
             hierarchyModeState = value
+            if (value != EditHierarchyMode.SELECT) lastWorkMode = value
             viewModel.switchHierarchyModeView(value, canvasId, workspaceId)
         }
     var editLevel by mutableStateOf(2) // Level 1 (grid), Level 2 (bezier), Level 3 (macro)
+
+    /** The mode Tab returns to from object mode: the last mode other than Select the canvas was in or asked for. */
+    private var lastWorkMode = EditHierarchyMode.DEFORM
+
+    /**
+     * Where Tab goes: object mode from any other mode, and back to [lastWorkMode] from object mode.
+     * A request still waiting for its pick counts as being in the mode it asked for.
+     */
+    internal val objectModeToggleTarget: EditHierarchyMode
+        get() = if (hierarchyMode == EditHierarchyMode.SELECT && (deferredMode?.mode ?: EditHierarchyMode.SELECT) == EditHierarchyMode.SELECT)
+            lastWorkMode else EditHierarchyMode.SELECT
 
     /**
      * The mode the user asked for that has no part to work on yet, waiting for the pick that gives it
@@ -3253,6 +3265,7 @@ internal class CanvasEditor(
     @JvmName("changeHierarchyMode")
     fun setHierarchyMode(next: EditHierarchyMode) {
         if (busy) return
+        if (next != EditHierarchyMode.SELECT) lastWorkMode = next
         if (next != EditHierarchyMode.DEFORM) endTemporaryWarp()
         if (next != EditHierarchyMode.SKELETON) skeletonEntrySerial++
         endTemporarySelection()
