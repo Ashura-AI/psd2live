@@ -7863,6 +7863,9 @@ class PSD2LiveViewModel : AutoCloseable {
 			if (base != null && editorSettingsIntents.isNotEmpty())
 				(base.settings.keys + next.settings.keys).filterTo(editorTouchedSettings) { base.settings[it] != next.settings[it] }
 			applied = true
+			// A draft preview already past its last suspension point ignores the cancel below; under the state lock
+			// the new token keeps it from publishing the draft over this commit.
+			previewRebuildToken++
 			drafted = shown != next
 			dropSettingsIntents(rebased.conflicts.mapNotNullTo(HashSet()) { it.removePrefix("settings.").takeIf { key -> key != it } })
 			val settings = shown.settings
