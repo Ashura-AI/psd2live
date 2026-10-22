@@ -83,6 +83,7 @@
 | `rig_create_warp` | `name`、`targets`；可选 `id`、`rows/columns`、`fit_local` | 后台创建共用父 Warp 的 Mesh 的独立 Warp，也支持原子批量；终态返回 `target` |
 | `object_edit_appearance` | `request` 内 `state`、`edits` | 名称、显隐、结构等有序编辑；网格 `bind` 的 `space=local` 保留局部坐标与关键形（继承的运动与位置随新父级改变），`space=canvas` 把静止网格、关键形与混合形经新父级换算，使网格在默认姿态下留在画布原位（层级树拖放与检查器改父级即用此项）；变形器 `move` 只接受 `space=local` |
 | `rig_edit_structure` | `request` 内 `state`、`edits` | 静态对象属性、变形器删除与 Part 归属、参数文件夹和 XY 关联 |
+| `object_paste / mesh_duplicate / object_rename / object_convert_id` | `request` 内 `state` 及各自字段 | 复制粘贴物体、把网格拓扑复制到其他网格、批量改名与 ID 转变；均可批量，见[物体复制、查找替换与 ID 转变](#物体复制查找替换与-id-转变) |
 | `canvas_warp / canvas_rotation / canvas_glue / canvas_topology` | `request` | `warp/rotation/glue/topology`。`glue` 必须同时给出两个不同的画元 `mesh_a` 与 `mesh_b`。`rotation` 的 `origin` 为画布像素（y 向下），提交时换算到其父变形器的局部空间；`preservePose` 缺省为 true，网格在静止姿态下保持原位。`topology` 见下文[网格拓扑](#网格拓扑) |
 | `view_render_model / view_render_layer / view_render_context / view_render_poses / view_render_pad / view_check_coverage / view_compare_history / view_sample_motion` | `request` | `model/layer/context/poses/pad/coverage/compare/motion`；动作采样返回只读任务句柄，终态包含采样拼图与参数范围 |
 | `parameter_create / parameter_update / parameter_delete` | `request` | `create/update/delete`；删除时按最后一次默认值选择最近的已写关键点切片并折叠轴。收窄范围时，动作中该参数的关键点与手柄被夹入新范围；删除参数时同时移除动作中该参数的曲线 |
@@ -102,7 +103,7 @@
 
 表中列出业务字段；所有修改还须携带 `request_id`，工作区修改须携带 `project_id` 和 `state`（精简工具集可省略前两者，见[工具集](#工具集)）。只读后台采样 `physics_simulate/simulation_simulate/simulation_compare/view_sample_motion` 同样要求这三个字段，用于去重并固定采样版本。各项操作字段不同，调用前读取当前服务提供的 JSON Schema。所有公开工具统一使用 `{"request": {...}}` 包装。发布与校验保留同一份 `oneOf`、`const`、字段约束及说明，外层和业务对象都拒绝未知字段。结果统一为 `{"ok":true,"operation":"...","data":{...}}`；错误包含 `ok:false` 和 `error.code/message`，字段校验错误还带 `field`。PNG 以 MCP 图片内容返回。
 
-全部 190 项公开操作（其中 70 项后台、87 项可批量）都必须声明完整 `outputSchema`，完整工具集发布它，能力详情中的 `output_schema` 与其一致；成功 data 和失败 error 严格互斥。注册表在执行及去重边界校验业务结果，MCP 校验完整返回包装，遗漏结果契约不能注册。后台操作必须另有终态 `job_result_schema`，非后台操作不允许该字段。能力详情通过本地 `$defs/$ref` 描述嵌套 schema，查询自己的 schema 也可校验；实际 HTTP 保留所有根约束。`output_contract` 表示服务实现的结果与声明不符，不能作为修改已回滚的证据。
+全部 195 项公开操作（其中 70 项后台、91 项可批量）都必须声明完整 `outputSchema`，完整工具集发布它，能力详情中的 `output_schema` 与其一致；成功 data 和失败 error 严格互斥。注册表在执行及去重边界校验业务结果，MCP 校验完整返回包装，遗漏结果契约不能注册。后台操作必须另有终态 `job_result_schema`，非后台操作不允许该字段。能力详情通过本地 `$defs/$ref` 描述嵌套 schema，查询自己的 schema 也可校验；实际 HTTP 保留所有根约束。`output_contract` 表示服务实现的结果与声明不符，不能作为修改已回滚的证据。
 
 图片追加使用 `layer_import_images`：必需 `state` 和 1–128 个绝对路径组成的 `paths`，可选 `parent_deformer_id` 指向已有父变形器；省略时绑定模型根。可选 `anchor_layer_id` 让整批画在该图层（或网格）正前方，`in_front=false` 为正后方，批内第一张在最前，绘制顺序写为显式覆盖；可选 `at` `[x, y]` 把每张图居中到该画布坐标（贴住画布边界）。透明边缘裁剪后居中；栅格保持原分辨率，超过画布时只把画布矩形等比缩小到画布内（图层密度大于 1 像素/画布单位），网格按画布分辨率生成。单文件最多 64 MiB、16 百万像素，整批最多 32 百万像素。一次成功只追加一个历史节点，任意文件失败则整批不发布；它读取文件，不能作为原子文档批量成员。新增源图及网格句柄从任务终态 `affectedLayerIds/affectedObjectIds` 获取。原图像素写入工程，后续重开不依赖输入文件。每张图片在作者态 Rig 中得到自己的网格（`canvas_mesh_create`，挂在所给父级下），生成器从不重新生成它；撤销即取消导入。
 
@@ -127,6 +128,15 @@
 | `retriangulate` | `vertices`（空数组为全网格） | 在这些顶点周围向 Delaunay 翻边（在默认姿态的画布空间判定），只翻贴图映射不变、且在静止形与各关键形、混合形中都凸的四边形；顶点与关键形不变；已无可翻时失败 |
 
 操作不适用时返回错误，不写入任何内容。关键形、混合形、顶点组与 Glue 随拓扑迁移（被删顶点的 Glue 对删除），路径重新绑定；目标网格有内部造型且改动前一致时，同一节点内按新网格重新烘焙（烘焙失败不拒绝编辑，造型报告网格已变化）。结果须通过[几何检查](#几何检查与试运行)。算法与 Cubism 网格编辑的对照见[网格拓扑](../spec/MESH_TOPOLOGY_AND_SPLIT.md#手工拓扑编辑)。
+
+### 物体复制、查找替换与 ID 转变
+
+`object_paste`（`sources` 为 `mesh:/warp:/rotation:/part:/parameter:` 句柄；可选 `parent`、`part`、`parameter_group`、`ids`）复制网格、变形器（连同子树与其中网格）、Part（连同其子项）和参数，新 ID 在记录时确定（缺省为 `<ID>_copy`，冲突时加序号，`ids` 可逐项指定），重放结果与 ID 固定一致；副本之间的父级、遮罩、Glue、路径与顶点组改指副本，指向未复制对象的引用保留。给出 `parent` 时网格按画布坐标改挂、变形器按局部坐标改挂。结果的 `ids` 给出原句柄到新 ID 的映射。
+
+`mesh_duplicate`（`source`、`targets`）把源网格的拓扑按画布位置套到每个目标网格上，UV 取目标自己的纹理；每个目标写一条 `canvas_mesh_rebuild`，关键形、路径、权重与 Glue 照常迁移。
+
+`object_find`（只读）按名称或 ID（`field`）在 `kinds` 中查找，支持 `find`/`replace`、`regex`、`match_case`、`prefix`、`suffix`、`swap_sides`（独立的 L/R、Left/Right、左/右 互换）与 `standard_ids`（Cubism 2 式 ID 改为 Cubism 3 标准 ID），返回每项改前改后；`object_rename` 以同样参数一次提交。按 ID 改名与 `object_convert_id`（`renames`：`target` 与新 `id`）都写一条 `convert_id` 日志项：引用它的关键形、混合形、遮罩、Glue、路径、顶点组、动作曲线、用户物理与摆动目标同时改名，之后的生成覆盖与延后面板编辑按新 ID 重放，内置物理、动作预设与表情按新 ID 找回标准参数。ID 必须为字母开头的 1–64 位 ASCII 字母、数字或下划线，同类重名、已被占用和生成器所有的对象（模拟、内部造型、摆动参数）被拒绝且不做任何修改。导出前检查 ID：同类（Warp 与旋转共用）重名拒绝导出，字符不合规只警告。
+
 
 ### 纹理与纹理集
 
