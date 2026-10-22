@@ -352,10 +352,10 @@ Guides are horizontal or vertical reference lines dragged out of the rulers, for
 | Operation | How |
 |---|---|
 | Add | Drag down from the top ruler for a horizontal guide, right from the left ruler for a vertical one |
-| Move | Drag a guide when the pointer over it turns into a double arrow |
-| Remove | Drag the guide back onto its ruler, or choose **Clear all guides** in **Canvas aids…** of the display rail |
+| Move | With a selection tool or **Transform**, drag a guide when the pointer over it turns into a double arrow. Brushes, creation tools, Paint mode and Shift or Alt presses keep working near a guide, and a handle under the pointer wins over it |
+| Remove | Drag the guide back onto its ruler, or choose **Clear all guides** in **Canvas aids…** of the display rail; **Restore cleared guides** in the same menu brings the last cleared set back |
 | Lock | Turn on **Lock guides** in **Canvas aids…** ({key:LOCK_GUIDES}); locked guides are dashed and can be neither added nor dragged |
-| Snap | With **Snap to grid and guides** on ({key:TOGGLE_SNAP}), clicks and drags near a guide line up with it |
+| Snap | With **Snap to grid and guides** on ({key:TOGGLE_SNAP}), a point you drag lines up with a guide it comes near |
 The guides' colour is picked among the theme colours in **Canvas aids…**, so they stay visible in any theme.
 *> Unlike Cubism, locking and colour are switched in the display rail's settings menu rather than a guide dialog; with snapping and the grid on, a dragged guide also snaps to the grid lines.
 
@@ -381,7 +381,7 @@ In **Canvas aids…** of the display rail:
 | Opacity, colour | How strong the lines are and their colour, picked among the theme colours |
 Zoomed out, divisions that would crowd together are hidden and the major lines spread out as needed, so the grid never turns into a wash.
 ## Snapping
-With **Snap to grid and guides** on ({key:TOGGLE_SNAP}), the pointer is drawn to a grid line within about 6 pixels: picking, dragging points and placing deformers and path points all line up. It snaps to the grid lines visible at the current zoom. Paint and the deform brushes do not snap, so strokes are not pulled onto the lines.
+With **Snap to grid and guides** on ({key:TOGGLE_SNAP}), a mesh or deformer point you drag lands on a grid line once it comes within about 6 pixels of one. The point you grabbed is what snaps, not the pointer, so the point itself sits on the line, and the rest of the selection moves by the same amount. Clicks and picking use the pointer as it is. It snaps to the grid lines visible at the current zoom. Paint and the deform brushes do not snap, so strokes are not pulled onto the lines.
 
 @@ snapshot | Snapshot Function
 @@ onion-skin | Onion Skin
@@ -420,7 +420,7 @@ In the "Random pose" group of **Canvas aids…**:
 | Item | Effect |
 |---|---|
 | All unlocked parameters | Every parameter takes part; parameters locked in the parameters panel stay put |
-| Parameters being edited | Only the parameters last set in the parameters panel |
+| Parameters being edited | Only the parameters last set in the parameters panel; when none is set on this canvas, as on a preview canvas, all unlocked parameters move |
 | Range | How far each parameter may go from its default; 100% reaches both ends of its range |
 The random pose sets the current pose the way dragging sliders does, except that it never keys an open motion.
 

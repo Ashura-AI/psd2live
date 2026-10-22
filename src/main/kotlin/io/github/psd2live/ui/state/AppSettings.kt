@@ -435,7 +435,7 @@ object AppSettings {
 	/** Null when [raw] is malformed — callers then fall back to the preset default for that action. */
 	private fun parseOverrideList(raw: String): List<KeyBinding>? {
 		if (raw == UNBOUND_MARKER) return emptyList()
-		val parts = raw.split(';')
+		val parts = splitKeyBindingList(raw)
 		val parsed = ArrayList<KeyBinding>(parts.size)
 		for (part in parts) parsed.add(parseKeyBinding(part) ?: return null)
 		return parsed

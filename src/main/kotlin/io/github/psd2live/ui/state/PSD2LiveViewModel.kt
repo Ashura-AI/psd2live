@@ -6606,7 +6606,9 @@ class PSD2LiveViewModel : AutoCloseable {
 	 * parameters following it as they will after the commit. Scrub samples stay transient until release; a
 	 * finished change commits through the pose queue from the state captured now.
 	 */
-	fun setParameterValues(values: Map<ParameterId, Float>) {
+	fun setParameterValues(values: Map<ParameterId, Float>) = setParameterValues(values, currentAutoKey())
+
+	private fun setParameterValues(values: Map<ParameterId, Float>, autoKey: kotlinx.serialization.json.JsonObject?) {
 		if (values.isEmpty()) return
 		val current = _state.value
 		val model = current.previewModel
@@ -6617,7 +6619,7 @@ class PSD2LiveViewModel : AutoCloseable {
 			preview.config.rigEdits.skeleton, parameterScrubPose(current, current.parameterValues) + clamped) }.orEmpty()
 		val changed = clamped + constrained.filterKeys { it !in clamped }
 		if (updateParameterScrub(changed)) return
-		submitParameterValues(changed, currentWorkspaceState() ?: return)
+		submitParameterValues(changed, currentWorkspaceState() ?: return, autoKey = autoKey)
 	}
 
 	private fun currentAutoKey(): kotlinx.serialization.json.JsonObject? = editingMotionClip().takeIf { motionEditor.autoKey }?.let { clip ->
@@ -6994,10 +6996,68 @@ class PSD2LiveViewModel : AutoCloseable {
         editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.DeleteSnapshot(id))
     }
 
-	/** Replaces the edit canvases' ruler guides, as saved project data beside the snapshots. */
+	/**
+	 * Guides set while an edit, a pose commit or a gesture was still running: an auxiliary write would issue a
+	 * new state and reject that edit, so the canvases show these until [commitCanvasGuides] can save them.
+	 */
+	private var pendingCanvasGuides by mutableStateOf<Pair<Long, List<io.github.psd2live.project.CanvasGuide>>?>(null)
+	private var canvasGuideCommit: kotlinx.coroutines.Job? = null
+	/** The guides set on the clear before last, for one step of [restoreClearedCanvasGuides]. Session only. */
+	var clearedCanvasGuides by mutableStateOf<Pair<Long, List<io.github.psd2live.project.CanvasGuide>>?>(null)
+		private set
+
+	/** The guides the edit canvases show: the ones still waiting to be saved, else the project's. */
+	fun canvasGuides(state: PSD2LiveState): List<io.github.psd2live.project.CanvasGuide> =
+		pendingCanvasGuides?.takeIf { it.first == state.projectOpenGeneration }?.second ?: state.canvasGuides
+
+	/** Replaces the edit canvases' ruler guides, as saved project data beside the snapshots, once no edit is running. */
 	fun setCanvasGuides(guides: List<io.github.psd2live.project.CanvasGuide>) {
-		if (_state.value.analysis == null || guides == _state.value.canvasGuides) return
-		editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.SetCanvasGuides(guides))
+		val current = _state.value
+		if (current.analysis == null || guides == canvasGuides(current)) return
+		pendingCanvasGuides = current.projectOpenGeneration to guides
+		if (canvasGuideCommit?.isActive != true) canvasGuideCommit = scope.launch { commitCanvasGuides() }
+	}
+
+	fun clearCanvasGuides() {
+		val current = _state.value
+		val guides = canvasGuides(current)
+		if (guides.isEmpty()) return
+		clearedCanvasGuides = current.projectOpenGeneration to guides
+		setCanvasGuides(emptyList())
+	}
+
+	/** Puts back the guides the last clear removed, beside any drawn since. */
+	fun restoreClearedCanvasGuides() {
+		val (generation, cleared) = clearedCanvasGuides ?: return
+		clearedCanvasGuides = null
+		val current = _state.value
+		if (generation != current.projectOpenGeneration) return
+		setCanvasGuides(cleared.fold(canvasGuides(current)) { guides, guide ->
+			if (guides.any { it.id == guide.id }) guides else io.github.psd2live.ui.CanvasGuides.put(guides, guide) })
+	}
+
+	private fun workspaceIdle(state: PSD2LiveState) = !state.workspaceEditBusy && !state.editorDraftBusy
+	private fun canvasEditorsIdle() = editorsSnapshot().none { it.busy || it.inGesture }
+
+	private suspend fun commitCanvasGuides() {
+		var conflicts = 0
+		while (true) {
+			val pending = pendingCanvasGuides ?: return
+			if (!workspaceIdle(_state.value)) { _state.first(::workspaceIdle); continue }
+			if (!canvasEditorsIdle()) { androidx.compose.runtime.snapshotFlow { canvasEditorsIdle() }.first { it }; continue }
+			val current = _state.value
+			if (pending.first == current.projectOpenGeneration && current.analysis != null && pending.second != current.canvasGuides) {
+				try { editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.SetCanvasGuides(pending.second)) }
+				catch (failure: Exception) {
+					if (failure is kotlinx.coroutines.CancellationException) throw failure
+					// A write from elsewhere won the race: retry from its state on the next pass.
+					if (failure is io.github.psd2live.application.WorkspaceConflict && ++conflicts < 3) { kotlinx.coroutines.yield(); continue }
+					setErrorMessage(failure.message ?: failure.toString())
+				}
+			}
+			conflicts = 0
+			if (pendingCanvasGuides === pending) pendingCanvasGuides = null
+		}
 	}
 
 	/** The random pose's settings, and the pose it replaced while one is shown. Session only. */
@@ -7010,30 +7070,34 @@ class PSD2LiveViewModel : AutoCloseable {
 	 */
 	fun applyRandomPose(canvasId: String) {
 		val current = _state.value
-		val parameters = current.previewModel?.rig?.puppet?.parameters ?: return
+		val puppet = current.previewModel?.rig?.puppet ?: return
+		val parameters = puppet.parameters
+		// A preview canvas, or an edit canvas with no parameter picked yet, has nothing being edited: all of them move.
 		val targets = if (randomPose.scope == io.github.psd2live.ui.RandomPoseScope.EDITING)
-			canvasEditorFor(canvasId).deformationParameterIds().mapTo(HashSet(), ::ParameterId) else null
+			canvasEditorFor(canvasId).deformationParameterIds().mapTo(HashSet(), ::ParameterId).takeIf { it.isNotEmpty() } else null
 		val values = io.github.psd2live.ui.RandomPose.sample(parameters, targets, current.lockedParameters, randomPose.amount,
 			kotlin.random.Random.Default)
 		if (values.isEmpty()) return
-		val state = currentWorkspaceState() ?: return
-		val saved = randomPose.restore?.takeIf { it.generation == current.projectOpenGeneration && it.workspaceId == current.activeWorkspace.id }
-		val before = values.keys.associateWith { id -> current.parameterValues[id] ?: parameters.first { it.id == id }.default }
+		val saved = randomPose.restore?.takeIf { randomPoseRestorable(it, current) }
+		val before = parameters.associate { it.id to (current.parameterValues[it.id] ?: it.default) }
 		randomPose.restore = RandomPoseRestore(current.projectOpenGeneration, current.activeWorkspace.id,
-			before + saved?.values.orEmpty())
-		submitParameterValues(values, state, autoKey = null)
+			saved?.values ?: before)
+		setParameterValues(values, autoKey = null)
 	}
+
+	/** Whether [restore] still belongs to the project and workspace on screen. */
+	internal fun randomPoseRestorable(restore: RandomPoseRestore, state: PSD2LiveState = _state.value) =
+		restore.generation == state.projectOpenGeneration && restore.workspaceId == state.activeWorkspace.id &&
+			state.previewModel != null
 
 	/** Puts back the pose the first random pose replaced. */
 	fun restoreRandomPose() {
 		val saved = randomPose.restore ?: return
 		randomPose.restore = null
 		val current = _state.value
-		if (saved.generation != current.projectOpenGeneration || saved.workspaceId != current.activeWorkspace.id) return
+		if (!randomPoseRestorable(saved, current)) return
 		val known = current.previewModel?.rig?.puppet?.parameters?.mapTo(HashSet()) { it.id } ?: return
-		val values = saved.values.filterKeys { it in known && it !in current.lockedParameters }
-		if (values.isEmpty()) return
-		submitParameterValues(values, currentWorkspaceState() ?: return, autoKey = null)
+		setParameterValues(saved.values.filterKeys { it in known && it !in current.lockedParameters }, autoKey = null)
 	}
 
 	private fun shownParameterValues(): Map<ParameterId, Float>? {

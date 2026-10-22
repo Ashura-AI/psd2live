@@ -1539,6 +1539,32 @@ internal class CanvasEditor(
 
     /** The parameters the panel last set, the first of them [parameter]. */
     internal fun deformationParameterIds(): List<String> = deformationParameters
+
+    /**
+     * Draws a screen point to the canvas's grid and guides, or null while snapping is off. The viewport sets it;
+     * a drag applies it to the grabbed point, not the pointer, so the point itself lands on the line.
+     */
+    internal var snapScreenPoint: ((Offset) -> Offset)? = null
+    /** Where the point a drag grabbed sat on screen at the press, found on the drag's first move. */
+    private var snapAnchor: Offset? = null
+
+    /** The drag's pointer moved so that the grabbed point, not the pointer, meets the line it is drawn to. */
+    private fun snappedDrag(pos: Offset, t: CanvasTarget, viewport: CanvasViewport): Offset {
+        val snap = snapScreenPoint ?: return pos
+        val anchor = snapAnchor ?: run {
+            val candidates = if (boxDrag) initialScreenPoints.flatMapIndexed { item, points ->
+                val indices = dragIndices.getOrElse(item) { points.indices.toSet() }
+                points.filterIndexed { i, _ -> i in indices }
+            } else screen(t.geometry.points, t, viewport).filterIndexed { i, _ -> i in vertices }
+            (candidates.minByOrNull { (it - start).getDistance() } ?: start).also { snapAnchor = it }
+        }
+        return start + (snap(anchor + (pos - start)) - anchor)
+    }
+
+    /** Whether the pointer is over one of the editor's own handles, which a press takes before a guide. */
+    internal fun hoversHandle(): Boolean = hoveredVertex != null || hoveredMeshVertex != null || hoveredPathPoint != null ||
+        hoveredHandle != BoundingHandle.NONE || hoveredBezierAnchor != null || hoveredBezierHandle != null ||
+        swingHover != null || placementHover != BoundingHandle.NONE
     private var activeElementMode by mutableStateOf(0)
     var elementMode: Int
         get() = activeElementMode
@@ -5483,7 +5509,7 @@ internal class CanvasEditor(
         if (space) return false
         if (viewModel.isSnappingParameters) return true
         this.viewport = viewport
-        error = null; gestureState = viewModel.currentWorkspaceState(); start = pos; previous = pos; dragStartPos = pos
+        error = null; gestureState = viewModel.currentWorkspaceState(); start = pos; previous = pos; dragStartPos = pos; snapAnchor = null
         moved = false; additive = shift; subtractive = alt; pressedObject = null
         ctrlAtPress = ctrl
 
@@ -6067,6 +6093,7 @@ internal class CanvasEditor(
         }
 
         val t = targetAtPress ?: return; val source = original ?: return
+        @Suppress("NAME_SHADOWING") val pos = snappedDrag(pos, t, viewport)
 
         try {
             if (boxDrag) {

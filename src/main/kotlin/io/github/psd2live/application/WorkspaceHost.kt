@@ -173,6 +173,8 @@ internal class WorkspaceHost<V>(
         val data = io.github.psd2live.project.WorkspaceAuxiliaryCodec.decode(before.auxiliary)
         val nodeIds = runtime.history(before.state).selections.mapTo(HashSet()) { it.node.id }
         val next = WorkspaceAuxiliaryEdits.apply(data, edit, before.model.rig.puppet.parameters, nodeIds)
+        // An edit that changes nothing keeps the state: no new token to reject edits in flight, no dirty project.
+        if (next == data) return@synchronized WorkspaceAuxiliarySnapshot(before.projectId, before.state, before.historyHead, data, nodeIds)
         val encoded = kotlinx.serialization.json.JsonObject(before.auxiliary + io.github.psd2live.project.WorkspaceAuxiliaryCodec.encode(next))
         val committed = runtime.updateAuxiliary(before.projectId, before.state, encoded) { _, _ ->
             presentation.savedDataInstalled(current, data, next)

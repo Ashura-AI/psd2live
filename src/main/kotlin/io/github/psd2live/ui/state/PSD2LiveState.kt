@@ -192,8 +192,9 @@ data class CanvasModeSession(
 	fun withHierarchyView(next: EditHierarchyMode): CanvasModeSession {
 		val from = viewMode ?: return copy(viewMode = EditHierarchyMode.SELECT).withHierarchyView(next)
 		if (from == next) return this
+		// The canvas aids are the canvas's, not the mode's: the grid and the guides stay as they are across modes.
 		return copy(
-			view = modeViews[next] ?: hierarchyModeViewPreset(next, view),
+			view = (modeViews[next] ?: hierarchyModeViewPreset(next, view)).copy(aids = view.aids),
 			viewMode = next,
 			modeViews = modeViews - next + (from to view),
 		)

@@ -428,14 +428,15 @@ internal fun CanvasViewOptionsBar(
 			}
 			RailItem(tr("canvas.aids.random.apply"), false, keyLabel = aids.keyLabel(ShortcutAction.RANDOM_POSE).orEmpty(),
 				icon = { IconRandomPose(it) }, onClick = aids.onRandomPose)
-			if (aids.randomPose.restore != null) RailItem(tr("canvas.aids.random.restore"), false,
-				keyLabel = aids.keyLabel(ShortcutAction.RESTORE_RANDOM_POSE).orEmpty(),
-				icon = { IconRestorePose(it) }, onClick = aids.onRestorePose)
+			aids.onRestorePose?.let { restore ->
+				RailItem(tr("canvas.aids.random.restore"), false, keyLabel = aids.keyLabel(ShortcutAction.RESTORE_RANDOM_POSE).orEmpty(),
+					icon = { IconRestorePose(it) }, onClick = restore)
+			}
 			Box {
 				RailItem(tr("canvas.aids.settings"), aidsMenu, icon = { IconAidSettings(it) }, onClick = { aidsMenu = !aidsMenu })
 				FloatingMenu(expanded = aidsMenu, onDismiss = { aidsMenu = false; aids.onMenuClosed() }, width = 260.dp,
 					alignment = Alignment.BottomEnd, rise = true) {
-					CanvasAidsMenuContent(a, ::applyAids, aids.guideCount, aids.onClearGuides, aids.onionSource, aids.randomPose,
+					CanvasAidsMenuContent(a, ::applyAids, aids.guideCount, aids.onClearGuides, aids.onRestoreGuides, aids.onionSource, aids.randomPose,
 						aids.editingParameters, aids.onRandomPose, aids.onRestorePose, aids.keyLabel, showCanvasAids = aids.canvasAids)
 				}
 			}
@@ -449,12 +450,15 @@ internal class CanvasAidsRail(
 	val canvasAids: Boolean,
 	val guideCount: Int,
 	val onClearGuides: () -> Unit,
+	/** Puts back the guides the last clear removed; null when there are none to put back. */
+	val onRestoreGuides: (() -> Unit)?,
 	/** What the onion skin's ghosts show now, or why there are none. */
 	val onionSource: String?,
 	val randomPose: io.github.psd2live.ui.state.RandomPoseControls,
 	val editingParameters: Int,
 	val onRandomPose: () -> Unit,
-	val onRestorePose: () -> Unit,
+	/** Puts back the pose the random poses replaced; null when there is none for the project on screen. */
+	val onRestorePose: (() -> Unit)?,
 	val keyLabel: (ShortcutAction) -> String?,
 	/** Hands the focus back to the canvas. */
 	val onMenuClosed: () -> Unit,

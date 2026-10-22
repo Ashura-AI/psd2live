@@ -55,6 +55,7 @@ import io.github.psd2live.ui.views.texture.FloatingMenuRadio
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
 import io.github.psd2live.ui.views.texture.FloatingMenuSection
 import io.github.psd2live.ui.views.texture.FloatingMenuSlider
+import io.github.psd2live.ui.views.texture.FloatingMenuSwatches
 import io.github.psd2live.ui.views.texture.FloatingMenuSwitch
 import io.github.psd2live.ui.views.texture.glideItem
 import kotlin.math.floor
@@ -101,6 +102,8 @@ internal fun DrawScope.drawCanvasAids(
 	drag: CanvasGuideDrag,
 	colors: ToolColors,
 	textMeasurer: TextMeasurer,
+	/** The rulers' numbers; drawn smaller than [labelStyle]'s size so they fit the ruler's width. */
+	labelStyle: TextStyle,
 ) {
 	val w = size.width
 	val h = size.height
@@ -155,7 +158,7 @@ internal fun DrawScope.drawCanvasAids(
 	// The rulers, in canvas pixels: numbered every 1, 2 or 5 times a power of ten, five small ticks between.
 	val plate = colors.panelBackground.copy(alpha = 0.9f)
 	val tick = colors.textMuted
-	val label = TextStyle(color = colors.textMuted, fontSize = 8.5.sp)
+	val label = labelStyle.copy(color = colors.textMuted, fontSize = labelStyle.fontSize * 0.8f)
 	drawRect(plate, Offset(ruler, 0f), Size((w - ruler).coerceAtLeast(0f), ruler))
 	drawRect(plate, Offset(0f, ruler), Size(ruler, (h - ruler).coerceAtLeast(0f)))
 	drawRect(plate, Offset.Zero, Size(ruler, ruler))
@@ -209,28 +212,32 @@ internal fun CanvasAidsMenuContent(
 	onAidsChange: (CanvasAidOptions) -> Unit,
 	guideCount: Int,
 	onClearGuides: () -> Unit,
+	/** Puts back the guides the last clear removed, while there are some to put back. */
+	onRestoreGuides: (() -> Unit)?,
 	onionSource: String?,
 	randomPose: RandomPoseControls?,
 	editingParameters: Int,
 	onRandomPose: () -> Unit,
-	onRestorePose: () -> Unit,
+	/** Puts back the pose the first random pose replaced, while it still belongs to the project on screen. */
+	onRestorePose: (() -> Unit)?,
 	keyLabel: (io.github.psd2live.ui.state.ShortcutAction) -> String?,
 	/** The grid, guides and onion skin are the edit canvas's; a preview canvas has only the random pose. */
 	showCanvasAids: Boolean = true,
 ) {
-	if (showCanvasAids) CanvasAidsSections(aids, onAidsChange, guideCount, onClearGuides, onionSource)
+	if (showCanvasAids) CanvasAidsSections(aids, onAidsChange, guideCount, onClearGuides, onRestoreGuides, onionSource)
 	if (randomPose != null) {
 		if (showCanvasAids) FloatingMenuDivider()
 		FloatingMenuSection(tr("canvas.aids.random"))
 		FloatingMenuRadio(tr("canvas.aids.random.all"), randomPose.scope == RandomPoseScope.ALL,
 			onSelect = { randomPose.scope = RandomPoseScope.ALL })
 		FloatingMenuRadio(tr("canvas.aids.random.editing", editingParameters), randomPose.scope == RandomPoseScope.EDITING,
-			onSelect = { randomPose.scope = RandomPoseScope.EDITING }, enabled = editingParameters > 0)
+			onSelect = { randomPose.scope = RandomPoseScope.EDITING },
+			hint = if (editingParameters == 0) tr("canvas.aids.random.editingNone") else null)
 		FloatingMenuSlider(tr("canvas.aids.random.amount"), randomPose.amount, { randomPose.amount = it }, 0.1f..1f,
 			"${(randomPose.amount * 100).roundToInt()}%")
 		FloatingMenuRow(tr("canvas.aids.random.apply"), onRandomPose,
 			trailing = keyLabel(io.github.psd2live.ui.state.ShortcutAction.RANDOM_POSE))
-		FloatingMenuRow(tr("canvas.aids.random.restore"), onRestorePose, enabled = randomPose.restore != null,
+		FloatingMenuRow(tr("canvas.aids.random.restore"), { onRestorePose?.invoke() }, enabled = onRestorePose != null,
 			trailing = keyLabel(io.github.psd2live.ui.state.ShortcutAction.RESTORE_RANDOM_POSE))
 	}
 }
@@ -241,6 +248,7 @@ private fun CanvasAidsSections(
 	onAidsChange: (CanvasAidOptions) -> Unit,
 	guideCount: Int,
 	onClearGuides: () -> Unit,
+	onRestoreGuides: (() -> Unit)?,
 	onionSource: String?,
 ) {
 	FloatingMenuSection(tr("canvas.aids.grid"))
@@ -262,6 +270,7 @@ private fun CanvasAidsSections(
 	AidColorRow(tr("canvas.aids.color"), aids.guideColor) { onAidsChange(aids.copy(guideColor = it)) }
 	FloatingMenuRow(tr("canvas.aids.guides.clear"), onClearGuides, enabled = guideCount > 0, danger = true,
 		trailing = if (guideCount > 0) "$guideCount" else null)
+	if (onRestoreGuides != null) FloatingMenuRow(tr("canvas.aids.guides.restore"), onRestoreGuides)
 	FloatingMenuDivider()
 	FloatingMenuSwitch(tr("canvas.aids.snap"), aids.snap, { onAidsChange(aids.copy(snap = it)) },
 		hint = tr("canvas.aids.snap.hint"))
@@ -282,37 +291,12 @@ private fun CanvasAidsSections(
 	AidColorRow(tr("canvas.aids.onion.afterColor"), aids.onionAfterColor) { onAidsChange(aids.copy(onionAfterColor = it)) }
 }
 
-/** A row of colour swatches, one per [CanvasAidColor], the chosen one ringed. */
+/** The colour swatches of an aid, one per [CanvasAidColor]. */
 @Composable
 private fun AidColorRow(label: String, selected: CanvasAidColor, onSelect: (CanvasAidColor) -> Unit) {
 	val colors = LocalToolColors.current
-	Row(Modifier.fillMaxWidth().height(24.dp).padding(start = 9.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-		Text(label, color = colors.textMuted, fontSize = 10.5.sp, maxLines = 1, modifier = Modifier.width(54.dp))
-		Row(Modifier.weight(1f).padding(start = 4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-			for (choice in CanvasAidColor.entries) {
-				val name = tr("canvas.aids.color.${choice.name.lowercase()}")
-				BarTooltip(name) {
-					Box(
-						Modifier
-							.size(20.dp)
-							.glideItem(enabled = true)
-							.clip(CircleShape)
-							.clickable(interactionSource = androidx.compose.runtime.remember { MutableInteractionSource() }, indication = null) { onSelect(choice) }
-							.semantics { contentDescription = name },
-						contentAlignment = Alignment.Center,
-					) {
-						Box(
-							Modifier
-								.size(12.dp)
-								.clip(CircleShape)
-								.background(choice.color(colors))
-								.then(if (choice == selected) Modifier.border(1.5.dp, colors.textPrimary, CircleShape) else Modifier),
-						)
-					}
-				}
-			}
-		}
-	}
+	FloatingMenuSwatches(label, CanvasAidColor.entries.map { tr("canvas.aids.color.${it.name.lowercase()}") to it.color(colors) },
+		selected.ordinal) { onSelect(CanvasAidColor.entries[it]) }
 }
 
 /** The grid: a square of cells. */

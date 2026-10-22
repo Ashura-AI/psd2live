@@ -133,6 +133,23 @@ internal fun wheelBindingOf(delta: Offset, modifiers: PointerKeyboardModifiers):
 internal fun buttonBindingOf(button: PointerButton?, modifiers: PointerKeyboardModifiers): KeyBinding? =
     MouseInput.of(button)?.let { mouseBindingOf(it, modifiers) }
 
+/**
+ * Splits a ';'-joined list of [KeyBinding.format] forms. The semicolon is also a key: one that opens a binding or
+ * follows a '+' is that binding's key ("Ctrl+;;Alt+;" is Ctrl+; and Alt+;), any other one separates two bindings.
+ * Lists without the key split exactly as a plain split did.
+ */
+internal fun splitKeyBindingList(raw: String): List<String> {
+    val parts = ArrayList<String>()
+    val current = StringBuilder()
+    for (c in raw) {
+        if (c == ';' && current.isNotEmpty() && current.last() != '+') {
+            parts.add(current.toString()); current.clear()
+        } else current.append(c)
+    }
+    parts.add(current.toString())
+    return parts
+}
+
 /** Parses the canonical form produced by [KeyBinding.format]. Returns null on anything malformed. */
 internal fun parseKeyBinding(text: String): KeyBinding? {
     val tokens = text.split('+')
