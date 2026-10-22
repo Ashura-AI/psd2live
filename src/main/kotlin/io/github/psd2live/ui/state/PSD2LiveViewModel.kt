@@ -1718,6 +1718,93 @@ class PSD2LiveViewModel : AutoCloseable {
 
     internal fun dismissDepthSplit() { pendingDepthSplit = null }
 
+    // --- Objects: copy and paste, mesh duplication, find and replace, ID conversion ([WorkspaceObjectEdits]) ---
+
+    /** The copied objects as `kind:id`, for the next paste; editor state, never saved. */
+    internal var objectClipboard by mutableStateOf<List<String>>(emptyList())
+        private set
+
+    internal enum class ObjectDialog { FIND_REPLACE, CONVERT_IDS }
+
+    internal var objectDialog by mutableStateOf<ObjectDialog?>(null)
+        private set
+
+    internal fun openObjectDialog(dialog: ObjectDialog) { if (_state.value.previewModel != null) objectDialog = dialog }
+    internal fun dismissObjectDialog() { objectDialog = null }
+
+    /** The selected objects as `kind:id`: the meshes of the selected layers, then the selected deformer. */
+    internal fun selectedObjectTargets(): List<String> {
+        val current = _state.value
+        val preview = current.previewModel ?: return emptyList()
+        val layers = current.selectedLayerIds.ifEmpty { setOfNotNull(current.selectedLayerId) }
+        val meshes = preview.rig.puppet.drawables.filter { d -> d.mesh != null && (d.id.raw in layers || preview.rig.layerIdByDrawableId[d.id.raw] in layers) }
+            .map { "mesh:${it.id.raw}" }
+        val deformer = current.selectedDeformerId?.let { id -> preview.rig.puppet.deformers.firstOrNull { it.id.raw == id } }
+            ?.let { "${if (it is Deformer.Warp) "warp" else "rotation"}:${it.id.raw}" }
+        return meshes + listOfNotNull(deformer)
+    }
+
+    /** Copies [targets] (default: the selection); false when there is nothing to copy. */
+    internal fun copyObjects(targets: List<String> = selectedObjectTargets()): Boolean {
+        if (targets.isEmpty()) { setErrorMessage(tr("objectOps.nothingSelected")); return false }
+        objectClipboard = targets.distinct()
+        updateState { it.copy(statusText = tr("objectOps.copied", objectClipboard.size)) }
+        return true
+    }
+
+    /**
+     * Pastes the copied objects as one undoable edit, under [parent] (`warp:ID` / `rotation:ID`; default: under the
+     * originals' parent). Copied objects deleted since are left out.
+     */
+    internal fun pasteObjects(parent: String? = null): Boolean {
+        val puppet = _state.value.previewModel?.rig?.puppet ?: return false
+        val present = objectClipboard.filter { target -> io.github.psd2live.application.WorkspaceObjectEdits.objects(puppet)
+            .any { "${it.first}:${it.second}" == target } }
+        if (present.isEmpty()) { setErrorMessage(tr("objectOps.nothingToPaste")); return false }
+        val request = kotlinx.serialization.json.buildJsonObject {
+            put("sources", strings(present)); parent?.let { put("parent", it) }
+        }
+        objectEdit(tr("objectOps.pasted", present.size), io.github.psd2live.application.WorkspaceObjectEdits.PASTE, request)
+        return true
+    }
+
+    /** The selected meshes besides [source]: what a mesh duplication from [source] would change. */
+    internal fun meshDuplicationTargets(source: String): List<String> =
+        selectedObjectTargets().filter { it.startsWith("mesh:") && it != "mesh:$source" }
+
+    internal fun duplicateMesh(source: String, targets: List<String> = meshDuplicationTargets(source)) {
+        if (targets.isEmpty()) return
+        objectEdit(tr("objectOps.meshDuplicated", targets.size), io.github.psd2live.application.WorkspaceObjectEdits.MESH_DUPLICATE,
+            kotlinx.serialization.json.buildJsonObject { put("source", "mesh:$source"); put("targets", strings(targets)) })
+    }
+
+    /** What a find or replace with [request] matches on the shown rig; the dialog's live list. */
+    internal fun findObjects(request: kotlinx.serialization.json.JsonObject): Result<List<io.github.psd2live.application.WorkspaceObjectEdits.Match>> {
+        val puppet = _state.value.previewModel?.rig?.puppet ?: return Result.success(emptyList())
+        return runCatching { io.github.psd2live.application.WorkspaceObjectEdits.find(puppet, request) }
+    }
+
+    internal fun replaceObjects(request: kotlinx.serialization.json.JsonObject, count: Int) =
+        objectEdit(tr("objectOps.renamed", count), io.github.psd2live.application.WorkspaceObjectEdits.RENAME, request) { objectDialog = null }
+
+    /** Converts each `kind:id` key of [renames] to its value, with every reference, as one undoable edit. */
+    internal fun convertObjectIds(renames: Map<String, String>) {
+        if (renames.isEmpty()) return
+        objectEdit(tr("objectOps.converted", renames.size), io.github.psd2live.application.WorkspaceObjectEdits.CONVERT_ID,
+            kotlinx.serialization.json.buildJsonObject {
+                put("renames", kotlinx.serialization.json.JsonArray(renames.map { (target, id) ->
+                    kotlinx.serialization.json.buildJsonObject { put("target", target); put("id", id) } }))
+            }) { objectDialog = null }
+    }
+
+    private fun objectEdit(summary: String, operation: String, request: kotlinx.serialization.json.JsonObject, done: () -> Unit = {}) {
+        val workspace = workspaceBackend?.takeUnless { editorSessions.anyOpen } ?: return
+        val port: io.github.psd2live.application.WorkspaceDocumentPort = workspace
+        runWorkspaceCommand(after = { done(); updateState { it.copy(statusText = summary) } }) { state ->
+            port.applyDocumentEdits(state, summary, listOf(io.github.psd2live.application.WorkspaceDocumentOperation(operation, request)), MutationAuthor.USER)
+        }
+    }
+
     /** Tools > Update Generated Rig is offered once the journal holds a checkpoint storing the generation it came from. */
     internal fun canUpdateGeneration(state: PSD2LiveState): Boolean =
         io.github.psd2live.application.WorkspaceGenerationUpdate.updatable(state.rigEdits)

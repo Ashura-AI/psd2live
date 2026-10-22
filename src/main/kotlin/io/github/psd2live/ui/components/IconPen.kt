@@ -295,6 +295,14 @@ internal fun IconPen.copySheets() {
     panel(2.4f, 6.2f, 9.4f, 9.4f, 1.6f)
 }
 
+/** A clipboard holding a written sheet: paste. */
+internal fun IconPen.pasteBoard() {
+    shape(rectPath(3.4f, 3.6f, 11.2f, 12.2f, 1.6f))
+    fillBox(6.4f, 2.2f, 5.2f, 2.8f, 1f)
+    line(6.4f, 9.2f, 11.6f, 9.2f, ICON_FINE)
+    line(6.4f, 12.2f, 10.2f, 12.2f, ICON_FINE)
+}
+
 /** A bin with its lid: delete, clear. */
 internal fun IconPen.trashCan() {
     outline(path { m(6.8f, 4.4f); l(6.8f, 3.4f); q(6.8f, 2.4f, 7.8f, 2.4f); l(10.2f, 2.4f); q(11.2f, 2.4f, 11.2f, 3.4f); l(11.2f, 4.4f) }, ICON_FINE)

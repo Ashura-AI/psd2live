@@ -163,6 +163,9 @@ enum class ShortcutAction(
     CANCEL(ShortcutCategory.CANVAS_EDIT, "shortcut.cancel"),
     FINISH_PATH(ShortcutCategory.CANVAS_EDIT, "shortcut.finishPath"),
     DELETE_SELECTION(ShortcutCategory.CANVAS_EDIT, "editor.delete"),
+    // One copy and one paste for the canvas; each mode decides what they carry (objects in Select mode).
+    COPY(ShortcutCategory.CANVAS_EDIT, "shortcut.copy"),
+    PASTE(ShortcutCategory.CANVAS_EDIT, "shortcut.paste"),
     LAYER_TO_FRONT(ShortcutCategory.CANVAS_EDIT, "layers.reorder.front"),
     LAYER_FORWARD(ShortcutCategory.CANVAS_EDIT, "layers.reorder.forward"),
     LAYER_BACKWARD(ShortcutCategory.CANVAS_EDIT, "layers.reorder.backward"),
@@ -378,6 +381,8 @@ private val PS_DEFAULTS: Map<ShortcutAction, List<KeyBinding>> = mapOf(
     ShortcutAction.CANCEL to keys("Esc"),
     ShortcutAction.FINISH_PATH to keys("Enter", "NumPadEnter"),
     ShortcutAction.DELETE_SELECTION to keys("Del", "Backspace"),
+    ShortcutAction.COPY to keys("Ctrl+C"),
+    ShortcutAction.PASTE to keys("Ctrl+V"),
     // Photoshop's arrange keys: one step with Ctrl, all the way with Ctrl+Shift.
     ShortcutAction.LAYER_TO_FRONT to keys("Ctrl+Shift+]"),
     ShortcutAction.LAYER_FORWARD to keys("Ctrl+]"),

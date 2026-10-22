@@ -568,6 +568,8 @@ fun FrameWindowScope.PSD2LiveApp(
 						onShowTextureUpscale = { viewModel.openTextureUpscaleDialog() },
 						onStartScreen = { viewModel.showStartPage(StartSection.GENERATE) },
 						onMeshSplitScan = { viewModel.requestMeshSplitScan() },
+						onFindReplace = { viewModel.openObjectDialog(PSD2LiveViewModel.ObjectDialog.FIND_REPLACE) },
+						onConvertIds = { viewModel.openObjectDialog(PSD2LiveViewModel.ObjectDialog.CONVERT_IDS) },
 						canUpdateGeneration = viewModel.canUpdateGeneration(state),
 						onUpdateGeneration = { viewModel.updateGeneration() },
 						onPreviewGenerationUpdate = { viewModel.previewGenerationUpdate() },

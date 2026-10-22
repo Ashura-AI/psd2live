@@ -163,3 +163,30 @@ internal object RigIdConversion {
 		else edit.copy(inputs = edit.inputs.map { it.copy(parameter = renames[it.parameter] ?: it.parameter) },
 			outputs = edit.outputs.map { it.copy(parameter = renames[it.parameter] ?: it.parameter) })
 }
+
+/**
+ * The IDs an export checks before writing: two objects of one kind under one ID (warps and rotations share one) cannot
+ * be told apart by a runtime or by Cubism, so an export refuses them; an ID outside Cubism's alphabet only warns.
+ */
+object RigIdCheck {
+	private fun all(model: PuppetModel): List<Pair<String, String>> =
+		model.parameters.map { "parameter" to it.id.raw } + model.parts.map { "part" to it.id.raw } +
+			model.deformers.map { "deformer" to it.id.raw } + model.drawables.map { "mesh" to it.id.raw }
+
+	/** `kind id` for each ID more than one object of its kind holds. */
+	fun conflicts(model: PuppetModel): List<String> =
+		all(model).groupingBy { it }.eachCount().filterValues { it > 1 }.keys.map { (kind, id) -> "$kind $id" }
+
+	/** `kind id` for each ID outside Cubism's alphabet ([RigIdConversion.ID_PATTERN]). */
+	fun invalid(model: PuppetModel): List<String> =
+		all(model).filterNot { RigIdConversion.ID_PATTERN.matches(it.second) }.map { (kind, id) -> "$kind $id" }
+
+	/** Fails an export of [model] that has [conflicts]; the warnings for [invalid] IDs otherwise. */
+	fun checked(label: String, model: PuppetModel): List<String> {
+		val conflicts = conflicts(model)
+		require(conflicts.isEmpty()) { io.github.psd2live.i18n.tr("validation.idConflict", label, conflicts.joinToString()) }
+		val invalid = invalid(model)
+		return if (invalid.isEmpty()) emptyList() else listOf(io.github.psd2live.i18n.tr("validation.idInvalid", label, invalid.take(12).joinToString() +
+			if (invalid.size > 12) " (+${invalid.size - 12})" else ""))
+	}
+}

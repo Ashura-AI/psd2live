@@ -21,6 +21,7 @@ palametorpalatte: parameter_create parameter_update parameter_delete preview_set
 layers-palette: layer_classify layer_tag layer_set_variant layer_mark_reference layer_reorder layer_restore
 timelinepalatte: motion_list motion_get motion_create motion_set_key motion_pose motion_put
 history-palette: history_list history_checkout history_annotation_put history_checkpoint view_compare_history
+convert-id: object_convert_id object_find object_rename
 divide-the-material: layer_tag layer_classify source_split_components
 reimport-psd: project_import_psd layer_classify layer_tag layer_set_variant
 precautions-for-psd-data: layer_classify layer_tag
@@ -40,10 +41,13 @@ parts: workspace_overview workspace_inspect rig_edit_structure
 edit-parts: rig_edit_structure object_edit_appearance
 edit-parts-sketch: layer_mark_reference layer_pin_reference
 variants: layer_set_variant
+copy-and-paste: object_paste rig_edit_structure
+search-and-replace: object_find object_rename
 draworder: layer_draw_order rig_edit_structure
 concept-of-artmesh: workspace_inspect view_render_layer
 mesh-edit: layer_mesh_update layer_mesh_rebuild
 mesh-edit-manual: canvas_topology
+mesh-duplication: mesh_duplicate layer_mesh_rebuild
 clipping-mask: rig_edit_structure
 reversed-mask: rig_edit_structure
 sketch: material_mark_reference layer_place layer_mark_reference layer_pin_reference reference_place_grid layout_set_reference

@@ -607,6 +607,7 @@ class PSD2LivePipeline {
 		val baseName = safeBaseName(sourceName.substringBeforeLast('.'))
 		val imported = config.rigEdits.importedCmo3 != null
 		val generatedLabel = tr("validation.generated")
+		val idWarnings = RigIdCheck.checked(generatedLabel, rig.puppet)
 		val neutralRig = RigIntegrityValidator.validateNeutralPose(generatedLabel, rig.puppet, rig.sourceBoundsByDrawableId)
 		val generatedAngleWarnings = RigIntegrityValidator.validateHeadAnglePoses(generatedLabel, rig.puppet, neutralRig.boundsByDrawableId)
 		val generatedWarpWarnings = RigIntegrityValidator.validateDirectionalWarpDimensions(generatedLabel, rig.puppet)
@@ -621,7 +622,7 @@ class PSD2LivePipeline {
 		val outputRoot = outputDirectory.toAbsolutePath().normalize()
 		Files.createDirectories(outputRoot)
 		val files = mutableListOf<ExportedFile>()
-		val warnings = (analysis.warnings + rig.warnings + neutralRig.warnings + generatedAngleWarnings + generatedWarpWarnings +
+		val warnings = (analysis.warnings + rig.warnings + idWarnings + neutralRig.warnings + generatedAngleWarnings + generatedWarpWarnings +
 			io.github.psd2live.core.interior.InteriorLifecycle.warnings(rig.puppet, config.rigEdits)).toMutableList()
 		val (runtimeBundle, runtimeReport) = buildRuntimeBundle(baseName, analysis, atlas, rig, config, validate = true, preview = false)
 

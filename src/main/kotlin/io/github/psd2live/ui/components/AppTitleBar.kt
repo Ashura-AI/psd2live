@@ -165,6 +165,8 @@ fun AppTitleBar(
 	onShowTextureUpscale: () -> Unit,
 	onStartScreen: () -> Unit = {},
 	onMeshSplitScan: () -> Unit = {},
+	onFindReplace: () -> Unit = {},
+	onConvertIds: () -> Unit = {},
 	/** Tools > Upgrade split records: enabled while the document holds version 1 split records. */
 	canUpdateGeneration: Boolean = false,
 	onUpdateGeneration: () -> Unit = {},
@@ -623,6 +625,21 @@ fun AppTitleBar(
 						modifier = Modifier.tutorialTarget(TutorialTargetId.TOOLS_TEXTURE_UPSCALE),
 						onHover = { activeSubmenu = null },
 						onClick = { activeMenu = null; activeSubmenu = null; onShowTextureUpscale() },
+					)
+
+					AppMenuSeparator()
+
+					AppMenuItem(
+						text = tr("objectOps.findReplace"),
+						enabled = hasInput && !isBusy,
+						onHover = { activeSubmenu = null },
+						onClick = { activeMenu = null; activeSubmenu = null; onFindReplace() },
+					)
+					AppMenuItem(
+						text = tr("objectOps.convertIds"),
+						enabled = hasInput && !isBusy,
+						onHover = { activeSubmenu = null },
+						onClick = { activeMenu = null; activeSubmenu = null; onConvertIds() },
 					)
 
 					AppMenuSeparator()

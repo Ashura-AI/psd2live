@@ -25,6 +25,7 @@ internal object WorkspaceObjectSchemas {
 		"prefix" to describe(s.string(), "Added before the result."),
 		"suffix" to describe(s.string(), "Added after the result."),
 		"swap_sides" to describe(s.boolean(), "Exchange left and right where they are words of their own: L/R (ArmL, Hair_L_01, EyeLOpen), Left/Right, 左/右."),
+		"standard_ids" to describe(s.boolean(), "With field id: Cubism 2 style IDs take Cubism 3's standard style (PARAM_EYE_L_OPEN to ParamEyeLOpen, PARTS_01_FACE to PartFace); other IDs are left out."),
 	)
 
 	val paste = request(mapOf(

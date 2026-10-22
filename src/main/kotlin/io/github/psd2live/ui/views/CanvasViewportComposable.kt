@@ -1035,6 +1035,9 @@ fun CanvasViewportComposable(
 					else -> false
 				}
 			}
+			// Select mode copies and pastes objects; the other modes leave the chords to what they hold.
+			ShortcutAction.COPY -> editor.hierarchyMode == EditHierarchyMode.SELECT && viewModel.copyObjects()
+			ShortcutAction.PASTE -> editor.hierarchyMode == EditHierarchyMode.SELECT && editor.editable && viewModel.pasteObjects()
 			ShortcutAction.DELETE_SELECTION -> {
 				if (selectedReference() != null) { referenceInteraction.cancel(); viewModel.removeReference(requireNotNull(selectedReference()).id) }
 				else if (editor.tool == CanvasTool.KNIFE || editor.drawingPath) editor.undoDraftPoint()

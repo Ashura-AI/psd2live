@@ -55,7 +55,7 @@
     - project-palette missing cubism=project-palette
     - history-palette exclusive
     - logpalatte same cubism=logpalatte
-  - convert-id missing cubism=convert-id
+  - convert-id different cubism=convert-id
   - autosave different cubism=autosave
 + material
   - divide-the-material different cubism=divide-the-material
@@ -81,8 +81,8 @@
     - edit-parts different cubism=edit-parts
     - edit-parts-sketch different cubism=edit-parts-sketch
     - variants exclusive
-    - copy-and-paste missing cubism=copy-and-paste
-    - search-and-replace missing cubism=search-and-replace
+    - copy-and-paste different cubism=copy-and-paste
+    - search-and-replace different cubism=search-and-replace
     - offscreen-drawing missing cubism=offscreen-drawing
   + draw-order
     - draworder same cubism=draworder
@@ -91,7 +91,7 @@
     - concept-of-artmesh same cubism=concept-of-artmesh
     - mesh-edit different cubism=mesh-edit
     - mesh-edit-manual different cubism=mesh-edit-manual
-    - mesh-duplication missing cubism=mesh-duplication
+    - mesh-duplication different cubism=mesh-duplication
     - clipping-mask same cubism=clipping-mask
     - reversed-mask same cubism=reversed-mask
     - sketch different cubism=sketch

@@ -94,5 +94,8 @@ class ObjectEditsCommandTest {
 		assertEquals("Lip", WorkspaceObjectEdits.swapSides("Lip"))
 		assertEquals("Cleft", WorkspaceObjectEdits.swapSides("Cleft"))
 		assertEquals("eye_r", WorkspaceObjectEdits.swapSides("eye_l"))
+		assertEquals("ParamEyeLOpen", WorkspaceObjectEdits.standardId("parameter", "PARAM_EYE_L_OPEN"))
+		assertEquals("PartFace", WorkspaceObjectEdits.standardId("part", "PARTS_01_FACE"))
+		assertEquals(null, WorkspaceObjectEdits.standardId("parameter", "ParamAngleX"))
 	}
 }

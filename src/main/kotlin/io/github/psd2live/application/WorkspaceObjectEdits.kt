@@ -81,7 +81,7 @@ internal object WorkspaceObjectEdits {
 	 * (left and right exchanged: L/R, Left/Right, 左/右). With nothing to replace, it lists what `find` matches.
 	 */
 	fun find(model: PuppetModel, request: JsonObject): List<Match> {
-		val allowed = setOf("field", "kinds", "targets", "find", "regex", "match_case", "replace", "prefix", "suffix", "swap_sides", "offset", "limit")
+		val allowed = setOf("field", "kinds", "targets", "find", "regex", "match_case", "replace", "prefix", "suffix", "swap_sides", "standard_ids", "offset", "limit")
 		require(request.keys.all { it in allowed }) { "Unknown find field: ${(request.keys - allowed).sorted().joinToString()}" }
 		val field = request["field"]?.jsonPrimitive?.content ?: "name"
 		require(field == "name" || field == "id") { "field must be name or id" }
@@ -95,17 +95,20 @@ internal object WorkspaceObjectEdits {
 		val prefix = request["prefix"]?.jsonPrimitive?.content.orEmpty()
 		val suffix = request["suffix"]?.jsonPrimitive?.content.orEmpty()
 		val swap = request["swap_sides"]?.jsonPrimitive?.boolean ?: false
+		val standard = request["standard_ids"]?.jsonPrimitive?.boolean ?: false
+		require(!standard || field == "id") { "standard_ids converts IDs: use field id" }
 		val options = if (matchCase) emptySet() else setOf(RegexOption.IGNORE_CASE)
 		val pattern = if (find.isEmpty()) null else if (regex) runCatching { Regex(find, options) }.getOrElse {
 			throw IllegalArgumentException("Invalid regular expression: ${it.message}")
 		} else Regex(Regex.escape(find), options)
-		val replacing = replacement != null || prefix.isNotEmpty() || suffix.isNotEmpty() || swap
+		val replacing = replacement != null || prefix.isNotEmpty() || suffix.isNotEmpty() || swap || standard
 		val out = ArrayList<Match>()
 		for ((kind, id, name) in objects(model)) {
 			if (kind !in kinds || (targets != null && "$kind:$id" !in targets)) continue
 			val text = if (field == "id") id else name
 			if (pattern != null && !pattern.containsMatchIn(text)) continue
 			var next = text
+			if (standard) next = standardId(kind, next) ?: continue
 			if (swap) next = swapSides(next)
 			if (pattern != null && replacement != null) next = pattern.replace(next, if (regex) replacement else Regex.escapeReplacement(replacement))
 			next = prefix + next + suffix
@@ -113,6 +116,19 @@ internal object WorkspaceObjectEdits {
 			out += Match(kind, id, name, field, text, next)
 		}
 		return out
+	}
+
+	/**
+	 * [id] in Cubism 3's style when it is in Cubism 2's: `PARAM_EYE_L_OPEN` becomes `ParamEyeLOpen` and `PARTS_01_FACE`
+	 * `PartFace`, the standard IDs Cubism 3 introduced; null for any other ID.
+	 */
+	fun standardId(kind: String, id: String): String? {
+		fun camel(words: List<String>) = words.filter { it.isNotEmpty() }.joinToString("") { word -> word.lowercase().replaceFirstChar(Char::uppercaseChar) }
+		return when (kind) {
+			"parameter" -> Regex("PARAM_([A-Z0-9_]+)").matchEntire(id)?.let { "Param" + camel(it.groupValues[1].split('_')) }
+			"part" -> Regex("PARTS_[0-9]+_([A-Z0-9_]+)").matchEntire(id)?.let { "Part" + camel(it.groupValues[1].split('_')) }
+			else -> null
+		}
 	}
 
 	/** Every object find and replace covers, as `(kind, id, name)`, in panel order. */

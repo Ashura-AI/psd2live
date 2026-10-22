@@ -601,6 +601,18 @@ The **Log** panel records program activity, edit operations and messages from AI
 *> When reporting a problem, attach the copied log (see [[fault-map]]).
 
 @@ convert-id | ID Conversion
+Gives parameters, parameter groups, parts, deformers and ArtMeshes new IDs, such as Cubism 2's `PARAM_ANGLE_X` to Cubism 3's standard `ParamAngleX`. Every reference follows: the parameters keyforms and blend shapes use, parents and parts, clipping masks, glue, paths, vertex groups, combined parameters and parameter groups, motion curves, your own physics groups and swing targets; the physics, motions and expressions generated on standard IDs find the converted parameters too.
+## Convert IDs
+1. **Model → Convert IDs…**.
+2. Under **Objects** pick parameters, parameter groups, ArtMeshes, warp deformers, rotation deformers or parts, and narrow the list with **Filter**.
+3. Type the new ID beside each object to change. **Cubism 3 standard IDs** fills in the standard ID for every Cubism 2 style parameter (`PARAM_…`) and part (`PARTS_01_…`).
+4. Click **Convert**. The whole batch is one history step you can undo.
+A new ID uses letters, digits and underscores, starts with a letter, and is not taken by another object of its kind (warp and rotation deformers share one set of IDs); the dialog says why when one is not. To change many IDs by a rule, see [[search-and-replace]].
+## Checked before export
+An export checks the IDs: objects of one kind sharing an ID stop the export, which names the conflicting IDs; an ID with characters other than letters, digits and underscores only warns.
+!> Parameters and meshes a swing, simulation or interior effect makes or reads cannot be converted on their own; remove them from that panel first. Parameter snapshots, preview poses and other auxiliary data keep their old IDs.
+*> Unlike Cubism, no conversion table file is read or written. The conversion is recorded in the project history: later edits use the new IDs, and a regenerated model replays it in order.
+
 @@ autosave | Automatic Backup Function
 While you edit, PSD2Live keeps writing unsaved changes into the local workspace storage. If the program crashes or the power fails, the next launch can recover those changes, so you do not have to dig through backup files by hand.
 ## Recovery
@@ -885,7 +897,34 @@ Once set, dragging the parameter shows the effect in both editing and preview.
 !> A number in a layer name does not create a variant automatically: a Toggle Variant needs a parameter, and a Switch Variant needs a shared parameter with different IDs.
 
 @@ copy-and-paste | Copy and Paste Objects
+Copy ArtMeshes and deformers and paste copies of them. A copy keeps the original's keyforms, blend shapes, clipping masks, paths and vertex groups and shares its texture and layer; after pasting, each can be changed on its own.
+## Copy and paste
+1. In **Object** mode, select ArtMeshes (one or more) in the hierarchy or on the canvas, or one deformer in the hierarchy.
+2. Press {key:COPY}, or right-click in the hierarchy and choose **Copy**.
+3. Press {key:PASTE}, or right-click and choose **Paste**: each copy appears beside its original, under the same parent. Right-click a deformer and choose **Paste into this deformer** to hang the copies under it; ArtMeshes keep where they show on the canvas.
+A paste is one history step you can undo. A copy's ID is the original's with `_copy` (`_copy_2`, `_copy_3`… when taken); change it later with [[convert-id]].
+## What is copied
+| Copied object | Copied with it |
+|---|---|
+| ArtMesh | Keyforms, blend shapes, paths, vertex groups; glue between two meshes copied together |
+| Deformer | Every child deformer and ArtMesh under it, their parents pointing at the copies |
+| Part | Its child parts, ArtMeshes and the deformers organized in it |
+| Parameter | A new parameter with the same range and default beside the original; keyforms stay on the original |
+A clipping mask that names a mesh copied along points at its copy; otherwise it keeps the original mask. Parts are copied through MCP; the parameter panel also copies a parameter's definition.
+*> Swings, simulations and interior effects belong to the whole document and are not copied with an object. The paste copies objects as they are when you paste: changes made to an original after copying are in the copy too.
+
 @@ search-and-replace | Search and Replace Objects
+Find objects by name or ID and replace in bulk: tidy up naming, rename parts finished on one side for the other side, or prefix a group of parameters.
+## Use
+1. **Model → Find and Replace…**.
+2. Under **Search in** choose **Names** or **IDs**, and toggle the object kinds below; check **Selection only** to touch only the objects selected in the hierarchy.
+3. Fill **Find** and **Replace with**, or **Add prefix** and **Add suffix**; check **Regular expression** when needed (the replacement may use `$1` for groups) or uncheck **Match case**.
+4. The list shows, as you type, what each match becomes. Click **Replace All** to apply the whole batch as one history step.
+## Swap left and right
+**Swap left and right** exchanges the side marks that stand as words of their own in a name or ID: `L`/`R` (as in `ArmL`, `Hair_L_01`, `ParamEyeLOpen`), `Left`/`Right` and `左`/`右`; letters inside words such as `Lip` stay.
+Replacing IDs works as [[convert-id]] does: every reference follows.
+*> With nothing to replace, the list only shows what matches, so the dialog also serves as a search.
+
 @@ offscreen-drawing | Offscreen drawing
 @@ draw-order | Draw order
 @@ draworder | About Draw Order
@@ -949,6 +988,14 @@ When several art meshes are selected, clicking a vertex of one mesh makes it the
 !> Deleting outline points changes the boundary, so check under several parameter poses after changing it. Do everyday shape pulling in Deform mode, and use Edit mode only to change topology.
 
 @@ mesh-duplication | Mesh duplication
+Copy one ArtMesh's vertices and triangles onto other ArtMeshes, for variants of one shape such as an open and a closed eye or several expressions. Each target takes the same topology where the source sits on the canvas and samples its own texture; the target's keyforms, blend shapes, paths, vertex groups and glue migrate onto the new mesh.
+## Use
+1. In the hierarchy, select the source mesh together with one or more target meshes.
+2. Right-click the source mesh and choose **Duplicate this mesh onto N selected meshes**.
+The duplication is one history step you can undo.
+!> Target artwork outside the source mesh is not drawn, and source vertices outside the target artwork sample beyond it. Check the result in Edit mode and add points or cut with [[mesh-edit-manual]] where needed.
+*> What is copied is the mesh structure, not its deformation: the target's keyforms migrate by vertex position; the source's keyforms are not copied.
+
 @@ clipping-mask | Clipping Mask
 A clipping mask makes an ArtMesh show only within the area of another ArtMesh, for example a pupil showing only inside the eye white. The commonly used masks are already set automatically when the model is generated: a pupil is masked by the eye white on the same side, and inner-mouth parts such as teeth and tongue are masked by the mouth.
 ## Setting manually

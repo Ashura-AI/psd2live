@@ -403,6 +403,11 @@ internal fun DockWorkspaceView(
                 onConfirm = viewModel::confirmDepthSplit, onDismiss = viewModel::dismissDepthSplit)
         }
         io.github.psd2live.ui.components.KeyformDialogHost()
+        if (state.activeWorkspace.id == workspace.id) when (viewModel.objectDialog) {
+            PSD2LiveViewModel.ObjectDialog.FIND_REPLACE -> io.github.psd2live.ui.components.FindReplaceDialog(state, viewModel)
+            PSD2LiveViewModel.ObjectDialog.CONVERT_IDS -> io.github.psd2live.ui.components.ConvertIdsDialog(state, viewModel)
+            null -> Unit
+        }
         viewModel.pendingMeshSplit?.let { offer ->
             io.github.psd2live.ui.components.MeshSplitDialog(
                 offer = offer,

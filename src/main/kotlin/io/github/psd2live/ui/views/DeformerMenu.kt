@@ -12,6 +12,7 @@ import io.github.psd2live.ui.CreateRelation
 import io.github.psd2live.ui.components.*
 import io.github.psd2live.ui.state.PSD2LiveState
 import io.github.psd2live.ui.state.PSD2LiveViewModel
+import io.github.psd2live.ui.state.ShortcutAction
 import io.github.psd2live.ui.utils.NativeFilePicker
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
 import io.github.psd2live.ui.views.texture.FloatingMenuSection
@@ -55,6 +56,13 @@ internal fun DeformerMenu(
         val picked = NativeFilePicker.chooseTransparentImages()
         if (picked.isNotEmpty()) viewModel.importLayersFromFiles(picked, ImageLayerInsertion(deformer.id.raw))
     }, enabled = editable, icon = { IconSelectionBounds(it, Modifier.size(12.dp)) }) }
+    val self = "${if (deformer is Deformer.Warp) "warp" else "rotation"}:${deformer.id.raw}"
+    add(false) { FloatingMenuSection(tr("objectOps.section")) }
+    add { FloatingMenuRow(tr("objectOps.copy"), { close(); viewModel.copyObjects(listOf(self)) },
+        trailing = state.keymap.labelFor(ShortcutAction.COPY), icon = { GridIcon(Modifier.size(12.dp), it) { copySheets() } }) }
+    val canPaste = editable && viewModel.objectClipboard.isNotEmpty()
+    add(highlight = canPaste) { FloatingMenuRow(tr("objectOps.pasteInto"), { close(); viewModel.pasteObjects(parent = self) },
+        enabled = canPaste, icon = { GridIcon(Modifier.size(12.dp), it) { pasteBoard() } }) }
     add(false) { FloatingMenuSection(tr("canvas.hierarchy.menuView")) }
     add { FloatingMenuRow(tr("canvas.hierarchy.expandBranch"), { close(); expandBranch() },
         icon = { IconExpandBranch(Modifier.size(12.dp), it) }) }

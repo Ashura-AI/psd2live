@@ -233,4 +233,15 @@ class ObjectOpsTest {
 			}
 		}
 	}
+
+	@Test fun exportRefusesSharedIdsAndWarnsAboutForeignCharacters() {
+		val model = fixture()
+		assertTrue(RigIdCheck.checked("test", model).isEmpty())
+		val shared = model.copy(drawables = model.drawables.map { if (it.id.raw == "c") it.copy(id = DrawableId("a")) else it })
+		assertEquals(listOf("mesh a"), RigIdCheck.conflicts(shared))
+		assertFailsWith<IllegalArgumentException> { RigIdCheck.checked("test", shared) }
+		val foreign = model.copy(parameters = model.parameters.map { it.copy(id = ParameterId("パラメータ")) })
+		assertEquals(listOf("parameter パラメータ"), RigIdCheck.invalid(foreign))
+		assertEquals(1, RigIdCheck.checked("test", foreign).size)
+	}
 }
