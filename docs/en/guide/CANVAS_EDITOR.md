@@ -83,7 +83,7 @@ Copying records a shape for each selected mesh; pasting writes each back onto it
 
 **Soft selection**: with the Select or Transform tool, turn on **Soft selection** in the tool options bar (`O`); dragging or transforming selected points then also moves the points around them, less the further they are from the nearest selected point. The **Falloff radius** is in canvas units and `[` / `]` adjust it; the falloff curve is shared with the deform brush. Affected points are ringed in red, larger rings following more. What is committed is still one ordinary geometry edit.
 
-**Temporary deform**: `Shift+T` or **Temporary deform (lattice)** in the context menu lays a disposable lattice over the selected points (with no selection, the whole mesh or Warp); dragging its points carries the points inside by bilinear interpolation, one history step per release. **Lattice** in the toolbar switches 1×1–4×4; Enter, Esc or **Done** ends it, and the lattice itself is not kept.
+**Temporary deform**: `Shift+T` or **Temporary deform (lattice)** in the context menu lays a disposable lattice over the selected points (with no selection, the whole mesh or Warp); dragging its points carries the points inside by bilinear interpolation, one history step per release. A press between keys first snaps the pose onto the keys, and a press after the shape changed elsewhere lays the lattice again; neither starts a drag, so press again. **Lattice** in the toolbar switches 1×1–4×4; Enter, Esc or **Done** ends it, and the lattice itself is not kept.
 
 ## Multiple canvases, parameters and animation
 

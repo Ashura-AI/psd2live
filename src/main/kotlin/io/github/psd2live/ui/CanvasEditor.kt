@@ -4556,9 +4556,9 @@ internal class CanvasEditor(
             val (px, py) = latticePoint(pressLattice, warp.rows, warp.columns, place)
             world[i * 2] += nx - px; world[i * 2 + 1] += ny - py
         }
-        val moved = warp.uv.keys.toMutableSet()
-        // As a box drag does: a glued point stays one point when rest meshes are edited.
-        if (editsMeshGeometry()) keepWeldsTogether(listOf(t), listOf(world), listOf(moved))
+        // Glued points are not merged here: in Deform, as for every keyed drag, the glue pulls them together when the
+        // model is evaluated.
+        val moved = warp.uv.keys
         val cmd = geometryCommand(t, t.mapping.worldToLocal(world, t.geometry.points, moved))
         preview = RigAuthoringJournal.apply(source, cmd); pending = cmd
     }

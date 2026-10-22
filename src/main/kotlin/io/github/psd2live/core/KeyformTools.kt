@@ -7,6 +7,7 @@ import org.umamo.runtime.eval.gridCorners
 import org.umamo.runtime.model.*
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.max
 
 /**
  * The keyform tools a deform session uses beside the brushes, as Live2D editors offer them on a keyform: `reset` puts
@@ -87,20 +88,22 @@ internal object KeyformTools {
     }
 
     /**
-     * Why [snapshot]'s shape cannot be pasted onto [destination], or null when it can: the same object always takes
-     * it back; another must be of its kind with the same points - a mesh the same triangles, a warp the same rows and
-     * columns - under the same parent, since a move means the same only in the same space.
+     * Why [snapshot]'s shape cannot be pasted onto [destination], or null when it can: the destination must be of its
+     * kind with the same points - a mesh the same triangles, a warp the same rows and columns - and, when it is another
+     * object, under the same parent, since a move means the same only in the same space. The same object is held to
+     * its points too: its mesh or lattice may have been rebuilt since the copy.
      */
     fun misfit(model: PuppetModel, snapshot: Snapshot, destination: String): String? {
         val other = runCatching { Shape.of(model, destination) }.getOrElse { return it.message }
         if (other.kind != snapshot.kind) return "Paste source and destination must be the same kind (got ${snapshot.kind} and ${other.kind})"
-        if (other.id == snapshot.id) return null
-        if (other.parent != snapshot.parent) return "${other.id} is under ${other.parent ?: "the root"}, not under ${snapshot.parent ?: "the root"} as ${snapshot.id}; a move pastes only within one parent"
+        val same = other.id == snapshot.id
+        if (!same && other.parent != snapshot.parent) return "${other.id} is under ${other.parent ?: "the root"}, not under ${snapshot.parent ?: "the root"} as ${snapshot.id}; a move pastes only within one parent"
         return when (other.kind) {
             "mesh" -> if (other.pointCount != snapshot.pointCount || !other.indices.contentEquals(snapshot.indices))
-                "${other.id} has other points or triangles than ${snapshot.id}" else null
+                (if (same) "${other.id} has other points or triangles than when it was copied; copy it again" else "${other.id} has other points or triangles than ${snapshot.id}") else null
             "warp" -> if (other.rows != snapshot.rows || other.columns != snapshot.columns)
-                "${other.id} is a ${other.rows}×${other.columns} warp, ${snapshot.id} ${snapshot.rows}×${snapshot.columns}" else null
+                (if (same) "${other.id} is a ${other.rows}×${other.columns} warp now, ${snapshot.rows}×${snapshot.columns} when it was copied; copy it again"
+                else "${other.id} is a ${other.rows}×${other.columns} warp, ${snapshot.id} ${snapshot.rows}×${snapshot.columns}") else null
             else -> null
         }
     }
@@ -185,16 +188,27 @@ internal object KeyformTools {
             val along = rest.indices.filter { it % 2 == axis }.map { rest[it] }
             val middle = (along.min() + along.max()) / 2f
             val xs = rest.indices.filter { it % 2 == 0 }.map { rest[it] }; val ys = rest.indices.filter { it % 2 == 1 }.map { rest[it] }
-            val tolerance = hypot(xs.max() - xs.min(), ys.max() - ys.min()) * 0.02f
-            IntArray(snapshot.pointCount) { i ->
+            val tolerance = max(hypot(xs.max() - xs.min(), ys.max() - ys.min()) * 0.02f, 1e-6f)
+            // Points bucketed by cells of the tolerance, so each mirrored place looks only at the nine cells around it.
+            fun cell(v: Float) = kotlin.math.floor(v / tolerance).toLong()
+            val buckets = HashMap<Pair<Long, Long>, MutableList<Int>>()
+            for (i in 0 until snapshot.pointCount) buckets.getOrPut(cell(rest[i * 2]) to cell(rest[i * 2 + 1])) { mutableListOf() } += i
+            val asymmetric = "${snapshot.id} is not symmetric at rest, so its points have no mirrored partners; use mirror instead"
+            val partners = IntArray(snapshot.pointCount) { i ->
                 val mx = if (horizontal) 2 * middle - rest[i * 2] else rest[i * 2]
                 val my = if (horizontal) rest[i * 2 + 1] else 2 * middle - rest[i * 2 + 1]
-                val j = (0 until snapshot.pointCount).minBy { hypot(rest[it * 2] - mx, rest[it * 2 + 1] - my) }
-                require(hypot(rest[j * 2] - mx, rest[j * 2 + 1] - my) <= tolerance) {
-                    "${snapshot.id} is not symmetric at rest, so its points have no mirrored partners; use mirror instead"
+                val cx = cell(mx); val cy = cell(my)
+                var best = -1; var distance = Float.MAX_VALUE
+                for (dx in -1L..1L) for (dy in -1L..1L) for (j in buckets[(cx + dx) to (cy + dy)].orEmpty()) {
+                    val d = hypot(rest[j * 2] - mx, rest[j * 2 + 1] - my)
+                    if (d < distance) { distance = d; best = j }
                 }
-                j
+                require(best >= 0 && distance <= tolerance) { asymmetric }
+                best
             }
+            // One to one: two points sharing a partner would both take its move.
+            require(partners.toSet().size == partners.size) { asymmetric }
+            partners
         }
         return FloatArray(moves.size) { k -> val j = partner[k / 2]; moves[j * 2 + k % 2] * (if (k % 2 == 0) sx else sy) }
     }

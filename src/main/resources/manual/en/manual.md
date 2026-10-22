@@ -1531,7 +1531,7 @@ The temporary deform tool lays a disposable lattice over the selected points (or
 ## How to use
 1. Select a mesh or Warp in Deform mode (a Warp at the **Vertices** level), and the points to deform if only some.
 2. Press {key:TEMPORARY_DEFORM} or choose **Temporary deform (lattice)** in the canvas right-click menu.
-3. Drag lattice points: the points inside follow by bilinear interpolation, each release one history step.
+3. Drag lattice points: the points inside follow by bilinear interpolation, each release one history step. When the parameters are between keys a press first snaps them onto the keys, and when the shape changed (another key, an undo, another edit) a press lays the lattice again over it; such a press does not start a drag, so press again.
 4. **Lattice** in the toolbar switches between 1×1 and 4×4 (laying the lattice again over the current shape); Enter, {key:CANCEL} or **Done** ends it.
 *> Unlike Cubism there is only the temporary lattice (warp) mode; scale and rotate with the Transform tool {key:TOOL_TRANSFORM}, and bend along a path with deform paths.
 

@@ -134,6 +134,28 @@ class KeyformToolsTest {
         assertEquals(listOf(true), channels.map { "channels" in it && "geometry" !in it })
     }
 
+    @Test fun aCopyNoLongerFitsItsOwnObjectOnceItsPointsChange() {
+        val model = fixture()
+        val copied = KeyformTools.snapshot(model, "mesh:eye", mapOf("ParamEyeOpen" to 0f))
+        val rebuilt = model.withDrawable("eye") { it.copy(mesh = DrawableMesh(FloatArray(6) { i -> i * 0.1f }, FloatArray(6), intArrayOf(0, 1, 2)), geometryGrid = null) }
+        assertTrue(KeyformTools.misfit(rebuilt, copied, "mesh:eye")!!.contains("copy it again"))
+        val failure = assertFailsWith<IllegalArgumentException> {
+            KeyformTools.paste(rebuilt, copied, "mesh:eye", mapOf("ParamEyeOpen" to 1f), null, 1f, null, listOf("geometry"))
+        }
+        assertTrue(failure.message!!.contains("copy it again"))
+        assertEquals(null, KeyformTools.misfit(model, copied, "mesh:eye"))
+    }
+
+    @Test fun aFlipRefusesTwoPointsSharingOneMirroredPartner() {
+        // Vertex 2 sits next to vertex 0's mirror place too, so 0 would be the partner of both 1 and 2.
+        val crowded = fixture().withDrawable("twin") { it.copy(mesh = DrawableMesh(floatArrayOf(0f, 0f, 1f, 0f, 0.99f, 0f, 0.5f, 1f),
+            FloatArray(8), intArrayOf(0, 1, 3, 1, 2, 3))) }
+        val failure = assertFailsWith<IllegalArgumentException> { KeyformTools.compile(crowded, tool("paste", "mesh:twin") {
+            put("from", key("ParamAngleX" to 30f)); put("key", key("ParamAngleX" to 0f)); put("flip", "horizontal")
+        }) }
+        assertTrue(failure.message!!.contains("not symmetric"))
+    }
+
     @Test fun snapshotsSwapTwoShapesInOneBatch() {
         val model = fixture()
         val eye = KeyformTools.snapshot(model, "mesh:eye", mapOf("ParamEyeOpen" to 0f))
