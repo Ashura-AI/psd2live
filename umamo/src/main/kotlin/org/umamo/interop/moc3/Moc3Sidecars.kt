@@ -1,5 +1,10 @@
 package org.umamo.interop.moc3
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.umamo.format.FileKind
 import org.umamo.format.moc3.Moc3
 import org.umamo.format.moc3.json.Cdi3Json
@@ -142,6 +147,7 @@ object Moc3Sidecars {
 		// Lowered rather than written outright, because the cdi3 below has to name the objects by the ids
 		// the MOC actually got: an id the record width forced short is not the id the model carries.
 		val lowered = Moc3Export.toMocDocument(puppet, version, canvasToParentSpace, options)
+		val sidecars = sidecars.mapNotNull { sidecar -> withWrittenIds(sidecar, puppet, lowered.writtenIds) }
 		val mocBytes = Moc3.write(lowered.document)
 		val report = lowered.report
 		val mocFileName = "$basename$MOC3_EXTENSION"
@@ -208,6 +214,66 @@ object Moc3Sidecars {
 		files.add(BundleFile("$basename.model3.json", Moc3.writeModel3(manifest).encodeToByteArray()))
 		return Bundle(files, mocFileName, reported)
 	}
+
+	/**
+	 * [sidecar] naming the model's parameters and parts by the ids the moc was written with, as [displayInfo] does.
+	 *
+	 * Expressions, poses and motions name objects by id; an id the record width forced short, or a part the
+	 * lowering left out (a hidden or guide part the options exclude), would otherwise leave the file naming
+	 * something the moc does not contain.  A pose drops such parts and the groups they empty, and goes when no
+	 * group is left; expression entries and motion curves are renamed only.  Ids the model does not hold are kept
+	 * as they are, and a sidecar nothing in it changed keeps its text byte for byte.
+	 *
+	 * @param PassThroughSidecar sidecar    The sidecar to rewrite.
+	 * @param PuppetModel        puppet     The rig.
+	 * @param Moc3WrittenIds     writtenIds What the lowering wrote each object's id as.
+	 * @return PassThroughSidecar? The sidecar as written, or null for a pose left without groups.
+	 */
+	fun withWrittenIds(sidecar: PassThroughSidecar, puppet: PuppetModel, writtenIds: Moc3WrittenIds): PassThroughSidecar? {
+		val parameters = puppet.parameters.associate { it.id.raw to writtenIds.parameterId(it.id) }
+		val parts = puppet.parts.associate { it.id.raw to (if (writtenIds.wrotePart(it.id)) writtenIds.partId(it.id) else null) }
+		fun parameter(id: String) = parameters[id] ?: id
+		fun part(id: String): String? = if (id in parts) parts[id] else id
+		val root = when (sidecar.kind) {
+			SidecarKind.Expression, SidecarKind.Pose, SidecarKind.Motion -> runCatching { Json.parseToJsonElement(sidecar.text) as? JsonObject }.getOrNull()
+			else -> null
+		} ?: return sidecar
+		fun JsonObject.withId(id: String): JsonObject = JsonObject(this + ("Id" to JsonPrimitive(id)))
+		fun JsonElement.id(): String? = ((this as? JsonObject)?.get("Id") as? JsonPrimitive)?.takeIf { it.isString }?.content
+		val rewritten: JsonObject? = when (sidecar.kind) {
+			SidecarKind.Expression -> if ("Parameters" !in root) root else JsonObject(root + ("Parameters" to JsonArray((root["Parameters"] as? JsonArray).orEmpty().map { entry ->
+				entry.id()?.let { (entry as JsonObject).withId(parameter(it)) } ?: entry
+			})))
+			SidecarKind.Motion -> if ("Curves" !in root) root else JsonObject(root + ("Curves" to JsonArray((root["Curves"] as? JsonArray).orEmpty().map { curve ->
+				val id = curve.id() ?: return@map curve
+				when (((curve as JsonObject)["Target"] as? JsonPrimitive)?.content) {
+					"Parameter" -> curve.withId(parameter(id))
+					"PartOpacity" -> part(id)?.let(curve::withId) ?: curve
+					else -> curve
+				}
+			})))
+			else -> {
+				val groups = (root["Groups"] as? JsonArray).orEmpty().mapNotNull { group ->
+					(group as? JsonArray)?.mapNotNull { entry ->
+						val id = entry.id() ?: return@mapNotNull entry
+						val written = part(id) ?: return@mapNotNull null
+						val links = ((entry as JsonObject)["Link"] as? JsonArray)?.mapNotNull { link ->
+							val id = (link as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull link
+							part(id)?.let(::JsonPrimitive)
+						}
+						JsonObject(entry.withId(written) + (links?.let { mapOf("Link" to JsonArray(it)) } ?: emptyMap()))
+					}?.takeIf { it.isNotEmpty() }?.let(::JsonArray)
+				}
+				if (groups.isEmpty()) null else JsonObject(root + ("Groups" to JsonArray(groups)))
+			}
+		}
+		if (rewritten == null) return null
+		if (rewritten == root) return sidecar
+		return PassThroughSidecar(sidecar.kind, sidecar.fileName, REWRITE_JSON.encodeToString(JsonObject.serializer(), rewritten))
+	}
+
+	/** How a rewritten sidecar is printed; number literals keep the text they were read with. */
+	private val REWRITE_JSON: Json = Json { prettyPrint = true }
 
 	/**
 	 * The `userdata3.json` for [puppet]: one `ArtMesh` entry per written drawable with user data.

@@ -6,6 +6,7 @@ import io.github.psd2live.format.model.Clip
 import io.github.psd2live.format.model.CurveSegment
 import io.github.psd2live.format.model.ColorBlend
 import io.github.psd2live.format.model.GroupMode
+import io.github.psd2live.format.model.ExpressionIR
 import io.github.psd2live.format.model.Physics
 import io.github.psd2live.format.model.RigIR
 import org.umamo.format.moc3.Moc3
@@ -66,9 +67,9 @@ public object Moc3Target : ExportTarget {
 			require(page.png.size > 0) { "Texture page $index has no pixels" }
 			Moc3Sidecars.AtlasPage("$textureFolder/texture_${index.toString().padStart(2, '0')}.png", page.png.shared())
 		}
-		val texts = sidecarTexts(SidecarKey(ir.physics, ir.clips, parameterIds, baseName))
+		val texts = sidecarTexts(SidecarKey(ir.physics, ir.clips, ir.advanced.expressions, parameterIds, baseName))
 		val motions = texts.motions
-		val expressions = expressionTexts(ir, baseName, parameterIds)
+		val expressions = texts.expressions
 		val sidecars = buildList {
 			if (moc3Options.includePhysics) texts.physics?.let {
 				add(Moc3Sidecars.PassThroughSidecar(Moc3Sidecars.SidecarKind.Physics, "$baseName.physics3.json", it))
@@ -94,6 +95,10 @@ public object Moc3Target : ExportTarget {
 			canvasToParentSpace = canvasToParentSpaceFor(exportPuppet), options = moc3Options)
 	}
 
+	/** What the physics3, motion3 and exp3 texts of a bundle depend on. */
+	private data class SidecarKey(val physics: Physics, val clips: List<Clip>, val expressions: List<ExpressionIR>,
+		val parameterIds: Set<String>, val baseName: String)
+
 	/**
 	 * The document's hit areas as model3 names them: one ArtMesh per entry, so an area of several meshes is one entry
 	 * per mesh under the area's name, in test order. Null without any, so such a manifest stays as it was.
@@ -113,19 +118,12 @@ public object Moc3Target : ExportTarget {
 	}
 
 	/**
-	 * Each expression's manifest name, file and normalized exp3 text, in the IR's order: the file is named by the
+	 * The normalized physics3 text (checked by reading it back), each motion's group, file and normalized text, and
+	 * each expression's manifest name, file and normalized exp3 text in the IR's order. An exp3 file is named by the
 	 * expression's ID, which the document keeps unique and file-safe.
 	 */
-	private fun expressionTexts(ir: RigIR, baseName: String, parameterIds: Set<String>): List<Triple<String, String, String>> =
-		ir.advanced.expressions.map { expression ->
-			Triple(expression.name, "$baseName.${expression.id}.exp3.json", Cubism3Json.normalize(Cubism3Json.exp3(expression, parameterIds)))
-		}
-
-	/** What the physics3 and motion3 texts of a bundle depend on. */
-	private data class SidecarKey(val physics: Physics, val clips: List<Clip>, val parameterIds: Set<String>, val baseName: String)
-
-	/** The normalized physics3 text (checked by reading it back) and each motion's group, file and normalized text. */
-	private class SidecarTexts(physicsText: String?, val motions: List<Triple<String, String, String>>) {
+	private class SidecarTexts(physicsText: String?, val motions: List<Triple<String, String, String>>,
+		val expressions: List<Triple<String, String, String>>) {
 		/** Read back once, when a bundle first carries it. */
 		val physics: String? by lazy { physicsText?.also { Moc3.readPhysics3(it) } }
 	}
@@ -146,7 +144,10 @@ public object Moc3Target : ExportTarget {
 			val json = Cubism3Json.motion3(clip, key.parameterIds) ?: return@mapNotNull null
 			Triple(clip.group, "${key.baseName}.${clip.file}.motion3.json", Cubism3Json.normalize(json))
 		}
-		return SidecarTexts(physics, motions).also { synchronized(sidecarCache) { sidecarCache[key] = it } }
+		val expressions = key.expressions.map { expression ->
+			Triple(expression.name, "${key.baseName}.${expression.id}.exp3.json", Cubism3Json.normalize(Cubism3Json.exp3(expression, key.parameterIds)))
+		}
+		return SidecarTexts(physics, motions, expressions).also { synchronized(sidecarCache) { sidecarCache[key] = it } }
 	}
 
 	override fun plan(ir: RigIR, options: ExportOptions): LoweredExport {

@@ -672,7 +672,7 @@ class PSD2LivePipeline {
 	 * the user always are, while the editor's preview bundles - the same compile, rebuilt on every edit and only
 	 * loaded by the preview - skip it unless [validatesPreviewBundles]. A [preview] bundle carries the pages'
 	 * strip-encoded PNGs ([AtlasPage.previewPng]), which re-encode only changed rows; files written for the user
-	 * carry the canonical encoding.
+	 * carry the canonical encoding, and no pose3.
 	 */
 	internal fun buildRuntimeBundle(
 		baseName: String,
@@ -683,7 +683,10 @@ class PSD2LivePipeline {
 		validate: Boolean = validatesPreviewBundles(),
 		preview: Boolean = true,
 	): Pair<CubismRuntimeBundle, org.umamo.interop.ExportReport> {
-		val ir = RigIrCompiler.compile(analysis, if (preview) atlas.forPreview() else atlas, rig, config)
+		val compiled = RigIrCompiler.compile(analysis, if (preview) atlas.forPreview() else atlas, rig, config)
+		// The Cubism SDK applies a pose3 as it loads, hiding every part of a group but the first; the editor shows and
+		// edits all of them, so only written bundles carry the pose.
+		val ir = if (preview) compiled.copy(advanced = compiled.advanced.copy(pose = null)) else compiled
 		val bundle = io.github.psd2live.targets.cubism.Moc3Target.bundle(ir, moc3ExportOptions(baseName, config))
 		if (validate) validateBundle(bundle)
 		val manifest = bundle.files.single { it.name.endsWith(".model3.json") }.name

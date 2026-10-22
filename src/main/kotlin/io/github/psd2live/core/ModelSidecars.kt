@@ -1,5 +1,6 @@
 package io.github.psd2live.core
 
+import io.github.psd2live.i18n.tr
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.Parameter
 import kotlin.math.abs
@@ -92,30 +93,33 @@ object ModelExpressions {
 	/** Below this a parameter is at its default: a pose captured into an expression leaves it out. */
 	private const val EPSILON = 1e-4f
 
-	/** What every generated rig gets: the standard face moved into four moods, each where the rig has its parameters. */
-	val standard: List<ModelExpression> = listOf(
-		ModelExpression("smile", "Smile", entries = listOf(
+	/**
+	 * What every generated rig gets: the standard face moved into four moods, each where the rig has its parameters.
+	 * Named in the interface language, as the runtime export has always named them; the first edit keeps those names.
+	 */
+	val standard: List<ModelExpression> get() = listOf(
+		ModelExpression("smile", tr("model.expression.smile"), entries = listOf(
 			ExpressionEntry(StandardParameters.MOUTH_FORM.raw, ExpressionBlend.OVERWRITE, 1f),
 			ExpressionEntry(StandardParameters.EYE_L_OPEN.raw, ExpressionBlend.MULTIPLY, 0.75f),
 			ExpressionEntry(StandardParameters.EYE_R_OPEN.raw, ExpressionBlend.MULTIPLY, 0.75f),
 			ExpressionEntry(StandardParameters.BROW_L_Y.raw, ExpressionBlend.ADD, 0.3f),
 			ExpressionEntry(StandardParameters.BROW_R_Y.raw, ExpressionBlend.ADD, 0.3f),
 		)),
-		ModelExpression("sad", "Sad", entries = listOf(
+		ModelExpression("sad", tr("model.expression.sad"), entries = listOf(
 			ExpressionEntry(StandardParameters.MOUTH_FORM.raw, ExpressionBlend.OVERWRITE, -0.8f),
 			ExpressionEntry(StandardParameters.EYE_L_OPEN.raw, ExpressionBlend.MULTIPLY, 0.85f),
 			ExpressionEntry(StandardParameters.EYE_R_OPEN.raw, ExpressionBlend.MULTIPLY, 0.85f),
 			ExpressionEntry(StandardParameters.BROW_L_Y.raw, ExpressionBlend.ADD, -0.5f),
 			ExpressionEntry(StandardParameters.BROW_R_Y.raw, ExpressionBlend.ADD, -0.5f),
 		)),
-		ModelExpression("angry", "Angry", entries = listOf(
+		ModelExpression("angry", tr("model.expression.angry"), entries = listOf(
 			ExpressionEntry(StandardParameters.MOUTH_FORM.raw, ExpressionBlend.OVERWRITE, -0.5f),
 			ExpressionEntry(StandardParameters.EYE_L_OPEN.raw, ExpressionBlend.MULTIPLY, 0.9f),
 			ExpressionEntry(StandardParameters.EYE_R_OPEN.raw, ExpressionBlend.MULTIPLY, 0.9f),
 			ExpressionEntry(StandardParameters.BROW_L_Y.raw, ExpressionBlend.ADD, -0.8f),
 			ExpressionEntry(StandardParameters.BROW_R_Y.raw, ExpressionBlend.ADD, -0.8f),
 		)),
-		ModelExpression("surprised", "Surprised", entries = listOf(
+		ModelExpression("surprised", tr("model.expression.surprised"), entries = listOf(
 			ExpressionEntry(StandardParameters.EYE_L_OPEN.raw, ExpressionBlend.OVERWRITE, 1f),
 			ExpressionEntry(StandardParameters.EYE_R_OPEN.raw, ExpressionBlend.OVERWRITE, 1f),
 			ExpressionEntry(StandardParameters.BROW_L_Y.raw, ExpressionBlend.ADD, 0.8f),
@@ -129,9 +133,12 @@ object ModelExpressions {
 		expression.entries.filter { it.parameterId in parameterIds }.takeIf { it.isNotEmpty() }?.let { expression.copy(entries = it) }
 	}
 
-	/** The expressions of [overlay] on a rig with [parameterIds]: the standard ones until edited, else the document's. */
+	/**
+	 * The expressions of [overlay] on a rig with [parameterIds]: the document's once edited; before that the standard
+	 * ones on a generated rig, and none on an imported model, whose rigger made its face without them.
+	 */
 	fun effective(overlay: RigEditOverlay, parameterIds: Set<String>): List<ModelExpression> =
-		overlay.expressions ?: standardFor(parameterIds)
+		overlay.expressions ?: if (overlay.importedCmo3 != null) emptyList() else standardFor(parameterIds)
 
 	/**
 	 * What an export writes: [effective], each without the parameters the rig no longer has. An authored expression
@@ -139,6 +146,10 @@ object ModelExpressions {
 	 */
 	fun exported(overlay: RigEditOverlay, parameterIds: Set<String>): List<ModelExpression> =
 		effective(overlay, parameterIds).map { expression -> expression.copy(entries = expression.entries.filter { it.parameterId in parameterIds }) }
+
+	/** The parameters [expression] names that [parameterIds] lacks: left by an earlier edit, skipped at export. */
+	fun missing(expression: ModelExpression, parameterIds: Set<String>): List<String> =
+		expression.entries.map { it.parameterId }.filter { it !in parameterIds }
 
 	/**
 	 * An expression of the pose [values]: every parameter away from its default, added on as its offset from the
@@ -229,9 +240,12 @@ object ModelExpressions {
 }
 
 object ModelPoses {
+	/** Every part [pose] names, links included. */
+	fun partIds(pose: ModelPose): List<String> = pose.groups.flatMap { group -> group.parts.flatMap { it.ids } }
+
 	/** [pose] once known to name only parts of [partIds], when given. */
 	fun validated(pose: ModelPose, partIds: Set<String>? = null): ModelPose {
-		if (partIds != null) pose.groups.flatMap { group -> group.parts.flatMap { it.ids } }.firstOrNull { it !in partIds }?.let {
+		if (partIds != null) partIds(pose).firstOrNull { it !in partIds }?.let {
 			throw IllegalArgumentException("Part not found: $it")
 		}
 		return pose

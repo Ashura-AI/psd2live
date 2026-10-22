@@ -91,4 +91,47 @@ class ExpressionPoseScenario {
 		edit("back to the standard expressions", "expression_reset", req())
 		expect("reset", now.document.rigEdits.expressions == null) { "the standard expressions did not come back" }
 	}
+
+	/**
+	 * Expression entries and pose parts an earlier edit left naming objects the rig no longer has - as deleting a
+	 * swing, a layer or regenerating does - do not block later edits: only what an edit writes must exist. The reads
+	 * list what is missing, export skips it, and the editor's preview bundle carries no pose3 that would hide parts.
+	 */
+	@Test fun danglingReferencesStayEditableAndThePreviewShowsEveryPart() {
+		val base = Characters.figure()
+		val document = base.copy(rigEdits = base.rigEdits.copy(
+			expressions = listOf(ModelExpression("joy", "Joy", entries = listOf(ExpressionEntry("ParamGone", ExpressionBlend.ADD, 1f)))),
+			pose = ModelPose(groups = listOf(PoseGroup(listOf(PosePart("PartGone")))))))
+		Studio.run(temp, document) {
+			edit("change a fade over a missing parameter", "expression_update", req("id" to "joy", "fade_in" to 1))
+			val sidecars = io.github.psd2live.application.WorkspaceSidecarEdits.sidecars(now.document, puppet)
+			expect("missing", ModelExpressions.missing(sidecars.expressions.single(), sidecars.parameterIds) == listOf("ParamGone")) {
+				"the missing parameter is not reported: ${sidecars.expressions}"
+			}
+			refused("add an entry on no parameter", "expression_set_entries", req("id" to "joy", "entries" to listOf(mapOf("parameter" to "ParamNope", "blend" to "ADD"))))
+			val parts = puppet.parts.map { it.id.raw }
+			edit("group two parts beside a missing one", "pose_add_group", req("parts" to listOf(parts[0], parts[1])))
+			refused("group a part the rig lacks", "pose_add_group", req("parts" to listOf("PartNope")))
+
+			fun changed(before: io.github.psd2live.application.WorkspaceCapture<io.github.psd2live.core.RigPreviewModel>) =
+				io.github.psd2live.application.WorkspaceSidecarEdits.changed(before.document, before.model.rig.puppet, now.document, puppet)
+			val beforeCopy = now
+			edit("duplicate", "expression_duplicate", req("id" to "joy", "new_id" to "joy2"))
+			expect("changed", changed(beforeCopy) == listOf("joy2")) { "a duplicate changed ${changed(beforeCopy)}" }
+			val beforeMove = now
+			edit("move", "expression_move", req("id" to "joy2", "index" to 0))
+			expect("changed", changed(beforeMove).isEmpty() && now.document.rigEdits.expressions!!.first().id == "joy2") {
+				"a move changed the content of ${changed(beforeMove)}"
+			}
+
+			expect("preview", now.model.runtimeBundle.assets.none { it.path.endsWith(".pose3.json") }) { "the preview bundle hides parts with a pose3" }
+			val files = export("moc3")
+			val pose3 = Json.parseToJsonElement(Files.readString(files.single { it.fileName.toString().endsWith(".pose3.json") })).jsonObject
+			expect("export", pose3.getValue("Groups").jsonArray.single().jsonArray.map { it.jsonObject.getValue("Id").jsonPrimitive.content } == parts.take(2)) {
+				"the exported pose is $pose3"
+			}
+			val exp3 = Json.parseToJsonElement(Files.readString(files.single { it.fileName.toString().endsWith(".joy.exp3.json") })).jsonObject
+			expect("export", exp3.getValue("Parameters").jsonArray.isEmpty()) { "export kept the missing parameter: $exp3" }
+		}
+	}
 }

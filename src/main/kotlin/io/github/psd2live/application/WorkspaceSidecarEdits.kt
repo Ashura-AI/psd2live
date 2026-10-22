@@ -29,6 +29,20 @@ internal object WorkspaceSidecarEdits {
             document.rigEdits.pose, parameterIds, puppet?.parts?.mapTo(LinkedHashSet()) { it.id.raw }.orEmpty())
     }
 
+    /**
+     * The handles [after] changed from [before]: each expression added, removed or changed, and `pose`. Expressions
+     * only the rig generates are not document data, so they count once either side holds the document's list.
+     */
+    fun changed(before: WorkspaceDocument, beforePuppet: org.umamo.runtime.model.PuppetModel?,
+                after: WorkspaceDocument, afterPuppet: org.umamo.runtime.model.PuppetModel?): List<String> {
+        val expressions = if (before.rigEdits.expressions == null && after.rigEdits.expressions == null) emptyList() else {
+            val old = sidecars(before, beforePuppet).expressions
+            val new = sidecars(after, afterPuppet).expressions
+            (old.filter { it !in new } + new.filter { it !in old }).map { it.id }.distinct()
+        }
+        return expressions + listOf("pose").filter { before.rigEdits.pose != after.rigEdits.pose }
+    }
+
     fun apply(operation: WorkspaceDocumentOperation, document: WorkspaceDocument, model: RigPreviewModel): WorkspaceDocument {
         val puppet = model.rig.puppet
         val request = operation.request
@@ -38,15 +52,23 @@ internal object WorkspaceSidecarEdits {
                 val mode = operation.operation.removePrefix("expression_")
                 if (mode == "reset") return document.copy(rigEdits = document.rigEdits.copy(expressions = null))
                 val current = ModelExpressions.effective(document.rigEdits, parameterIds)
-                val next = ModelExpressions.validated(expression(mode, current, request, puppet.parameters), parameterIds)
+                val next = ModelExpressions.validated(expression(mode, current, request, puppet.parameters))
+                // Only what this edit writes must name a parameter the rig has: entries left dangling by an earlier
+                // deletion stay, as export skips them and expression_get lists them as missing.
+                val referenced = current.flatMapTo(HashSet()) { e -> e.entries.map { it.parameterId } }
+                next.flatMap { e -> e.entries.map { it.parameterId } }.firstOrNull { it !in referenced && it !in parameterIds }?.let {
+                    throw IllegalArgumentException("Unknown expression parameter: $it")
+                }
                 // Unchanged standard expressions stay generated, so the rig's own set keeps following it.
                 if (document.rigEdits.expressions == null && next == current) document
                 else document.copy(rigEdits = document.rigEdits.copy(expressions = next))
             }
             operation.operation.startsWith("pose_") -> {
                 val partIds = puppet.parts.mapTo(HashSet()) { it.id.raw }
-                val next = pose(operation.operation.removePrefix("pose_"), document.rigEdits.pose, request)
-                    ?.let { ModelPoses.validated(it, partIds) }?.takeIf { it.groups.isNotEmpty() }
+                val next = pose(operation.operation.removePrefix("pose_"), document.rigEdits.pose, request)?.takeIf { it.groups.isNotEmpty() }
+                // As with expressions, only parts this edit adds must exist; pose_get reports the missing ones.
+                val referenced = document.rigEdits.pose?.let(ModelPoses::partIds).orEmpty()
+                next?.let(ModelPoses::partIds)?.firstOrNull { it !in referenced && it !in partIds }?.let { throw IllegalArgumentException("Part not found: $it") }
                 document.copy(rigEdits = document.rigEdits.copy(pose = next))
             }
             else -> throw IllegalArgumentException("Not a sidecar operation: ${operation.operation}")

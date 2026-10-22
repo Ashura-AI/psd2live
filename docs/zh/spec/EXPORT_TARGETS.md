@@ -74,10 +74,13 @@ MIT 模块不依赖任何 GPL 模块，由 Gradle 依赖关系在编译期保证
 
 表情、姿势与动作事件是工程数据，和动作片段一样不改变 Rig，由 `core/ModelSidecars.kt` 定义，编辑走 `expression_*` / `pose_*` / `motion_set_event` 等文档操作（见 [MCP 编辑参考](../agent/MCP_AUTHORING.md)）。`RigIrCompiler` 把它们编进 IR，各目标照 IR 写出：
 
-- **表情**：`RigEditOverlay.expressions` 为 null 时模型使用标准表情（`ModelExpressions.standard`：Smile、Sad、Angry、Surprised，各自只保留模型已有的标准面部参数，一个参数也没有的略去）；第一次编辑把它们收进工程，此后只导出工程中的列表（没有条目的表情照样导出，作为宿主重置用的无表情）。`moc3` 每个表情写一个 `<base>.<id>.exp3.json`（`Type`、`FadeInTime`、`FadeOutTime`、`Parameters` 的 `Id` / `Value` / `Blend`），并按列表顺序写入 model3 的 `FileReferences.Expressions`（`Name` 为表情名称，`File` 为文件名）；`p2lrt` 写 `EXPR` 块。表情 ID 限定为文件名安全的 1–64 个字符，名称在工程内唯一。
+- **表情**：`RigEditOverlay.expressions` 为 null 时，生成的 Rig 使用标准表情（`ModelExpressions.standard`：微笑、悲伤、生气、惊讶，名称随界面语言，各自只保留模型已有的标准面部参数，一个参数也没有的略去），导入的 CMO3 模型没有表情；第一次编辑把当时的列表收进工程，此后只导出工程中的列表（没有条目的表情照样导出，作为宿主重置用的无表情）。`moc3` 每个表情写一个 `<base>.<id>.exp3.json`（`Type`、`FadeInTime`、`FadeOutTime`、`Parameters` 的 `Id` / `Value` / `Blend`），并按列表顺序写入 model3 的 `FileReferences.Expressions`（`Name` 为表情名称，`File` 为文件名）；`p2lrt` 写 `EXPR` 块。表情 ID 限定为文件名安全的 1–64 个字符，名称在工程内唯一。
 - **姿势**：`moc3` 写 `<base>.pose3.json`（`Type`、`FadeInTime`、`Groups` 中每个部件的 `Id` 与 `Link`）并写入 model3 的 `FileReferences.Pose`，只保留模型中存在的部件，没有组时不写；`p2lrt` 写 `POSE` 块（只保留至少两个部件的组）。
 - **事件**：片段事件写进 motion3 的 `UserData`（按时间排序，`Meta.UserDataCount` / `TotalUserDataSize` 同步），`.can3` 写进场景的用户数据帧，`p2lrt` 写进片段扩展记录。只有事件、没有曲线的片段与其他空片段一样不导出。
-- **参数与部件的变化**：删除参数时其表情条目一并删除，缩小参数范围时覆盖方式的值收进新范围（`WorkspaceDocumentEdits.parameter`）；改写参数或部件 ID 的编辑用 `ModelSidecars.withIdRenamed` 同步动作曲线、表情条目与姿势部件。导出时不存在的参数和部件被跳过。
+- **参数与部件的变化**：删除参数时其表情条目一并删除，缩小参数范围时覆盖方式的值收进新范围（`WorkspaceDocumentEdits.parameter`）。`ModelSidecars.withIdRenamed` 是改写参数或部件 ID 时同步动作曲线、表情条目与姿势部件的通用接口，由 ID 转变调用；其他情况下（删除摆动、模拟或图层，重新生成）留下的悬空引用保留在工程中：编辑只校验本次写入的条目与部件，`expression_get` / `expression_list` 的 `missing` 与 `pose_get` 的 `missing_parts` 列出它们，导出时跳过。
+- **写出的 ID**：`moc3` 的 exp3、pose3 与 motion3 按 moc 实际写入的 ID 命名对象（`Moc3Sidecars.withWrittenIds`，与 cdi3 相同）：超长被缩短的 ID 换成缩短后的写法，未写入的部件（按 `hidden_parts` / `guide_parts` 省略的）从姿势中去掉，组空了一并去掉。
+- **预览**：编辑器的预览 bundle 不带 pose3（Cubism SDK 加载 pose3 时会隐藏每组第一个以外的部件），只有写出的文件带。
+- **导出变化（3.6.0 之后）**：生成的 Rig 在 `moc3` / `vtube-studio` 中多写标准表情的 exp3、model3 的 `Expressions` 与 VTube Studio 的切换热键；导入的 CMO3 未编辑表情时不再在 `p2lrt` 中带标准表情。
 - **读回**：`PSD2LivePipeline` 的 bundle 校验解析 model3 引用的每个 exp3、pose3 与 motion3。仅网格导出不写表情与姿势。
 
 ## Cubism Animator

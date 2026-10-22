@@ -71,7 +71,7 @@ internal object WorkspaceSidecarSchemas {
 
     private val entryResult = s.obj(mapOf("parameter" to s.handle(), "blend" to s.choices(*ExpressionBlend.entries.map { it.name }.toTypedArray()), "value" to s.number()))
     private val expressionResult = s.obj(mapOf("id" to s.handle(), "name" to s.handle(), "fade_in" to s.number(0), "fade_out" to s.number(0),
-        "entries" to s.array(entryResult)))
+        "entries" to s.array(entryResult), "missing" to s.array(s.handle())))
     private val poseResult = s.obj(mapOf("fade_in" to s.number(0), "groups" to s.array(s.array(
         s.obj(mapOf("part" to s.handle(), "links" to s.array(s.handle())), setOf("part"))))))
     val edit = s.obj(s.identity + mapOf("applied" to s.constant(false), "changed" to s.array(s.handle(), 1, Int.MAX_VALUE)), s.identity.keys)
@@ -115,14 +115,11 @@ internal fun registerSidecarOperations(registry: WorkspaceOperationRegistry, wor
                 if (values != null) fields = JsonObject(fields + ("values" to JsonObject(values.entries.associate { it.key.raw to JsonPrimitive(it.value) })))
             }
             validateOperationSchema(fields, business)
-            val before = workspace.modelSidecars()
+            // The changed handles come from the committed candidate's documents ([WorkspaceSidecarEdits.changed]), and a
+            // request's id names the expression a move or an unchanged update touched.
             val result = workspace.applyDocumentEdits(request.getValue("state").jsonPrimitive.content,
                 WorkspaceSidecarSchemas.descriptions.getValue(id).substringBefore('.').take(80), listOf(WorkspaceDocumentOperation(id, fields)), context.author)
-            val changed = if (!result.applied) emptyList() else if (id.startsWith("pose_")) listOf("pose") else {
-                val after = workspace.modelSidecars().expressions
-                (before.expressions.filter { it !in after }.map { it.id } + after.filter { it !in before.expressions }.map { it.id }).distinct()
-            }
-            WorkspaceOperationOutput(result.copy(affectedObjectIds = changed).compact())
+            WorkspaceOperationOutput(result.compact())
         }
     }
     fun query(id: String, description: String, fields: Map<String, JsonObject>, required: List<String>, result: JsonObject,
@@ -138,16 +135,16 @@ internal fun registerSidecarOperations(registry: WorkspaceOperationRegistry, wor
                 action(queries, request)))
         }
     }
-    query("expression_list", "List the model's expressions in export order with their entries; standard is true while they are the standard ones made from the face parameters, not yet edited.",
+    query("expression_list", "List the model's expressions in export order with their entries; standard is true while they are the standard ones made from the face parameters, not yet edited. missing lists the parameters an expression names that the rig no longer has, which export leaves out.",
         emptyMap(), emptyList(), WorkspaceSidecarSchemas.list) { queries, _ ->
         val sidecars = queries.modelSidecars()
-        buildJsonObject { put("standard", sidecars.standard); put("expressions", JsonArray(sidecars.expressions.map(ModelExpressions::toJson))) }
+        buildJsonObject { put("standard", sidecars.standard); put("expressions", JsonArray(sidecars.expressions.map { expressionJson(it, sidecars) })) }
     }
-    query("expression_get", "Read one expression.", mapOf("id" to state), listOf("id"), WorkspaceSidecarSchemas.get) { queries, request ->
+    query("expression_get", "Read one expression; missing lists the parameters it names that the rig no longer has.", mapOf("id" to state), listOf("id"), WorkspaceSidecarSchemas.get) { queries, request ->
         val sidecars = queries.modelSidecars()
         val id = request.getValue("id").jsonPrimitive.content
         val expression = sidecars.expressions.firstOrNull { it.id == id } ?: throw IllegalArgumentException("Expression not found: $id")
-        buildJsonObject { put("standard", sidecars.standard); put("expression", ModelExpressions.toJson(expression)) }
+        buildJsonObject { put("standard", sidecars.standard); put("expression", expressionJson(expression, sidecars)) }
     }
     query("pose_get", "Read the pose; missing_parts lists the parts it names that the rig no longer has, which export leaves out.",
         emptyMap(), emptyList(), WorkspaceSidecarSchemas.poseGet) { queries, _ ->
@@ -155,7 +152,7 @@ internal fun registerSidecarOperations(registry: WorkspaceOperationRegistry, wor
         buildJsonObject {
             sidecars.pose?.let { put("pose", ModelPoses.toJson(it)) }
             putJsonArray("missing_parts") {
-                sidecars.pose?.groups.orEmpty().flatMap { group -> group.parts.flatMap { it.ids } }.filter { it !in sidecars.partIds }.forEach { add(JsonPrimitive(it)) }
+                sidecars.pose?.let(ModelPoses::partIds).orEmpty().filter { it !in sidecars.partIds }.forEach { add(JsonPrimitive(it)) }
             }
         }
     }
@@ -175,3 +172,7 @@ internal fun registerSidecarOperations(registry: WorkspaceOperationRegistry, wor
         }
     }
 }
+
+/** [expression] as the reads return it, with the parameters it names that the rig no longer has. */
+private fun expressionJson(expression: ModelExpression, sidecars: WorkspaceSidecars): JsonObject = JsonObject(ModelExpressions.toJson(expression) +
+    ("missing" to JsonArray(ModelExpressions.missing(expression, sidecars.parameterIds).map(::JsonPrimitive))))
