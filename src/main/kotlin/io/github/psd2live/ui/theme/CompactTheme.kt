@@ -139,6 +139,13 @@ data class ToolTypography(
 		fontSize = 11.5.sp,
 		color = Color(0xFF868A91),
 	),
+	/** Dense rows' small text: a floating menu's value labels, tooltips and toasts. */
+	val captionSmall: TextStyle = TextStyle(
+		fontFamily = FontFamily.SansSerif,
+		fontWeight = FontWeight.Normal,
+		fontSize = 10.5.sp,
+		color = Color(0xFF868A91),
+	),
 	val mono: TextStyle = TextStyle(
 		fontFamily = FontFamily.Monospace,
 		fontWeight = FontWeight.Normal,
@@ -176,6 +183,12 @@ fun toolTypography(colors: ToolColors): ToolTypography = ToolTypography(
 		fontFamily = FontFamily.SansSerif,
 		fontWeight = FontWeight.Normal,
 		fontSize = 11.5.sp,
+		color = colors.textMuted,
+	),
+	captionSmall = TextStyle(
+		fontFamily = FontFamily.SansSerif,
+		fontWeight = FontWeight.Normal,
+		fontSize = 10.5.sp,
 		color = colors.textMuted,
 	),
 	mono = TextStyle(

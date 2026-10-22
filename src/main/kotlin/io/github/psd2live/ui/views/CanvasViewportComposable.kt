@@ -2077,8 +2077,9 @@ fun CanvasViewportComposable(
 					for (label in labels) {
 						val layout = guideLabelMeasurer.measure(label.text, typography.body)
 						val top = label.baseline - layout.firstBaseline
-						if (label.plate) drawRect(Color(20, 20, 24, 220), Offset(label.x - 3f, label.baseline - 14f),
-							Size(layout.size.width + 6f, 17f))
+						// The plate wraps the laid-out text, so a larger font or UI scale keeps it covered.
+						if (label.plate) drawRect(Color(20, 20, 24, 220), Offset(label.x - 3f, top - 1f),
+							Size(layout.size.width + 6f, layout.size.height + 2f))
 						drawText(layout, color = Color(label.argb), topLeft = Offset(label.x, top))
 					}
 				}

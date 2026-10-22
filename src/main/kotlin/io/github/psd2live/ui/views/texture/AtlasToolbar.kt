@@ -143,7 +143,7 @@ internal fun BarTooltip(text: String?, content: @Composable () -> Unit) {
 	TooltipArea(
 		tooltip = {
 			BarTooltipPanel {
-				Text(text, style = typography.caption.copy(fontSize = 10.5.sp), color = LocalToolColors.current.textPrimary,
+				Text(text, style = typography.captionSmall, color = LocalToolColors.current.textPrimary,
 					modifier = Modifier.widthIn(max = 280.dp).padding(horizontal = 7.dp, vertical = 4.dp))
 			}
 		},
@@ -665,9 +665,8 @@ internal fun FloatingMenuSlider(
 private fun FloatingMenuValueLabel(label: String, enabled: Boolean) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
-	// The caption's face at the scale's small step, so a 54 dp column holds the usual labels.
 	Text(label, color = if (enabled) colors.textMuted else colors.textMuted.copy(alpha = 0.5f),
-		style = typography.caption.copy(fontSize = typography.monoSmall.fontSize), maxLines = 1,
+		style = typography.captionSmall, maxLines = 1,
 		overflow = TextOverflow.Ellipsis, modifier = Modifier.width(54.dp))
 }
 
@@ -964,7 +963,7 @@ internal fun NoticeBanner(messages: List<Pair<String, Color>>, onClose: (() -> U
 		}
 		Column(Modifier.weight(1f, fill = false).padding(start = 6.dp, end = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
 			for ((message, color) in messages) {
-				Text(message, style = typography.caption.copy(fontSize = 10.5.sp), color = if (color == colors.error) color else colors.textPrimary,
+				Text(message, style = typography.captionSmall, color = if (color == colors.error) color else colors.textPrimary,
 					maxLines = 3, overflow = TextOverflow.Ellipsis)
 			}
 			if (actions.isNotEmpty()) Row(Modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
