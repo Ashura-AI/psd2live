@@ -153,6 +153,7 @@ import io.github.psd2live.ui.tutorial.TutorialTargetId
 import io.github.psd2live.ui.tutorial.tutorialTarget
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.ensureActive
 import org.umamo.render.eval.DeformedGeometry
@@ -2257,34 +2258,8 @@ fun CanvasViewportComposable(
 				order = 3, clear = false, layer = gpuKey, onDraw = drawAids)
 		}
 		val hitArea = hitShown?.takeIf { mode == CanvasMode.PREVIEW && it in canvasState.rigEdits.hitAreas }
-		if (hitArea != null && previewModel != null) {
-			// The hit area follows the pose the preview plays.
-			val pose = informationPose(frameFlow.collectAsState().value)
-			val geometry = remember(previewModel, pose) { RigCanvasSupport.evaluate(previewModel, pose) }
-			val drawables = remember(previewModel) { previewModel.rig.puppet.drawables.associateBy { it.id.raw } }
-			val fill = colors.accent
-			androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
-				val viewport = currentViewportFor(viewSize)
-				val path = androidx.compose.ui.graphics.Path()
-				for (id in hitArea.meshes) {
-					val drawable = drawables[id] ?: continue
-					val indices = drawable.mesh?.indices ?: continue
-					val positions = geometry.worldPositions[drawable.id] ?: continue
-					for (offset in 0 until indices.size - 2 step 3) {
-						val a = indices[offset]
-						// Every triangle wound the same way, so overlapping ones never cancel under the non-zero fill.
-						val ab = (positions[indices[offset + 1] * 2] - positions[a * 2]) * (positions[indices[offset + 2] * 2 + 1] - positions[a * 2 + 1]) -
-							(positions[indices[offset + 1] * 2 + 1] - positions[a * 2 + 1]) * (positions[indices[offset + 2] * 2] - positions[a * 2])
-						val b = indices[if (ab >= 0f) offset + 1 else offset + 2]; val c = indices[if (ab >= 0f) offset + 2 else offset + 1]
-						path.moveTo(viewport.x(positions[a * 2]).toFloat(), viewport.yFromWorld(positions[a * 2 + 1]).toFloat())
-						path.lineTo(viewport.x(positions[b * 2]).toFloat(), viewport.yFromWorld(positions[b * 2 + 1]).toFloat())
-						path.lineTo(viewport.x(positions[c * 2]).toFloat(), viewport.yFromWorld(positions[c * 2 + 1]).toFloat())
-						path.close()
-					}
-				}
-				drawPath(path, fill.copy(alpha = HIT_HIGHLIGHT_ALPHA * hitAlpha.value))
-			}
-		}
+		if (hitArea != null && previewModel != null)
+			HitAreaHighlight(hitArea, previewModel, frameFlow, ::informationPose, { currentViewportFor(viewSize) }, { hitAlpha.value })
 		if (mode == CanvasMode.PREVIEW && previewModel != null) {
 			MotionTrajectoryOverlay(viewModel, previewModel, canvasState.parameterValues, canvasState.lockedParameters,
 				canvasState.selectedLayerIds.ifEmpty { setOfNotNull(canvasState.selectedLayerId) }, canvasState.selectedDeformerId) {
@@ -2523,6 +2498,46 @@ private class DrawnGeometryMemo {
         geometry = next
         return next
     }
+}
+
+/**
+ * The hit area the last preview click hit, drawn over the preview as it plays: the meshes of it that count for a hit,
+ * evaluated off the UI thread for each frame. A composable of its own, so the frames recompose only it.
+ */
+@Composable
+private fun HitAreaHighlight(area: io.github.psd2live.core.RigHitArea, model: RigPreviewModel,
+                             frames: kotlinx.coroutines.flow.StateFlow<io.github.psd2live.core.PreviewFrame?>,
+                             pose: (io.github.psd2live.core.PreviewFrame?) -> Map<org.umamo.runtime.model.ParameterId, Float>,
+                             viewport: () -> CanvasViewport, alpha: () -> Float) {
+	val fill = LocalToolColors.current.accent
+	val currentPose by rememberUpdatedState(pose)
+	var drawn by remember(area, model) { mutableStateOf<Map<String, Pair<FloatArray, IntArray>>>(emptyMap()) }
+	LaunchedEffect(area, model, frames) {
+		frames.collectLatest { frame ->
+			val values = currentPose(frame)
+			drawn = withContext(Dispatchers.Default) {
+				io.github.psd2live.core.RigHitAreas.drawn(listOf(area), model.rig.puppet, RigCanvasSupport.evaluateExact(model, values))
+			}
+		}
+	}
+	androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+		val view = viewport()
+		val path = androidx.compose.ui.graphics.Path()
+		for ((positions, indices) in drawn.values) {
+			for (offset in 0 until indices.size - 2 step 3) {
+				val a = indices[offset]
+				// Every triangle wound the same way, so overlapping ones never cancel under the non-zero fill.
+				val ab = (positions[indices[offset + 1] * 2] - positions[a * 2]) * (positions[indices[offset + 2] * 2 + 1] - positions[a * 2 + 1]) -
+					(positions[indices[offset + 1] * 2 + 1] - positions[a * 2 + 1]) * (positions[indices[offset + 2] * 2] - positions[a * 2])
+				val b = indices[if (ab >= 0f) offset + 1 else offset + 2]; val c = indices[if (ab >= 0f) offset + 2 else offset + 1]
+				path.moveTo(view.x(positions[a * 2]).toFloat(), view.yFromWorld(positions[a * 2 + 1]).toFloat())
+				path.lineTo(view.x(positions[b * 2]).toFloat(), view.yFromWorld(positions[b * 2 + 1]).toFloat())
+				path.lineTo(view.x(positions[c * 2]).toFloat(), view.yFromWorld(positions[c * 2 + 1]).toFloat())
+				path.close()
+			}
+		}
+		drawPath(path, fill.copy(alpha = HIT_HIGHLIGHT_ALPHA * alpha()))
+	}
 }
 
 /** How far a preview press may move, in dp, and still count as a hit-test click rather than a pan. */

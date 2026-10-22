@@ -1,6 +1,11 @@
 package io.github.psd2live.ui.views
 
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Text
+import androidx.compose.ui.unit.sp
+import io.github.psd2live.ui.theme.LocalToolColors
+import io.github.psd2live.ui.theme.LocalToolTypography
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -34,7 +39,11 @@ internal fun HitAreaInspectorRows(drawable: Drawable, state: PSD2LiveState, view
 	InspectorFormRow(label = tr("inspector.hitArea")) {
 		val choices = buildList {
 			add(HitAreaChoice.None)
-			areas.forEach { add(HitAreaChoice.Area(it.id, "${it.name} (${it.id})")) }
+			val shown = state.previewModel?.rig?.puppet?.drawables?.mapTo(HashSet()) { it.id.raw }
+			areas.forEach { area ->
+				val gone = if (shown == null) 0 else area.meshes.count { it !in shown }
+				add(HitAreaChoice.Area(area.id, "${area.name} (${area.id})" + if (gone > 0) " · " + tr("hitArea.missingCount", gone) else ""))
+			}
 			add(HitAreaChoice.New)
 			if (areas.isEmpty()) add(HitAreaChoice.Preset)
 		}
@@ -63,13 +72,12 @@ internal fun HitAreaInspectorRows(drawable: Drawable, state: PSD2LiveState, view
 		)
 	}
 	if (current == null) return
-	// Typed into locally and committed when the field is left, so one rename is one history edit.
+	// Typed into locally and committed when the field is left or Enter ends the edit, so one rename is one history edit.
 	var name by remember(current.id, current.name) { mutableStateOf(current.name) }
 	InspectorFormRow(label = tr("inspector.hitAreaName")) {
 		CompactTextField(
 			value = name,
 			onValueChange = { name = it },
-			onCommit = { viewModel.renameHitArea(current.id, name) },
 			onEditEnd = { viewModel.renameHitArea(current.id, name) },
 			enabled = editable,
 			modifier = Modifier.fillMaxWidth(),
@@ -81,7 +89,6 @@ internal fun HitAreaInspectorRows(drawable: Drawable, state: PSD2LiveState, view
 		CompactTextField(
 			value = id,
 			onValueChange = { id = it },
-			onCommit = { viewModel.changeHitAreaId(current.id, id) },
 			onEditEnd = { viewModel.changeHitAreaId(current.id, id) },
 			enabled = editable,
 			isMono = true,
@@ -89,6 +96,16 @@ internal fun HitAreaInspectorRows(drawable: Drawable, state: PSD2LiveState, view
 			height = 23.dp,
 		)
 	}
+	// Meshes the area still names that the rig no longer has: export leaves them out and reports them.
+	val present = state.previewModel?.rig?.puppet?.drawables?.mapTo(HashSet()) { it.id.raw }
+	val missing = if (present == null) emptyList() else current.meshes.filterNot(present::contains)
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	if (missing.isNotEmpty()) InspectorFormRow(label = tr("inspector.hitAreaMissing")) {
+		Text(missing.joinToString(", "), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.warning)
+	}
+	Text(tr("hitArea.rule"), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textMuted,
+		modifier = Modifier.padding(start = 4.dp))
 }
 
 /**
