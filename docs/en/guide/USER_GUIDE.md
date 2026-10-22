@@ -126,7 +126,7 @@ These are the default (Photoshop-style) bindings. **Settings** can switch to Ble
 | Frame selection / reset camera | `F` / `Home` or `0` |
 | Brush size / hardness / opacity | `[` `]` / `Shift+[` `Shift+]` / `Alt+Shift+[` `Alt+Shift+]`, on the current tool's value in the options bar |
 | Choice 1–5 of the mode or tool | `1`–`5`: Deform picks Vertices / Bezier when the target is a warp deformer; Edit's selection tools pick vertex / edge / face; otherwise the variants the toolbar lists under the tool (brush tips, glue and skeleton sub-tools, weight group kinds, paint shapes, selection kinds) |
-| Paint: selection / gradient / blur tools | `Alt+M` / `Alt+G` / `Alt+J` |
+| Paint: selection / gradient / blur tools | `Alt+L` / `Alt+G` / `Alt+J` (unbound in the Blender preset) |
 | Paint: select all / deselect / invert / fill selection / clear selection | `Ctrl+A` / `Ctrl+D` / `Ctrl+I` (or `Ctrl+Shift+I`) / `Alt+Backspace` / `Del`; hold `Shift` to add and `Alt` to subtract with the selection tool |
 | Paint: swap / default colours, lock transparency, straight line | `X` / `Alt+D`, `/`, `Shift` + click |
 | Temporary selection / toggle quick preview | Hold `Z`, release to restore / grave accent key (below Esc) |
