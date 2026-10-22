@@ -83,10 +83,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21 (Temurin)
+      - name: Set up JDK 21 (JetBrains Runtime)
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: jetbrains
           java-version: "21"
 
       - name: Ensure CMake
@@ -268,10 +268,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21 (Temurin)
+      - name: Set up JDK 21 (JetBrains Runtime)
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: jetbrains
           java-version: "21"
 
       - name: Set up Rust
@@ -338,10 +338,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends libglx-dev \
             || sudo apt-get install -y --no-install-recommends libglx-mesa-dev
 
-      - name: Set up JDK 21 (Temurin)
+      - name: Set up JDK 21 (JetBrains Runtime)
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: jetbrains
           java-version: "21"
 
       - name: Download Cubism SDK

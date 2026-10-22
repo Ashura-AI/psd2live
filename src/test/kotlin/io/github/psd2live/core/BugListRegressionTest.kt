@@ -48,6 +48,8 @@ class BugListRegressionTest {
 		assertEquals(java.awt.Rectangle(1707, 0, 1707, 1066),
 			MainWindowModes.boundsFor(WindowMode.MAXIMIZED, screen, java.awt.Insets(0, 0, 0, 0), windows = true))
 		assertEquals(screen, MainWindowModes.workArea(screen, java.awt.Insets(0, 0, 0, 0), windows = false))
+		// A native frame in full screen puts its invisible resize edges past the monitor, so its content covers it.
+		assertEquals(java.awt.Rectangle(1700, 0, 1721, 1074), MainWindowModes.coverWithBorder(screen, java.awt.Insets(0, 7, 7, 7)))
 	}
 
 	@Test

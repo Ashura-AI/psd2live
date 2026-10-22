@@ -225,7 +225,7 @@ Format and evaluation rules: [runtime](spec/RUNTIME.md) and [`.p2lrt` 2.0 format
 
 ## Building from source
 
-Requires JDK 21; Gradle runs through the bundled wrapper. With Rust (cargo, rustc 1.87 or later) installed, the Rust runtime is built as well; without cargo, or with an older rustc, Linux first downloads the library CI built from the same `runtime/` sources (`-Ppsd2live.prebuiltRuntime=false` turns this off); if none is available the build skips it with a notice and the editor uses its built-in evaluator (`rustup update` lets it build).
+Requires JDK 21 (release packages use the JetBrains Runtime 21, which packaging needs as well; see the [development guide](guide/DEVELOPMENT.md#requirements)); Gradle runs through the bundled wrapper. With Rust (cargo, rustc 1.87 or later) installed, the Rust runtime is built as well; without cargo, or with an older rustc, Linux first downloads the library CI built from the same `runtime/` sources (`-Ppsd2live.prebuiltRuntime=false` turns this off); if none is available the build skips it with a notice and the editor uses its built-in evaluator (`rustup update` lets it build).
 
 ```bash
 # Start the GUI (Windows: .\gradlew.bat run or run-gui.bat)

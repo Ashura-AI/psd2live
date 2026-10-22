@@ -18,10 +18,15 @@ import java.awt.event.WindowStateListener
 import java.lang.ref.WeakReference
 
 /**
- * Places the main window for its [WindowMode]. The window is undecorated, and every mode is bounds set here: the
- * operating system's maximize covers the taskbar of a borderless window, and the JetBrains Runtime scales maximized
- * bounds twice, so the frame itself always stays in its normal state. A maximize from outside (Win+Up) is taken
- * back and becomes [WindowMode.MAXIMIZED].
+ * Places the main window for its [WindowMode].
+ *
+ * A window with its native frame ([NativeTitleBar]) maximizes the system's way, which keeps to the work area; the
+ * system's maximize and restore (the title bar, Win+Up, Snap) become the mode. Full screen covers the monitor, the
+ * frame's invisible resize edges past it.
+ *
+ * An undecorated window takes every mode as bounds set here: the system's maximize covers the taskbar of a borderless
+ * window, and the JetBrains Runtime scales maximized bounds twice, so the frame itself stays in its normal state and
+ * a maximize from outside is taken back and becomes [WindowMode.MAXIMIZED].
  */
 object MainWindowModes {
 
@@ -84,22 +89,58 @@ object MainWindowModes {
 		if (AppSettings.windowMode == WindowMode.WINDOWED) frame.size
 		else windowed?.size ?: java.awt.Dimension(AppSettings.windowWidth.toInt(), AppSettings.windowHeight.toInt())
 
+	private val Frame.maximized: Boolean get() = extendedState and Frame.MAXIMIZED_BOTH != 0
+
+	/** The monitor [screen] with a frame's [border] (its invisible resize edges) outside it. */
+	internal fun coverWithBorder(screen: Rectangle, border: Insets): Rectangle =
+		Rectangle(screen.x - border.left, screen.y - border.top,
+			screen.width + border.left + border.right, screen.height + border.top + border.bottom)
+
 	/** Puts [frame] where [mode] says, on the screen it is on; runs on the event thread. */
 	fun apply(frame: Frame, mode: WindowMode = AppSettings.windowMode) {
 		if (!EventQueue.isDispatchThread()) { EventQueue.invokeLater { apply(frame, mode) }; return }
 		val gc = frame.graphicsConfiguration ?: return
 		val previous = applied?.takeIf { it.first.get() === frame }?.second
-		if (frame.extendedState and Frame.MAXIMIZED_BOTH != 0) frame.extendedState = frame.extendedState and Frame.MAXIMIZED_BOTH.inv()
-		if (previous == WindowMode.WINDOWED && mode != WindowMode.WINDOWED) windowed = frame.bounds
+		if (previous == WindowMode.WINDOWED && mode != WindowMode.WINDOWED && !frame.maximized) windowed = frame.bounds
 		applied = WeakReference(frame) to mode
 		val insets = insetsOf(gc)
+		fun windowedHere() = windowedBounds(windowed?.size ?: java.awt.Dimension(AppSettings.windowWidth.toInt(), AppSettings.windowHeight.toInt()),
+			windowed?.location, workArea(gc.bounds, insets))
+		if (!frame.isUndecorated) {
+			if (previous == WindowMode.FULLSCREEN && mode != WindowMode.FULLSCREEN) TaskbarFullscreen.mark(frame, false)
+			when (mode) {
+				WindowMode.WINDOWED -> when {
+					frame.maximized -> frame.extendedState = frame.extendedState and Frame.MAXIMIZED_BOTH.inv()
+					previous == WindowMode.FULLSCREEN -> frame.bounds = windowedHere()
+				}
+				WindowMode.MAXIMIZED -> if (!frame.maximized) {
+					// The system restores to the bounds the window had; from full screen, that is the windowed ones.
+					if (previous == WindowMode.FULLSCREEN) frame.bounds = windowedHere()
+					frame.extendedState = frame.extendedState or Frame.MAXIMIZED_BOTH
+				}
+				WindowMode.FULLSCREEN -> {
+					if (frame.maximized) frame.extendedState = frame.extendedState and Frame.MAXIMIZED_BOTH.inv()
+					val target = coverWithBorder(gc.bounds, frame.insets)
+					if (frame.bounds != target) frame.bounds = target
+					// Larger than the monitor, the window is not taken for full screen by itself: say it is.
+					TaskbarFullscreen.mark(frame, true)
+				}
+			}
+			return
+		}
+		if (frame.maximized) frame.extendedState = frame.extendedState and Frame.MAXIMIZED_BOTH.inv()
 		val target = boundsFor(mode, gc.bounds, insets) ?: when {
 			// Windowed is free: only coming back from another mode moves the window.
 			previous == WindowMode.WINDOWED -> return
-			else -> windowedBounds(windowed?.size ?: java.awt.Dimension(AppSettings.windowWidth.toInt(), AppSettings.windowHeight.toInt()),
-				windowed?.location, workArea(gc.bounds, insets))
+			else -> windowedHere()
 		}
 		if (frame.bounds != target) frame.bounds = target
+	}
+
+	/** The system changed the window's state itself: the mode follows, with nothing left to apply. */
+	private fun follow(frame: Frame, mode: WindowMode) {
+		applied = WeakReference(frame) to mode
+		AppSettings.windowMode = mode
 	}
 
 	/**
@@ -118,25 +159,35 @@ object MainWindowModes {
 	}
 
 	/**
-	 * Keeps [frame] in its mode: a maximize from the system (Win+Up) is turned into [WindowMode.MAXIMIZED], and the
-	 * window is fitted again when it is activated, after a taskbar or display change.
+	 * Keeps [frame] in its mode. With the native frame, the system's maximize and restore become the mode. Undecorated,
+	 * a maximize from the system (Win+Up) is turned into [WindowMode.MAXIMIZED]. Bounds the program sets are fitted
+	 * again when the window is activated (after a taskbar or display change) or moves to another screen.
 	 */
 	fun install(frame: Frame): () -> Unit {
+		val native = !frame.isUndecorated
 		val states = WindowStateListener { event ->
-			if (event.newState and Frame.MAXIMIZED_BOTH != 0) EventQueue.invokeLater {
-				if (AppSettings.windowMode == WindowMode.WINDOWED) AppSettings.windowMode = WindowMode.MAXIMIZED
-				else apply(frame)
+			val maximized = event.newState and Frame.MAXIMIZED_BOTH != 0
+			EventQueue.invokeLater {
+				val mode = AppSettings.windowMode
+				when {
+					native && maximized && mode != WindowMode.MAXIMIZED -> follow(frame, WindowMode.MAXIMIZED)
+					native && !maximized && mode == WindowMode.MAXIMIZED -> follow(frame, WindowMode.WINDOWED)
+					native || !maximized -> Unit
+					mode == WindowMode.WINDOWED -> AppSettings.windowMode = WindowMode.MAXIMIZED
+					else -> apply(frame)
+				}
 			}
 		}
+		fun setsBounds() = AppSettings.windowMode == WindowMode.FULLSCREEN || (!native && AppSettings.windowMode != WindowMode.WINDOWED)
 		val activation = object : WindowAdapter() {
-			override fun windowActivated(e: WindowEvent) { if (AppSettings.windowMode != WindowMode.WINDOWED) apply(frame) }
+			override fun windowActivated(e: WindowEvent) { if (setsBounds()) apply(frame) }
 		}
 		// Moving between screens of different scales replaces the configuration: fit the new screen.
 		val moves = object : ComponentAdapter() {
 			private var screen = frame.graphicsConfiguration?.device
 			override fun componentMoved(e: ComponentEvent) {
 				val now = frame.graphicsConfiguration?.device
-				if (now !== screen) { screen = now; if (AppSettings.windowMode != WindowMode.WINDOWED) apply(frame) }
+				if (now !== screen) { screen = now; if (setsBounds()) apply(frame) }
 			}
 		}
 		frame.addWindowStateListener(states)

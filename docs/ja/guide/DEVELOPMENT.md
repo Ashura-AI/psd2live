@@ -6,7 +6,7 @@
 
 ## 必要環境
 
-- JDK 21。Gradle は同梱の Wrapper で実行するため、別途インストールは不要です。
+- JDK 21。JetBrains Runtime（JBR）21 を推奨します。リリースパッケージは JBR を同梱し、その上ではメインウィンドウがシステムのウィンドウ枠を保ったまま（最大化・スナップ・端でのサイズ変更はシステムが処理）、タイトルバーをアプリが描画します。他の JDK でもビルド・テスト・実行はでき、その場合はメインウィンドウが枠なしになり、タイトルバー全体をアプリが描画します。パッケージ作成（`createDistributable`、`packageExe` など）には JBR 21 SDK（jpackage 付き）が必要で、他の JDK で作成するには `-Ppsd2live.allowNonJbr=true` を付けます。Gradle は同梱の Wrapper で実行するため、別途インストールは不要です。
 - Windows では `.\gradlew.bat`、Linux / macOS では `./gradlew` を使います。以下の例は `./gradlew` で表記します。
 - 公式 Cubism SDK は必須ではありません。ソースビルドは内蔵レンダラーを使います。ネイティブブリッジは [Cubism ネイティブプレビュー](CUBISM_SDK_SETUP.md)を参照してください。
 

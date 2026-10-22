@@ -88,6 +88,8 @@ dependencies {
 	implementation("io.ktor:ktor-serialization-kotlinx-json")
 	runtimeOnly("org.slf4j:slf4j-nop:2.0.17")
 	implementation("net.java.dev.jna:jna:5.18.0")
+	// The main window's custom title bar on the JetBrains Runtime (Compose already brings this version).
+	implementation("org.jetbrains.runtime:jbr-api:1.9.0")
 	implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 	implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
@@ -378,6 +380,23 @@ compose.desktop {
 				menuGroup = "PSD2Live"
 				upgradeUuid = "8e9c4b1a-2d3e-4f5a-6b7c-8d9e0f1a2b3c"
 			}
+		}
+	}
+}
+
+// The released app runs on the JetBrains Runtime: its custom title bar keeps the main window's native frame (maximize,
+// Snap, resize edges) under the app's own title bar. Other JDKs still build, test and run it, with the bar drawn whole
+// on an undecorated window, but a package made on one would ship that. -Ppsd2live.allowNonJbr=true packages anyway.
+afterEvaluate {
+	tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>().configureEach {
+		val home = javaHome
+		val allowed = providers.gradleProperty("psd2live.allowNonJbr").map { it == "true" }.orElse(false)
+		doFirst {
+			val release = File(home.get(), "release")
+			val implementor = if (release.isFile) release.readLines().firstOrNull { it.startsWith("IMPLEMENTOR=") }.orEmpty() else ""
+			if ("JetBrains" !in implementor && !allowed.get()) throw GradleException(
+				"Packaging needs the JetBrains Runtime 21 SDK (JBR with jpackage), not ${home.get()} ($implementor). " +
+					"Point JAVA_HOME at one, or pass -Ppsd2live.allowNonJbr=true to package with this JDK.")
 		}
 	}
 }

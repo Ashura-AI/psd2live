@@ -6,7 +6,7 @@
 
 ## 环境
 
-- JDK 21。Gradle 使用仓库自带的 Wrapper，无需单独安装。
+- JDK 21，推荐 JetBrains Runtime（JBR）21：发布包用它，主窗口在它上面保留系统窗口框架（最大化、贴靠、拖边调整大小由系统处理），标题栏由程序绘制；其他 JDK 也能构建、测试和运行，主窗口改为无边框、整条标题栏由程序绘制。打包（`createDistributable`、`packageExe` 等）要求 JBR 21 SDK（带 jpackage），用其他 JDK 打包需加 `-Ppsd2live.allowNonJbr=true`。Gradle 使用仓库自带的 Wrapper，无需单独安装。
 - Windows 用 `.\gradlew.bat`，Linux / macOS 用 `./gradlew`。下文示例统一写作 `./gradlew`。
 - 官方 Cubism SDK 不是构建前提。源码构建默认使用内置渲染；原生预览见 [Cubism Native 预览](CUBISM_SDK_SETUP.md)。
 

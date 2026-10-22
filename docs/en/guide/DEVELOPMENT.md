@@ -6,7 +6,7 @@ This page is for running from source, using the command line or contributing cod
 
 ## Requirements
 
-- JDK 21. Gradle runs through the bundled wrapper; no separate install is needed.
+- JDK 21, preferably the JetBrains Runtime (JBR) 21: release packages ship it, and on it the main window keeps its native frame (the system maximizes, snaps and resizes it) under the title bar the app draws. Other JDKs build, test and run the app too, with an undecorated main window and the whole title bar drawn by the app. Packaging (`createDistributable`, `packageExe` and the like) requires a JBR 21 SDK (with jpackage); `-Ppsd2live.allowNonJbr=true` packages with another JDK. Gradle runs through the bundled wrapper; no separate install is needed.
 - Use `.\gradlew.bat` on Windows and `./gradlew` on Linux / macOS. Examples below use `./gradlew`.
 - The official Cubism SDK is not required. Source builds use the built-in renderer; see [Cubism native preview](CUBISM_SDK_SETUP.md) for the native bridge.
 

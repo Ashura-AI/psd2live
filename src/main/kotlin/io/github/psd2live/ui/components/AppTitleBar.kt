@@ -37,6 +37,7 @@ import androidx.compose.material.Divider
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -87,7 +88,10 @@ import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.state.AppPage
 import io.github.psd2live.ui.state.AppSettings
 import io.github.psd2live.ui.state.WindowMode
+import io.github.psd2live.ui.utils.LocalNativeTitleBar
 import io.github.psd2live.ui.utils.MainWindowModes
+import io.github.psd2live.ui.utils.NativeTitleBar
+import androidx.compose.ui.input.pointer.PointerEventPass
 import io.github.psd2live.ui.views.PageIcon
 import io.github.psd2live.ui.state.Keymap
 import io.github.psd2live.ui.state.ShortcutAction
@@ -224,12 +228,45 @@ fun AppTitleBar(
 	var initialMouseLocation by remember { mutableStateOf<Point?>(null) }
 	var initialWindowLocation by remember { mutableStateOf<Point?>(null) }
 
+	// With the native frame, the system draws the window buttons and owns the bar's empty middle (drag, double-click,
+	// Snap); the bar tells it its height and leaves room for the buttons it reports.
+	val nativeTitleBar = LocalNativeTitleBar.current
+	val density = LocalDensity.current
+	var nativeInsets by remember(nativeTitleBar) { mutableStateOf(0.dp to 0.dp) }
+	// The runtime lays its buttons out after a height or size change, so their room is read once that has run.
+	val readNativeInsets = {
+		if (nativeTitleBar != null) java.awt.EventQueue.invokeLater {
+			val scale = window?.graphicsConfiguration?.defaultTransform?.scaleX?.toFloat() ?: 1f
+			val toDp = { inset: Float -> with(density) { (inset * scale).toDp() } }
+			nativeInsets = toDp(nativeTitleBar.leftInset) to toDp(nativeTitleBar.rightInset)
+		}
+	}
+	if (nativeTitleBar != null) {
+		LaunchedEffect(nativeTitleBar, darkTheme) { nativeTitleBar.setDarkControls(darkTheme) }
+		DisposableEffect(nativeTitleBar, window) {
+			val resized = object : java.awt.event.ComponentAdapter() {
+				override fun componentResized(e: java.awt.event.ComponentEvent) = readNativeInsets()
+			}
+			window?.addComponentListener(resized)
+			readNativeInsets()
+			onDispose { window?.removeComponentListener(resized) }
+		}
+	}
+
 	Row(
 		modifier = modifier
 			.fillMaxWidth()
 			.height(32.dp)
 			.background(colors.panelElevated)
-			.border(BorderStroke(1.dp, colors.divider)),
+			.border(BorderStroke(1.dp, colors.divider))
+			.then(if (nativeTitleBar == null) Modifier else Modifier
+				.onGloballyPositioned { bar ->
+					// The runtime takes the height in the window's units: pixels over the display scale.
+					val scale = window?.graphicsConfiguration?.defaultTransform?.scaleY?.toFloat() ?: 1f
+					nativeTitleBar.height = bar.size.height / scale
+					readNativeInsets()
+				}
+				.titleBarHitTest(nativeTitleBar, client = true)),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		// --- LEFT: Tool Menus ---
@@ -237,7 +274,7 @@ fun AppTitleBar(
 			modifier = Modifier.fillMaxHeight(),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
-			Spacer(modifier = Modifier.width(6.dp))
+			Spacer(modifier = Modifier.width(6.dp + nativeInsets.first))
 
 			// 1. File Menu
 			TitleBarMenuItem(
@@ -723,6 +760,7 @@ fun AppTitleBar(
 			modifier = Modifier
 				.weight(1f)
 				.fillMaxHeight()
+				.then(if (nativeTitleBar != null) Modifier.titleBarHitTest(nativeTitleBar, client = false) else Modifier
 				.pointerInput(window) {
 					detectTapGestures(onDoubleTap = { AppSettings.toggleMaximized() })
 				}
@@ -760,7 +798,7 @@ fun AppTitleBar(
 							initialWindowLocation = null
 						},
 					)
-				},
+				}),
 			contentAlignment = Alignment.Center,
 		) {
 			Text(
@@ -826,6 +864,11 @@ fun AppTitleBar(
 			)
 
 			Spacer(modifier = Modifier.width(4.dp))
+
+			if (nativeTitleBar != null) {
+				Spacer(Modifier.width(nativeInsets.second))
+				return@Row
+			}
 
 			// Minimize
 			WindowControlButton(
@@ -1407,6 +1450,21 @@ private fun TitleBarThemeToggle(
 		}
 	}
 }
+
+/**
+ * Tells the native title bar, on every pointer event over this element, whether the pointer is on the app's own
+ * controls ([client]) or on the bar itself, which the system then drags, maximizes and snaps. The innermost element
+ * decides: the bar marks itself client and its empty middle marks itself not.
+ */
+private fun Modifier.titleBarHitTest(titleBar: NativeTitleBar, client: Boolean): Modifier =
+	pointerInput(titleBar, client) {
+		awaitPointerEventScope {
+			while (true) {
+				val event = awaitPointerEvent(PointerEventPass.Initial)
+				if (event.type != PointerEventType.Exit && event.type != PointerEventType.Scroll) titleBar.forceHitTest(client)
+			}
+		}
+	}
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable

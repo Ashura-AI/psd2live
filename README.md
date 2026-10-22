@@ -225,7 +225,7 @@ PSD2Live 不依赖 Cubism Editor 或 SDK 运行，但与 Cubism 格式保持兼�
 
 ## 从源码构建
 
-需要 JDK 21，Gradle 使用仓库自带的 Wrapper。安装了 Rust（cargo，rustc 1.87 及以上）时会同时构建 Rust 运行时；没有 cargo 或 rustc 版本过旧时，Linux 会先下载 CI 按同一份 `runtime/` 源码构建的预编译库（`-Ppsd2live.prebuiltRuntime=false` 可关闭），下载不到则跳过并给出提示，编辑器改用内置求值器（`rustup update` 后即可构建）。
+需要 JDK 21（发布包使用 JetBrains Runtime 21，打包也需要它，见[开发指南](docs/zh/guide/DEVELOPMENT.md#环境)），Gradle 使用仓库自带的 Wrapper。安装了 Rust（cargo，rustc 1.87 及以上）时会同时构建 Rust 运行时；没有 cargo 或 rustc 版本过旧时，Linux 会先下载 CI 按同一份 `runtime/` 源码构建的预编译库（`-Ppsd2live.prebuiltRuntime=false` 可关闭），下载不到则跳过并给出提示，编辑器改用内置求值器（`rustup update` 后即可构建）。
 
 ```bash
 # 启动 GUI（Windows：.\gradlew.bat run 或 run-gui.bat）

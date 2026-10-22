@@ -30,7 +30,11 @@ import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.state.UiFailureReports
 import io.github.psd2live.ui.state.reportingWindowExceptionHandler
 import io.github.psd2live.ui.views.PSD2LiveApp
+import io.github.psd2live.ui.utils.LocalNativeTitleBar
 import io.github.psd2live.ui.utils.MainWindowModes
+import io.github.psd2live.ui.utils.NativeTitleBar
+import io.github.psd2live.ui.state.WindowMode
+import androidx.compose.ui.window.WindowPlacement
 import java.io.IOException
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
@@ -181,11 +185,16 @@ private fun runGui() {
 					}
 				}
 			}
-			// Opens in the mode it last closed in, already at that mode's bounds; windowed is the saved size centred.
+			// Opens in the mode it last closed in, already at that mode's bounds; windowed is the saved size centred. A
+			// native frame maximizes the system's way, restoring to the windowed bounds.
 			val windowState = remember {
-				val bounds = MainWindowModes.initialBounds(AppSettings.windowMode, AppSettings.windowWidth, AppSettings.windowHeight)
-				if (bounds == null) WindowState(position = WindowPosition(Alignment.Center), size = DpSize(AppSettings.windowWidth.dp, AppSettings.windowHeight.dp))
-				else WindowState(position = WindowPosition(bounds.x.dp, bounds.y.dp), size = DpSize(bounds.width.dp, bounds.height.dp))
+				val nativeMaximized = AppSettings.windowMode == WindowMode.MAXIMIZED && NativeTitleBar.supported &&
+					!viewModel.uiState.value.canvasBackground.windowTransparent
+				val bounds = MainWindowModes.initialBounds(if (nativeMaximized) WindowMode.WINDOWED else AppSettings.windowMode,
+					AppSettings.windowWidth, AppSettings.windowHeight)
+				val placement = if (nativeMaximized) WindowPlacement.Maximized else WindowPlacement.Floating
+				if (bounds == null) WindowState(placement, position = WindowPosition(Alignment.Center), size = DpSize(AppSettings.windowWidth.dp, AppSettings.windowHeight.dp))
+				else WindowState(placement, position = WindowPosition(bounds.x.dp, bounds.y.dp), size = DpSize(bounds.width.dp, bounds.height.dp))
 			}
 			val mainFrame = remember { java.util.concurrent.atomic.AtomicReference<java.awt.Frame?>() }
 			val closeApp: () -> Unit = {
@@ -217,7 +226,9 @@ private fun runGui() {
 				derivedStateOf { viewModel.uiState.value.currentLanguage }
 			}
 			// A window's transparency cannot change once it is shown, so switching the canvas
-			// background to or from transparent replaces the window; windowState keeps its bounds.
+			// background to or from transparent replaces the window; windowState keeps its bounds. The system only
+			// lets an undecorated window be transparent, so that one draws its whole title bar; otherwise the window
+			// keeps its native frame under the app's title bar where the runtime allows it.
 			// A language switch replaces it too: text is read through tr() wherever it is composed,
 			// remembered, or handed to Swing, so only a fresh composition shows none of the old language.
 			CompositionLocalProvider(LocalWindowExceptionHandlerFactory provides exceptionHandlers) {
@@ -227,9 +238,10 @@ private fun runGui() {
 						title = tr("app.title"),
 						icon = painterResource("icons/psd2live.png"),
 						state = windowState,
-						undecorated = true,
+						undecorated = transparent || !NativeTitleBar.supported,
 						transparent = transparent,
 					) {
+						val titleBar = remember(window) { if (window.isUndecorated) null else NativeTitleBar.install(window) }
 						DisposableEffect(window) {
 							mainFrame.set(window)
 							val uninstall = MainWindowModes.install(window)
@@ -237,7 +249,8 @@ private fun runGui() {
 						}
 						val windowMode by AppSettings.windowModeFlow.collectAsState()
 						LaunchedEffect(window, windowMode) { MainWindowModes.apply(window, windowMode) }
-						androidx.compose.runtime.CompositionLocalProvider(io.github.psd2live.ui.views.LocalAwtWindow provides window) {
+						androidx.compose.runtime.CompositionLocalProvider(io.github.psd2live.ui.views.LocalAwtWindow provides window,
+							LocalNativeTitleBar provides titleBar) {
 							PSD2LiveApp(
 								viewModel = viewModel,
 								window = window,
