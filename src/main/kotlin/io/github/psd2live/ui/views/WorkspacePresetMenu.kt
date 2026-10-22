@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.views
 
+import io.github.psd2live.ui.components.AppDropdownMenu
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -69,12 +70,9 @@ internal fun NewWorkspaceMenu(
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	var hovered by remember(expanded) { mutableStateOf(WorkspacePreset.EDIT) }
-	DropdownMenu(
+	AppDropdownMenu(
 		expanded = expanded,
 		onDismissRequest = onDismissRequest,
-		modifier = Modifier
-			.background(colors.panelElevated)
-			.border(BorderStroke(1.dp, colors.border)),
 	) {
 		AppMenuHeader(tr("workspace.new"))
 		Row(Modifier.padding(bottom = 4.dp)) {

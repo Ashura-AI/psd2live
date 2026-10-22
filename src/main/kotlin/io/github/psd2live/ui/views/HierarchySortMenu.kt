@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.views
 
+import io.github.psd2live.ui.components.AppMenuPanel
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -55,34 +56,27 @@ internal fun HierarchySortMenu(sort: HierarchySort, onChange: (HierarchySort) ->
 				onDismissRequest = { open = false },
 				properties = PopupProperties(focusable = true),
 			) {
-				Surface(
-					color = colors.panelElevated,
-					border = BorderStroke(1.dp, colors.border),
-					shape = RoundedCornerShape(3.dp),
-					elevation = 8.dp,
-				) {
-					Column(modifier = Modifier.widthIn(min = 180.dp, max = 260.dp)) {
-						AppMenuHeader(tr("canvas.hierarchy.sort"))
-						for (mode in HierarchySortMode.entries) {
-							AppMenuItem(
-								text = tr(mode.labelKey),
-								icon = { tint -> IconSortMode(mode, tint) },
-								isChecked = mode == sort.mode,
-								onClick = {
-									onChange(sort.copy(mode = mode))
-									open = false
-								},
-							)
-						}
-						AppMenuSeparator()
+				AppMenuPanel(Modifier.widthIn(min = 180.dp, max = 260.dp)) {
+					AppMenuHeader(tr("canvas.hierarchy.sort"))
+					for (mode in HierarchySortMode.entries) {
 						AppMenuItem(
-							text = tr("canvas.hierarchy.sort.reversed"),
-							icon = { tint -> IconSortReverse(tint) },
-							isChecked = sort.reversed,
-							onClick = { onChange(sort.copy(reversed = !sort.reversed)) },
+							text = tr(mode.labelKey),
+							icon = { tint -> IconSortMode(mode, tint) },
+							isChecked = mode == sort.mode,
+							onClick = {
+								onChange(sort.copy(mode = mode))
+								open = false
+							},
 						)
-						AppMenuHeader(tr("canvas.hierarchy.sort.note"))
 					}
+					AppMenuSeparator()
+					AppMenuItem(
+						text = tr("canvas.hierarchy.sort.reversed"),
+						icon = { tint -> IconSortReverse(tint) },
+						isChecked = sort.reversed,
+						onClick = { onChange(sort.copy(reversed = !sort.reversed)) },
+					)
+					AppMenuHeader(tr("canvas.hierarchy.sort.note"))
 				}
 			}
 		}

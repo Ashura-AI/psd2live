@@ -1,5 +1,7 @@
 package io.github.psd2live.ui.views
 
+import io.github.psd2live.ui.components.AppMenuItem
+import io.github.psd2live.ui.components.AppDropdownMenu
 import io.github.psd2live.project.displayedRect
 import io.github.psd2live.project.canvasRect
 import io.github.psd2live.project.transform
@@ -497,35 +499,18 @@ private fun CompactSwitchParamField(
 			},
 		)
 
-		DropdownMenu(
+		AppDropdownMenu(
 			expanded = expanded,
 			onDismissRequest = { expanded = false },
-			modifier = Modifier
-				.background(colors.panelElevated)
-				.border(BorderStroke(1.dp, colors.border)),
 		) {
 			if (existingParams.isEmpty()) {
-				DropdownMenuItem(enabled = false, onClick = {}) {
-					Text(
-						text = tr("layers.switch.noExisting"),
-						style = typography.caption.copy(fontSize = 11.sp),
-						color = colors.textMuted,
-					)
-				}
+				AppMenuItem(text = tr("layers.switch.noExisting"), enabled = false, onClick = {})
 			} else {
 				existingParams.forEach { param ->
-					DropdownMenuItem(
-						onClick = {
-							onValueChange(param)
-							expanded = false
-						},
-					) {
-						Text(
-							text = param,
-							style = typography.body.copy(fontSize = 11.5.sp),
-							color = if (param == value) colors.accent else colors.textPrimary,
-						)
-					}
+					AppMenuItem(text = param, isChecked = param == value, onClick = {
+						onValueChange(param)
+						expanded = false
+					})
 				}
 			}
 		}

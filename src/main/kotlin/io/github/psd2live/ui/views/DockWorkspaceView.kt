@@ -349,7 +349,7 @@ internal fun DockWorkspaceView(
     Box(modifier) {
         Column(Modifier.fillMaxSize().background(colors.windowBackground)) {
             Row(
-				Modifier.fillMaxWidth().height(28.dp).tutorialTarget(TutorialTargetId.WORKSPACE_STRIP),
+				Modifier.fillMaxWidth().height(26.dp).tutorialTarget(TutorialTargetId.WORKSPACE_STRIP),
 				verticalAlignment = Alignment.CenterVertically,
 			) {
                 // The strip shows no pose; its chips' positioning callbacks would ask for the whole window on each.
@@ -374,6 +374,8 @@ internal fun DockWorkspaceView(
                 )
                 Spacer(Modifier.width(4.dp))
             }
+            // The tabs (22 dp in the 26 dp strip) end 2 dp above the strip's edge: the rest of the margin to the panels.
+            Spacer(Modifier.height(Spacing.Margin - 2.dp))
             if (page != null) key(page) {
                 val pageSession = pageSessions.getOrPut(page) { DockSession(pageDockRoot(page, viewModel.pageArrangement(page))) }
                 PageDock(page, pageSession, Modifier.weight(1f).fillMaxWidth(), mainWindow, state, viewModel, pageActions)

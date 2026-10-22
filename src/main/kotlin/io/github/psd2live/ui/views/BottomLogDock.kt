@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.views
 
+import io.github.psd2live.ui.components.AppMenuPanel
 import io.github.psd2live.ui.utils.toImageBitmapFast
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.graphics.graphicsLayer
@@ -502,23 +503,16 @@ private fun OverflowEllipsis(
 				onDismissRequest = { open = false },
 				properties = PopupProperties(focusable = true),
 			) {
-				Surface(
-					color = colors.panelElevated,
-					border = BorderStroke(1.dp, colors.border),
-					shape = RoundedCornerShape(3.dp),
-					elevation = 8.dp,
-				) {
-					Column(modifier = Modifier.widthIn(min = 140.dp, max = 220.dp)) {
-						for (item in items) {
-							AppMenuItem(
-								text = item.label,
-								isChecked = item.filter == selected,
-								onClick = {
-									onSelect(item.filter)
-									open = false
-								},
-							)
-						}
+				AppMenuPanel(Modifier.widthIn(min = 140.dp, max = 220.dp)) {
+					for (item in items) {
+						AppMenuItem(
+							text = item.label,
+							isChecked = item.filter == selected,
+							onClick = {
+								onSelect(item.filter)
+								open = false
+							},
+						)
 					}
 				}
 			}
@@ -556,25 +550,18 @@ private fun LogLevelMenu(
 				onDismissRequest = { open = false },
 				properties = PopupProperties(focusable = true),
 			) {
-				Surface(
-					color = colors.panelElevated,
-					border = BorderStroke(1.dp, colors.border),
-					shape = RoundedCornerShape(3.dp),
-					elevation = 8.dp,
-				) {
-					Column(modifier = Modifier.widthIn(min = 140.dp, max = 220.dp)) {
-						for (level in LEVEL_THRESHOLDS) {
-							AppMenuItem(
-								text = level.label(),
-								shortcut = "${counts[level] ?: 0}",
-								icon = { tint -> IconLogLevel(level, tint) },
-								isChecked = level == selected,
-								onClick = {
-									onSelect(level)
-									open = false
-								},
-							)
-						}
+				AppMenuPanel(Modifier.widthIn(min = 140.dp, max = 220.dp)) {
+					for (level in LEVEL_THRESHOLDS) {
+						AppMenuItem(
+							text = level.label(),
+							shortcut = "${counts[level] ?: 0}",
+							icon = { tint -> IconLogLevel(level, tint) },
+							isChecked = level == selected,
+							onClick = {
+								onSelect(level)
+								open = false
+							},
+						)
 					}
 				}
 			}
@@ -826,29 +813,22 @@ private fun LogColumnHeader(
 				onDismissRequest = { menuAt = null },
 				properties = PopupProperties(focusable = true),
 			) {
-				Surface(
-					color = colors.panelElevated,
-					border = BorderStroke(1.dp, colors.border),
-					shape = RoundedCornerShape(3.dp),
-					elevation = 8.dp,
-				) {
-					Column(modifier = Modifier.widthIn(min = 140.dp, max = 220.dp)) {
-						for (column in LogColumn.entries.filter { it != LogColumn.MESSAGE }) {
-							AppMenuItem(
-								text = column.title(),
-								isChecked = column !in layout.hidden,
-								onClick = { change(layout.toggled(column)); commit() },
-							)
-						}
+				AppMenuPanel(Modifier.widthIn(min = 140.dp, max = 220.dp)) {
+					for (column in LogColumn.entries.filter { it != LogColumn.MESSAGE }) {
 						AppMenuItem(
-							text = tr("log.dock.column.reset"),
-							onClick = {
-								change(LogColumnLayout())
-								commit()
-								menuAt = null
-							},
+							text = column.title(),
+							isChecked = column !in layout.hidden,
+							onClick = { change(layout.toggled(column)); commit() },
 						)
 					}
+					AppMenuItem(
+						text = tr("log.dock.column.reset"),
+						onClick = {
+							change(LogColumnLayout())
+							commit()
+							menuAt = null
+						},
+					)
 				}
 			}
 		}

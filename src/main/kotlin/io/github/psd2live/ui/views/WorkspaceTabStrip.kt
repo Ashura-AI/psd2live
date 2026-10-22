@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.views
 
+import io.github.psd2live.ui.components.AppDropdownMenu
 import io.github.psd2live.ui.theme.Corners
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -562,14 +563,10 @@ internal fun TabStripDropdown(
 	onDismissRequest: () -> Unit,
 	content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
-	val colors = LocalToolColors.current
-	DropdownMenu(
+	AppDropdownMenu(
 		expanded = expanded,
 		onDismissRequest = onDismissRequest,
-		modifier = Modifier
-			.background(colors.panelElevated)
-			.border(BorderStroke(1.dp, colors.border))
-			.widthIn(min = 210.dp, max = 280.dp),
+		modifier = Modifier.widthIn(min = 210.dp, max = 280.dp),
 		content = content,
 	)
 }

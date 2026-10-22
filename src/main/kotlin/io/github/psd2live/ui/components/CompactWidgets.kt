@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.components
 
+import io.github.psd2live.ui.views.texture.glideRow
 import io.github.psd2live.ui.theme.Corners
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -633,20 +634,22 @@ fun CompactMenuItem(
 		!enabled -> colors.textDisabled
 		danger -> if (isHovered) colors.error else colors.error.copy(alpha = 0.9f)
 		active -> colors.accent
-		isHovered -> colors.selectionText
 		else -> colors.textPrimary
 	}
 
+	// Inside a menu with the gliding highlight the row leaves its hover fill to it, as every menu row does.
+	val glide = io.github.psd2live.ui.views.texture.LocalMenuGlide.current
 	val itemBg = when {
 		!enabled -> Color.Transparent
-		isHovered && danger -> colors.error.copy(alpha = 0.14f)
-		isHovered -> colors.selection
+		isHovered && danger && !glide -> colors.error.copy(alpha = 0.14f)
+		isHovered && !glide -> colors.controlHover.copy(alpha = 0.75f)
 		active -> colors.accent.copy(alpha = 0.12f)
 		else -> Color.Transparent
 	}
 
 	Row(
 		modifier = modifier
+			.glideRow(enabled, danger)
 			.fillMaxWidth()
 			.height(26.dp)
 			.clip(RoundedCornerShape(4.dp))
@@ -687,7 +690,7 @@ fun CompactMenuItem(
 			Text(
 				text = trailingText,
 				style = typography.monoSmall.copy(fontSize = 9.5.sp),
-				color = if (isHovered) colors.selectionText.copy(alpha = 0.85f) else colors.textMuted,
+				color = colors.textMuted,
 			)
 		}
 	}
@@ -776,8 +779,7 @@ fun TreeContextMenu(
 					.widthIn(min = minWidth, max = maxWidth)
 					.menuPanel()
 					.padding(4.dp),
-				content = content,
-			)
+			) { io.github.psd2live.ui.views.texture.MenuGlide { Column(verticalArrangement = Arrangement.spacedBy(1.dp), content = content) } }
 		}
 	}
 }
@@ -1534,41 +1536,21 @@ fun <T> CompactDropdown(
 			IconChevron(expanded = expanded, modifier = Modifier.size(10.dp), tint = colors.textMuted)
 		}
 
-		DropdownMenu(
+		AppDropdownMenu(
 			expanded = expanded,
 			onDismissRequest = { expanded = false },
-			modifier = Modifier
-				.background(colors.panelElevated)
-				.border(BorderStroke(1.dp, colors.border)),
 		) {
 			items.forEach { item ->
-				val isSelected = item == selectedItem
 				val isItemEnabled = itemEnabled(item)
-				DropdownMenuItem(
+				AppMenuItem(
+					text = itemLabel(item),
+					isChecked = item == selectedItem,
 					enabled = isItemEnabled,
 					onClick = {
-						if (isItemEnabled) {
-							onItemSelected(item)
-							expanded = false
-						}
+						onItemSelected(item)
+						expanded = false
 					},
-					modifier = Modifier
-						.height(26.dp)
-						.background(if (isSelected) colors.selection else Color.Transparent)
-						.handCursor(isItemEnabled),
-				) {
-					Text(
-						text = itemLabel(item),
-						style = typography.body.copy(
-							fontSize = 11.5.sp,
-							color = when {
-								!isItemEnabled -> colors.textDisabled
-								isSelected -> colors.selectionText
-								else -> colors.textPrimary
-							},
-						),
-					)
-				}
+				)
 			}
 		}
 	}

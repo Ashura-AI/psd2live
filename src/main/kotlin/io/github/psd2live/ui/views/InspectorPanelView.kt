@@ -1,5 +1,8 @@
 package io.github.psd2live.ui.views
 
+import androidx.compose.foundation.layout.heightIn
+import io.github.psd2live.ui.components.AppMenuItem
+import io.github.psd2live.ui.components.AppDropdownMenu
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -511,13 +514,15 @@ private fun ArtMeshInspector(
                     ) {
                         ListIcon(color = colors.textPrimary)
                     }
-                    DropdownMenu(
+                    AppDropdownMenu(
                         expanded = clipIdPickerOpen,
                         onDismissRequest = { clipIdPickerOpen = false },
+                        // A long list of meshes scrolls inside the menu rather than running off the window.
+                        modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                     ) {
                         allDrawables.filter { it.first != drawable.id.raw }.forEach { (dId, dName) ->
                             val isMask = drawable.maskedBy.any { it.raw == dId }
-                            DropdownMenuItem(onClick = {
+                            AppMenuItem(text = "$dName ($dId)", isChecked = isMask, onClick = {
                                 val nextList = if (isMask) {
                                     drawable.maskedBy.filter { it.raw != dId }
                                 } else {
@@ -525,20 +530,7 @@ private fun ArtMeshInspector(
                                 }
                                 viewModel.applyRigStaticNow("mesh", drawable.id.raw, "masked_by" to JsonArray(nextList.map { JsonPrimitive(it.raw) }))
                                 clipIdPickerOpen = false
-                            }) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                ) {
-                                    Box(
-                                        modifier = Modifier.size(14.dp).border(1.dp, colors.border, RoundedCornerShape(2.dp)),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        if (isMask) Text("✓", fontSize = 10.sp, color = colors.textPrimary)
-                                    }
-                                    Text("$dName ($dId)", fontSize = 11.sp)
-                                }
-                            }
+                            })
                         }
                     }
                 }

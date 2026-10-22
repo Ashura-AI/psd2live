@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.views
 
+import io.github.psd2live.ui.components.AppDropdownMenu
 import io.github.psd2live.ui.theme.Spacing
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -611,12 +612,12 @@ fun FrameWindowScope.PSD2LiveApp(
 					modifier = Modifier
 						.weight(1f)
 						.fillMaxWidth()
-						.padding(horizontal = Spacing.Gap),
+						.padding(start = Spacing.Margin, end = Spacing.Margin, bottom = Spacing.Gap),
 				) {
 					DockWorkspaceView(
 						state,
 						viewModel,
-						Modifier.weight(1f).fillMaxWidth().padding(top = 2.dp),
+						Modifier.weight(1f).fillMaxWidth(),
 						window,
 						onOpenTutorialCatalog = { openTutorialCatalog() },
 						onStartTutorial = { startInteractiveTutorial(it) },
@@ -860,13 +861,10 @@ private fun StatusBar(
 				)
 			}
 
-			DropdownMenu(
+			AppDropdownMenu(
 				expanded = showZoomMenu,
 				onDismissRequest = { showZoomMenu = false },
-				modifier = Modifier
-					.background(colors.panelElevated)
-					.border(BorderStroke(1.dp, colors.border))
-					.widthIn(min = 210.dp, max = 280.dp),
+				modifier = Modifier.widthIn(min = 210.dp, max = 280.dp),
 			) {
 				AppMenuHeader(tr("menu.view.category.zoom"))
 				AppMenuItem(
