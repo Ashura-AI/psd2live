@@ -170,6 +170,10 @@ class InteriorHandlesTest {
 		// A mesh drawn with no area left names no raster point, rather than failing the hover or press.
 		assertNull(map.toRaster(FloatArray(raster.size) { 7f }, 7f, 7f))
 		assertNull(InteriorCanvasMap(FloatArray(raster.size), intArrayOf(0, 1, 2, 0, 2, 3)).bind(InteriorPoint(1f, 1f)))
+		assertTrue(map.hasArea())
+		assertFalse(InteriorCanvasMap(FloatArray(raster.size), intArrayOf(0, 1, 2, 0, 2, 3)).hasArea())
+		// One flat triangle does not make the mesh unusable when another spans an area.
+		assertTrue(InteriorCanvasMap(floatArrayOf(0f, 0f, 1f, 0f, 2f, 0f, 0f, 3f), intArrayOf(0, 1, 2, 0, 1, 3)).hasArea())
 	}
 
 	@Test

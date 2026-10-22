@@ -90,8 +90,9 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 	 */
 	fun scene(): Scene? {
 		val state = editor.state
+		// Everything [CanvasEditor.target] reads: hiding or locking the mesh takes its handles away.
 		val key = listOf(state.previewModel, editor.preview, state.selectedLayerId, state.rigEdits.interiorEffects, state.parameterValues,
-			state.projectOpenGeneration, state.activeWorkspace.id)
+			state.projectOpenGeneration, state.activeWorkspace.id, state.effectiveVisibleLayerIds, state.deformerVisibility)
 		if (key != sceneKey) {
 			sceneKey = key
 			sceneValue = buildScene()
@@ -408,7 +409,9 @@ internal class InteriorCanvasTool(private val editor: CanvasEditor) {
 				// Back to values already saved (a commit that has landed since the press): nothing is unsaved.
 				draft.settle(saved)
 			}
+			// The audition shows what the draft holds now: the saved recipe, or the values not yet committed it went back to.
 			editor.viewModel.interior.dropDraftPreview(saved)
+			if (draft.dirty) editor.viewModel.interior.previewLater(d.scene.target, true, draft)
 			return true
 		}
 		if (drawing.isNotEmpty()) {

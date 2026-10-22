@@ -281,6 +281,12 @@ internal class InteriorCanvasMap(val raster: FloatArray, val indices: IntArray) 
 
 	val vertexCount get() = raster.size / 2
 
+	/** Whether any triangle spans an area in raster pixels, so a point can be bound at all. */
+	fun hasArea(): Boolean = (indices.indices step 3).any { t ->
+		val a = indices[t] * 2; val b = indices[t + 1] * 2; val c = indices[t + 2] * 2
+		abs((raster[b] - raster[a]) * (raster[c + 1] - raster[a + 1]) - (raster[b + 1] - raster[a + 1]) * (raster[c] - raster[a])) > 1e-6f
+	}
+
 	/** Where [p] sits in the mesh, for placing it over other positions of its vertices; null on a mesh with no area. */
 	fun bind(p: InteriorPoint): DeformPathPoint? = runCatching { DeformPathTools.bind(raster, indices, p.x, p.y) }.getOrNull()
 
@@ -309,7 +315,7 @@ internal class InteriorCanvasMap(val raster: FloatArray, val indices: IntArray) 
 			}
 			if (mesh.indices.isEmpty()) return null
 			// A mesh whose texture coordinates span no area cannot carry a raster point anywhere.
-			return InteriorCanvasMap(xy, mesh.indices).takeIf { it.bind(InteriorPoint(xy[0], xy[1])) != null }
+			return InteriorCanvasMap(xy, mesh.indices).takeIf { it.hasArea() }
 		}
 	}
 }
