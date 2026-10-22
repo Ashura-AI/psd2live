@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.views
 
+import io.github.psd2live.ui.theme.Spacing
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -610,7 +611,7 @@ fun FrameWindowScope.PSD2LiveApp(
 					modifier = Modifier
 						.weight(1f)
 						.fillMaxWidth()
-						.padding(horizontal = 8.dp),
+						.padding(horizontal = Spacing.Gap),
 				) {
 					DockWorkspaceView(
 						state,

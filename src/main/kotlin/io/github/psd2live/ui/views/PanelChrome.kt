@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.views
 
+import io.github.psd2live.ui.theme.Corners
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
@@ -370,11 +371,11 @@ internal fun PanelToolButton(
 						hovered -> colors.controlHover
 						else -> colors.controlBackground
 					},
-					RoundedCornerShape(2.dp),
+					RoundedCornerShape(Corners.Control),
 				)
 				.border(
 					BorderStroke(1.dp, if (active) colors.accent else if (hovered && enabled) colors.borderHover else colors.border),
-					RoundedCornerShape(2.dp),
+					RoundedCornerShape(Corners.Control),
 				)
 				.hoverable(interaction)
 				.clickable(enabled = enabled, interactionSource = interaction, indication = null, onClick = onClick)
@@ -436,7 +437,7 @@ internal fun PanelToolSwitch(
 		Row(
 			modifier = Modifier
 				.height(PanelToolHeight)
-				.background(if (hovered && enabled) colors.controlHover else Color.Transparent, RoundedCornerShape(2.dp))
+				.background(if (hovered && enabled) colors.controlHover else Color.Transparent, RoundedCornerShape(Corners.Control))
 				.hoverable(interaction)
 				.clickable(enabled = enabled, interactionSource = interaction, indication = null) { onCheckedChange(!checked) }
 				.handCursor(enabled)

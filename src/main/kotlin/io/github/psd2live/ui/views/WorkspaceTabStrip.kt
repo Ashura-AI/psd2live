@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.views
 
+import io.github.psd2live.ui.theme.Corners
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -158,8 +159,8 @@ fun WorkspaceStrip(
 			modifier = Modifier
 				.weight(1f)
 				.fillMaxHeight()
-				.horizontalScroll(rememberScrollState())
-				.padding(start = 4.dp),
+				// The first tab lines up with the panels' edge below it.
+				.horizontalScroll(rememberScrollState()),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(chipSpacing),
 		) {
@@ -291,7 +292,7 @@ private fun PageChip(page: AppPage, isActive: Boolean, onSelect: () -> Unit, onC
 			modifier = Modifier
 				.padding(end = 2.dp)
 				.height(22.dp)
-				.clip(RoundedCornerShape(4.dp))
+				.clip(RoundedCornerShape(Corners.Control))
 				.background(when {
 					isActive -> colors.controlBackground
 					isHovered -> colors.controlHover.copy(alpha = 0.6f)
@@ -382,7 +383,7 @@ private fun WorkspaceChip(
 		Row(
 			modifier = Modifier
 				.height(22.dp)
-				.clip(RoundedCornerShape(4.dp))
+				.clip(RoundedCornerShape(Corners.Control))
 				.background(bg)
 				.handCursor()
 				.onPointerEvent(PointerEventType.Press, pass = PointerEventPass.Initial) { event ->
@@ -534,7 +535,7 @@ internal fun TabStripButton(
 	Box(
 		modifier = Modifier
 			.height(22.dp)
-			.clip(RoundedCornerShape(4.dp))
+			.clip(RoundedCornerShape(Corners.Control))
 			.background(if (isHovered) colors.controlHover.copy(alpha = 0.6f) else Color.Transparent)
 			.handCursor()
 			.clickable(interactionSource = interactionSource, indication = null) { onClick() }

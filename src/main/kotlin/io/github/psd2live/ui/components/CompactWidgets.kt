@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.components
 
+import io.github.psd2live.ui.theme.Corners
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -827,8 +828,8 @@ fun CompactButton(
 	Box(
 		modifier = modifier
 			.height(height)
-			.background(bgColor, RoundedCornerShape(2.dp))
-			.border(BorderStroke(1.dp, borderColor), RoundedCornerShape(2.dp))
+			.background(bgColor, RoundedCornerShape(Corners.Control))
+			.border(BorderStroke(1.dp, borderColor), RoundedCornerShape(Corners.Control))
 			.hoverable(interactionSource)
 			.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) { onClick() }
 			.handCursor(enabled)
@@ -886,8 +887,8 @@ fun CompactIconButton(
 		Box(
 			modifier = (if (tooltip.isNullOrBlank()) modifier else Modifier)
 				.size(size)
-				.background(bgColor, RoundedCornerShape(2.dp))
-				.border(BorderStroke(1.dp, if (isHovered && enabled) colors.borderHover else colors.border), RoundedCornerShape(2.dp))
+				.background(bgColor, RoundedCornerShape(Corners.Control))
+				.border(BorderStroke(1.dp, if (isHovered && enabled) colors.borderHover else colors.border), RoundedCornerShape(Corners.Control))
 				.hoverable(interactionSource)
 				.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) { onClick() }
 				.handCursor(enabled),
@@ -902,7 +903,7 @@ fun CompactIconButton(
 			tooltip = {
 				Surface(
 					color = colors.panelElevated,
-					shape = RoundedCornerShape(3.dp),
+					shape = RoundedCornerShape(Corners.Control),
 					border = BorderStroke(1.dp, colors.border),
 					elevation = 4.dp,
 				) {
@@ -1004,8 +1005,8 @@ fun CompactTextField(
 					editorRegions.pressedInside = true
 				},
 			)
-			.background(colors.inputBackground, RoundedCornerShape(2.dp))
-			.border(BorderStroke(1.dp, if (isHovered && enabled) colors.borderHover else colors.border), RoundedCornerShape(2.dp))
+			.background(colors.inputBackground, RoundedCornerShape(Corners.Control))
+			.border(BorderStroke(1.dp, if (isHovered && enabled) colors.borderHover else colors.border), RoundedCornerShape(Corners.Control))
 			.padding(horizontal = 6.dp)
 			.onFocusChanged { focus ->
 				if (focus.isFocused) {
@@ -1105,8 +1106,8 @@ fun CompactNumberSpinner(
 	Row(
 		modifier = modifier
 			.height(height)
-			.background(colors.inputBackground, RoundedCornerShape(2.dp))
-			.border(BorderStroke(1.dp, colors.border), RoundedCornerShape(2.dp)),
+			.background(colors.inputBackground, RoundedCornerShape(Corners.Control))
+			.border(BorderStroke(1.dp, colors.border), RoundedCornerShape(Corners.Control)),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		BasicTextField(
@@ -1381,8 +1382,8 @@ fun CompactToggleChip(
 		Box(
 			modifier = (if (tooltip.isNullOrBlank()) modifier else Modifier)
 				.height(height)
-				.background(bgColor, RoundedCornerShape(2.dp))
-				.border(BorderStroke(1.dp, borderColor), RoundedCornerShape(2.dp))
+				.background(bgColor, RoundedCornerShape(Corners.Control))
+				.border(BorderStroke(1.dp, borderColor), RoundedCornerShape(Corners.Control))
 				.hoverable(interactionSource)
 				.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) { onToggle() }
 				.handCursor(enabled)
@@ -1419,7 +1420,7 @@ fun CompactToggleChip(
 			tooltip = {
 				Surface(
 					color = colors.panelElevated,
-					shape = RoundedCornerShape(2.dp),
+					shape = RoundedCornerShape(Corners.Control),
 					border = BorderStroke(1.dp, colors.border),
 					elevation = 4.dp,
 				) {
@@ -1514,8 +1515,8 @@ fun <T> CompactDropdown(
 			modifier = Modifier
 				.height(height)
 				.fillMaxWidth()
-				.background(colors.inputBackground, RoundedCornerShape(2.dp))
-				.border(BorderStroke(1.dp, colors.border), RoundedCornerShape(2.dp))
+				.background(colors.inputBackground, RoundedCornerShape(Corners.Control))
+				.border(BorderStroke(1.dp, colors.border), RoundedCornerShape(Corners.Control))
 				.handCursor(enabled)
 				.clickable(enabled = enabled) { expanded = true }
 				.padding(horizontal = 6.dp),

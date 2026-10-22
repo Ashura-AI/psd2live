@@ -1,5 +1,6 @@
 package io.github.psd2live.ui.views
 
+import io.github.psd2live.ui.theme.Corners
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -141,7 +142,7 @@ internal fun PageNavItem(
 				drawContent()
 				drawRect(if (enabled) gutter else gutter.copy(alpha = 0.45f), size = Size(3.dp.toPx(), size.height))
 			})
-			.then(if (edgeToEdge) Modifier else Modifier.padding(horizontal = 4.dp).clip(RoundedCornerShape(3.dp)))
+			.then(if (edgeToEdge) Modifier else Modifier.padding(horizontal = 6.dp).clip(RoundedCornerShape(Corners.Control)))
 			.background(when {
 				// A row with a gutter is selected and hovered in washes of the gutter's own colour, hover the paler.
 				selected -> gutter?.copy(alpha = 0.18f) ?: colors.selection

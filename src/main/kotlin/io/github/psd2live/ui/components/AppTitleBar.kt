@@ -257,8 +257,8 @@ fun AppTitleBar(
 		modifier = modifier
 			.fillMaxWidth()
 			.height(32.dp)
-			.background(colors.panelElevated)
-			.border(BorderStroke(1.dp, colors.divider))
+			// The bar is the window's backdrop, like the gaps between the panels below it.
+			.background(colors.windowBackground)
 			.then(if (nativeTitleBar == null) Modifier else Modifier
 				.onGloballyPositioned { bar ->
 					// The runtime takes the height in the window's units: pixels over the display scale.
