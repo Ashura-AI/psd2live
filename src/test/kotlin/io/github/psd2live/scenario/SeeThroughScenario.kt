@@ -73,6 +73,9 @@ class SeeThroughScenario {
 			expect(name, failure.code == "generated_copy" && failure.details["original"]?.jsonPrimitive?.content == brow) { "refused as ${failure.toJson()}" }
 		}
 
+		// Free text equal to a copy's id is no reference to it.
+		edit("name a parameter like the copy", "parameter_create", req("parameter_id" to "ParamCopyName", "name" to copy, "min" to 0, "max" to 1))
+
 		// A key names every axis the brow is bound on: the generated ones at their defaults.
 		fun key() = (drawable(brow).geometryGrid?.axes.orEmpty().map { it.parameterId.raw } - "ParamFrown")
 			.associateWith { id -> puppet.parameters.single { it.id.raw == id }.default } + ("ParamFrown" to 1f)
@@ -200,6 +203,18 @@ class SeeThroughScenario {
 		assertEquals(null, previewed.geometryGrid)
 		assertEquals(0.25f * settings.opacity, previewed.opacity)
 		assertTrue(SeeThroughLayers.refresh(puppet, now.model) === puppet)
+		// A whole rebuilt model (a swing or interior trial) already made its copies: it comes back as the same instance,
+		// which is how those trials recognise their preview to clear it.
+		val rebuilt = kotlinx.coroutines.runBlocking { io.github.psd2live.application.WorkspacePreviewBuilder().build(now.document) }.rig.puppet
+		val trial = with(rebuilt, brow) { it.copy(opacity = 0.1f) }
+		assertTrue(SeeThroughLayers.refresh(trial, now.model) === trial, "a rebuilt preview was remade")
+		// A preview moving the bangs or the brow re-places the copy as the commit would.
+		val hairOrder = puppet.drawables.single { it.id.raw == hair }.drawOrder
+		val raised = SeeThroughLayers.refresh(with(puppet, hair) { it.copy(drawOrder = 995f) }, now.model)
+		assertTrue(raised.drawables.single { it.id == taken }.drawOrder > 995f, "the copy stays under the raised bangs")
+		val above = SeeThroughLayers.refresh(with(puppet, brow) { it.copy(drawOrder = hairOrder + 1f) }, now.model)
+		assertTrue(above.drawables.none { it.id == taken } && above.parts.none { part -> part.children.any { it == OrgChild.Drawable(taken) } },
+			"a copy of a brow drawn over its bangs is still previewed")
 
 		// The project report lists what could not be made.
 		val report = io.github.psd2live.core.quality.GeneratedOverrideQuality.report(emptyList(), emptyList(), noBrow.notes.map { it.original to it.reason.wire })

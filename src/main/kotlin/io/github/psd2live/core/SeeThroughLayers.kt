@@ -113,16 +113,9 @@ object SeeThroughLayers {
 			val original = byId[candidate.original] ?: run { notes += Note(candidate.original, DropReason.ORIGINAL_MISSING); continue }
 			val id = copyId(original.id)
 			if (id.raw in byId) { notes += Note(candidate.original, DropReason.ID_TAKEN); continue }
-			val present = candidate.bangs.mapNotNull(byId::get)
-			if (present.isEmpty()) { notes += Note(candidate.original, DropReason.MASKS_MISSING); continue }
-			val above = highestOrder(original)
-			val masks = present.filter { it.id in shown && lowestOrder(it) > above }
-			if (masks.isEmpty()) continue
-			val top = masks.maxOf(::highestOrder)
-			val skipped = masks.mapTo(HashSet()) { it.id } + original.id
-			val next = model.drawables.asSequence().filter { it.id !in skipped }.map(::lowestOrder).filter { it > top }.minOrNull()
-			val order = (top + if (next == null) halfStep else minOf(halfStep, (next - top) / 2f)).coerceIn(0f, 1000f)
-			made += copyOf(original, id, masks.map { it.id }, order, settings.opacity) to original
+			if (candidate.bangs.none { it in byId }) { notes += Note(candidate.original, DropReason.MASKS_MISSING); continue }
+			val (masks, order) = place(model, byId, shown, original, candidate.bangs, halfStep) ?: continue
+			made += copyOf(original, id, masks, order, settings.opacity) to original
 		}
 		if (made.isEmpty()) return Result(model, emptyMap(), notes)
 		val before = made.groupBy({ it.second.id }, { it.first.id })
@@ -136,24 +129,53 @@ object SeeThroughLayers {
 	}
 
 	/**
-	 * [model] - a preview of an uncommitted edit of [shown]'s rig - with each copy of [shown] made again from its
-	 * original as [model] has it, keeping the copy's masks and draw order: what the commit will show. A copy whose
-	 * original is the same instance as in [shown] is left as it is. The one entry for every canvas preview.
+	 * The masks of a copy of [original] among [bangs] - those present, shown and drawn above it at every keyform - and
+	 * its draw order: [halfStep] above the highest of them, below the next mesh other than [copies]. Null when no bang
+	 * qualifies.
+	 */
+	private fun place(model: PuppetModel, byId: Map<String, Drawable>, shown: Set<DrawableId>, original: Drawable, bangs: List<String>,
+	                  halfStep: Float, copies: Set<String> = emptySet()): Pair<List<DrawableId>, Float>? {
+		val above = highestOrder(original)
+		val masks = bangs.mapNotNull(byId::get).filter { it.id in shown && lowestOrder(it) > above }
+		if (masks.isEmpty()) return null
+		val top = masks.maxOf(::highestOrder)
+		val skipped = masks.mapTo(HashSet()) { it.id } + original.id
+		val next = model.drawables.asSequence().filter { it.id !in skipped && it.id.raw !in copies }.map(::lowestOrder).filter { it > top }.minOrNull()
+		return masks.map { it.id } to (top + if (next == null) halfStep else minOf(halfStep, (next - top) / 2f)).coerceIn(0f, 1000f)
+	}
+
+	/**
+	 * [model] - a preview of an uncommitted edit of [shown]'s rig - with each copy [shown] made, and [model] carries over
+	 * unchanged, made again where its original or bangs changed: masks, draw order and look as the commit will make them;
+	 * one whose bangs no longer qualify is left out. A copy [model] holds as another instance than [shown] was made
+	 * with the model (a whole rebuilt preview) and stays as it is, so such a preview comes back as the same instance.
+	 * The one entry for every canvas and inspector preview.
 	 */
 	fun refresh(model: PuppetModel, shown: RigPreviewModel?): PuppetModel {
 		val copies = shown?.rig?.seeThroughCopies.orEmpty()
 		if (copies.isEmpty() || model === shown?.rig?.puppet) return model
 		val before = shown!!.rig.puppet.drawables.associateBy { it.id.raw }
 		val byId = model.drawables.associateBy { it.id.raw }
-		val alpha = Settings.of(shown.config).opacity
+		val settings = Settings.of(shown.config)
+		val bangs = shown.rig.seeThrough.orEmpty().associate { it.original to it.bangs }
+		val visible by lazy { model.visibleDrawableIds() }
+		val halfStep = (settings.drawOrderStep / 2f).coerceAtLeast(0.5f)
 		var changed = false
-		val drawables = model.drawables.map { drawable ->
-			val original = copies[drawable.id.raw]?.let(byId::get) ?: return@map drawable
-			if (original === before[original.id.raw]) return@map drawable
+		val drawables = model.drawables.mapNotNull { drawable ->
+			val originalId = copies[drawable.id.raw] ?: return@mapNotNull drawable
+			if (drawable !== before[drawable.id.raw]) return@mapNotNull drawable
+			val original = byId[originalId] ?: run { changed = true; return@mapNotNull null }
+			val near = bangs[originalId] ?: drawable.maskedBy.map { it.raw }
+			if (original === before[originalId] && near.all { byId[it] === before[it] }) return@mapNotNull drawable
 			changed = true
-			copyOf(original, drawable.id, drawable.maskedBy, drawable.drawOrder, alpha)
+			val (masks, order) = place(model, byId, visible, original, near, halfStep, copies.keys) ?: return@mapNotNull null
+			copyOf(original, drawable.id, masks, order, settings.opacity)
 		}
-		return if (changed) model.copy(drawables = drawables) else model
+		if (!changed) return model
+		val kept = drawables.mapTo(HashSet()) { it.id }
+		fun live(children: List<OrgChild>) = children.filter { it !is OrgChild.Drawable || it.id in kept }
+		return model.copy(drawables = drawables, parts = model.parts.map { it.copy(children = live(it.children)) },
+			rootChildren = live(model.rootChildren)).withDerivedRenderRoot()
 	}
 
 	private fun copyOf(original: Drawable, id: DrawableId, masks: List<DrawableId>, order: Float, alpha: Float): Drawable {

@@ -299,18 +299,22 @@ internal object WorkspaceDocumentEdits {
         return document.copy(rigEdits = overlay)
     }
 
+    /** The request fields that name a mesh to act on: the split's reference fields, an edited object's id, its masks and parent. */
+    private val copyReferenceFields = WorkspaceArtPrimitives.referenceFields + setOf("id", "ids", "masked_by", "mask_ids")
+
     /**
-     * Refuses [edits] naming a copy over the bangs the shown rig holds - as an id, or as `<kind>:<id>` - with
-     * [WorkspaceGeneratedCopyEdit]: the authored rig has no such mesh, and the finished one would make it anew.
+     * Refuses [edits] whose reference fields ([copyReferenceFields]) name a copy over the bangs the shown rig holds - as
+     * an id, or as `<kind>:<id>` - with [WorkspaceGeneratedCopyEdit]: the authored rig has no such mesh, and the finished
+     * one would make it anew. Names, search text and other free strings are not references.
      */
     private fun refuseCopies(model: RigPreviewModel, edits: JsonElement) {
         val copies = model.rig.seeThroughCopies
         if (copies.isEmpty()) return
-        fun visit(element: JsonElement) {
+        fun visit(element: JsonElement, reference: Boolean) {
             when (element) {
-                is JsonObject -> element.values.forEach(::visit)
-                is JsonArray -> element.forEach(::visit)
-                is JsonPrimitive -> if (element.isString) {
+                is JsonObject -> element.forEach { (key, child) -> visit(child, key in copyReferenceFields) }
+                is JsonArray -> element.forEach { visit(it, reference) }
+                is JsonPrimitive -> if (reference && element.isString) {
                     val text = element.content
                     val id = if (text in copies) text else text.substringAfter(':', "").takeIf { it in copies }
                     if (id != null) throw WorkspaceGeneratedCopyEdit(id, copies.getValue(id))
@@ -318,7 +322,7 @@ internal object WorkspaceDocumentEdits {
                 else -> Unit
             }
         }
-        visit(edits)
+        visit(edits, false)
     }
 
     fun paint(document: WorkspaceDocument, model: RigPreviewModel, request: JsonObject,

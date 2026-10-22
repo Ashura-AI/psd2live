@@ -107,7 +107,7 @@ internal object WorkspaceArtPrimitives {
         ArtPrimitiveJournal.replacementDrawables(overlay) + ArtPrimitiveJournal.replacementLayers(overlay)
 
     /** Request fields that name an existing layer or object; new ids and display names are not checked. */
-    private val referenceFields = setOf("layer_id", "layer_ids", "target", "targets", "destination", "source_id", "middle_ids",
+    internal val referenceFields = setOf("layer_id", "layer_ids", "target", "targets", "destination", "source_id", "middle_ids",
         "mesh_a", "mesh_b", "meshes", "mesh_id", "mesh_ids", "drawable_id", "drawable_ids", "object_id", "object_ids")
 
     /** Every reference field in [request] naming a superseded layer or mesh, alone or as `kind:id`. */

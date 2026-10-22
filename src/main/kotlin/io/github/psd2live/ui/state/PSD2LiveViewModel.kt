@@ -2120,7 +2120,9 @@ class PSD2LiveViewModel : AutoCloseable {
         try {
             val document = io.github.psd2live.application.WorkspaceWarpControlEdits.apply(edit, field.document, field.model)
             val records = document.rigEdits.authoringJournal.drop(field.document.rigEdits.authoringJournal.size)
-            val puppet = records.fold(field.model.rig.puppet) { model, record -> io.github.psd2live.core.RigAuthoringJournal.apply(model, record) }
+            // The copies over the bangs follow the edited warps' meshes before the commit, as on the canvas.
+            val puppet = io.github.psd2live.core.SeeThroughLayers.refresh(
+                records.fold(field.model.rig.puppet) { model, record -> io.github.psd2live.core.RigAuthoringJournal.apply(model, record) }, field.model)
             val preview = field.model.copy(rig = field.model.rig.copy(puppet = puppet), config = field.model.config.copy(rigEdits = document.rigEdits))
             field.operation = edit; field.preview = preview
             updateState { it.copy(previewModel = preview, previewModelDirty = true, projectDirty = true) }
@@ -2208,7 +2210,8 @@ class PSD2LiveViewModel : AutoCloseable {
     /** Applies the pending edit to the puppet in place, which is what makes the field feel immediate. */
     private fun patchPreview(edit: kotlinx.serialization.json.JsonObject) {
         val current = _state.value.previewModel ?: return
-        val patched = runCatching { RigStructureEdits.apply(current.rig.puppet, listOf(edit)) }.getOrNull() ?: return
+        val patched = runCatching { RigStructureEdits.apply(current.rig.puppet, listOf(edit)) }.getOrNull()
+            ?.let { io.github.psd2live.core.SeeThroughLayers.refresh(it, current) } ?: return
         updateState {
             it.copy(
                 previewModel = it.previewModel?.copy(rig = it.previewModel.rig.copy(puppet = patched)) ?: current,

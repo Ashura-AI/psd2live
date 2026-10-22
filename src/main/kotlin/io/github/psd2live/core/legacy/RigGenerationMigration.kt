@@ -29,7 +29,7 @@ internal object RigGenerationMigration {
         var preceding = if (full.rigEdits.importedCmo3 == null)
             pipeline.buildPreview(source, SeeThroughLayers.withoutCopies(full), segment(progress, 0.0, 0.1)) else {
             progress.update("Preparing imported generation textures", 0.0)
-            Cmo3ModelImport.paintingPreview(pipeline, source, full).also { progress.update("Prepared imported generation textures", 0.1) }
+            Cmo3ModelImport.paintingPreview(pipeline, source, SeeThroughLayers.withoutCopies(full)).also { progress.update("Prepared imported generation textures", 0.1) }
         }
         var activationOverlay = full.rigEdits
         val inputs = meshInput(source, requested).layers.associateBy { it.id.raw }
@@ -59,7 +59,7 @@ internal object RigGenerationMigration {
         val activated = full.copy(rigEdits = activationOverlay)
         if (activationOverlay != full.rigEdits) preceding = if (full.rigEdits.importedCmo3 == null)
             pipeline.buildPreview(source, SeeThroughLayers.withoutCopies(activated), ProgressListener { message, _ -> progress.update(message, 0.1) }) else
-            Cmo3ModelImport.paintingPreview(pipeline, source, activated)
+            Cmo3ModelImport.paintingPreview(pipeline, source, SeeThroughLayers.withoutCopies(activated))
         val desiredLayers = MouthLipLayers.prepare(CharacterAnalyzer.analyze(meshInput(source, requested),
             requested.copy(deletedLayerIds = emptySet())), requested.copy(deletedLayerIds = emptySet())).layers.associateBy { it.source.id.raw }
         val oldLayers = current.analysis.layers.associateBy { it.source.id.raw }
@@ -80,7 +80,7 @@ internal object RigGenerationMigration {
         // relative to the migrated base; taking their already materialized forms here would bake twice.
         val withoutLateForms = remeshed.copy(rigEdits = remeshed.rigEdits.copy(simEdits = emptyList(), swingEdits = emptyList()))
         val authored = if (full.rigEdits.importedCmo3 == null) pipeline.buildPreview(source, SeeThroughLayers.withoutCopies(withoutLateForms), segment(progress, 0.4, 0.5))
-            else Cmo3ModelImport.paintingPreview(pipeline, source, withoutLateForms).also { progress.update("Prepared authored generation bindings", 0.5) }
+            else Cmo3ModelImport.paintingPreview(pipeline, source, SeeThroughLayers.withoutCopies(withoutLateForms)).also { progress.update("Prepared authored generation bindings", 0.5) }
         val stable = remeshed.rigEdits.splitDrawableIds + authored.rig.layerIdByDrawableId.entries.associate { it.value to it.key }
         fun generated(input: SourceArt, config: PipelineConfig, start: Double, end: Double): BuiltRig =
             generatedRig(pipeline, input, config, stable, segment(progress, start, end))
