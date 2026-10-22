@@ -336,9 +336,12 @@ internal object WorkspaceDocumentEdits {
             requireNotNull(document.rigEdits.skeleton) { "No skeleton to delete" }
             return document.copy(rigEdits = document.rigEdits.copy(skeleton = null))
         }
-        val spec = WorkspaceSkeletonMotionEdits.skeleton(document.rigEdits.skeleton, request) { SkeletonAutoBuilder.build(model.analysis, model.rig) }
+        // The automatic armature binds only what the bake can: meshes under the IDs the generated rig gives them.
+        val spec = WorkspaceSkeletonMotionEdits.skeleton(document.rigEdits.skeleton, request) {
+            SkeletonAutoBuilder.build(model.copy(config = model.config.copy(rigEdits = document.rigEdits)))
+        }
         SkeletonDraftEdits.validated(spec, model.rig.puppet.drawables.mapTo(HashSet()) { it.id.raw })
-        WorkspaceObjectEdits.refuseConvertedBindings(spec, document.rigEdits)
+        WorkspaceObjectEdits.refuseUnbakedBindings(spec, document.rigEdits.skeleton, document.rigEdits, model.rig)
         return document.copy(rigEdits = document.rigEdits.copy(skeleton = spec))
     }
 

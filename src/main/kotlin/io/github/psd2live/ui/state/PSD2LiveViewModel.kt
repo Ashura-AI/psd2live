@@ -972,9 +972,9 @@ class PSD2LiveViewModel : AutoCloseable {
         val current = _state.value
         val model = current.previewModel ?: return null
         val layers = current.selectedLayerIds.ifEmpty { setOfNotNull(current.selectedLayerId) }
-        val meshes = model.rig.layerIdByDrawableId.filter { (drawable, layer) ->
-            layer in layers && model.rig.puppet.drawables.any { it.id.raw == drawable && it.mesh != null }
-        }.keys.sorted()
+        // The selected layers' own meshes, and pasted copies selected as themselves.
+        val meshes = model.rig.puppet.drawables.filter { d -> d.mesh != null && (model.rig.ownLayerIdByDrawableId[d.id.raw] ?: d.id.raw) in layers }
+            .map { it.id.raw }.sorted()
         if (meshes.isEmpty()) return null
         val id = io.github.psd2live.core.sim.SimAuthoring.nextId(current.rigEdits, meshes)
         val available = model.rig.puppet.parameters.mapTo(HashSet()) { it.id.raw }

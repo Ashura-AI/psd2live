@@ -1735,13 +1735,13 @@ fun CanvasViewportComposable(
 							descendantLayerIds(model, selectedDeformerId, canvasState.hierarchyParentOverrides)
 						} else emptySet()
 						model.rig.puppet.deformPaths.filter { path ->
-							val layerId = model.rig.layerIdByDrawableId[path.drawableId.raw]
+							val layerId = model.rig.ownLayerIdByDrawableId[path.drawableId.raw] ?: path.drawableId.raw
 							(selectedLayerId != null && layerId == selectedLayerId) ||
 								(selectedDeformerId != null && layerId != null && layerId in selectedLayerDescendants)
 						}.mapTo(HashSet()) { it.id }
 					}
 					val hoveredPathIds: Set<String> = if (!pathsShown) emptySet() else model.rig.puppet.deformPaths.filter { path ->
-						hoveredLayerId != null && model.rig.layerIdByDrawableId[path.drawableId.raw] == hoveredLayerId
+						hoveredLayerId != null && (model.rig.ownLayerIdByDrawableId[path.drawableId.raw] ?: path.drawableId.raw) == hoveredLayerId
 					}.mapTo(HashSet()) { it.id }
 					val pathIds = selectedPathIds + hoveredPathIds
 					val gpuWarpGuides = gpuReady

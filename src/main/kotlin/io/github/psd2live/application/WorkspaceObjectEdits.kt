@@ -226,6 +226,11 @@ internal object WorkspaceObjectEdits {
 					?.let { return "Mesh $id has the interior effect ${it.id}; remove it before converting its ID" }
 			}
 			"parameter" -> {
+				// What a deleted parameter left under the new ID would be overwritten by the converted one's.
+				overlay.motionClips.firstOrNull { clip -> clip.curves.any { it.parameterId == rename.to } }
+					?.let { return "Motion ${it.id} still has a curve on the deleted parameter ${rename.to}; remove it before converting $id to that ID" }
+				overlay.expressions.orEmpty().firstOrNull { expression -> expression.entries.any { it.parameterId == rename.to } }
+					?.let { return "Expression ${it.id} still has an entry on the deleted parameter ${rename.to}; remove it before converting $id to that ID" }
 				overlay.simEdits.firstOrNull { sim -> sim.inputs.any { it.parameter == id } || id in sim.inputRanges || id in sim.staticInputs.orEmpty() ||
 					id in sim.forcedInputs || id in sim.outputs || id in sim.outputNames }
 					?.let { return "Parameter $id drives the simulation ${it.id}; remove it from the simulation before converting its ID" }
@@ -263,15 +268,16 @@ internal object WorkspaceObjectEdits {
 	}
 
 	/**
-	 * Refuses [spec] binding or weighting a mesh whose ID the journal converted: the skeleton bakes into the generated
-	 * rig before the journal replays, where that mesh still has its generated ID. Converting a bound mesh is refused
-	 * the other way round ([refusal]).
+	 * Refuses [spec] binding or weighting one of the meshes the bake cannot bind ([SkeletonAutoBuilder.unbaked]) that [previous] did not already: the bake would
+	 * drop the binding without a word. One an older document already holds stays, so its other edits still apply.
 	 */
-	fun refuseConvertedBindings(spec: SkeletonSpec, overlay: RigEditOverlay) {
-		val converted = overlay.idRenames.of("mesh").values.toSet()
-		if (converted.isEmpty()) return
-		(spec.bones.flatMap { it.drawableIds } + spec.manualWeights.keys).firstOrNull { it in converted }?.let {
-			throw IllegalArgumentException("Mesh $it had its ID converted; the skeleton bakes before ID conversions and cannot bind it")
+	fun refuseUnbakedBindings(spec: SkeletonSpec, previous: SkeletonSpec?, overlay: RigEditOverlay, rig: BuiltRig) {
+		fun bound(s: SkeletonSpec?) = s?.let { it.bones.flatMap { b -> b.drawableIds } + it.manualWeights.keys }.orEmpty().toSet()
+		val added = bound(spec) - bound(previous)
+		if (added.isEmpty()) return
+		val unbaked = SkeletonAutoBuilder.unbaked(overlay, rig)
+		added.firstOrNull { it in unbaked }?.let {
+			throw IllegalArgumentException("Mesh $it was converted or made after the generated rig; the skeleton bakes before the journal and cannot bind it")
 		}
 	}
 

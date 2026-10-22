@@ -470,7 +470,7 @@ internal class WorkspaceReadSession(
 
     override fun proposeSkeleton(): SkeletonSpec {
         val preview = capture().model
-        return SkeletonAutoBuilder.build(preview.analysis, preview.rig)
+        return SkeletonAutoBuilder.build(preview)
     }
 
     override fun inspectRigGeometry(arguments: JsonObject): JsonObject {

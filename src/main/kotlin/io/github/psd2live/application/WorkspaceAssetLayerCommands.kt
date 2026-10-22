@@ -142,6 +142,7 @@ internal fun WorkspaceAddLayerRequest.documentOperation() = WorkspaceDocumentOpe
 internal object WorkspaceLayerPlacementGuard {
     fun check(document: WorkspaceDocument, model: RigPreviewModel, id: String) {
         val puppet: PuppetModel = model.rig.puppet
+        // Pasted copies too: they sample the layer's texture, which a new placement moves under them.
         val meshes = puppet.drawables.filter { model.rig.layerIdByDrawableId[it.id.raw] == id }.mapTo(HashSet()) { it.id.raw }
         require(meshes.isNotEmpty() && id !in document.deletedLayerIds) { "Layer mesh not found" }
         val edits = document.rigEdits

@@ -436,8 +436,10 @@ internal object RigCanvasSupport {
 			.mapNotNull { drawable ->
 				val bounds = drawableBounds[drawable.id.raw] ?: return@mapNotNull null
 				if (canvasX !in bounds.left..bounds.right || canvasY !in bounds.top..bounds.bottom) return@mapNotNull null
-				val layerId = model.rig.layerIdByDrawableId[drawable.id.raw] ?: return@mapNotNull null
-				if (visibleLayerIds != null && layerId !in visibleLayerIds) return@mapNotNull null
+				val textureLayer = model.rig.layerIdByDrawableId[drawable.id.raw] ?: return@mapNotNull null
+				if (visibleLayerIds != null && textureLayer !in visibleLayerIds) return@mapNotNull null
+				// A pasted copy shows its original's layer but is picked as itself.
+				val layerId = model.rig.ownLayerIdByDrawableId[drawable.id.raw] ?: drawable.id.raw
 
 				if (geometry != null) {
 					val mesh = drawable.mesh

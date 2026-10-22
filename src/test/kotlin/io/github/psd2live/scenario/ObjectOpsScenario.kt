@@ -103,11 +103,35 @@ class ObjectOpsScenario {
 		reopen()
 	}
 
-	/** The skeleton bakes before the journal: a mesh whose ID was converted cannot be bound afterwards either. */
-	@Test fun skeletonCannotBindAConvertedMesh() = Studio.run(temp, Characters.figure(physics = false)) {
+	/**
+	 * The skeleton bakes before the journal: the automatic armature leaves out a mesh whose ID was converted and a pasted
+	 * copy, and binding either by hand is refused.
+	 */
+	@Test fun skeletonLeavesOutConvertedMeshesAndPastedCopies() = Studio.run(temp, Characters.figure(physics = false)) {
 		edit("convert the right sleeve", WorkspaceObjectEdits.CONVERT_ID, convert("mesh:${mesh("sleeve_r")}" to "ArtMeshSleeveRight"))
-		val failure = refused("apply the proposed skeleton", "skeleton_auto", req())
-		expect("refused", failure.mentions("converted")) { "refused for another reason: ${failure.message}" }
+		edit("paste the left sleeve", WorkspaceObjectEdits.PASTE, req("sources" to listOf("mesh:${mesh("sleeve_l")}")))
+		val copy = pasted().single()
+		edit("apply the proposed skeleton", "skeleton_auto", req())
+		val bones = now.document.rigEdits.skeleton!!.bones
+		val bound = bones.flatMap { it.drawableIds }
+		expect("auto", "ArtMeshSleeveRight" !in bound && copy !in bound && mesh("sleeve_l") in bound) { "the armature binds $bound" }
+		val bone = bones.first { it.drawableIds.isNotEmpty() && !it.role.anchor }.id
+		for ((name, mesh) in listOf("bind the converted sleeve" to "ArtMeshSleeveRight", "bind the pasted sleeve" to copy)) {
+			val failure = refused(name, "skeleton_bind", req("drawable_id" to mesh, "bone_id" to bone))
+			expect(name, failure.mentions("converted or made after")) { "refused for another reason: ${failure.message}" }
+		}
+	}
+
+	/** The reference opacity preview changes the layer's own meshes, as the committed edit does; a pasted copy keeps its own. */
+	@Test fun referenceOpacityPreviewLeavesPastedCopies() = Studio.run(temp, Characters.head(physics = false)) {
+		val face = mesh("face")
+		edit("paste the face", WorkspaceObjectEdits.PASTE, req("sources" to listOf("mesh:$face")))
+		val copy = pasted().single()
+		val preview = io.github.psd2live.ui.state.ReferenceOpacityDraft(io.github.psd2live.ui.state.ReferenceTarget.Layer("face"), 0.3f).preview(now.model)
+		fun opacity(id: String) = preview.rig.puppet.drawables.single { it.id.raw == id }.opacity
+		expect("preview", opacity(face) == 0.3f && opacity(copy) == puppet.drawables.single { it.id.raw == copy }.opacity) {
+			"the face previews at ${opacity(face)}, the copy at ${opacity(copy)}"
+		}
 	}
 
 	/** A classification change regenerates the rig: a converted mesh merges with its generated self rather than doubling. */

@@ -78,6 +78,15 @@ class ObjectEditsCommandTest {
 				add(buildJsonObject { put("target", "mesh:ArtMeshEyeCopy"); put("id", eye.id.raw) })
 			} }), document, model)
 		}
+		// A curve a deleted parameter left under the new ID is reported, not overwritten.
+		val ghost = document.copy(rigEdits = document.rigEdits.copy(motionClips = document.rigEdits.motionClips +
+			MotionClip("m2", "Ghost", curves = listOf(MotionCurve("ParamGhost", listOf(MotionKey(0f, 0f)))))))
+		val leftover = assertFailsWith<IllegalArgumentException> {
+			WorkspaceDocumentEdits.apply(op(WorkspaceObjectEdits.CONVERT_ID, buildJsonObject { putJsonArray("renames") {
+				add(buildJsonObject { put("target", "parameter:ParamEyeBlink"); put("id", "ParamGhost") })
+			} }), ghost, model)
+		}
+		assertTrue("m2" in leftover.message.orEmpty())
 		// The saved document rebuilds to the same rig.
 		val rebuilt = WorkspacePreviewBuilder().build(document).rig.puppet
 		assertEquals(model.rig.puppet.drawables.map { it.id to it.name }, rebuilt.drawables.map { it.id to it.name })

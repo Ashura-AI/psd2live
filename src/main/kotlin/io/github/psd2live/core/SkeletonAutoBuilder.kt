@@ -1,5 +1,7 @@
 package io.github.psd2live.core
 
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import org.umamo.render.eval.CpuDeformationEvaluator
 import org.umamo.runtime.model.PuppetModel
 import java.util.PriorityQueue
@@ -69,7 +71,24 @@ object SkeletonAutoBuilder {
 	}
 
 	fun build(analysis: PipelineAnalysis, rig: BuiltRig): SkeletonSpec =
-		build(analysis, rig.puppet, rig.layerIdByDrawableId, canvasVertices(rig.puppet))
+		build(analysis, rig.puppet, rig.ownLayerIdByDrawableId, canvasVertices(rig.puppet))
+
+	/** The armature proposed for [model], binding only what the bake can ([unbaked]). */
+	fun build(model: RigPreviewModel): SkeletonSpec {
+		val unbaked = unbaked(model.config.rigEdits, model.rig)
+		val rig = model.rig
+		return build(model.analysis, rig.puppet, rig.ownLayerIdByDrawableId - unbaked, canvasVertices(rig.puppet))
+	}
+
+	/**
+	 * The meshes the skeleton cannot bind: it bakes into the generated rig before the journal replays, where a mesh whose
+	 * ID the journal converted still has its generated ID, and a mesh the journal made - a pasted copy, a mesh created
+	 * on the canvas - does not exist yet.
+	 */
+	fun unbaked(overlay: RigEditOverlay, rig: BuiltRig): Set<String> =
+		overlay.idRenames.of("mesh").values.toSet() + rig.copiedDrawableIds +
+			overlay.authoringJournal.filter { it["op"]?.jsonPrimitive?.contentOrNull == RasterMeshCreation.OP }
+				.mapNotNull { it["id"]?.jsonPrimitive?.contentOrNull }
 
 	internal fun canvasVertices(puppet: PuppetModel): Map<String, FloatArray> =
 		CpuDeformationEvaluator().evaluate(puppet.copy(glues = emptyList()), emptyMap()).worldPositions

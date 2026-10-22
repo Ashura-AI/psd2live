@@ -572,7 +572,7 @@ internal class CanvasEditor(
 		if (committedSkeleton != null) { onReady(); return }
 		val started = viewModel.uiState.value
 		val expected = viewModel.currentWorkspaceState() ?: return
-		val spec = state.previewModel?.let { io.github.psd2live.core.SkeletonAutoBuilder.build(it.analysis, it.rig) } ?: return
+		val spec = state.previewModel?.let { io.github.psd2live.core.SkeletonAutoBuilder.build(it) } ?: return
 		if (spec.bones.isEmpty()) { error = tr("skeleton.create.empty"); return }
 		skeletonCreating = true
 		viewModel.setSkeleton(spec.copy(enabled = true), expected) { failure ->

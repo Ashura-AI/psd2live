@@ -22,7 +22,8 @@ internal object MeshCoverage {
         val layer = model.analysis.source.layers.firstOrNull { it.id.raw == layerId } ?: return null
         val raster = layer.raster
         if (raster.width <= 0 || raster.height <= 0) return null
-        val drawables = model.rig.puppet.drawables.filter { model.rig.layerIdByDrawableId[it.id.raw] == layerId && it.mesh != null }
+        // The layer's own meshes: a pasted copy's outline is its own, not the layer's.
+        val drawables = model.rig.puppet.drawables.filter { model.rig.ownLayerIdByDrawableId[it.id.raw] == layerId && it.mesh != null }
         if (drawables.isEmpty()) return null
         val space = LayerSpace.of(layer)
         val step = max(1, ceil(max(raster.width, raster.height) / GRID.toDouble()).toInt())

@@ -73,7 +73,8 @@ internal object WorkspacePaintOverflow {
     /** [layerId]'s meshes as canvas triangles, three points of six floats each, where they sample its pixels at rest. */
     private fun triangles(model: RigPreviewModel, layerId: String): List<FloatArray> {
         val puppet = model.rig.puppet
-        return puppet.drawables.filter { model.rig.layerIdByDrawableId[it.id.raw] == layerId && it.mesh != null }.flatMap { drawable ->
+        // The layer's own meshes: a pasted copy samples the same pixels, but where it was put is its own.
+        return puppet.drawables.filter { model.rig.ownLayerIdByDrawableId[it.id.raw] == layerId && it.mesh != null }.flatMap { drawable ->
             val mesh = requireNotNull(drawable.mesh)
             val canvas = runCatching { RasterMeshJournal.TextureCoordinates(puppet, drawable).toCanvas(mesh.uvs) }.getOrNull() ?: return@flatMap emptyList()
             (0 until mesh.indices.size / 3).map { t ->
@@ -185,7 +186,7 @@ internal object WorkspacePaintOverflow {
             layerOverrides = document.layerOverrides + (id to (document.layerOverrides[original.id.raw]
                 ?: LayerClassificationOverride(io.github.psd2live.core.LayerType.PRESET, SemanticTag.UNKNOWN, Side.NONE))))
         val puppet = model.rig.puppet
-        val meshes = puppet.drawables.filter { model.rig.layerIdByDrawableId[it.id.raw] == original.id.raw }
+        val meshes = puppet.drawables.filter { model.rig.ownLayerIdByDrawableId[it.id.raw] == original.id.raw }
         val parent = meshes.firstNotNullOfOrNull { it.parentDeformerId?.raw }
         work.progress(0.6f, "Meshing the paint off the layer's meshes")
         val created = WorkspaceLayerInsertionEdits.materialize(candidate, model, setOf(id), parent, work::checkpoint)

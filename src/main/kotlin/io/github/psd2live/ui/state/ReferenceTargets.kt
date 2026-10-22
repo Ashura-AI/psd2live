@@ -14,7 +14,8 @@ import kotlinx.serialization.json.put
 data class ReferenceOpacityDraft(val target: ReferenceTarget, val opacity: Float) {
 	fun preview(model: RigPreviewModel): RigPreviewModel {
 		val layer = target as? ReferenceTarget.Layer ?: return model
-		val edits = model.rig.puppet.drawables.filter { model.rig.layerIdByDrawableId[it.id.raw] == layer.layerId }.map {
+		// The layer's own meshes, as the committed edit changes them: a pasted copy keeps its own opacity.
+		val edits = model.rig.puppet.drawables.filter { model.rig.ownLayerIdByDrawableId[it.id.raw] == layer.layerId }.map {
 			buildJsonObject { put("action", "static"); put("kind", "mesh"); put("id", it.id.raw); put("opacity", opacity) }
 		}
 		if (edits.isEmpty()) return model

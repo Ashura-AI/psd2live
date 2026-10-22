@@ -656,6 +656,7 @@ internal object WorkspaceTextureEdits {
      */
     private fun requireUnbound(document: WorkspaceDocument, model: RigPreviewModel, id: String, action: String) {
         require(document.rigEdits.importedCmo3 == null) { "$action is not supported for imported CMO3 models" }
+        // Pasted copies too: they sample the same texture, and their references would not follow it either.
         val meshes = model.rig.puppet.drawables.filter { model.rig.layerIdByDrawableId[it.id.raw] == id }.mapTo(HashSet()) { it.id.raw }
         fun references(value: JsonElement): Boolean = when (value) {
             is JsonObject -> value.any { (key, nested) -> key !in setOf("name", "user_data") && references(nested) }

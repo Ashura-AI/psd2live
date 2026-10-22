@@ -168,6 +168,10 @@ internal object RigRegenerationCheckpoint {
 		val ids = model.drawables.mapTo(HashSet()) { it.id.raw }
 		// The base's maps under the IDs the journal's conversions gave its meshes, as [previous] and [next] are named.
 		val renamed = RigIdConversion.renames(journal).of("mesh")
+		// A new generation can make an object under an ID a conversion gave another: both would answer to it.
+		val clashes = (RigIdCheck.conflicts(next) + base.layerIdByDrawableId.keys.filter { id -> id !in renamed && id in renamed.values }.map { "mesh $it" })
+			.distinct().map { RigRegeneration.Issue(RigRegeneration.IssueKind.CONFLICT, it.replace(' ', ':'), "converted_id") }
+		val issues = result.issues + clashes
 		fun <V> joined(generatedMap: Map<String, V>, user: Map<String, V>) =
 			(user + if (renamed.isEmpty()) generatedMap else generatedMap.mapKeys { renamed[it.key] ?: it.key }).filterKeys { it in ids }
 		val rig = base.copy(puppet = model,
@@ -177,8 +181,8 @@ internal object RigRegenerationCheckpoint {
 				.associate { it.id.raw to it.texturePage },
 			supersededEntryNotes = authored.rig.supersededEntryNotes, overrideIssues = emptyList(),
 			copiedDrawableIds = authored.rig.copiedDrawableIds.filterTo(HashSet()) { it in ids })
-		val record = RigCheckpoint.encode(AuthoredRig(rig, authored.visibilityTargets.filter { it.first in ids }), bindingKey, result.issues,
+		val record = RigCheckpoint.encode(AuthoredRig(rig, authored.visibilityTargets.filter { it.first in ids }), bindingKey, issues,
 			generated = AuthoredRig(base.copy(puppet = generated), emptyList()))
-		return Merged(record, result.issues)
+		return Merged(record, issues)
 	}
 }

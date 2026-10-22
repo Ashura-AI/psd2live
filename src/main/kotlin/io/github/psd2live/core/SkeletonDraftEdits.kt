@@ -107,7 +107,7 @@ object SkeletonDraftEdits {
                     val removed = spec.bones.filter { it.role == intent.role }.mapTo(HashSet()) { it.id }
                     SkeletonDraftResult(removed.fold(spec) { next, id -> next.withoutBone(id) })
                 } else {
-                    val template = SkeletonAutoBuilder.build(model.analysis, model.rig)
+                    val template = SkeletonAutoBuilder.build(model)
                     val additions = template.bones.filter { it.role == intent.role && spec.bone(it.id) == null }
                     SkeletonDraftResult(if (additions.isEmpty()) spec else spec.copy(bones = spec.bones + additions))
                 }
