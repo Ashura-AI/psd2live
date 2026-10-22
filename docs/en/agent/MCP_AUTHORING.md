@@ -496,7 +496,7 @@ Call `skeleton_propose` first to inspect the skeleton inferred from the current 
 
 A mirror covers the object's own deformation: both objects' points are mapped to the canvas through their parents at the default pose, each source point's move from its rest shape has its x reversed, is interpolated on the source triangles (a Warp's cells split corner to corner) at the target point's reflected position, and is mapped back into the target's parent space; a rotation deformer mirrors its origin's move and reverses its angle change. Symmetric objects and pairs correspond point to point. Blend shape keys are not supported.
 
-`keyform_apply op=reset / interpolate / paste` writes a key's whole geometry (or only the points `vertices` names). On commit each expands into one ordinary `set`, so replay never reads another key; on keyforms a generator owns it is recorded as a generated override:
+`keyform_apply op=reset / interpolate / paste` writes a key's whole geometry (or only the points `vertices` names). On commit each expands into ordinary `set`s, so replay never reads another key; a geometry `set` on keyforms a generator owns is recorded as a generated override. `paste` writes moves: a mesh's from its rest, a Warp's or rotation deformer's from its default-key shape; the source is sampled once at compile, and pastes within one batch read the shapes from before the batch:
 
 | Field | Meaning |
 | --- | --- |
@@ -507,13 +507,13 @@ A mirror covers the object's own deformation: both objects' points are mapped to
 | `along` (reset) | With `to: default`: the parameters taken to their default; default all of the key's |
 | `parameter` (interpolate) | The axis to interpolate along; defaults to the one axis the key sits between two keys of, and is required when there are several. Linear by position between the shapes at the neighbouring keys |
 | `from` (paste) | The source key; the source's missing axes take their defaults, and the shape is read interpolated there |
-| `destination` (paste) | A target of the same kind and point count, default `target`; meshes paste each point's move from its rest, Warps and rotations the shape itself |
+| `destination` (paste) | Default `target`; for geometry another object must be of its kind with the same triangles (a Warp: rows and columns) under the same parent, or the paste is refused |
 | `all_keys` (reset) | In place of `key`: every keyform of the object back to its default-key shape (restoring a deformer's shape) |
 | `ratio` (paste) | 0–1, default 1: how far the key moves toward the pasted values; below 1 it blends |
-| `flip` / `flip_center` (paste) | `horizontal` or `vertical`: the pasted points mirror about `flip_center` (parent-local, default the pasted shape's middle); a rotation's angle is reversed |
+| `flip` (paste) | `horizontal` or `vertical`: a Warp's columns or rows reversed; a mesh's vertices paired by their mirrored rest places (the rest must be symmetric that way, or it is refused); each point takes its partner's move turned around; a rotation's angle change reversed |
 | `channels` (paste) | Any of `geometry`, `opacity`, `drawOrder`, `multiplyColor`, `screenColor`, default geometry only; channel values blend by `ratio` too |
 
-`keyform_apply op=multi_key` changes the channels of many keyforms of several objects at once, expanding into one channel-only `set` per keyform: `targets` (meshes, deformers or parts); `keys` (partial keys a keyform must match one of) and `ranges` (per parameter, the key values allowed; keyforms not on that parameter pass), default every keyform; `opacity` (0–1), `drawOrder` (0–1000, not for deformers), `multiplyColor`, `screenColor` (`[r, g, b]`); `method` `overwrite` (default), `add`, `multiply` or `screen`, results clamped to the valid range. It is refused when no keyform matches.
+`keyform_apply op=multi_key` changes the channels of many keyforms of several objects at once, expanding into one channel-only `set` per keyform: `targets` (meshes, deformers or parts); `keys` (partial keys a keyform must match one of) and `ranges` (per parameter, the key values allowed; keyforms not on that parameter pass), default every keyform; `opacity` (0–1), `drawOrder` (0–1000, not for deformers), `multiplyColor`, `screenColor` (`[r, g, b]`); `method` `overwrite` (default), `add`, `multiply` or `screen` (draw order takes the first two), results clamped to the valid range. Each channel is written at its own track's keys, or the object's geometry keys while it has none; `keys` / `ranges` filter those. The writes are ordinary channel keyforms, not generated overrides. It is refused when no keyform matches.
 
 `path_get / path_list / path_preview / path_put / path_delete / path_deform` points use mesh local coordinates and support read-only queries, preview, binding and baking keyforms. Paths are an editing aid; for compatibility see [Deform paths](../guide/DEFORM_PATHS.md).
 

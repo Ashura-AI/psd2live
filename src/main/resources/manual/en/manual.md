@@ -1306,20 +1306,20 @@ When an object is bound to two parameters at once (such as Angle X and Angle Y),
 *> The shapes of the four diagonals have to be made one by one; PSD2Live does not synthesize them automatically as Cubism does.
 
 @@ copy-and-blend-shape | Edit Form
-The **Keyform** submenu of the Deform mode canvas right-click menu copies the shape at one key to another key or to another object of the same kind, resets a key to its default shape, or interpolates a middle key from the keys on either side. The result is written as ordinary keyforms and can be undone.
+The **Keyform** submenu of the Deform mode canvas right-click menu copies the shape at one key to another key or to a like object, resets a key to its default shape, or interpolates a middle key from the keys on either side. The result is written as ordinary keyforms and can be undone.
 ## How to use
 1. Select the object in Deform mode and set the parameters onto one of its keys.
 2. Choose an operation in the canvas right-click menu **Keyform**, or use the shortcuts below.
 | Action | Shortcut | What it does |
 |---|---|---|
-| Copy keyform | {key:KEYFORM_COPY} | Remembers the shape the object shows at the current parameters |
-| Paste keyform | {key:KEYFORM_PASTE} | Writes the copied shape onto the current key; it can also go to an object of the same kind with the same number of points, meshes taking each point's move from its rest |
+| Copy keyform | {key:KEYFORM_COPY} | Records each selected object's shape, opacity and colors at the current parameters; later changes to the source do not reach the paste |
+| Paste keyform | {key:KEYFORM_PASTE} | Writes the copied shape onto the current key as moves (a mesh's from its rest, a Warp's or rotation deformer's from its default-key shape); onto the same object, or one of its kind with the same triangles (a Warp: rows and columns) under the same parent |
 | Reset to the default-key shape | {key:KEYFORM_RESET} | Puts the current key back to the shape at the parameters' defaults |
 | Reset to the mesh rest shape | — | Meshes only: puts the current key back to the undeformed mesh |
-| Interpolate from neighbouring keys of (parameter) | {key:KEYFORM_INTERPOLATE} | Remakes the current key from the keys on either side along that parameter; with several such parameters the menu lists each |
+| Interpolate from neighbouring keys of (parameter) | {key:KEYFORM_INTERPOLATE} | Remakes the current key from the keys on either side along that parameter; with several such parameters the menu lists each (blend shape parameters excepted) |
 - With points selected, paste, reset and interpolate change only those points, and the menu rows show how many; a Warp at the Bezier level and a rotation deformer are always handled whole.
-- Paste reads the source key's shape as it is when pasting.
-- On keyforms a generator owns the result is recorded as a generated override like any edit; see [[generated-overrides]].
+- When the object binds no parameter or the parameters are between its keys, the menu says so and the shape rows are off.
+- A shape edit on keyforms a generator owns is recorded as a generated override; see [[generated-overrides]].
 - **Paste with options…** pastes only some contents, blends by a ratio or flips, and sets where several shapes go; see [[paste-form-special]] and [[confirm-target-for-pasting-multiple-forms]]. **Restore every key to the default-key shape**: [[restore-deformer-shape]]; **Multi-key editing…**: [[multi-key]].
 
 @@ paste-form-special | Paste Form Special
@@ -1330,17 +1330,18 @@ The **Keyform** submenu of the Deform mode canvas right-click menu copies the sh
 3. Set the options in the dialog and click **Paste** (or press Enter).
 | Option | What it does |
 |---|---|
-| What to paste | Any of shape (points), opacity, draw order, multiply color and screen color; objects with another point count skip the shape and take the rest |
+| What to paste | Any of shape (points), opacity, draw order, multiply color and screen color; without the shape the channels go onto any selected object (draw order onto meshes only) |
 | Blend ratio | 100% pastes; less moves the current key that share of the way toward the copied values, blending the forms |
-| Flip | Flips the shape left to right or top to bottom: points mirror about the shape's own middle; a rotation deformer's angle is reversed |
-*> Unlike Cubism the flip line is the pasted shape's middle (MCP can set `flip_center`) and there is no Warp "flip over" option; a plain paste after the dialog closes still pastes the shape only.
+| Flip | Left to right reverses a Warp's columns, top to bottom its rows; a mesh pairs vertices by their mirrored rest places (its rest must be symmetric that way, or the paste is refused); each point takes its partner's move turned around; a rotation deformer's angle change is reversed |
+*> Unlike Cubism the flip works on the moves, so it needs no flip line, and there is no Warp "flip over" option; mirror an asymmetric mesh with [[motion-mirroring]]. A plain paste after the dialog closes still pastes the shape only.
 
 @@ confirm-target-for-pasting-multiple-forms | Where to apply form pasting
 After copying several objects' shapes together, the **Paste with options** dialog shows and lets you change which object each shape is pasted onto.
 ## How pairs are made
 - Copying records one shape per selected mesh (the first is the current target).
-- When pasting, a source that is itself selected and sits on one of its keys gets its own shape back; otherwise each shape goes to the next selected object of the same kind and point count not yet taken.
-- The dialog's **Paste onto** rows list source → target; pick another fitting object, or **Do not paste** to leave a shape out.
+- When pasting, a source that is itself selected and sits on one of its keys gets its own shape back; otherwise each shape goes to the next selected object not yet taken that can take it: the same kind, the same triangles (a Warp: rows and columns), the same parent.
+- The dialog's **Paste onto** rows list source → target; pick another fitting object, or **Do not paste** to leave a shape out. Without the shape any selected object can take the channels.
+- Every shape is written as it was copied, so pasting A onto B and B onto A swaps them.
 *> A plain paste ({key:KEYFORM_PASTE}) uses the automatic pairing without a dialog.
 
 @@ synthesize-corners | Automatic Generation of Four Corner Forms
@@ -1494,9 +1495,9 @@ Changes the opacity, draw order, multiply color and screen color of many keyform
 |---|---|
 | Overwrite | Each keyform takes the value |
 | Add | The value is added to each keyform's own |
-| Multiply | Multiplied with each keyform's own |
+| Multiply | Multiplied with each keyform's own (draw order takes only overwrite and add) |
 | Screen | 1 − (1 − own) × (1 − value), mostly for colors |
-- The result is one history step; keyforms a generator owns are recorded as generated overrides as usual.
+- The result is one history step. It writes channel keyforms as ordinary keyforms, not as generated overrides; each channel is written on the axes it already has, and on the object's shape keys only while it has no track.
 *> Deformers have no draw order; with deformers in the dialog the draw order cannot be changed. MCP: `keyform_apply op=multi_key`.
 
 @@ motion-mirroring | Motion Mirroring

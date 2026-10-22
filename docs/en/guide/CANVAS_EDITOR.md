@@ -71,15 +71,15 @@ The **Keyform** submenu of the same context menu works on the shape at the curre
 | Action | What it does |
 | --- | --- |
 | Copy keyform | Remembers the shape the object shows at the current parameters; shortcut `Ctrl+Alt+C` |
-| Paste keyform | Writes the copied shape onto the current key, also onto an object of the same kind with the same number of points (meshes take each point's move from its rest); it reads the source key as it is when pasting; `Ctrl+Alt+V` |
+| Paste keyform | Writes the shape fixed when copying onto the current key as moves (a mesh's from its rest, a Warp's or rotation deformer's from its default-key shape); onto the same object, or one of its kind with the same triangles (a Warp: rows and columns) under the same parent; `Ctrl+Alt+V` |
 | Reset to the default-key shape | Puts the current key back to the shape at the parameters' defaults; `Ctrl+Alt+X` |
 | Reset to the mesh rest shape | Meshes only: back to the undeformed mesh |
 | Interpolate from neighbouring keys of (parameter) | Remakes the current key from the keys on either side along that parameter; with several such parameters each is listed, and `Ctrl+Alt+I` takes the first |
-| Paste with options… | A dialog picks what to paste (shape, opacity, draw order, multiply and screen color), a blend ratio (100% pastes, less blends), a left-right or top-bottom flip, and which object each copied shape goes onto |
+| Paste with options… | A dialog picks what to paste (shape, opacity, draw order, multiply and screen color), a blend ratio (100% pastes, less blends), a left-right or top-bottom flip (a Warp's columns or rows reversed, a mesh's vertices paired by their mirrored rest, which must be symmetric), and which object each copied shape goes onto |
 | Restore every key to the default-key shape | Every key of the object back to its default-key shape, to start over |
 | Multi-key editing… | Picks a range by parameter key values and changes opacity, draw order and colors of many keyforms of several objects at once (overwrite, add, multiply or screen) |
 
-Copying records a shape for each selected mesh; pasting writes each back onto itself or onto the next selected object of the same kind and point count. With points selected, paste, reset and interpolate change only those points, and the menu rows show how many; a Warp at the Bezier level and a rotation deformer are always handled whole. On keyforms a generator owns the result is recorded as a generated override.
+Copying records a shape for each selected mesh; pasting writes each back onto itself or onto the next selected object that can take it, every shape as it was copied. With points selected, paste, reset and interpolate change only those points, and the menu rows show how many; a Warp at the Bezier level and a rotation deformer are always handled whole. On keyforms a generator owns the result is recorded as a generated override. When the parameters are not on one of the object's keys, or it binds none, the menu says why.
 
 **Soft selection**: with the Select or Transform tool, turn on **Soft selection** in the tool options bar (`O`); dragging or transforming selected points then also moves the points around them, less the further they are from the nearest selected point. The **Falloff radius** is in canvas units and `[` / `]` adjust it; the falloff curve is shared with the deform brush. Affected points are ringed in red, larger rings following more. What is committed is still one ordinary geometry edit.
 

@@ -498,7 +498,7 @@ GUI 参数定义、文件夹位置和参数关键点可组合为一次共享提�
 
 镜像的是对象自身的形变：两对象的点以默认姿势的父级映射到画布，来源各点相对默认形状的位移取 x 反向后，按目标点的镜像位置在来源三角形（Warp 为格子对角分割）上插值，再映射回目标的父级空间；旋转变形器镜像原点位移并把角度变化取反。对称对象或成对对象点对点对应。不支持融合变形键。
 
-`keyform_apply op=reset / interpolate / paste` 写一个键的整个几何形状（或只写 `vertices` 给出的点），提交时同样展开为一条普通 `set`，重放不再读取其他键；作用在生成器拥有的关键形上时记为生成结果覆盖：
+`keyform_apply op=reset / interpolate / paste` 写一个键的整个几何形状（或只写 `vertices` 给出的点），提交时同样展开为普通 `set`，重放不再读取其他键；几何 `set` 作用在生成器拥有的关键形上时记为生成结果覆盖。`paste` 写的是位移：网格相对原形，Warp 与旋转变形器相对默认键形状；来源在编译时一次取样，同一批次中互相粘贴按批次开始前的形状：
 
 | 字段 | 含义 |
 | --- | --- |
@@ -509,13 +509,13 @@ GUI 参数定义、文件夹位置和参数关键点可组合为一次共享提�
 | `along`（reset） | 与 `to: default` 合用：取默认值的参数，缺省为键的全部参数 |
 | `parameter`（interpolate） | 沿哪条轴补间；缺省为键恰好夹在两个键之间的那条轴，有多条时必须给出。按位置在两侧相邻键的形状之间线性插值 |
 | `from`（paste） | 来源键；来源缺少的轴取默认值，形状按该处插值读取 |
-| `destination`（paste） | 同类且点数相同的目标，缺省为 `target`；网格粘贴各点相对原形的位移，Warp 与旋转变形器粘贴形状本身 |
+| `destination`（paste） | 缺省为 `target`；写几何时另一对象须同类、三角形（Warp 为行列）相同且父级相同，否则拒绝 |
 | `all_keys`（reset） | 代替 `key`：对象的每个关键形都回到默认键形状（恢复变形器形状） |
 | `ratio`（paste） | 0–1，缺省 1：当前键向粘贴值移动的比例，小于 1 即混合 |
-| `flip` / `flip_center`（paste） | `horizontal` 或 `vertical`：粘贴的点关于 `flip_center`（父级局部坐标，缺省为粘贴形状的中点）镜像；旋转变形器角度取反 |
+| `flip`（paste） | `horizontal` 或 `vertical`：Warp 反转列或行；网格按静止位置找镜像对应的顶点（静止形状须在该方向对称，否则拒绝）；各点取对应点的位移并反向；旋转变形器角度变化取反 |
 | `channels`（paste） | `geometry`、`opacity`、`drawOrder`、`multiplyColor`、`screenColor` 的组合，缺省只粘贴几何；通道值同样按 `ratio` 混合 |
 
-`keyform_apply op=multi_key` 一次修改多个对象的多个关键形的通道，展开为每个关键形一条只含通道的 `set`：`targets`（网格、变形器或部件）；`keys`（部分键列表，关键形须匹配其中之一）与 `ranges`（每个参数允许的键值；不在该参数上的关键形不受限），缺省为全部关键形；`opacity`（0–1）、`drawOrder`（0–1000，变形器不可用）、`multiplyColor`、`screenColor`（`[r, g, b]`）；`method` 为 `overwrite`（缺省）、`add`、`multiply` 或 `screen`，结果限制在合法范围内。没有任何关键形匹配时拒绝。
+`keyform_apply op=multi_key` 一次修改多个对象的多个关键形的通道，展开为每个关键形一条只含通道的 `set`：`targets`（网格、变形器或部件）；`keys`（部分键列表，关键形须匹配其中之一）与 `ranges`（每个参数允许的键值；不在该参数上的关键形不受限），缺省为全部关键形；`opacity`（0–1）、`drawOrder`（0–1000，变形器不可用）、`multiplyColor`、`screenColor`（`[r, g, b]`）；`method` 为 `overwrite`（缺省）、`add`、`multiply` 或 `screen`（绘制顺序只接受前两者），结果限制在合法范围内。每个通道只在自己已有轨道的键上写入，尚无轨道时才按对象的几何键写入；`keys` / `ranges` 针对这些键筛选。写入的是普通通道关键形，不记为生成结果覆盖。没有任何关键形匹配时拒绝。
 
 `path_get / path_list / path_preview / path_put / path_delete / path_deform` 点使用 Mesh 局部坐标，支持只读查询、预览、绑定和烘焙关键形。路径是编辑辅助，兼容性见[变形路径](../guide/DEFORM_PATHS.md)。
 
