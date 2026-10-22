@@ -95,6 +95,29 @@ internal object Characters {
 		Part("brow_l", 10, SemanticTag.EYEBROW, Side.LEFT, box(216, 50, 236, 56)),
 	), PipelineConfig(atlasSize = 512, generatePhysics = false, exportMoc3 = false))
 
+	/**
+	 * [figure] with an eye on each side under the bangs, the hair reaching over their tops: a white, an iris taller than
+	 * the white (which clips it), a lash line over the white's top and a closed-eye line, as anime art draws them - what
+	 * the eyes' window in the bangs is made for ([SeeThroughLayers]).
+	 */
+	fun eyed(): WorkspaceDocument = document(420, 420, figureParts(1f).map {
+		// Lower orders list first, in front: the bangs over the lashes, closed lines, irides and whites, over the face.
+		when (it.tag) {
+			SemanticTag.FACE -> Part(it.id, 17, it.tag, it.side, it.inside)
+			SemanticTag.BACK_HAIR -> Part(it.id, 18, it.tag, it.side, it.inside)
+			else -> it
+		}
+	} + listOf(
+		Part("lash_r", 9, SemanticTag.EYELASH, Side.RIGHT, box(182, 58, 206, 61)),
+		Part("lash_l", 10, SemanticTag.EYELASH, Side.LEFT, box(214, 58, 238, 61)),
+		Part("close_r", 11, SemanticTag.EYE_CLOSE, Side.RIGHT, box(184, 66, 204, 68)),
+		Part("close_l", 12, SemanticTag.EYE_CLOSE, Side.LEFT, box(216, 66, 236, 68)),
+		Part("iris_r", 13, SemanticTag.IRIDES, Side.RIGHT, box(189, 56, 199, 76)),
+		Part("iris_l", 14, SemanticTag.IRIDES, Side.LEFT, box(221, 56, 231, 76)),
+		Part("white_r", 15, SemanticTag.EYEWHITE, Side.RIGHT, box(184, 59, 204, 72)),
+		Part("white_l", 16, SemanticTag.EYEWHITE, Side.LEFT, box(216, 59, 236, 72)),
+	), PipelineConfig(atlasSize = 512, generatePhysics = false, exportMoc3 = false))
+
 	/** A 64² head: back hair and a face. The smallest document the hair generators and simulation presets act on. */
 	fun head(physics: Boolean = true): WorkspaceDocument = document(64, 64, listOf(
 		Part("hair", 0, SemanticTag.BACK_HAIR, Side.NONE, box(16, 8, 48, 56)),

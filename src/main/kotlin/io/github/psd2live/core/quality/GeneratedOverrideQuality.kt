@@ -56,7 +56,7 @@ object GeneratedOverrideQuality {
 	/** Evidence `kind` of a [GeneratedOverrideRule.SEE_THROUGH_DROPPED] finding. */
 	const val SEE_THROUGH_KIND = "see_through"
 	/** Evidence `reason`s of a [GeneratedOverrideRule.SEE_THROUGH_DROPPED] finding. */
-	val SEE_THROUGH_REASONS = listOf("original_missing", "masks_missing", "id_taken")
+	val SEE_THROUGH_REASONS = io.github.psd2live.core.SeeThroughLayers.DropReason.entries.map { it.wire }
 
 	/** A copy of mesh [original] over the bangs not made, for [reason] (one of [SEE_THROUGH_REASONS]). */
 	fun finding(original: String, reason: String): JsonObject {

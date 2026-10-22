@@ -72,7 +72,7 @@ internal object RigLayerDeletion {
             vertexGroups = model.vertexGroups.filterNot { it.drawableId in removed },
         ) }, layerIdByDrawableId = input.layerIdByDrawableId - ids,
             sourceBoundsByDrawableId = input.sourceBoundsByDrawableId - ids, pageByDrawableId = input.pageByDrawableId - ids,
-            seeThroughCopies = input.seeThroughCopies - ids)
+            seeThroughCopies = input.seeThroughCopies - ids).withSeeThroughWindowsPruned()
     }
 
     fun preview(input: RigPreviewModel, config: PipelineConfig, previousAtlas: PackedAtlas? = null): RigPreviewModel {

@@ -11,22 +11,30 @@ import org.umamo.runtime.model.KeyformGrid
 import org.umamo.runtime.model.MeshForm
 import org.umamo.runtime.model.OrgChild
 import org.umamo.runtime.model.PuppetModel
+import org.umamo.runtime.model.RuntimeFeature
 import org.umamo.runtime.model.visibleDrawableIds
 import org.umamo.runtime.model.withDerivedRenderRoot
 
 /**
- * Anime-style features showing through the bangs: a copy of each eyebrow (and, when asked, each eye line) drawn just
- * above the front hair at partial opacity and clipped to it, so the feature reads through the hair while the original
- * keeps its place under it. The usual Live2D setup for this: duplicate the art mesh, raise its draw order above the
- * bangs, clip it with the bang meshes' ids and lower its opacity.
+ * Anime-style features showing through the bangs, the two usual Live2D setups for it.
  *
- * Two stages. The base rig records the [Candidate]s - each brow or eye line whose bangs cover it at rest, with those
+ * - A feature copy: a copy of each eyebrow (and each closed-eye line, or any eye part that fades) drawn just above the
+ *   front hair at partial opacity and clipped to it, so the feature reads through the hair while the original keeps its
+ *   place under it - duplicate the art mesh, raise its draw order above the bangs, clip it with the bang meshes' ids and
+ *   lower its opacity.
+ * - A window in the bangs, for the eyes: each bang over an eye is clipped inverted by the eye's whites and lashes (and
+ *   an iris no white clips), and a copy of the bang clipped by them draws in its place at the remaining opacity. The eye
+ *   underneath stays whole - irides and highlights clipped by their whites show as they are, which a copy over the bangs
+ *   cannot do: clipping masks only add up, so no copy is clipped by both its white and the bangs.
+ *
+ * Two stages. The base rig records the [Candidate]s - each brow or eye part whose bangs cover it at rest, with those
  * bangs - in [BuiltRig.seeThrough], whatever the settings say. The finished rig ([apply]), after the journal, the
- * generators, the generated overrides, layer visibility and draw-order overrides, makes the copies the [Settings] ask
- * for out of the originals as they are then: so a copy follows every deformer, keyform, edit and override of its
- * original, takes its masks from the bangs still drawn above the original and its draw order from where those bangs
- * are now, and the settings change it without regenerating. The copies are not in the authored rig: nothing edits them
- * ([WorkspaceGeneratedCopyEdit]); [BuiltRig.seeThroughCopies] names them, never their ids alone.
+ * generators, the generated overrides, layer visibility and draw-order overrides, makes what the [Settings] ask for out
+ * of the meshes as they are then: so a copy follows every deformer, keyform, edit and override of its original, takes
+ * its masks from the bangs still drawn above the feature and its draw order from where those bangs are now, and the
+ * settings change it without regenerating. Neither the copies nor a bang's window are in the authored rig: nothing
+ * edits them ([WorkspaceGeneratedCopyEdit]); [BuiltRig.seeThroughCopies] names the copies and
+ * [BuiltRig.seeThroughWindows] the windowed bangs, never their ids alone.
  */
 object SeeThroughLayers {
 	/** Appended to the original's id: the copy's id, fixed for every build. */
@@ -36,7 +44,13 @@ object SeeThroughLayers {
 
 	fun copyId(original: DrawableId) = DrawableId(original.raw + SUFFIX)
 
-	/** A feature the bangs cover at rest, as the base rig found it: [eyes] for an eye line, else a brow. */
+	/**
+	 * What the base records as candidates: version 2 records every part of an eye, version 1 only lashes and closed-eye
+	 * lines. A stored rig recording other ones is regenerated ([MaterializedRigCodec]).
+	 */
+	const val CANDIDATE_RULES = 2
+
+	/** A feature the bangs cover at rest, as the base rig found it: [eyes] for a part of an eye, else a brow. */
 	data class Candidate(val original: String, val eyes: Boolean, val bangs: List<String>)
 
 	/** Why a recorded candidate made no copy although the settings ask for it. */
@@ -47,12 +61,19 @@ object SeeThroughLayers {
 		MASKS_MISSING("masks_missing"),
 		/** Another mesh already has the copy's id. */
 		ID_TAKEN("id_taken"),
+		/** Every bang over the eye part has clipping masks of its own, which a window would replace. */
+		BANGS_CLIPPED("bangs_clipped"),
+		/** The document's runtime target has no inverted masks, which a window in the bangs needs. */
+		TARGET_UNSUPPORTED("target_unsupported"),
 	}
 
 	data class Note(val original: String, val reason: DropReason)
 
-	/** What the document asks for: brows and eye lines, their opacity, and the gap between generated draw orders. */
-	data class Settings(val brows: Boolean, val eyes: Boolean, val opacity: Float, val drawOrderStep: Int) {
+	/**
+	 * What the document asks for: brows and eyes, their opacity, the gap between generated draw orders, and whether the
+	 * runtime target has the [invertedMasks] a window in the bangs needs.
+	 */
+	data class Settings(val brows: Boolean, val eyes: Boolean, val opacity: Float, val drawOrderStep: Int, val invertedMasks: Boolean = true) {
 		val enabled get() = brows || eyes
 
 		companion object {
@@ -61,7 +82,8 @@ object SeeThroughLayers {
 			/** [config]'s settings; an imported or mesh-only model has no copies. */
 			fun of(config: PipelineConfig): Settings =
 				if (config.rigEdits.importedCmo3 != null || config.meshOnly) OFF
-				else Settings(config.seeThroughBrows, config.seeThroughEyes, config.seeThroughOpacity.coerceIn(OPACITY_RANGE), config.drawOrderStep)
+				else Settings(config.seeThroughBrows, config.seeThroughEyes, config.seeThroughOpacity.coerceIn(OPACITY_RANGE), config.drawOrderStep,
+					config.runtimeTarget.supports(RuntimeFeature.ReversedMask))
 		}
 	}
 
@@ -72,14 +94,18 @@ object SeeThroughLayers {
 	fun withoutCopies(config: PipelineConfig) = if (!config.seeThroughBrows && !config.seeThroughEyes) config
 		else config.copy(seeThroughBrows = false, seeThroughEyes = false)
 
-	/** The finished model, the copies it holds (copy id to original id) and the candidates that made none. */
-	class Result(val model: PuppetModel, val copies: Map<String, String>, val notes: List<Note>)
+	/**
+	 * The finished model, the copies it holds (copy id to original id), the bangs it windows (bang id to the eye parts
+	 * clipping it inverted) and the candidates that made nothing.
+	 */
+	class Result(val model: PuppetModel, val copies: Map<String, String>, val notes: List<Note>, val windows: Map<String, List<String>> = emptyMap())
 
 	private val BROWS = setOf(SemanticTag.EYEBROW)
-	private val EYES = setOf(SemanticTag.EYELASH, SemanticTag.EYE_CLOSE)
+	/** Every part of an eye: whites, irides with their highlights, lashes and closed-eye lines. */
+	private val EYES = setOf(SemanticTag.EYEWHITE, SemanticTag.IRIDES, SemanticTag.EYELASH, SemanticTag.EYE_CLOSE)
 
 	/**
-	 * Every brow and eye line of [model] that front hair art reaches over at rest, with those bangs: [layerOf] gives
+	 * Every brow and eye part of [model] that front hair art reaches over at rest, with those bangs: [layerOf] gives
 	 * each head drawable's layer (null for any other). Draw order is not looked at here: it is read when the copies are
 	 * made, after the user's edits of it.
 	 */
@@ -95,11 +121,25 @@ object SeeThroughLayers {
 	}
 
 	/**
-	 * [model] with a copy of each of [candidates] [settings] asks for. A copy's masks are its bangs still in the model,
-	 * shown, and drawn above the original at every keyform; with none it is not made. It draws just above the highest
-	 * of them and below the next mesh, at its original's opacity (static and keyed) times [Settings.opacity], and lists
-	 * just in front of its original in the original's part, so hiding or fading that part hides it too. Its parent,
-	 * mesh, keyforms, blend shapes, colors and visibility are the original's; it cannot be picked on the canvas.
+	 * Whether eye part [original] shows through a window in its bangs rather than as a copy over them: it does unless it
+	 * fades on its own (a closed-eye line), since a mask clips whatever the opacity of its mesh. One clipped by masks of
+	 * its own (an iris by its white) shows through their window and needs none.
+	 */
+	private fun windowed(original: Drawable) = original.channelGrids[FormChannel.OPACITY] == null
+
+	/**
+	 * [model] with what [settings] asks for of [candidates].
+	 *
+	 * A feature copy's masks are its bangs still in the model, shown, and drawn above the original at every keyform;
+	 * with none it is not made. It draws just above the highest of them and below the next mesh, at its original's
+	 * opacity (static and keyed) times [Settings.opacity], and lists just in front of its original in the original's
+	 * part, so hiding or fading that part hides it too. Its parent, mesh, keyforms, blend shapes, colors and visibility
+	 * are the original's; it cannot be picked on the canvas.
+	 *
+	 * A window opens in each such bang over an unclipped eye part: the bang is clipped inverted by every eye part it
+	 * covers, and a copy of it clipped by them, at its opacity times one minus [Settings.opacity], draws just above it
+	 * (below any feature copy over it) and lists just in front of it in its part. A bang with masks of its own keeps
+	 * them and opens none.
 	 */
 	fun apply(model: PuppetModel, candidates: List<Candidate>, settings: Settings): Result {
 		if (!settings.enabled || candidates.isEmpty()) return Result(model, emptyMap(), emptyList())
@@ -108,24 +148,64 @@ object SeeThroughLayers {
 		val notes = ArrayList<Note>()
 		val made = ArrayList<Pair<Drawable, Drawable>>()
 		val halfStep = (settings.drawOrderStep / 2f).coerceAtLeast(0.5f)
+		// Each bang to the eye parts it opens over, in candidate order.
+		val windows = LinkedHashMap<String, LinkedHashSet<DrawableId>>()
 		for (candidate in candidates) {
 			if (if (candidate.eyes) !settings.eyes else !settings.brows) continue
 			val original = byId[candidate.original] ?: run { notes += Note(candidate.original, DropReason.ORIGINAL_MISSING); continue }
+			if (candidate.eyes && windowed(original)) {
+				if (original.maskedBy.isNotEmpty()) continue
+				if (candidate.bangs.none { it in byId }) { notes += Note(candidate.original, DropReason.MASKS_MISSING); continue }
+				if (!settings.invertedMasks) { notes += Note(candidate.original, DropReason.TARGET_UNSUPPORTED); continue }
+				val above = highestOrder(original)
+				for (bang in candidate.bangs.mapNotNull(byId::get)) if (bang.id in shown && lowestOrder(bang) > above)
+					windows.getOrPut(bang.id.raw) { LinkedHashSet() } += original.id
+				continue
+			}
 			val id = copyId(original.id)
 			if (id.raw in byId) { notes += Note(candidate.original, DropReason.ID_TAKEN); continue }
 			if (candidate.bangs.none { it in byId }) { notes += Note(candidate.original, DropReason.MASKS_MISSING); continue }
 			val (masks, order) = place(model, byId, shown, original, candidate.bangs, halfStep) ?: continue
 			made += copyOf(original, id, masks, order, settings.opacity) to original
 		}
+		val windowed = LinkedHashMap<String, Drawable>()
+		val refused = LinkedHashMap<DrawableId, DropReason>()
+		for ((bangId, parts) in windows) {
+			val bang = byId.getValue(bangId)
+			val id = copyId(bang.id)
+			val reason = when {
+				bang.maskedBy.isNotEmpty() || bang.invertMask -> DropReason.BANGS_CLIPPED
+				id.raw in byId -> DropReason.ID_TAKEN
+				else -> null
+			}
+			if (reason != null) { parts.forEach { refused.putIfAbsent(it, reason) }; continue }
+			val masks = parts.toList()
+			windowed[bangId] = bang.copy(maskedBy = masks, invertMask = true)
+			made += copyOf(bang, id, masks, windowOrder(model, bang, halfStep), 1f - settings.opacity) to bang
+		}
+		// An eye part is reported only when no bang over it opened.
+		val opened = windowed.values.flatMapTo(HashSet()) { it.maskedBy }
+		refused.forEach { (part, reason) -> if (part !in opened) notes += Note(part.raw, reason) }
 		if (made.isEmpty()) return Result(model, emptyMap(), notes)
 		val before = made.groupBy({ it.second.id }, { it.first.id })
 		fun placed(children: List<OrgChild>) = children.flatMap { child ->
 			if (child is OrgChild.Drawable) before[child.id].orEmpty().map { OrgChild.Drawable(it) } + child else listOf(child)
 		}
-		val finished = model.copy(drawables = model.drawables + made.map { it.first },
+		val finished = model.copy(drawables = model.drawables.map { windowed[it.id.raw] ?: it } + made.map { it.first },
 			parts = model.parts.map { part -> if (part.children.none { it is OrgChild.Drawable && it.id in before }) part else part.copy(children = placed(part.children)) },
 			rootChildren = placed(model.rootChildren)).withDerivedRenderRoot()
-		return Result(finished, made.associate { (copy, original) -> copy.id.raw to original.id.raw }, notes)
+		return Result(finished, made.associate { (copy, original) -> copy.id.raw to original.id.raw }, notes,
+			windowed.mapValues { (_, bang) -> bang.maskedBy.map { it.raw } })
+	}
+
+	/**
+	 * The draw order of the copy of windowed [bang]: above its highest order, half as far as a feature copy over it would
+	 * draw, so the brows copied over the bangs stay in front of the window.
+	 */
+	private fun windowOrder(model: PuppetModel, bang: Drawable, halfStep: Float, copies: Set<String> = emptySet()): Float {
+		val top = highestOrder(bang)
+		val next = model.drawables.asSequence().filter { it.id != bang.id && it.id.raw !in copies }.map(::lowestOrder).filter { it > top }.minOrNull()
+		return (top + (if (next == null) halfStep else minOf(halfStep, (next - top) / 2f)) / 2f).coerceIn(0f, 1000f)
 	}
 
 	/**
@@ -154,7 +234,8 @@ object SeeThroughLayers {
 	fun refresh(model: PuppetModel, shown: RigPreviewModel?): PuppetModel {
 		val copies = shown?.rig?.seeThroughCopies.orEmpty()
 		if (copies.isEmpty() || model === shown?.rig?.puppet) return model
-		val before = shown!!.rig.puppet.drawables.associateBy { it.id.raw }
+		val windows = shown!!.rig.seeThroughWindows
+		val before = shown.rig.puppet.drawables.associateBy { it.id.raw }
 		val byId = model.drawables.associateBy { it.id.raw }
 		val settings = Settings.of(shown.config)
 		val bangs = shown.rig.seeThrough.orEmpty().associate { it.original to it.bangs }
@@ -165,7 +246,14 @@ object SeeThroughLayers {
 			val originalId = copies[drawable.id.raw] ?: return@mapNotNull drawable
 			if (drawable !== before[drawable.id.raw]) return@mapNotNull drawable
 			val original = byId[originalId] ?: run { changed = true; return@mapNotNull null }
-			val near = bangs[originalId] ?: drawable.maskedBy.map { it.raw }
+			if (originalId in windows) {
+				// The copy in a bang's window: its masks are the window's eye parts, which it follows by id.
+				if (original === before[originalId]) return@mapNotNull drawable
+				changed = true
+				val masks = drawable.maskedBy.filter { it.raw in byId }.ifEmpty { return@mapNotNull null }
+				return@mapNotNull copyOf(original, drawable.id, masks, windowOrder(model, original, halfStep, copies.keys), 1f - settings.opacity)
+			}
+			val near =bangs[originalId] ?: drawable.maskedBy.map { it.raw }
 			if (original === before[originalId] && near.all { byId[it] === before[it] }) return@mapNotNull drawable
 			changed = true
 			val (masks, order) = place(model, byId, visible, original, near, halfStep, copies.keys) ?: return@mapNotNull null
@@ -228,15 +316,43 @@ object SeeThroughLayers {
 }
 
 /**
- * [this] with the copies over the bangs [settings] asks for made from its finished puppet ([SeeThroughLayers.apply]), on
- * their originals' pages. A rig whose base recorded no candidates (an imported one) is returned as it is.
+ * [this] with the copies over the bangs and the windows in them [settings] asks for made from its finished puppet
+ * ([SeeThroughLayers.apply]), the copies on their originals' pages. A rig whose base recorded no candidates (an imported
+ * one) is returned as it is.
  */
 internal fun BuiltRig.withSeeThrough(settings: SeeThroughLayers.Settings): BuiltRig {
 	val candidates = seeThrough.orEmpty()
-	if (candidates.isEmpty() || !settings.enabled) return if (seeThroughCopies.isEmpty() && seeThroughNotes.isEmpty()) this
-		else copy(seeThroughCopies = emptyMap(), seeThroughNotes = emptyList())
+	if (candidates.isEmpty() || !settings.enabled) return if (seeThroughCopies.isEmpty() && seeThroughNotes.isEmpty() && seeThroughWindows.isEmpty()) this
+		else copy(seeThroughCopies = emptyMap(), seeThroughNotes = emptyList(), seeThroughWindows = emptyMap())
 	val result = SeeThroughLayers.apply(puppet, candidates, settings)
 	val pages = if (result.copies.isEmpty()) pageByDrawableId
 		else pageByDrawableId + result.copies.mapNotNull { (copy, original) -> pageByDrawableId[original]?.let { copy to it } }
-	return copy(puppet = result.model, pageByDrawableId = pages, seeThroughCopies = result.copies, seeThroughNotes = result.notes)
+	return copy(puppet = result.model, pageByDrawableId = pages, seeThroughCopies = result.copies, seeThroughNotes = result.notes,
+		seeThroughWindows = result.windows)
 }
+
+/**
+ * [this] after meshes left its puppet (a soft layer deletion), whose mask lists no longer name them: a windowed bang
+ * none of whose eye parts remain is unclipped again and its copy goes, as with no masks it would draw all over it.
+ */
+internal fun BuiltRig.withSeeThroughWindowsPruned(): BuiltRig {
+	if (seeThroughWindows.isEmpty()) return this
+	val present = puppet.drawables.mapTo(HashSet()) { it.id.raw }
+	val kept = seeThroughWindows.filterKeys { it in present }.mapValues { (_, parts) -> parts.filter { it in present } }.filterValues { it.isNotEmpty() }
+	if (kept == seeThroughWindows) return this
+	val closed = seeThroughWindows.keys - kept.keys
+	val copies = seeThroughCopies.filterValues { it in closed }.keys
+	val drawables = puppet.drawables.filter { it.id.raw !in copies }
+		.map { if (it.id.raw in closed) it.copy(maskedBy = emptyList(), invertMask = false) else it }
+	fun live(children: List<OrgChild>) = children.filter { it !is OrgChild.Drawable || it.id.raw !in copies }
+	return copy(puppet = puppet.copy(drawables = drawables, parts = puppet.parts.map { it.copy(children = live(it.children)) },
+		rootChildren = live(puppet.rootChildren)).withDerivedRenderRoot(), pageByDrawableId = pageByDrawableId - copies,
+		seeThroughCopies = seeThroughCopies - copies, seeThroughWindows = kept)
+}
+
+/**
+ * [drawable] with the masks its document gives it: a bang the finished rig windows ([BuiltRig.seeThroughWindows])
+ * without the window's inverted masks, which the authored bang never had - what an editor shows and edits from.
+ */
+fun BuiltRig.authoredMasksOf(drawable: Drawable): Drawable =
+	if (drawable.id.raw in seeThroughWindows) drawable.copy(maskedBy = emptyList(), invertMask = false) else drawable

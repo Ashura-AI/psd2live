@@ -352,9 +352,11 @@ internal class WorkspaceReadSession(
                     "type" to "art_mesh",
                     "vertexCount" to (drawable.mesh?.vertexCount ?: 0).toString(),
                     "triangleCount" to (drawable.mesh?.triangleCount ?: 0).toString(),
-                    // A copy over the bangs reports its original's layer, and the original it copies.
+                    // A copy over the bangs reports its original's layer, and the original it copies; a bang with a
+                    // window for the eyes, the eye parts clipping it inverted in the finished rig alone.
                     "layerId" to (rig.layerOf(drawable.id.raw) ?: ""),
-                ) + (rig.seeThroughCopies[drawable.id.raw]?.let { mapOf("seeThroughOf" to it) } ?: emptyMap())
+                ) + (rig.seeThroughCopies[drawable.id.raw]?.let { mapOf("seeThroughOf" to it) } ?: emptyMap()) +
+                    (rig.seeThroughWindows[drawable.id.raw]?.let { mapOf("seeThroughWindow" to it.joinToString(",")) } ?: emptyMap())
                 val geoSnapshot = grid?.let { g ->
                     WorkspaceObjectGeometrySnapshot(
                         axes = g.axes.map { WorkspaceObjectAxisSnapshot(it.parameterId.raw, it.keys.toList()) },

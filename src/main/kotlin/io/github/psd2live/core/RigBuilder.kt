@@ -126,14 +126,22 @@ data class BuiltRig(
 	/** Split parts the skeleton skinned with this base rig, which their journal records place (see [PrimitiveSkins]). */
 	val primitiveSkins: PrimitiveSkins = PrimitiveSkins.None,
 	/**
-	 * The brows and eye lines the bangs cover, as the generated base found them ([SeeThroughLayers.candidates]); null
-	 * when not known - an imported model, or an authored rig stored before they were recorded.
+	 * The brows and eye parts the bangs cover, as the generated base found them ([SeeThroughLayers.candidates]); null
+	 * when not known - an imported model, or an authored rig stored before they were recorded as they are now.
 	 */
 	val seeThrough: List<SeeThroughLayers.Candidate>? = null,
-	/** The copies over the bangs the finished rig holds, copy id to original id ([withSeeThrough]). */
+	/**
+	 * The copies over the bangs and in their windows the finished rig holds, copy id to original id ([withSeeThrough]):
+	 * a brow's or eye line's copy to the feature, a window's copy to its bang.
+	 */
 	val seeThroughCopies: Map<String, String> = emptyMap(),
-	/** The candidates the finished rig made no copy of although asked to, and why. */
+	/** The candidates the finished rig made nothing of although asked to, and why. */
 	val seeThroughNotes: List<SeeThroughLayers.Note> = emptyList(),
+	/**
+	 * The bangs the finished rig opens a window in for the eyes, bang id to the eye parts clipping it inverted
+	 * ([SeeThroughLayers.apply]): masks of the finished rig alone, never the document's.
+	 */
+	val seeThroughWindows: Map<String, List<String>> = emptyMap(),
 	/**
 	 * Pasted meshes ([RigObjectPaste]). [layerIdByDrawableId] maps them to the layer whose texture they show, as it
 	 * maps any mesh, but the layer is not theirs: what looks a layer's mesh up ([ownLayerIdByDrawableId]) never finds one.
@@ -1428,7 +1436,7 @@ object RigBuilder {
 		val canvasSkinned = skeleton?.let { SkeletonCanvasSkin.placedByRecords(config.rigEdits) }.orEmpty()
 		val faceCenterCanvas = faceRig.coordinateSpace.toCanvas(faceRig.centerX, faceRig.centerY)
 		var skeletonKey: String? = null
-		// The brows and eye lines the bangs cover, recorded whatever the settings: the finished rig makes the copies.
+		// The brows and eye parts the bangs cover, recorded whatever the settings: the finished rig makes the copies.
 		fun seeThrough(puppet: PuppetModel) = SeeThroughLayers.candidates(puppet, config.alphaThreshold) { id ->
 			classifiedByDrawable[id]?.takeIf { inferredGroup(it, analysis.anchors) == LayerGroup.HEAD }
 		}

@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import io.github.psd2live.core.authoredMasksOf
 import io.github.psd2live.core.GeneratedOverrideIssue
 import io.github.psd2live.core.GeneratedOverrideIssueKind
 import io.github.psd2live.core.GeneratedOverrideOrphanReason
@@ -189,7 +190,8 @@ internal fun InspectorPanelView(
                             Spacer(modifier = Modifier.height(4.dp))
                         }
                         ArtMeshInspector(
-                            drawable = selectedDrawable,
+                            // A bang's window in the eyes is the finished rig's: its masks show and edit as the document has them.
+                            drawable = state.previewModel?.rig?.authoredMasksOf(selectedDrawable) ?: selectedDrawable,
                             allParts = puppet.parts.map { it.id.raw to it.name },
                             allDeformers = puppet.deformers.map { it.id.raw to it.name },
                             allDrawables = puppet.drawables.map { it.id.raw to it.name },

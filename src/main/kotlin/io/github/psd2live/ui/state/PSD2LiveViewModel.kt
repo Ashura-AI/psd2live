@@ -1,6 +1,7 @@
 package io.github.psd2live.ui.state
 
 import io.github.psd2live.core.withRigEdits
+import io.github.psd2live.core.authoredMasksOf
 import io.github.psd2live.application.SessionRecovery
 
 import io.github.psd2live.application.PendingPoseCommit
@@ -6093,7 +6094,7 @@ class PSD2LiveViewModel : AutoCloseable {
 			updateState { it.copy(statusText = tr("inspector.clipPickInvalid")) }
 			return true
 		}
-		val masks = (source.maskedBy + picked.id).distinct()
+		val masks = (preview.rig.authoredMasksOf(source).maskedBy + picked.id).distinct()
 		updateState { it.copy(clipMaskPickSourceId = null, statusText = tr("inspector.clipPickApplied", picked.name)) }
 		applyRigStaticNow("mesh", sourceId, "masked_by" to kotlinx.serialization.json.JsonArray(masks.map { kotlinx.serialization.json.JsonPrimitive(it.raw) }))
 		return true

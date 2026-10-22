@@ -37,9 +37,9 @@ Windows 也可以直接运行根目录的 `run-gui.bat`。不带参数启动 GUI
 | `--body-strength <value>` | 1.0 | 身体形变幅度 |
 | `--mesh-only` | 关闭 | 仅生成网格 |
 | `--no-deformers` | 关闭 | 不生成变形器 |
-| `--no-see-through` | 关闭 | 不把被刘海盖住的眉毛复制到刘海之上（默认会复制，输出比此前多出这些网格） |
-| `--see-through-eyes` | 关闭 | 眼线也复制到刘海之上 |
-| `--see-through-opacity <0..1>` | 0.5 | 刘海之上复制件的不透明度 |
+| `--no-see-through` | 关闭 | 眉毛与眼睛都不透过刘海（默认都透过，输出比此前多出眉毛复制件、刘海的眼部开窗及其复制件） |
+| `--no-see-through-eyes` | 关闭 | 眼睛不透过刘海（现已默认开启的 `--see-through-eyes` 仍可接受） |
+| `--see-through-opacity <0..1>` | 0.5 | 眉毛与眼睛透过刘海的程度 |
 | `--no-motions` | 关闭 | 不输出动作 |
 | `--no-physics` | 关闭 | 不生成物理 |
 | `--no-cmo3` | 关闭 | 不输出 CMO3 |

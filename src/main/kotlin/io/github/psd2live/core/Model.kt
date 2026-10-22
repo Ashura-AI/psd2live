@@ -222,8 +222,12 @@ data class PipelineConfig(
 	 * setting copies nothing.
 	 */
 	val seeThroughBrows: Boolean = true,
-	/** Copy the eye lines (lashes and closed-eye lines) over the bangs as well. */
-	val seeThroughEyes: Boolean = false,
+	/**
+	 * Show every part of the eyes through the bangs as well - whites, irides and highlights, lashes, closed-eye lines
+	 * ([SeeThroughLayers]). A document saved before the setting, or by 3.6.5 when it named only the eye lines and was
+	 * off by default, keeps what it saved.
+	 */
+	val seeThroughEyes: Boolean = true,
 	/** The opacity of the copies over the bangs. */
 	val seeThroughOpacity: Float = SeeThroughLayers.DEFAULT_OPACITY,
 	val exportMotions: Boolean = true,

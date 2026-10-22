@@ -42,7 +42,7 @@ internal object MaterializedRigCodec {
 			// Absent in rigs stored before the base recorded them: unknown, not none.
 			rig.seeThrough?.let { candidates -> put("see_through", JsonArray(candidates.map { candidate -> buildJsonObject {
 				put("original", candidate.original); put("eyes", candidate.eyes); put("bangs", JsonArray(candidate.bangs.map(::JsonPrimitive)))
-			} })) }
+			} })); put("see_through_rules", SeeThroughLayers.CANDIDATE_RULES) }
 		}
 		return Encoded(header, RigIrObjects.split(PuppetIr.toIr(rig.puppet)))
 	}
@@ -70,7 +70,9 @@ internal object MaterializedRigCodec {
 				SupersededEntryNote(note.getValue("index").jsonPrimitive.int, note.getValue("op").jsonPrimitive.content,
 					note.getValue("targets").jsonArray.map { it.jsonPrimitive.content }, note.getValue("detail").jsonPrimitive.content)
 			},
-			seeThrough = header["see_through"]?.jsonArray?.map { element ->
+			// Recorded by other rules (before every eye part was, without the field): unknown, so the preview generates.
+			seeThrough = header["see_through"]?.takeIf { header["see_through_rules"]?.jsonPrimitive?.intOrNull == SeeThroughLayers.CANDIDATE_RULES }
+				?.jsonArray?.map { element ->
 				val candidate = element.jsonObject
 				SeeThroughLayers.Candidate(candidate.getValue("original").jsonPrimitive.content, candidate.getValue("eyes").jsonPrimitive.boolean,
 					candidate.getValue("bangs").jsonArray.map { it.jsonPrimitive.content })

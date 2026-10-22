@@ -519,7 +519,7 @@ data class PSD2LiveState(
     val mouthColor: Int? = null,
     val mouthThickness: Float = 1.5f,
 	val seeThroughBrows: Boolean = true,
-	val seeThroughEyes: Boolean = false,
+	val seeThroughEyes: Boolean = true,
 	val seeThroughOpacity: Float = io.github.psd2live.core.SeeThroughLayers.DEFAULT_OPACITY,
 	val exportMotions: Boolean = true,
 	val motionBasic: Boolean = true,

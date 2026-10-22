@@ -37,9 +37,9 @@ On Windows, `run-gui.bat` in the repository root also starts the GUI. Without ar
 | `--body-strength <value>` | 1.0 | Body deformation strength |
 | `--mesh-only` | off | Generate meshes only |
 | `--no-deformers` | off | Skip deformers |
-| `--no-see-through` | off | Do not copy the brows the bangs cover above the bangs (copied by default, so outputs hold these extra meshes compared with earlier versions) |
-| `--see-through-eyes` | off | Copy the eye lines above the bangs too |
-| `--see-through-opacity <0..1>` | 0.5 | Opacity of the copies above the bangs |
+| `--no-see-through` | off | Show neither the brows nor the eyes through the bangs (both shown by default, so outputs hold the brow copies, the bangs' eye windows and their copies compared with earlier versions) |
+| `--no-see-through-eyes` | off | Do not show the eyes through the bangs (`--see-through-eyes`, the default now, is still accepted) |
+| `--see-through-opacity <0..1>` | 0.5 | How much the brows and eyes show through the bangs |
 | `--no-motions` | off | Skip motions |
 | `--no-physics` | off | Skip physics |
 | `--no-cmo3` | off | Skip CMO3 |
