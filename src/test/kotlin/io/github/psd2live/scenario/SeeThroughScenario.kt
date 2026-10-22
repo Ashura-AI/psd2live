@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.junit.jupiter.api.io.TempDir
 import org.umamo.format.cmo3.Cmo3
 import org.umamo.format.cmo3.model.custom.CModelSource
@@ -64,6 +65,9 @@ class SeeThroughScenario {
 			Triple("key the copy", "keyform_apply", req("changes" to listOf(mapOf("target" to "mesh:$copy", "key" to mapOf("ParamAngleX" to 0), "op" to "seed")))),
 			Triple("fade the copy", "rig_edit_structure", req("edits" to listOf(mapOf("action" to "static", "kind" to "mesh", "id" to copy, "opacity" to 0.2)))),
 			Triple("order the copy", "layer_draw_order", req("target" to "mesh:$copy", "order" to 900)),
+			Triple("hang the copy elsewhere", "object_edit_appearance", req("edits" to listOf(mapOf("action" to "bind", "kind" to "mesh", "id" to copy,
+				"parent_id" to null, "space" to "canvas")))),
+			Triple("remesh the copy", "layer_mesh_update", req("layer_id" to copy, "reset" to true)),
 		)) {
 			val failure = WorkspaceFailure.from(refused(name, operation, request))
 			expect(name, failure.code == "generated_copy" && failure.details["original"]?.jsonPrimitive?.content == brow) { "refused as ${failure.toJson()}" }
@@ -151,7 +155,8 @@ class SeeThroughScenario {
 
 	/**
 	 * Making the copies on the finished rig of [Characters.browed] by hand: hidden bangs make none, a missing original or
-	 * bang and a taken id are reported, a mesh already named like a copy is left alone, and a drag preview moves the copy.
+	 * bang and a taken id are reported, a mesh already named like a copy is left alone, a soft-deleted layer takes its copy and
+ * still lets the atlas compact, and a canvas preview remakes the copy.
 	 */
 	@Test fun copiesAreMadeOnlyOfWhatIsThere() = Studio.run(temp, Characters.browed(), checks = emptySet()) {
 		val hair = mesh("front_hair"); val brow = mesh("brow_l")
@@ -177,9 +182,24 @@ class SeeThroughScenario {
 		assertTrue(SeeThroughLayers.Note(brow, SeeThroughLayers.DropReason.ID_TAKEN) in result.notes)
 		// An eye-line setting copies nothing here: there are no eye lines.
 		assertTrue(SeeThroughLayers.apply(plain, candidates, settings.copy(brows = false, eyes = true)).copies.isEmpty())
-		// A drag preview moves the copy with its brow before the commit.
-		val moved = with(puppet, brow) { it.copy(geometryGrid = null) }
-		assertEquals(null, SeeThroughLayers.refresh(moved, now.model.rig.seeThroughCopies).drawables.single { it.id == taken }.geometryGrid)
+
+		// A legacy soft deletion of a brow's layer takes its copy too, and the atlas still compacts with copies in the rig.
+		val deleting = now.model.config.copy(deletedLayerIds = setOf("brow_l"), rigEdits = now.model.config.rigEdits.copy(
+			authoringJournal = now.model.config.rigEdits.authoringJournal + kotlinx.serialization.json.buildJsonObject { put("op", io.github.psd2live.core.RigLayerDeletion.OP) }))
+		val deleted = io.github.psd2live.core.RigLayerDeletion.preview(now.model, deleting)
+		val otherCopy = SeeThroughLayers.copyId(DrawableId(mesh("brow_r"))).raw
+		assertEquals(mapOf(otherCopy to mesh("brow_r")), deleted.rig.seeThroughCopies)
+		assertTrue(deleted.rig.puppet.drawables.none { it.id == taken }, "the deleted brow's copy remains")
+		assertTrue("brow_l" !in deleted.atlas.placementByLayerId, "the deleted layer keeps its tile")
+		val shownBrow = deleted.rig.puppet.drawables.single { it.id.raw == mesh("brow_r") }
+		assertTrue(deleted.rig.puppet.drawables.single { it.id.raw == otherCopy }.mesh!!.uvs.contentEquals(shownBrow.mesh!!.uvs), "the copy samples elsewhere")
+
+		// A preview of an uncommitted change of the brow's keyforms, blend shapes and channels shows the copy changed alike.
+		val faded = with(puppet, brow) { it.copy(geometryGrid = null, opacity = 0.25f) }
+		val previewed = SeeThroughLayers.refresh(faded, now.model).drawables.single { it.id == taken }
+		assertEquals(null, previewed.geometryGrid)
+		assertEquals(0.25f * settings.opacity, previewed.opacity)
+		assertTrue(SeeThroughLayers.refresh(puppet, now.model) === puppet)
 
 		// The project report lists what could not be made.
 		val report = io.github.psd2live.core.quality.GeneratedOverrideQuality.report(emptyList(), emptyList(), noBrow.notes.map { it.original to it.reason.wire })

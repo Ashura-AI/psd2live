@@ -1535,7 +1535,15 @@ internal class CanvasEditor(
     var draft by mutableStateOf(emptyList<Pair<Float, Float>>())
     var cursor by mutableStateOf<Offset?>(null)
     var marquee by mutableStateOf(emptyList<Offset>())
-    var preview by mutableStateOf<PuppetModel?>(null)
+    private var previewModelState by mutableStateOf<PuppetModel?>(null)
+
+    /**
+     * What the canvas shows while an edit is pending. Every tool's preview passes through here: the copies over the
+     * bangs are made anew from their originals as the preview has them ([SeeThroughLayers.refresh]), as the commit will.
+     */
+    var preview: PuppetModel?
+        get() = previewModelState
+        set(value) { previewModelState = value?.let { io.github.psd2live.core.SeeThroughLayers.refresh(it, state.previewModel) } }
     var busy by mutableStateOf(false)
     var error by mutableStateOf<String?>(null)
     var space by mutableStateOf(false)
@@ -1747,10 +1755,6 @@ internal class CanvasEditor(
     private var targetAtPress: CanvasTarget? = null
     private var original: PuppetModel? = null
 
-    /** [command] on [source] as the drag shows it: the copies over the bangs move with their originals until the commit makes them anew. */
-    private fun previewApplied(source: PuppetModel, command: kotlinx.serialization.json.JsonObject): PuppetModel =
-        io.github.psd2live.core.SeeThroughLayers.refresh(io.github.psd2live.core.RigAuthoringJournal.apply(source, command),
-            state.previewModel?.rig?.seeThroughCopies.orEmpty())
     private var pending: JsonObject? = null
     private var gestureState: String? = null
     private var moved = false
@@ -6476,7 +6480,7 @@ internal class CanvasEditor(
             bezierSourcePoints = evaluated.copyOf()
             val cmd = RigBezierJournal.materialize(source, t.id, coordinate(t), pose,
                 RigBezierJournal.Controls(requireNotNull(bezierState), bezierResidual), preserveChildren = effectiveCtrl)
-            preview = previewApplied(source, cmd); pending = cmd; previous = pos
+            preview = RigAuthoringJournal.apply(source, cmd); pending = cmd; previous = pos
             return
         }
 
@@ -6493,7 +6497,7 @@ internal class CanvasEditor(
             bezierSourcePoints = evaluated.copyOf()
             val cmd = RigBezierJournal.materialize(source, t.id, coordinate(t), pose,
                 RigBezierJournal.Controls(requireNotNull(bezierState), bezierResidual), preserveChildren = effectiveCtrl)
-            preview = previewApplied(source, cmd); pending = cmd; previous = pos
+            preview = RigAuthoringJournal.apply(source, cmd); pending = cmd; previous = pos
             return
         }
 
@@ -6582,7 +6586,7 @@ internal class CanvasEditor(
                     geometryCommand(item, item.mapping.worldToLocalLinearized(worlds[itemIndex], item.geometry.points, item.geometry.points, movedSets[itemIndex]), effectiveCtrl)
                 }
                 pendingLayers = if (objectMode && !editing) wholeLayerTransform(targets, worlds, movedSets) else null
-                preview = pendingObjects.fold(source) { m, command -> previewApplied(m, command) }
+                preview = pendingObjects.fold(source) { m, command -> RigAuthoringJournal.apply(m, command) }
                 return
             }
 
@@ -6595,7 +6599,7 @@ internal class CanvasEditor(
                         val points = DeformPathTools.positions(path, t.geometry.points).toMutableList()
                         points[pathPoint] = dest
                         val cmd = geometryCommand(t, DeformPathTools.deform(t.geometry.points, source.deformPaths, path.id, points, org.umamo.render.eval.DeformPathMetrics.canvasScale(source, source.drawables.single { it.id == path.drawableId })))
-                        preview = previewApplied(source, cmd)
+                        preview = RigAuthoringJournal.apply(source, cmd)
                         pending = cmd
                     } else {
                         // EDIT / create: rebind control point only — mesh geometry stays put.
@@ -6605,7 +6609,7 @@ internal class CanvasEditor(
                             points = path.points.mapIndexed { i, p -> if (i == pathPoint) rebound else p },
                         )
                         val cmd = DeformPathJournal.encode(updated)
-                        preview = previewApplied(source, cmd)
+                        preview = RigAuthoringJournal.apply(source, cmd)
                         pending = cmd
                     }
                     previous = pos
@@ -6623,7 +6627,7 @@ internal class CanvasEditor(
                 val dy = moved.second - base[1]
                 val pts = floatArrayOf(moved.first, moved.second, base[2] + dx, base[3] + dy)
                 val cmd = geometryCommand(t, pts)
-                preview = previewApplied(source, cmd); pending = cmd; previous = pos
+                preview = RigAuthoringJournal.apply(source, cmd); pending = cmd; previous = pos
                 return
             }
 
@@ -6638,7 +6642,7 @@ internal class CanvasEditor(
                 if ((endpoint - origin).getDistance() < 1e-5f) return
                 val pts = floatArrayOf(origin.x, origin.y, endpoint.x, endpoint.y)
                 val cmd = if (alt) geometryCommand(t, pts) else JsonObject(geometryCommand(t, pts) + ("keep_scale" to JsonPrimitive(true)))
-                preview = previewApplied(source, cmd); pending = cmd; previous = pos
+                preview = RigAuthoringJournal.apply(source, cmd); pending = cmd; previous = pos
                 return
             }
 
@@ -6657,7 +6661,7 @@ internal class CanvasEditor(
                 world[i * 2 + 1] = -((destination.y - viewport.offsetY) / viewport.scale).toFloat()
             }
             val cmd = geometryCommand(t, t.mapping.worldToLocal(world, base, affected), effectiveCtrl)
-            preview = previewApplied(source, cmd); pending = cmd; previous = pos
+            preview = RigAuthoringJournal.apply(source, cmd); pending = cmd; previous = pos
         } catch (e: Exception) { error = e.message }
     }
 

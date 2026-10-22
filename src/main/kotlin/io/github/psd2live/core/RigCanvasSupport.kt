@@ -78,8 +78,7 @@ internal object RigCanvasSupport {
 		val originalComposite = g.composite
 		for (drawable in drawables) {
 			// A copy over the bangs shows with its original's layer.
-			val layerId = model.rig.layerIdByDrawableId[drawable.id.raw]
-				?: model.rig.seeThroughCopies[drawable.id.raw]?.let { model.rig.layerIdByDrawableId[it] }
+			val layerId = model.rig.layerOf(drawable.id.raw)
 			if (visibleLayerIds != null && layerId != null && layerId !in visibleLayerIds) continue
 			if (visibleLayerIds != null && layerId == null && drawable.id.raw !in visibleLayerIds && !drawable.isVisible) continue
 			// A reference layer's quad has no atlas page: its pixels are drawn on their own.

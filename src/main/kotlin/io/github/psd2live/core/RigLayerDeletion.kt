@@ -63,14 +63,16 @@ internal object RigLayerDeletion {
     fun rig(input: BuiltRig, analysis: PipelineAnalysis, config: PipelineConfig): BuiltRig {
         if (!deferred(config)) return input
         val removed = input.puppet.drawables.filter { drawable ->
-            input.layerIdByDrawableId[drawable.id.raw]?.let { deleted(it, analysis, config) } == true
+            // A copy over the bangs goes with its original's layer.
+            input.layerOf(drawable.id.raw)?.let { deleted(it, analysis, config) } == true
         }.mapTo(HashSet()) { it.id }
         val ids = removed.mapTo(HashSet()) { it.raw }
         return input.copy(puppet = input.puppet.withDrawablesDeleted(removed).let { model -> model.copy(
             deformPaths = model.deformPaths.filterNot { it.drawableId in removed },
             vertexGroups = model.vertexGroups.filterNot { it.drawableId in removed },
         ) }, layerIdByDrawableId = input.layerIdByDrawableId - ids,
-            sourceBoundsByDrawableId = input.sourceBoundsByDrawableId - ids, pageByDrawableId = input.pageByDrawableId - ids)
+            sourceBoundsByDrawableId = input.sourceBoundsByDrawableId - ids, pageByDrawableId = input.pageByDrawableId - ids,
+            seeThroughCopies = input.seeThroughCopies - ids)
     }
 
     fun preview(input: RigPreviewModel, config: PipelineConfig, previousAtlas: PackedAtlas? = null): RigPreviewModel {
@@ -107,6 +109,6 @@ internal object RigLayerDeletion {
     }
 
     private fun binds(rig: BuiltRig, layers: Set<String>, atlas: PackedAtlas) = rig.puppet.drawables.all { drawable ->
-        drawable.mesh == null || rig.layerIdByDrawableId[drawable.id.raw]?.let { it in layers && it in atlas.placementByLayerId } == true
+        drawable.mesh == null || rig.layerOf(drawable.id.raw)?.let { it in layers && it in atlas.placementByLayerId } == true
     }
 }

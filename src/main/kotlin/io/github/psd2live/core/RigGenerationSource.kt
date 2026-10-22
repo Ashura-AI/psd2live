@@ -285,7 +285,7 @@ internal object RigGenerationSource {
         val pages = rig.pageByDrawableId.toMutableMap()
         val drawables = rig.puppet.drawables.map { drawable ->
             val mesh = drawable.mesh ?: return@map drawable
-            val layerId = rig.layerIdByDrawableId.getValue(drawable.id.raw)
+            val layerId = requireNotNull(rig.layerOf(drawable.id.raw)) { "Mesh without a layer: ${drawable.id.raw}" }
             val old = requireNotNull(from.placementByLayerId[layerId]) { "Generation atlas layer is missing" }
             val next = requireNotNull(to.placementByLayerId[layerId]) { "Current atlas layer is missing" }
             val oldBounds = oldLayers.getValue(layerId).source.bounds

@@ -48,7 +48,7 @@
 | `motions`（生成动作） | `rig:final`、`rig:seeThrough`、`physics`、动作设置、骨架定义 | `motions` |
 
 - 重放（`RigEditOverlay.applyTo`）按图的拓扑顺序运行日志之后的节点：先 `skeleton.skin`，再摆动与模拟，与此前“先全部摆动、再全部模拟”的顺序一致；声明顺序打破平局。
-- 透过刘海的复制件（`SeeThroughLayers`，见[变形器与参数参考](DEFORMER_AND_PARAMETER_SPEC.md#自动形变)）：`rig` 节点只记录候选（被刘海覆盖的眉毛与眼线及其刘海），`seeThrough` 节点在覆盖合并、图层显隐与绘制顺序覆盖之后（`AuthoredRig.finished` 末尾，`withSeeThrough`）按设置从原件制作复制件，蒙版、绘制顺序与不透明度都由当时的原件与刘海得出；复制件不在作者态 Rig 中，不拥有任何 `keyform:` 对象，点名它的编辑由 `WorkspaceDocumentEdits.journal` 与 `layer_draw_order` 以 `WorkspaceGeneratedCopyEdit`（`generated_copy`）拒绝；三项设置只触发重放，不算生成设置。
+- 透过刘海的复制件（`SeeThroughLayers`，见[变形器与参数参考](DEFORMER_AND_PARAMETER_SPEC.md#自动形变)）：`rig` 节点只记录候选（被刘海覆盖的眉毛与眼线及其刘海），`seeThrough` 节点在覆盖合并、图层显隐与绘制顺序覆盖之后（`AuthoredRig.finished` 末尾，`withSeeThrough`）按设置从原件制作复制件，蒙版、绘制顺序与不透明度都由当时的原件与刘海得出；复制件不在作者态 Rig 中，不拥有任何 `keyform:` 对象，点名它的任何文档操作（`WorkspaceDocumentEdits` 分发处与日志记录处）以 `WorkspaceGeneratedCopyEdit`（`generated_copy`）拒绝；三项设置只触发重放，不算生成设置。复制件没有自己的图层条目，按图层处理网格的地方经 `BuiltRig.layerOf` 取原件的图层（旧版软删除随原件删去复制件、图集压缩与重新绑定）；生成迁移读作 Rig 数据的构建不制作复制件（`SeeThroughLayers.withoutCopies`）。画布编辑的预览统一经 `CanvasEditor.preview` 的赋值按预览中的原件重做复制件（`SeeThroughLayers.refresh`）。
 - 文档若让两个生成器声明同一参数，先声明者保留拥有权，后者的声明被丢弃，重建仍可进行，冲突由生成器自身报告。
 - `DocumentGenerators.stale(before, after)` 给出一次文档变化后需要重跑的生成器：读取了变化部分的生成器及其全部下游；被修改或删除的生成器原先拥有的对象也视为变化。例如调整一个摆动只重跑该摆动、覆盖合并、物理与动作，不重跑 Rig 生成、骨架或其他模拟。
 - Rig 生成按阶段登记为节点（见下文[Rig 生成阶段](#rig-生成阶段)）；`graph(overlay, layers)` 给出图层列表时每层一个 `mesh:<图层>` 节点，某层像素变化只让该层网格、组装及其下游过期。

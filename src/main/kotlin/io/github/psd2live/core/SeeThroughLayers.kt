@@ -65,6 +65,13 @@ object SeeThroughLayers {
 		}
 	}
 
+	/**
+	 * [config] making no copies: for the builds a generation step reads as rig data (the meshes, ids and bindings it
+	 * migrates or records), never shows - the copies are made again when the result is.
+	 */
+	fun withoutCopies(config: PipelineConfig) = if (!config.seeThroughBrows && !config.seeThroughEyes) config
+		else config.copy(seeThroughBrows = false, seeThroughEyes = false)
+
 	/** The finished model, the copies it holds (copy id to original id) and the candidates that made none. */
 	class Result(val model: PuppetModel, val copies: Map<String, String>, val notes: List<Note>)
 
@@ -129,19 +136,22 @@ object SeeThroughLayers {
 	}
 
 	/**
-	 * [model] with each of [copies] (copy id to original id) taking its original's parent, mesh and geometry keyforms
-	 * again: what a canvas drag shows before the edit commits and the copies are made anew.
+	 * [model] - a preview of an uncommitted edit of [shown]'s rig - with each copy of [shown] made again from its
+	 * original as [model] has it, keeping the copy's masks and draw order: what the commit will show. A copy whose
+	 * original is the same instance as in [shown] is left as it is. The one entry for every canvas preview.
 	 */
-	fun refresh(model: PuppetModel, copies: Map<String, String>): PuppetModel {
-		if (copies.isEmpty()) return model
+	fun refresh(model: PuppetModel, shown: RigPreviewModel?): PuppetModel {
+		val copies = shown?.rig?.seeThroughCopies.orEmpty()
+		if (copies.isEmpty() || model === shown?.rig?.puppet) return model
+		val before = shown!!.rig.puppet.drawables.associateBy { it.id.raw }
 		val byId = model.drawables.associateBy { it.id.raw }
+		val alpha = Settings.of(shown.config).opacity
 		var changed = false
 		val drawables = model.drawables.map { drawable ->
 			val original = copies[drawable.id.raw]?.let(byId::get) ?: return@map drawable
-			if (drawable.mesh === original.mesh && drawable.geometryGrid === original.geometryGrid &&
-				drawable.parentDeformerId == original.parentDeformerId) return@map drawable
+			if (original === before[original.id.raw]) return@map drawable
 			changed = true
-			drawable.copy(parentDeformerId = original.parentDeformerId, mesh = original.mesh, geometryGrid = original.geometryGrid)
+			copyOf(original, drawable.id, drawable.maskedBy, drawable.drawOrder, alpha)
 		}
 		return if (changed) model.copy(drawables = drawables) else model
 	}

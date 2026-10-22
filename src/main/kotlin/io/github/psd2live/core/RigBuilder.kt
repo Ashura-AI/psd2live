@@ -130,6 +130,10 @@ data class BuiltRig(
 	/** The candidates the finished rig made no copy of although asked to, and why. */
 	val seeThroughNotes: List<SeeThroughLayers.Note> = emptyList(),
 ) {
+	/** The source layer whose art [drawableId] shows: its own, or for a copy over the bangs its original's. */
+	fun layerOf(drawableId: String): String? =
+		layerIdByDrawableId[drawableId] ?: seeThroughCopies[drawableId]?.let(layerIdByDrawableId::get)
+
 	/**
 	 * The puppet with v2 stubs removed and side-channel parts spliced in: what the document shows once every
 	 * version 2 `art_primitive` record ([ArtPrimitiveV2]) has placed its parts, without the journal's authored

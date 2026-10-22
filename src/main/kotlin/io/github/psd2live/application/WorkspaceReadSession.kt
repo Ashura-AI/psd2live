@@ -340,8 +340,7 @@ internal class WorkspaceReadSession(
                     "vertexCount" to (drawable.mesh?.vertexCount ?: 0).toString(),
                     "triangleCount" to (drawable.mesh?.triangleCount ?: 0).toString(),
                     // A copy over the bangs reports its original's layer, and the original it copies.
-                    "layerId" to (rig.layerIdByDrawableId[drawable.id.raw]
-                        ?: rig.seeThroughCopies[drawable.id.raw]?.let(rig.layerIdByDrawableId::get) ?: ""),
+                    "layerId" to (rig.layerOf(drawable.id.raw) ?: ""),
                 ) + (rig.seeThroughCopies[drawable.id.raw]?.let { mapOf("seeThroughOf" to it) } ?: emptyMap())
                 val geoSnapshot = grid?.let { g ->
                     WorkspaceObjectGeometrySnapshot(
