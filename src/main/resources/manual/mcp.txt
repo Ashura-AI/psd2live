@@ -60,6 +60,7 @@ parameter: workspace_inspect preview_set preview_reset parameter_create
 edit-parameters: parameter_update author_axis keyform_apply parameter_create
 parameter-modifyication: parameter_update parameter_create parameter_delete rig_edit_structure
 standard-parameter-list: workspace_overview workspace_inspect
+repeat: parameter_update parameter_create motion_sample
 copy-and-paste-parameter-values: snapshot_create snapshot_apply snapshot_list snapshot_update snapshot_delete snapshot_get
 how-to-choose: workspace_inspect workspace_overview
 how-to-edit: rig_deform canvas_deform_stroke keyform_apply author_axis
@@ -82,10 +83,16 @@ builtin-motions: motion_preset motion_seed_builtin motion_duplicate motion_list
 eye-blink-settings: motion_preset settings_update
 timeline-basic-operation-timelinepalette: motion_pose motion_set_key motion_properties motion_remove_curve preview_pose preview_playback
 timeline-basic-operation-dopesheet: motion_move_keys motion_delete_keys motion_paste_keys motion_set_key motion_delete_key
+parameter-bookmark: timeline_bookmark_set timeline_aids_get
+timeline-basic-operation-shy: timeline_shy_set timeline_aids_get
+freeze: timeline_freeze_set timeline_aids_get
+timeline-basic-operation-repeat: parameter_update motion_set_key motion_sample
 grapheditor: motion_replace_keys motion_set_key motion_sample motion_get
+marker: timeline_marker_put timeline_marker_delete timeline_aids_get
 about-fade: motion_properties
 fade-setting: motion_properties
 notes-for-sdk: project_export_model view_sample_motion motion_list
+loop-editing-support: motion_close_loop motion_properties motion_get
 exporting-images: project_export_target view_sample_motion
 export-moc3-motion3-files: project_export_model settings_update job_wait
 other-formats: project_export_target project_export_psd job_wait

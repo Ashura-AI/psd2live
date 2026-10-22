@@ -62,6 +62,8 @@
 | `snapshot_create / snapshot_update / snapshot_delete / snapshot_apply` | `state`，更新/删除/应用要求 `id`；创建/更新可给 `name`、`values` | 保存、改名/覆盖、删除及应用参数快照；应用保留锁、忽略已删除参数并按当前范围钳制；不写时间线关键帧 |
 | `snapshot_get / snapshot_list` | 读取给 `id`；列表可给 `offset`、`limit` | 返回同一捕获的工程状态、快照 ID/编号；列表省略 values，详情返回 values |
 | `history_annotation_put / history_annotation_delete / history_annotation_get` | `node_id`；写入还须 `title`、`note`、`hidden` | 管理历史节点的显示注释；辅助数据保存到工程，历史节点及 Rig revision 不变 |
+| `timeline_bookmark_set / timeline_shy_set / timeline_freeze_set / timeline_marker_put / timeline_marker_delete` | `state`；书签给 `parameter`、`bookmarked`；其余给 `clip_id`（编辑器的动作 ID，生成动作为 `preset:<名称>`）及 `parameter`、`shy` / `frozen`（冻结须给 `value`）或标记的 `time`、`label`、`color`、`id` | 动画编辑器的时间轴辅助：参数书签、掩盖与冻结的轨道、时间轴标记。辅助数据随工程保存，不追加历史、不导出；冻结只让编辑器播放时保持该值，不阻止 `motion_*` 改键；不带 `id` 的标记取下一个 `marker_<n>` |
+| `timeline_aids_get` | 可给 `clip_id` | 读取书签与各动作的掩盖、冻结值和标记 |
 | `settings_update` | `request` 内 `state`、`changes` | 后台修改自动 Rig、网格、贴图、高清化、物理预设、动作和导出配置；`rigTuning` 按字段合并 Rig 数值（头部转向、眼睛、眉毛、嘴巴、鼻子与耳朵、头发，以及身体的转身、上下、前后倾、大小变、身体 Z 与呼吸、立体与透视；单位与模型预设「Rig 数值」一致，超出范围或未知的字段会被拒绝）；`meshOnly` 变化而未显式给出 `generateDeformers` 时联动为 `!meshOnly`（导入 CMO3 除外），生成动作子项变化而未显式给出 `exportMotions` 时联动为子项是否全开，显式字段优先；关闭来源时把其驱动的作者姿态逐工作区释放到参数默认值（跳过锁定参数），与设置同次提交；文档保存原始设置；先用 `workspace_inspect scope=settings` 读取 |
 | `project_import_psd` | `path`，可选 `discard_unsaved` | 从绝对 PSD 路径后台创建新工程；已加载时可切换，默认拒绝未保存修改 |
 | `project_create_artwork` | `width`、`height`、`layers`，可选 `discard_unsaved` | 从本地 PNG/WebP/TIFF/BMP 按位置创建新工程，图层自底向顶；后台任务，切换须保存或显式放弃 |
@@ -165,7 +167,7 @@
 | `physics_preset_list / physics_preset_put / physics_preset_rename / physics_preset_delete / physics_apply_preset` | 稳定 ID 的全局输入/摆锤预设库，库修改使用 `library_state`，应用为可批量文档编辑 |
 | `simulation_preview / simulation_preview_step / simulation_preview_get / simulation_preview_render` | 私有实时模拟场景；启动/重启/停止和显式 dt 步进为后台会话，读取/渲染不会推进时钟 |
 | `paint_session_begin / paint_session_list / paint_session_control / paint_session_commit` | 私有多笔触草稿、撤销/重做/跳转/取色/PNG；手势与取色使用画布单位，草稿是图层自身栅格（`width/height` 像素覆盖 `canvas_rect`）；确认前不修改工程像素，确认一次历史提交。`paint_session_begin` 传 `material_id`（代替 `layer_id`）在素材库条目自身像素上绘画：结果带 `material_id`，其他编辑提交不影响会话，只有该素材像素变化才使其失效；提交写成一次 `material_set_pixels`，显示该素材的图层随之更新，`rebuild_mesh` 不适用。`paint_session_control` 的 `select` 动作改变会话选区（`rectangle` / `ellipse` / `lasso` / `wand` 以 `op` 新建、添加、减去或交叉，或 `all` / `none` / `invert` / `feather`），之后的手势与笔画只落在选区内；选区不进笔画历史，`session.selection` 为其栅格包围盒。手势另有 `blur`（`opacity` 为强度）、`fill`（填充选区包围盒内的选区；无选区时填图层原区域与已画区域）、`gradient`（`end_color`、`kind: linear / radial`），油漆桶可传 `contiguous:false`，各手势可传 `lock_alpha` 只改已有像素（`eraser` / `clear` 不接受，请用画笔画背景色）；套索最多 4096 点 |
-| `motion_create / motion_duplicate / motion_rename / motion_properties / motion_pose / motion_move_keys / motion_delete_keys / motion_paste_keys / motion_replace_keys / motion_preset` | 动作生命周期、姿态打键、键移动/删除/粘贴/替换及生成预设；全部可参与原子批量 |
+| `motion_create / motion_duplicate / motion_rename / motion_properties / motion_pose / motion_move_keys / motion_delete_keys / motion_paste_keys / motion_replace_keys / motion_preset / motion_close_loop` | 动作生命周期、姿态打键、键移动/删除/粘贴/替换及生成预设；全部可参与原子批量；`motion_close_loop` 让所列曲线（默认全部）首尾衔接：0 与结尾各有关键帧，结尾取开头的值（循环参数取最近整圈），两端缓动时结尾以开头的斜率进入；`parameter_create` / `parameter_update` 设 `repeat: true` 的参数，关键帧可超出范围至多 64 圈，导出原值、由运行时绕回（需 Cubism 5.3 目标） |
 
 控制请求仍遵守修改去重及工作区令牌规则。会话可另外拥有自己的令牌；全局物理库使用独立库令牌。读取、渲染、播放帧和私有草稿不等同于文档提交；以 `kind/job_backed/batchable` 发现元数据区分执行方式。
 

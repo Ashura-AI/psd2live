@@ -122,7 +122,7 @@
     + extended-interpolation-folder
       - extended-interpolation missing cubism=extended-interpolation
       - extended-type missing cubism=extended-type
-    - repeat missing cubism=repeat
+    - repeat different cubism=repeat
     - recording-parameters missing cubism=recording-parameters
     - copy-and-paste-parameter-values different cubism=copy-and-paste-parameter-values
     - motion-sync missing cubism=motion-sync
@@ -170,13 +170,13 @@
   + timeline
     - timeline-basic-operation-timelinepalette different cubism=timeline-basic-operation-timelinepalette
     - timeline-basic-operation-dopesheet same cubism=timeline-basic-operation-dopesheet
-    - parameter-bookmark missing cubism=parameter-bookmark
-    - timeline-basic-operation-shy missing cubism=timeline-basic-operation-shy
-    - freeze missing cubism=freeze
-    - timeline-basic-operation-repeat missing cubism=timeline-basic-operation-repeat
+    - parameter-bookmark different cubism=parameter-bookmark
+    - timeline-basic-operation-shy different cubism=timeline-basic-operation-shy
+    - freeze different cubism=freeze
+    - timeline-basic-operation-repeat different cubism=timeline-basic-operation-repeat
     - grapheditor different cubism=grapheditor
-    - marker missing cubism=marker
-    - locus-of-tracks missing cubism=locus-of-tracks
+    - marker different cubism=marker
+    - locus-of-tracks different cubism=locus-of-tracks
     - template-making-and-management missing cubism=template-making-and-management
     - about-fade same cubism=about-fade
     - fade-setting different cubism=fade-setting
@@ -194,7 +194,7 @@
   - limited-animation missing cubism=limited-animation
   - physics-operation-bake missing cubism=physics-operation-bake
   - motion-sync-bake missing cubism=motion-sync-bake
-  - loop-editing-support missing cubism=loop-editing-support
+  - loop-editing-support different cubism=loop-editing-support
 + export
   - exporting-images different cubism=exporting-images
   - export-moc3-motion3-files different cubism=export-moc3-motion3-files

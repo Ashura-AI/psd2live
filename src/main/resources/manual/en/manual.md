@@ -1191,6 +1191,7 @@ A parameter's name, range and keys are changed in **Parameter Properties**; once
 3. At the two ends of the **Key points** axis, change the minimum, default and maximum; the default must lie within the range.
 4. Click **Save**; this is one undoable history step.
 The dialog also has **Lock parameter value** (only keeps the preview at the current value; it is not part of the definition), **Duplicate definition** (copies the name and range, not component bindings or deformation data) and **Delete Parameter** (also removes the associated keyframes and links).
+An ordinary parameter can also **Repeat**, its value running on from the minimum past the maximum; see [[repeat]].
 !> Shrinking the range also limits the key values and Bezier control points in animations; deleting a parameter removes the corresponding animation tracks.
 ## Tidy the Parameters panel
 - Create parameters or folders from the toolbar; right-click a folder to create a parameter / folder inside it, set a label color, rename it or dissolve it.
@@ -1222,6 +1223,15 @@ Generated models use the Cubism standard parameter IDs, so after export they can
 @@ extended-interpolation | About Extended Interpolation
 @@ extended-type | Interpolation Type
 @@ repeat | Repeat
+With **Repeat** on, a parameter's value runs on past its maximum from its minimum, and past its minimum from its maximum: for a wheel that keeps turning, a windmill or a tail that swings round and round.
+## Set it
+1. Click the parameter's name in the Parameters panel to open **Parameter properties**.
+2. Tick **Repeat (wrap from the maximum back to the minimum)** and click **Save**. This is one undoable history step; only ordinary parameters can repeat, blend-shape parameters cannot.
+## What it does
+- The preview and the runtimes wrap the value into the range. The maximum and the minimum are the same pose, so the shapes at both ends should match.
+- A motion may key the parameter past its range, up to 64 turns, for a continuous spin; see [[timeline-basic-operation-repeat]].
+- The `moc3` gets the parameter repeat flag (the format from Cubism 5.3), the `cmo3` its `isRepeat`.
+!> Exporting for an SDK target before Cubism 5.3 drops the setting and lists it in the downgrade report; the runtime then clamps motion values past the range to its ends.
 @@ recording-parameters | Record Parameter Operations and Generate Animations
 @@ copy-and-paste-parameter-values | Copy/Paste Parameter Values
 After you have dialed in a pose or expression you like, save it as a parameter snapshot and return to that state with one click later; this is easier than copying parameter values one by one, and suits comparing back and forth between several poses while correcting shapes. A snapshot records only parameter values and does not change the model.
@@ -1557,6 +1567,10 @@ Open the **Animation Editor** from the **Windows** menu, or use the **Animation*
 | Loop | Export as a looping motion |
 | Snap to Frames | Align to whole frames when dragging keyframes and the playhead |
 | Dopesheet / Curves | Switch between [[timeline-basic-operation-dopesheet]] and [[grapheditor]] |
+| Hide Shy / Bookmarks | See [[timeline-basic-operation-shy]] and [[parameter-bookmark]] |
+| Trajectory | See [[locus-of-tracks]] |
+| Marker / Close loop | See [[marker]] and [[loop-editing-support]] |
+Each track row also has bookmark, shy and freeze buttons; see [[parameter-bookmark]], [[timeline-basic-operation-shy]] and [[freeze]].
 ## Shortcuts (when the timeline has focus)
 | Action | Key |
 |---|---|
@@ -1564,6 +1578,9 @@ Open the **Animation Editor** from the **Windows** menu, or use the **Animation*
 | Jump to start / end | {key:MOTION_GO_START} / {key:MOTION_GO_END} |
 | Fit the timeline | {key:MOTION_FIT_VIEW} |
 | Zoom / pan the timeline | {kbd:Ctrl+Wheel} / {kbd:Shift+Wheel} |
+| Add / previous / next marker | {key:MOTION_ADD_MARKER} / {key:MOTION_PREV_MARKER} / {key:MOTION_NEXT_MARKER} |
+| Hide shy tracks | {key:MOTION_HIDE_SHY} |
+| Close the loop | {key:MOTION_CLOSE_LOOP} |
 @@ timeline-basic-operation-dopesheet | Basic Dope Sheet Operation
 The dopesheet lays out each track's keyframes as a row of dots and is best for arranging timing: shifting the rhythm, copying a stretch of motion, changing the interpolation in one go. Click **Dopesheet** on the animation editor toolbar to switch here.
 | Operation | How |
@@ -1575,9 +1592,35 @@ The dopesheet lays out each track's keyframes as a row of dots and is best for a
 | Delete | {key:MOTION_DELETE_KEYS}, or **Delete Keys** at the bottom |
 With keyframes selected, the bottom shows **n keys selected**, and you can type the **Time** and **Value** directly and set the interpolation for all of them. One drag or one input is recorded as one history step.
 @@ parameter-bookmark | Parameter Bookmarks
+Once a model has many parameters, bookmark the ones you use: the animation editor can show only their tracks, and they lead the list when you add a track.
+## Use
+| Action | How |
+|---|---|
+| Bookmark / remove | The bookmark button on a track row, or click the row and press {key:MOTION_TOGGLE_BOOKMARK} |
+| Bookmarks only | **Bookmarks** on the toolbar shows only the tracks of bookmarked parameters |
+| Add tracks | In the **Track** menu bookmarked parameters come first, marked ★; **Add bookmarked tracks** adds every bookmarked parameter that has no track yet |
+Bookmarks belong to the whole project and every motion shares them; they are saved with the project but are not model data, so they take no history step and never export.
+*> Unlike Cubism there is one set of bookmarks: a parameter is bookmarked or not.
 @@ timeline-basic-operation-shy | Shy function
+Mark the tracks you don't need to see as **shy**, turn on **Hide Shy**, and the timeline keeps only the tracks you are editing. Shy tracks still play and export.
+## Use
+1. Click the shy button (a lowered eye) on a track row, or click the row and press {key:MOTION_TOGGLE_SHY}.
+2. **Hide Shy** on the toolbar ({key:MOTION_HIDE_SHY}) hides them or shows them again; the track list's header says how many are hidden.
+Shy tracks are kept per motion and saved with the project; they take no history step.
 @@ freeze | Freeze function
+Freezing holds one track at a fixed value while the motion plays or the playhead moves, so you can check the rest on its own: stop the blink, say, and watch the head turn.
+## Use
+1. Move the playhead to a time where the track has the value you want.
+2. Click the freeze button (a snowflake) on the track row, or click the row and press {key:MOTION_TOGGLE_FREEZE}. The track freezes at its value at the playhead: the row shows the value, the dopesheet hatches the track and the curves view draws the value as a dashed line.
+3. Click again to unfreeze.
+While frozen the track's keys cannot be selected, dragged or keyed, and Auto Key passes it by; the keys themselves stay as they are and so does the exported motion. Frozen tracks are kept per motion and saved with the project; they take no history step.
+*> Freezing applies to the motion open in the animation editor; keys edited through MCP are not held back by it.
 @@ timeline-basic-operation-repeat | Animation of parameter repeat
+For a parameter set to [[repeat]], a motion's keys may go past the parameter's range, for motions that keep turning: a wheel with a range of 0–360 keyed 0 at 0 s and 720 at 1 s turns twice a second.
+- Keys may go up to 64 turns past the range; the curves view draws a dashed line at each whole turn.
+- The preview shows the value wrapped into the range; the exported `motion3.json` keeps the keyed values and the runtime wraps them.
+- When [[loop-editing-support]] closes a looping motion, such a parameter ends on the whole turn nearest its start, so the spin never winds back.
+!> Turning the parameter's repeat off or narrowing its range clamps keys past the range to its ends.
 @@ grapheditor | Graph Editor
 The curve view draws a track as a curve of the value over time, used to tune easing and overshoot. It shares the same area, selection and shortcuts as the dopesheet; click **Curves** on the animation editor toolbar to switch.
 ## Operations
@@ -1594,7 +1637,22 @@ The curve view draws a track as a curve of the value over time, used to tune eas
 | Inverse stepped | Jumps to the next key's value immediately and holds it |
 *> The handle time is limited to within its segment (consistent with `AreBeziersRestricted` in `motion3.json`), so the curve shape does not change after export.
 @@ marker | Marker Function
+Markers are named, coloured times on the timeline, to line keys up with a beat, a line of dialogue or another motion.
+## Use
+| Action | How |
+|---|---|
+| Add | The marker button on the toolbar or {key:MOTION_ADD_MARKER} adds one at the playhead (on a whole frame while **Snap to Frames** is on) |
+| Move | Drag its flag on the ruler |
+| Edit | Click its flag: the playhead jumps there and its label, time, colour and **Delete Marker** open |
+| Jump | {key:MOTION_PREV_MARKER} / {key:MOTION_NEXT_MARKER} go to the previous / next marker |
+Markers are kept per motion and saved with the project; they take no history step and never export: they are not `motion3.json` events (for user data see [[userdata]]).
 @@ locus-of-tracks | Track Trajectory
+The trajectory draws, on the preview canvas, the path the selected object takes through the motion: a dot for every frame and a ring at the playhead's frame, to check that a movement's arc is smooth.
+## Use
+1. Open the motion in the animation editor and turn on **Trajectory** on its toolbar.
+2. Select one or more layers (the centre of their meshes is followed) or a deformer (a rotation deformer's pivot, a warp deformer's middle).
+3. Look at the preview canvas; the path follows as you change keys or move the playhead.
+The path follows the motion's keys, frozen tracks held at their value, without physics or mouse tracking.
 @@ template-making-and-management | Animation Templates
 @@ about-fade | About Fading
 Fading decides how smoothly the runtime switches between motions: the new motion takes effect gradually during the fade-in time and the old motion fades out during the fade-out time, so the pose does not jump suddenly.
@@ -1637,6 +1695,15 @@ All motions are written into `Motions` in `model3.json`; `Groups` gets `EyeBlink
 @@ physics-operation-bake | Bake Animation from Physics
 @@ motion-sync-bake | Motion-sync Animation Bake
 @@ loop-editing-support | Loop editing support
+A looping motion (an idle, a walk, a spin) has to end where it starts, or every cycle jumps. With **Loop** on, the timeline shows the seam and mends it.
+## See the seam
+- A band along the foot of the ruler marks the loop, from 0 to the end; outside it the cycles before and after are drawn faintly, curves and keys, so you see at once whether the seam is smooth.
+- A track whose end differs from its start shows its value in the warning colour, and the dopesheet marks the end of its row.
+## Change the loop
+Drag the grip at the end on the ruler to change the loop's length, the same as the toolbar's duration; shortening it removes the keys past the end.
+## Close the loop
+The close-loop button on the toolbar ({key:MOTION_CLOSE_LOOP}) mends every track at once: it keys 0 and the end, the end taking the start's value ([[repeat]] parameters the nearest whole turn), and where both ends ease, the end arrives at the slope the start leaves with, so the curve meets itself smoothly. This is one undoable history step.
+*> The loop is the whole motion: `motion3.json` cannot loop part of one.
 @@ export | Export
 @@ exporting-images | Image and video export
 To post a model's motion to social platforms, turn it into stickers or put it in a video, you can export an image sequence, an animation or a video directly. The picture is drawn by the editor's own renderer, with physics advanced between frames, and no Cubism SDK is needed.

@@ -13,7 +13,7 @@ The title-bar `*` and Save/Discard prompt track project content separately from 
 | Change | Requires saving |
 | --- | --- |
 | Source artwork, model edits, generation/export settings, output directory, history checkout | Yes |
-| Authored parameter poses and locks, snapshots, history annotations, canvas layer/deformer visibility, assets and task records | Yes |
+| Authored parameter poses and locks, snapshots, history annotations, timeline aids (parameter bookmarks and each motion's shy and frozen tracks and markers), canvas layer/deformer visibility, assets and task records | Yes |
 | Creating, deleting, renaming or reordering workspaces; creating or closing canvases | Yes |
 | Selection/hover, search, cameras, workspace/canvas focus, edit/preview mode, layout, panel expansion and view options | No; manual saves still capture restorable presentation |
 | Playback/tracking controls, evaluated preview frames and observation logs | No |
@@ -43,7 +43,7 @@ Saves write v2. Each history revision is split into content-addressed document n
 | `auxiliary/views/`, `auxiliary/view-images/` | Spatial references of rendered views; older projects also hold every rendered image, which saving no longer keeps |
 | `auxiliary/workflow/` | Reference packages, registrations and placement records |
 | `auxiliary/tasks.json` | Agent task records and events |
-| `workspace.json` | Durable UI layout, camera, selection, parameter preview, annotations and logs |
+| `workspace.json` | Durable UI layout, camera, selection, parameter preview, annotations, timeline aids (`timelineAids`) and logs |
 | `images/<hash>.png` | Log images |
 | `rig/objects/` | Rig objects: those checkpoint records name (required by revisions with checkpoints) and those of each revision's authored rig |
 | `rig/revisions/` | Optional, each revision's authored rig index (see "Authored rig" below) |
