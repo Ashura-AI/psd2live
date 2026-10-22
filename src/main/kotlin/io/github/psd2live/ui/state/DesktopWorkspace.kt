@@ -214,7 +214,7 @@ internal class DesktopPresentation(private val viewModel: PSD2LiveViewModel) : W
             meshSource = document.meshSource,
             textureOverrides = document.textureOverrides,
             layout = document.layout,
-        ), expected, dirty = dirty)
+        ), expected, dirty = dirty, document = document)
     }
 
     override fun importedSource(view: PSD2LiveState): WorkspaceImportedSource? {

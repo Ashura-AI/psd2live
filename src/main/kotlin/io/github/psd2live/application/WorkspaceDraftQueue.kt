@@ -42,7 +42,8 @@ internal class WorkspaceDraftQueue<M>(
                yielded: (List<String>) -> Unit = {},
                beforeCommit: (WorkspaceCapture<M>, WorkspaceDocument, M) -> Unit,
                committed: (WorkspaceCommit<M>) -> Unit = {},
-               prepare: suspend (WorkspaceDraft, M, WorkspaceDocument) -> WorkspaceDraft = { before, _, draft -> before.copy(document = draft) },
+               /** Builds the candidate from the draft; settings it yields (the last argument) take no part in it. */
+               prepare: suspend (WorkspaceDraft, M, WorkspaceDocument, Set<String>) -> WorkspaceDraft = { before, _, draft, _ -> before.copy(document = draft) },
                rebase: (WorkspaceDocument, WorkspaceDocument, WorkspaceDocument) -> WorkspaceDocument = { _, draft, _ -> draft },
                auxiliary: (WorkspaceCapture<M>, WorkspaceDraft, M) -> Unit = { _, _, _ -> }): Deferred<WorkspaceCommit<M>> = synchronized(lock) {
         // A draft submitted on a state the previous draft has already moved follows it whether or not that draft has
@@ -69,7 +70,7 @@ internal class WorkspaceDraftQueue<M>(
                         listOf(WorkspaceDraftEdit { before, model ->
                             val candidate = carried ?: if (follows) rebase(previous.document, document, before.document) else document
                             val keep = yieldedSettings + conflicts.mapNotNull { it.removePrefix("settings.").takeIf { key -> key != it } }
-                            prepare(before, model, candidate).let { prepared ->
+                            prepare(before, model, candidate, keep).let { prepared ->
                                 if (keep.isEmpty()) prepared else prepared.copy(document = runtimeSettings(prepared.document, before.document, keep))
                             }
                         })) { before, next, model ->

@@ -97,6 +97,8 @@ internal class WorkspaceRuntime<M>(
     private var version = 0L
     private var tree: WorkspaceHistoryTree<WorkspaceDocument>? = null
     private val mutableState = MutableStateFlow(WorkspaceRuntimeState<M>(token()))
+    /** For tests: runs between a commit's [commitPrepared] beforeCommit and its publication. */
+    @Volatile internal var beforePublish: (() -> Unit)? = null
     @Volatile private var publishedRead = WorkspaceReadCapture(mutableState.value, null)
     val state: StateFlow<WorkspaceRuntimeState<M>> = mutableState.asStateFlow()
 
@@ -282,6 +284,7 @@ internal class WorkspaceRuntime<M>(
             if (!documentChanged && auxiliary == before.auxiliary) return@synchronized WorkspaceCommit(before, false)
             // Projection validation is atomic and must fail before touching the authoritative history.
             beforeCommit(before, document, model)
+            beforePublish?.invoke()
             val head = if (documentChanged) requireNotNull(tree).commit(before.historyHead, document, revision, revision, summary, author.historyActor, taskId)
                 else requireNotNull(tree).head()
             version++

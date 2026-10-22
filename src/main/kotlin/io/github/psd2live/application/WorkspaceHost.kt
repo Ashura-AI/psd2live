@@ -576,6 +576,9 @@ internal class WorkspaceHost<V>(
         runtime.commitPrepared(capture.projectId, capture.state, summary, author, document, preview, taskId, checkpoint) { _, next, model ->
             showCommit(model, next, summary, current)
         }
+    /** For tests: runs [hook] inside each commit after the presentation was shown it and before its state is published. */
+    internal fun beforePublishingForTest(hook: (() -> Unit)?) { runtime.beforePublish = hook }
+
     internal fun projectSaved(capture: ProjectCapture<V>) = runtime.saved(capture.runtimeState).also {
         // Queued after the history writes before it, which may still record the marker.
         if (runtime.state.value.capture?.dirty != true) schedulePersistence {
@@ -692,18 +695,23 @@ internal class WorkspaceHost<V>(
     override fun submitEditorDraft(projectId: String, state: String, draft: WorkspaceEditorDraft,
                                    settingsIntents: List<kotlinx.serialization.json.JsonObject>,
                                    summary: String, author: MutationAuthor): kotlinx.coroutines.Deferred<WorkspaceMutationResult> =
-        submitDraft(projectId, state, draft, summary, author) { before, model, draft ->
-            generationCommands.prepareEditorDraft(before, model, draft, settingsIntents)
+        submitDraft(projectId, state, draft, summary, author) { before, model, draft, yielded ->
+            // A yielded setting's switch is withdrawn whole: what it derives and the poses it releases go with it.
+            generationCommands.prepareEditorDraft(before, model, draft, settingsIntents.without(yielded))
         }
 
     override fun submitEditorSettingsDraft(projectId: String, state: String, draft: WorkspaceEditorDraft, changes: List<JsonObject>,
                                             summary: String, author: MutationAuthor): kotlinx.coroutines.Deferred<WorkspaceMutationResult> =
-        submitDraft(projectId, state, draft, summary, author) { before, model, _ ->
-            generationCommands.prepareSettingsDraft(before, model, changes)
+        submitDraft(projectId, state, draft, summary, author) { before, model, _, yielded ->
+            val kept = changes.without(yielded)
+            if (kept.isEmpty()) before else generationCommands.prepareSettingsDraft(before, model, kept)
         }
 
+    private fun List<JsonObject>.without(keys: Set<String>): List<JsonObject> =
+        if (keys.isEmpty()) this else mapNotNull { change -> JsonObject(change - keys).takeIf { it.isNotEmpty() } }
+
     private fun submitDraft(projectId: String, state: String, editorDraft: WorkspaceEditorDraft, summary: String, author: MutationAuthor,
-                            prepare: suspend (WorkspaceDraft, io.github.psd2live.core.RigPreviewModel, WorkspaceDocument) -> WorkspaceDraft): kotlinx.coroutines.Deferred<WorkspaceMutationResult> {
+                            prepare: suspend (WorkspaceDraft, io.github.psd2live.core.RigPreviewModel, WorkspaceDocument, Set<String>) -> WorkspaceDraft): kotlinx.coroutines.Deferred<WorkspaceMutationResult> {
         val expectedUi = presentation.current()
         val document = editorDraft.document
         val submitted = draftQueue.submit(projectId, state, document, summary, author,

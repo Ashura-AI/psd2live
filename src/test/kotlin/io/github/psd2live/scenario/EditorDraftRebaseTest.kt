@@ -68,7 +68,7 @@ class EditorDraftRebaseTest {
                 val before = runtime.capture()
                 val gate = CompletableDeferred<Unit>()
                 val submitted = queue.submit("project", before.state, draft(before.document), "Editor edit", MutationAuthor.USER,
-                    beforeCommit = { _, _, _ -> }, prepare = { start, _, candidate -> gate.await(); start.copy(document = candidate) })
+                    beforeCommit = { _, _, _ -> }, prepare = { start, _, candidate, _ -> gate.await(); start.copy(document = candidate) })
                 external(agent(before.document))
                 gate.complete(Unit)
                 return submitted
@@ -83,15 +83,18 @@ class EditorDraftRebaseTest {
             val yielded = mutableListOf<String>()
             val before = runtime.capture()
             val gate = CompletableDeferred<Unit>()
+            val withheld = mutableListOf<Set<String>>()
             val partial = queue.submit("project", before.state, before.document.setting("texturePadding", 9).hidden(layers[0]),
                 "Editor edit", MutationAuthor.USER, yielded = { yielded += it },
-                beforeCommit = { _, _, _ -> }, prepare = { start, _, candidate -> gate.await(); start.copy(document = candidate) })
+                beforeCommit = { _, _, _ -> }, prepare = { start, _, candidate, keep -> gate.await(); withheld += keep; start.copy(document = candidate) })
             external(before.document.setting("texturePadding", 11))
             gate.complete(Unit)
             partial.await()
             assertEquals(11, runtime.capture().document.settings["texturePadding"]?.jsonPrimitive?.int)
             assertEquals(false, runtime.capture().document.layerVisibility[layers[0]])
             assertEquals(listOf("settings.texturePadding"), yielded)
+            // The retry prepares without the yielded setting, so a switch on it derives nothing and releases no pose.
+            assertEquals(setOf("texturePadding"), withheld.last())
         } finally { scope.cancel() }
     }
 

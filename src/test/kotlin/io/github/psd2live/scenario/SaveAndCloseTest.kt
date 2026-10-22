@@ -615,16 +615,121 @@ class SaveAndCloseTest {
         idle(vm, workspace)
         vm.addMotionCurve("ParamAngleX")
         idle(vm, workspace)
+        val dragged = vm.editingMotionClip()!!
         vm.beginMotionKeyDrag()
         vm.dragMotionKeys(0.1f)
         workspace.updateProjectSettings(workspace.stateToken()!!, buildJsonObject { put("alphaThreshold", 40) })
         vm.dragMotionKeys(0.2f)
         vm.endMotionKeyDrag()
         idle(vm, workspace)
-        vm.setStateForTest(vm.state.value.copy(errorMessage = null))
+        assertNull(vm.state.value.errorMessage)
         assertTrue(showsTheRuntime(vm, workspace), "the drag's preview stayed as a draft")
+        // The agent left the clip alone, so the drag lands over its commit.
+        val committed = workspace.captureQueries().motionClips().single { it.id == dragged.id }
+        assertNotEquals(dragged, committed, "the overtaken drag was dropped")
         vm.saveProjectNow(temp.resolve("drag.psd2live"))
         assertFalse(vm.state.value.projectDirty)
+    }
+
+    @Test fun aValueTheEditorTakesBackAfterYieldingItIsCommitted() = editor { vm, workspace ->
+        fun padding() = workspace.captureQueries().projectSettings().getValue("texturePadding").jsonPrimitive.int
+        val start = padding()
+        // The editor shows a queued value when the agent commits another one to the same setting: the editor yields.
+        vm.setStateForTest(vm.state.value.copy(texturePadding = start + 7))
+        workspace.updateProjectSettings(workspace.stateToken()!!, buildJsonObject { put("texturePadding", start + 9) })
+        assertEquals(start + 9, vm.state.value.texturePadding)
+        // The user then sets their value again; nothing they yielded earlier may write the agent's back over it.
+        vm.setTexturePadding(start + 7)
+        idle(vm, workspace)
+        assertEquals(start + 7, padding(), "an earlier yield overwrote the user's new value")
+        assertTrue(showsTheRuntime(vm, workspace))
+    }
+
+    @Test fun aReplacingImportIsWhatTheEditorMirrorsAfterwards() = editor { vm, workspace ->
+        val exported = temp.resolve("replace-source")
+        val result = workspace.exportTarget(workspace.stateToken()!!, "cmo3", exported.toString(), emptyMap())
+        val source = exported.resolve(result.getValue("files").jsonArray.map { it.jsonPrimitive.content }.single { it.endsWith(".cmo3") })
+        workspace.importCmo3(source, io.github.psd2live.core.Cmo3ImportMode.NEW, true)
+        workspace.updateParameter(WorkspaceUpdateParameterRequest("ParamAngleX", workspace.stateToken()!!, name = "Renamed axis"))
+        val before = workspace.snapshot().historyHeadNodeId!!
+        workspace.importCmo3(source, io.github.psd2live.core.Cmo3ImportMode.REPLACE, true)
+        idle(vm, workspace)
+        assertTrue(showsTheRuntime(vm, workspace))
+        if (workspace.history().nodes.any { it.id == before } && workspace.snapshot().historyHeadNodeId != before) {
+            workspace.checkoutHistory(before, MutationAuthor.USER)
+            assertTrue(vm.state.value.logEntries.none { it.message == io.github.psd2live.i18n.tr("log.editorDraftDiscarded") },
+                "a checkout after the import reported a draft the editor never had")
+        }
+    }
+
+    @Test fun aCheckoutRightAfterOpeningDiscardsAFieldWithAWarning() = editor { vm, workspace ->
+        val root = workspace.snapshot().historyHeadNodeId!!
+        workspace.updateParameter(WorkspaceUpdateParameterRequest("ParamAngleX", workspace.stateToken()!!, name = "Renamed axis"))
+        val archive = temp.resolve("opened.psd2live")
+        vm.saveProjectNow(archive)
+        workspace.open(archive)
+        vm.beginEditorField("probe-padding")
+        vm.setTexturePadding(vm.state.value.texturePadding + 4)
+        workspace.checkoutHistory(root, MutationAuthor.AGENT)
+        assertTrue(vm.state.value.logEntries.any { it.message == io.github.psd2live.i18n.tr("log.editorDraftDiscarded") })
+        vm.endEditorField("probe-padding")
+        idle(vm, workspace)
+        assertEquals(root, workspace.snapshot().historyHeadNodeId)
+    }
+
+    @Test fun aReplacingShowEndsTheSessionsSwitchesBeforeTheHostDiscardsItsQueues() = editor { vm, workspace ->
+        idle(vm, workspace)
+        val committed = WorkspaceStateCodec.document(vm.state.value)
+        val nodes = workspace.history().nodes.size
+        vm.beginEditorField("probe-thickness")
+        vm.setMouthThickness(vm.state.value.mouthThickness + 2f)
+        // What a checkout shows, before the host gets to discard its queues: the field closing now replays nothing.
+        vm.showWorkspaceCommit(vm.state.value.previewModel!!, null, committed, "Checked out")
+        vm.endEditorField("probe-thickness")
+        idle(vm, workspace)
+        assertEquals(nodes, workspace.history().nodes.size, "the session's switch replayed onto the replaced document")
+    }
+
+    /**
+     * The editor shows a commit inside the runtime's lock and the runtime publishes its state afterwards: a field
+     * closing in between reads the older state while already showing that commit, and here the commit is published
+     * before the draft reaches the queue. The draft still lands, carried from the commit it was shown.
+     */
+    @Test fun aFieldClosingBetweenACommitsShowAndItsPublicationStillLands() = editor { vm, workspace ->
+        fun setting(key: String) = workspace.captureQueries().projectSettings().getValue(key).jsonPrimitive.int
+        val padding = setting("texturePadding")
+        val stale = workspace.stateToken()!!
+        val submittedOn = java.util.concurrent.atomic.AtomicReference<String?>()
+        val reached = CountDownLatch(1)
+        vm.attachWorkspace(object : WorkspaceBackend by workspace {
+            override fun submitEditorDraft(projectId: String, state: String, draft: io.github.psd2live.application.WorkspaceEditorDraft,
+                                           settingsIntents: List<JsonObject>, summary: String, author: MutationAuthor) =
+                run {
+                    // Reach the queue only once the commit the field read before has been published.
+                    reached.countDown()
+                    val deadline = System.nanoTime() + 10_000_000_000
+                    while (workspace.stateToken() == state && System.nanoTime() < deadline) Thread.sleep(1)
+                    submittedOn.set(state)
+                    workspace.submitEditorDraft(projectId, state, draft, settingsIntents, summary, author)
+                }
+        })
+        vm.beginEditorField("probe-padding")
+        vm.setTexturePadding(padding + 3)
+        val closing = arrayOfNulls<Thread>(1)
+        workspace.host.beforePublishingForTest {
+            workspace.host.beforePublishingForTest(null)
+            closing[0] = Thread { vm.endEditorField("probe-padding") }.also { it.start() }
+            // The field has read its state and is on its way to the queue when the commit gets published.
+            assertTrue(reached.await(20, TimeUnit.SECONDS))
+        }
+        workspace.updateProjectSettings(stale, buildJsonObject { put("alphaThreshold", 40) })
+        closing[0]!!.join(20_000)
+        assertEquals(stale, submittedOn.get(), "the field did not read the state from before the commit")
+        idle(vm, workspace)
+        assertNull(vm.state.value.errorMessage)
+        assertEquals(padding + 3, setting("texturePadding"), "the field's draft was rejected")
+        assertEquals(40, setting("alphaThreshold"))
+        assertTrue(showsTheRuntime(vm, workspace))
     }
 
     @Test fun failuresBeforeArchiveCaptureAreReportedAndRetryCanSucceed() = editor { vm, workspace ->
