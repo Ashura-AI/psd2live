@@ -10,11 +10,13 @@ import io.github.psd2live.core.RigPreviewModel
 import io.github.psd2live.core.textureLayer
 import org.jetbrains.skia.*
 import org.umamo.render.eval.DeformedGeometry
-import io.github.psd2live.render.ArtworkBlend
 import io.github.psd2live.render.ArtworkDraw
 import io.github.psd2live.render.ArtworkDrawList
 import io.github.psd2live.render.ArtworkOptions
 import io.github.psd2live.render.HOVER_TINT_STRENGTH
+import org.umamo.render.glsl.skslCompositeBlender
+import org.umamo.render.puppet.packedAlphaModeOf
+import org.umamo.render.puppet.packedColorModeOf
 import org.umamo.runtime.model.DrawableId
 
 
@@ -62,50 +64,60 @@ internal class SkiaRigPainter(private val atlas: PackedAtlas) : AutoCloseable {
         val byId = model.rig.puppet.drawables.associateBy { it.id }
         val maskPaint = Paint()
         val blendPaint = Paint()
-        val solidPaint = Paint().apply { color = 0xFF000000.toInt(); isAntiAlias = false }
+        val coverPaint = Paint().apply { colorFilter = halfOpaque }
+        /** View positions and texel coordinates of [id]'s triangles, expanded: no unsigned-short index limit. */
+        fun vertices(id: DrawableId, page: Int): Pair<FloatArray, FloatArray>? {
+            val mesh = byId[id]?.mesh ?: return null
+            val world = geometry.worldPositions[id] ?: return null
+            val image = images.getOrNull(page) ?: return null
+            // Source pixels: page texel (u * W, v * H) lies at the raster pixel the tile's placement maps it to, through any turn.
+            val source = sources?.forDrawable(id.raw, page)
+            val positions = FloatArray(mesh.indices.size * 2)
+            val uvs = FloatArray(positions.size)
+            mesh.indices.forEachIndexed { index, vertex ->
+                positions[index * 2] = viewport.x(world[vertex * 2]).toFloat()
+                positions[index * 2 + 1] = viewport.yFromWorld(world[vertex * 2 + 1]).toFloat()
+                val u = mesh.uvs[vertex * 2] * image.width
+                val v = mesh.uvs[vertex * 2 + 1] * image.height
+                if (source == null) {
+                    uvs[index * 2] = u
+                    uvs[index * 2 + 1] = v
+                } else {
+                    val raster = source.placement.toRaster(u, v)
+                    uvs[index * 2] = raster[0]
+                    uvs[index * 2 + 1] = raster[1]
+                }
+            }
+            return positions to uvs
+        }
+        fun shaderFor(id: DrawableId, page: Int): Shader = sources?.forDrawable(id.raw, page)?.shader ?: shaders[page]
         Paint().use { paint ->
             try {
                 for (draw in draws) {
-                    val drawable = byId[draw.drawableId] ?: continue
-                    val mesh = drawable.mesh ?: continue
-                    val world = geometry.worldPositions[drawable.id] ?: continue
-                    val image = images.getOrNull(draw.page) ?: continue
-                    // Source pixels: page texel (u * W, v * H) lies at the raster pixel the tile's placement maps it to, through any turn.
-                    val source = sources?.forDrawable(drawable.id.raw, draw.page)
-                    val positions = FloatArray(mesh.indices.size * 2)
-                    val uvs = FloatArray(positions.size)
-                    // Expanded vertices avoid the unsigned-short index limit for large authored meshes.
-                    mesh.indices.forEachIndexed { index, vertex ->
-                        positions[index * 2] = viewport.x(world[vertex * 2]).toFloat()
-                        positions[index * 2 + 1] = viewport.yFromWorld(world[vertex * 2 + 1]).toFloat()
-                        val u = mesh.uvs[vertex * 2] * image.width
-                        val v = mesh.uvs[vertex * 2 + 1] * image.height
-                        if (source == null) {
-                            uvs[index * 2] = u
-                            uvs[index * 2 + 1] = v
-                        } else {
-                            val raster = source.placement.toRaster(u, v)
-                            uvs[index * 2] = raster[0]
-                            uvs[index * 2 + 1] = raster[1]
-                        }
-                    }
+                    if (images.getOrNull(draw.page) == null) continue
+                    val (positions, uvs) = vertices(draw.drawableId, draw.page) ?: continue
                     val masked = draw.maskIds.isNotEmpty()
                     val saved = canvas.save()
                     try {
-                        // Add and multiply: the part (masked and tinted) draws into a layer that then blends down.
-                        if (draw.blend != ArtworkBlend.NORMAL) {
-                            blendPaint.blendMode = if (draw.blend == ArtworkBlend.ADD) BlendMode.PLUS else BlendMode.MULTIPLY
+                        // Any blend but normal over: the part (masked and washed) draws into a layer that the
+                        // preview's composite then blends onto what is under it.
+                        if (!(draw.blendMode == org.umamo.runtime.model.BlendMode.Normal && draw.fixedFunction)) {
+                            blendPaint.blender = blender(packedColorModeOf(draw.blendMode), packedAlphaModeOf(draw.alphaBlend))
                             canvas.saveLayer(bounds(positions), blendPaint)
                         }
                         if (masked) {
-                            // The part draws into a layer the size of its own triangles; its masks then keep only
-                            // what they cover (DST_IN over their union), or what they leave bare when inverted
-                            // (DST_OUT), as the GPU painter's stencil does.
+                            // The part draws into a layer the size of its own triangles; its masks' texels at least
+                            // half opaque then keep only what they cover (DST_IN), or what they leave bare when
+                            // inverted (DST_OUT), as the GPU painter's stencil does.
                             canvas.saveLayer(bounds(positions), null)
                         }
-                        paint.shader = source?.shader ?: shaders[draw.page]
+                        paint.shader = shaderFor(draw.drawableId, draw.page)
+                        val tint = if (draw.tinted) tintFilter(draw) else null
+                        paint.colorFilter = tint
                         paint.setAlphaf(draw.opacity)
                         canvas.drawVertices(VertexMode.TRIANGLES, positions, null, uvs, null, BlendMode.MODULATE, paint)
+                        paint.colorFilter = null
+                        tint?.close()
                         // Hover annotation: wash the very triangles just drawn with the component colour
                         // instead of boxing them. Re-drawing the mesh keeps the tint on the artwork's own
                         // silhouette — a part lights up rather than growing a rectangle — and because it
@@ -119,28 +131,51 @@ internal class SkiaRigPainter(private val atlas: PackedAtlas) : AutoCloseable {
                         if (masked) {
                             maskPaint.blendMode = if (draw.invertMask) BlendMode.DST_OUT else BlendMode.DST_IN
                             canvas.saveLayer(null, maskPaint)
-                            for (id in draw.maskIds) {
-                                val maskMesh = byId[id]?.mesh ?: continue
-                                val points = geometry.worldPositions[id] ?: continue
-                                canvas.drawVertices(VertexMode.TRIANGLES, maskPositions(maskMesh.indices, points, viewport), null, null, null,
-                                    BlendMode.SRC_OVER, solidPaint)
+                            draw.maskIds.forEachIndexed { index, id ->
+                                val page = draw.maskPages.getOrElse(index) { draw.page }
+                                if (images.getOrNull(page) == null) return@forEachIndexed
+                                val (maskPositions, maskUvs) = vertices(id, page) ?: return@forEachIndexed
+                                coverPaint.shader = shaderFor(id, page)
+                                canvas.drawVertices(VertexMode.TRIANGLES, maskPositions, null, maskUvs, null, BlendMode.MODULATE, coverPaint)
                             }
                             canvas.restore()
                         }
                     } finally { canvas.restoreToCount(saved) }
                 }
-            } finally { maskPaint.close(); blendPaint.close(); solidPaint.close() }
+            } finally { maskPaint.close(); blendPaint.close(); coverPaint.close() }
         }
     }
 
-    /** Mask triangles in view pixels, expanded like the part's own. */
-    private fun maskPositions(indices: IntArray, points: FloatArray, viewport: CanvasViewport): FloatArray {
-        val out = FloatArray(indices.size * 2)
-        indices.forEachIndexed { index, vertex ->
-            out[index * 2] = viewport.x(points[vertex * 2]).toFloat()
-            out[index * 2 + 1] = viewport.yFromWorld(points[vertex * 2 + 1]).toFloat()
+    /**
+     * The multiply then screen colours on the straight colour, as the preview's shader applies them:
+     * c' = c·m·(1 − s) + s per channel, alpha untouched.
+     */
+    private fun tintFilter(draw: ArtworkDraw): ColorFilter {
+        val m = draw.multiply; val s = draw.screen
+        return ColorFilter.makeMatrix(ColorMatrix(
+            m.red * (1f - s.red), 0f, 0f, 0f, s.red,
+            0f, m.green * (1f - s.green), 0f, 0f, s.green,
+            0f, 0f, m.blue * (1f - s.blue), 0f, s.blue,
+            0f, 0f, 0f, 1f, 0f,
+        ))
+    }
+
+    private val blenders = HashMap<Int, Blender>()
+
+    /** The preview's composite for one pair of packed modes, as a Skia blender. */
+    private fun blender(colorMode: Int, alphaMode: Int): Blender = blenders.getOrPut(colorMode * 8 + alphaMode) {
+        val uniforms = java.nio.ByteBuffer.allocate(8).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(colorMode).putInt(alphaMode).array()
+        Data.makeFromBytes(uniforms).use { compositeEffect.makeBlender(it) }
+    }
+
+    private companion object {
+        val compositeEffect: RuntimeEffect by lazy { RuntimeEffect.makeForBlender(skslCompositeBlender()) }
+
+        /** Keeps a mask's texels at least half opaque whole and drops the rest, as the preview's stencil does. */
+        val halfOpaque: ColorFilter by lazy {
+            val identity = ByteArray(256) { it.toByte() }
+            ColorFilter.makeTableARGB(ByteArray(256) { if (it >= 128) 255.toByte() else 0 }, identity, identity, identity)
         }
-        return out
     }
 
     private fun bounds(positions: FloatArray): Rect {
@@ -154,6 +189,8 @@ internal class SkiaRigPainter(private val atlas: PackedAtlas) : AutoCloseable {
     }
 
     override fun close() {
+        blenders.values.forEach { it.close() }
+        blenders.clear()
         val pages = pages ?: return
         this.pages = null
         pages.shaders.forEach { it.close() }

@@ -113,7 +113,7 @@ object WorkspaceViewRenderer {
 			require(vertices.size == requireNotNull(drawable.mesh).positions.size && vertices.all(Float::isFinite)) { "Invalid simulated mesh coordinates: ${id.raw}" }
 		}
 		val geometry = org.umamo.render.eval.DeformedGeometry(evaluated.worldPositions + worldPositions.filterKeys { it in evaluated.worldPositions },
-			evaluated.drawOrder, evaluated.opacity)
+			evaluated.drawOrder, evaluated.opacity, evaluated.multiplyColor, evaluated.screenColor)
 		val drawableBounds = RigCanvasSupport.boundsByDrawable(geometry)
 		val boundsByLayer = boundsByLayer(model, drawableBounds)
 		val resolvedFrame = resolveFrame(frame, boundsByLayer)

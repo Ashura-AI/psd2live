@@ -4,6 +4,7 @@ import io.github.psd2live.format.compile.GeometrySession
 import io.github.psd2live.format.eval.NativeGeometryEvaluator
 import io.github.psd2live.format.eval.P2lRuntime
 import org.umamo.render.eval.DeformedGeometry
+import org.umamo.runtime.model.ColorRgb
 import org.umamo.runtime.model.DrawableId
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
@@ -53,6 +54,8 @@ internal object NativePreview {
 		val positions = HashMap<DrawableId, FloatArray>()
 		val opacity = HashMap<DrawableId, Float>()
 		val drawOrder = HashMap<DrawableId, Float>()
+		val multiply = HashMap<DrawableId, ColorRgb>()
+		val screen = HashMap<DrawableId, ColorRgb>()
 		for ((id, points) in pose.positions) {
 			val drawable = DrawableId(id)
 			if (drawable !in session.visible) continue
@@ -60,8 +63,10 @@ internal object NativePreview {
 			positions[drawable] = FloatArray(points.size) { if (it % 2 == 0) points[it] else -points[it] }
 			pose.opacity[id]?.let { opacity[drawable] = it }
 			pose.drawOrder[id]?.let { drawOrder[drawable] = it }
+			pose.multiplyColor[id]?.let { multiply[drawable] = ColorRgb(it[0], it[1], it[2]) }
+			pose.screenColor[id]?.let { screen[drawable] = ColorRgb(it[0], it[1], it[2]) }
 		}
-		return DeformedGeometry(positions, drawOrder, opacity)
+		return DeformedGeometry(positions, drawOrder, opacity, multiply, screen)
 	}
 
 	/** Compiles [model] in the background unless a compile is already running. */

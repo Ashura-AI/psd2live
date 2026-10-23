@@ -308,6 +308,8 @@ internal fun applyCpuDeform(model: PuppetModel, inputs: PoseDeformInputs): Defor
 	val worldPositions = HashMap<DrawableId, FloatArray>(inputs.drawables.size)
 	val drawOrders = HashMap<DrawableId, Float>(inputs.drawables.size)
 	val opacities = HashMap<DrawableId, Float>(inputs.drawables.size)
+	val multiplyColors = HashMap<DrawableId, ColorRgb>()
+	val screenColors = HashMap<DrawableId, ColorRgb>()
 	for (drawableInputs in inputs.drawables) {
 		val corners = drawableInputs.corners ?: continue
 		// A parented mesh whose ancestor deformer is hidden produces no geometry (the cascade omitted it).
@@ -321,9 +323,11 @@ internal fun applyCpuDeform(model: PuppetModel, inputs: PoseDeformInputs): Defor
 			deformMeshWorldFromCorners(drawable.geometryGrid, base, corners, drawableInputs.parentWorld, drawableInputs.blend)
 		drawOrders[drawableInputs.drawableId] = drawableInputs.drawOrder
 		opacities[drawableInputs.drawableId] = drawableInputs.opacity
+		if (drawableInputs.multiplyColor != ColorRgb.MultiplyIdentity) multiplyColors[drawableInputs.drawableId] = drawableInputs.multiplyColor
+		if (drawableInputs.screenColor != ColorRgb.ScreenIdentity) screenColors[drawableInputs.drawableId] = drawableInputs.screenColor
 	}
 	applyGluesResolved(inputs.glues, worldPositions)
-	return DeformedGeometry(worldPositions, drawOrders, opacities)
+	return DeformedGeometry(worldPositions, drawOrders, opacities, multiplyColors, screenColors)
 }
 
 /**

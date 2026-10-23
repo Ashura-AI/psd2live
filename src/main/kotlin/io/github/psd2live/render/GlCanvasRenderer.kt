@@ -15,6 +15,10 @@ import org.lwjgl.opengl.GL30
 import org.lwjgl.opengl.GL31
 import org.lwjgl.opengl.GL33
 import org.lwjgl.system.MemoryUtil
+import org.umamo.render.glsl.desktopCompositeShaderSources
+import org.umamo.render.puppet.packedAlphaModeOf
+import org.umamo.render.puppet.packedColorModeOf
+import org.umamo.runtime.model.BlendMode
 import org.umamo.runtime.model.DrawableId
 import java.awt.image.BufferedImage
 import java.awt.image.DataBufferInt
@@ -75,7 +79,60 @@ internal class GlCanvasRenderer(
 		var pages: List<BufferedImage> = emptyList()
 	}
 
-	private val artwork = program(Shaders.ARTWORK_VERTEX, Shaders.ARTWORK_FRAGMENT)
+	/**
+	 * A layer a part draws into alone and a copy of the frame under it, for the blends fixed-function blending
+	 * cannot draw; grow-only, shared by every view.
+	 */
+	private class Layers(val width: Int, val height: Int) {
+		val layerTexture = colorTexture(width, height)
+		val layerDepthStencil: Int = GL30.glGenRenderbuffers().also {
+			GL30.glBindRenderbuffer(GL30.GL_RENDERBUFFER, it)
+			GL30.glRenderbufferStorage(GL30.GL_RENDERBUFFER, GL30.GL_DEPTH24_STENCIL8, width, height)
+		}
+		val layerFramebuffer: Int = framebuffer(layerTexture, layerDepthStencil)
+		val snapshotTexture = colorTexture(width, height)
+		val snapshotFramebuffer: Int = framebuffer(snapshotTexture, 0)
+
+		fun delete() {
+			GL30.glDeleteFramebuffers(layerFramebuffer); GL30.glDeleteFramebuffers(snapshotFramebuffer)
+			GL11.glDeleteTextures(layerTexture); GL11.glDeleteTextures(snapshotTexture)
+			GL30.glDeleteRenderbuffers(layerDepthStencil)
+		}
+
+		private companion object {
+			fun colorTexture(width: Int, height: Int): Int = GL11.glGenTextures().also {
+				GL11.glBindTexture(GL11.GL_TEXTURE_2D, it)
+				GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, width, height, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, 0L)
+				GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_NEAREST)
+				GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_NEAREST)
+				GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0)
+			}
+
+			fun framebuffer(texture: Int, depthStencil: Int): Int {
+				val previous = GL11.glGetInteger(GL30.GL_FRAMEBUFFER_BINDING)
+				val framebuffer = GL30.glGenFramebuffers()
+				GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, framebuffer)
+				GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, texture, 0)
+				if (depthStencil != 0) {
+					GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, GL30.GL_DEPTH_STENCIL_ATTACHMENT, GL30.GL_RENDERBUFFER, depthStencil)
+				}
+				val status = GL30.glCheckFramebufferStatus(GL30.GL_FRAMEBUFFER)
+				GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, previous)
+				check(status == GL30.GL_FRAMEBUFFER_COMPLETE) { "Blend layer incomplete: 0x${Integer.toHexString(status)}" }
+				return framebuffer
+			}
+		}
+	}
+
+	private val artwork = program(Shaders.ARTWORK_VERTEX, Shaders.ARTWORK_FRAGMENT).also {
+		GL20.glUseProgram(it.id)
+		GL20.glUniform3f(it.uniform("u_multiply"), 1f, 1f, 1f)
+		GL20.glUseProgram(0)
+	}
+	private val composite = desktopCompositeShaderSources().let { (vertex, fragment) -> program(vertex, fragment) }
+	/** The composite pass draws a triangle from `gl_VertexID` alone, but a core profile wants a vertex array bound. */
+	private val emptyVao: Int = GL30.glGenVertexArrays()
+	private var layers: Layers? = null
 	private val lines = program(Shaders.LINE_VERTEX, Shaders.LINE_FRAGMENT)
 	private val points = program(Shaders.POINT_VERTEX, Shaders.POINT_FRAGMENT)
 	private val textures = IdentityHashMap<BufferedImage, Int>()
@@ -266,6 +323,8 @@ internal class GlCanvasRenderer(
 		textures.values.forEach(GL11::glDeleteTextures)
 		textures.clear()
 		GL20.glDeleteProgram(artwork.id); GL20.glDeleteProgram(lines.id); GL20.glDeleteProgram(points.id)
+		GL20.glDeleteProgram(composite.id); GL30.glDeleteVertexArrays(emptyVao)
+		layers?.delete(); layers = null
 		GL30.glDeleteVertexArrays(lineVao); GL30.glDeleteVertexArrays(pointVao); GL30.glDeleteVertexArrays(fillVao)
 		GL30.glDeleteVertexArrays(quadVao); GL30.glDeleteVertexArrays(tileVao)
 		GL15.glDeleteBuffers(lineInstances); GL15.glDeleteBuffers(pointInstances); GL15.glDeleteBuffers(fillVertices)
@@ -292,6 +351,8 @@ internal class GlCanvasRenderer(
 		GL13.glActiveTexture(GL13.GL_TEXTURE0)
 		val solid = artwork.uniform("u_solid")
 		val opacity = artwork.uniform("u_opacity")
+		val multiply = artwork.uniform("u_multiply")
+		val screen = artwork.uniform("u_screen")
 		val used = HashSet<DrawableId>()
 		fun meshFor(id: DrawableId): MeshBuffers? {
 			val drawable = drawables[id] ?: return null
@@ -300,44 +361,41 @@ internal class GlCanvasRenderer(
 			used += id
 			return syncMesh(view, id, world, mesh.uvs, mesh.indices)
 		}
-		for (draw in scene.draws) {
-			val buffers = meshFor(draw.drawableId) ?: continue
-			if (buffers.indexCount == 0) continue
-			val page = pages.getOrNull(draw.page) ?: continue
+		/** The part, its masks and its hover wash into the bound framebuffer, whose stencil holds nothing below [ref]. */
+		fun drawPart(draw: ArtworkDraw, buffers: MeshBuffers, page: BufferedImage, ref: Int) {
 			val masked = draw.maskIds.isNotEmpty()
 			if (masked) {
-				if (view.stencilRef == 255) {
-					GL11.glClear(GL11.GL_STENCIL_BUFFER_BIT)
-					view.stencilRef = 0
-				}
-				val ref = ++view.stencilRef
-				// Mask triangles write the reference without colour; the part then draws where it matches, or where
-				// it does not for an inverted mask.
+				// Mask texels at least half opaque write the reference without colour, as the preview's do; the part then
+				// draws where it matches, or where it does not for an inverted mask.
 				GL11.glEnable(GL11.GL_STENCIL_TEST)
 				GL11.glColorMask(false, false, false, false)
 				GL11.glStencilFunc(GL11.GL_ALWAYS, ref, 0xff)
 				GL11.glStencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_REPLACE)
-				GL20.glUniform4f(solid, 0f, 0f, 0f, 1f)
-				for (maskId in draw.maskIds) {
-					val mask = meshFor(maskId) ?: continue
+				GL20.glUniform4f(solid, 0f, 0f, 0f, MASK_WRITE)
+				draw.maskIds.forEachIndexed { index, maskId ->
+					val mask = meshFor(maskId) ?: return@forEachIndexed
+					val maskPage = pages.getOrNull(draw.maskPages.getOrElse(index) { draw.page }) ?: return@forEachIndexed
+					GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture(maskPage.image))
 					drawMesh(mask)
 				}
 				GL11.glColorMask(true, true, true, true)
 				GL11.glStencilFunc(if (draw.invertMask) GL11.GL_NOTEQUAL else GL11.GL_EQUAL, ref, 0xff)
 				GL11.glStencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP)
 			}
-			GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture(page.image))
+			GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture(page))
 			GL20.glUniform4f(solid, 0f, 0f, 0f, -1f)
 			GL20.glUniform1f(opacity, draw.opacity)
-			when (draw.blend) {
-				ArtworkBlend.NORMAL -> drawMesh(buffers)
-				ArtworkBlend.ADD, ArtworkBlend.MULTIPLY -> {
-					if (draw.blend == ArtworkBlend.ADD) GL14.glBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE)
-					else GL14.glBlendFuncSeparate(GL11.GL_DST_COLOR, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ZERO, GL11.GL_ONE)
-					drawMesh(buffers)
-					GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA)
-				}
+			GL20.glUniform3f(multiply, draw.multiply.red, draw.multiply.green, draw.multiply.blue)
+			GL20.glUniform3f(screen, draw.screen.red, draw.screen.green, draw.screen.blue)
+			when (draw.blendMode) {
+				// Cubism's pre-5.3 add and multiply, which leave the alpha under them as it is.
+				BlendMode.AdditivePremultiplied -> GL14.glBlendFuncSeparate(GL11.GL_ONE, GL11.GL_ONE, GL11.GL_ZERO, GL11.GL_ONE)
+				BlendMode.MultiplyPremultiplied ->
+					GL14.glBlendFuncSeparate(GL11.GL_DST_COLOR, GL11.GL_ONE_MINUS_SRC_ALPHA, GL11.GL_ZERO, GL11.GL_ONE)
+				else -> {}
 			}
+			drawMesh(buffers)
+			GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA)
 			if (draw.tintColor != 0) {
 				val a = draw.tintAlpha.coerceIn(0f, 1f)
 				val c = draw.tintColor
@@ -346,12 +404,97 @@ internal class GlCanvasRenderer(
 			}
 			if (masked) GL11.glDisable(GL11.GL_STENCIL_TEST)
 		}
+		for (draw in scene.draws) {
+			val buffers = meshFor(draw.drawableId) ?: continue
+			if (buffers.indexCount == 0) continue
+			val page = pages.getOrNull(draw.page) ?: continue
+			if (draw.fixedFunction) {
+				var ref = 0
+				if (draw.maskIds.isNotEmpty()) {
+					if (view.stencilRef == 255) {
+						GL11.glClear(GL11.GL_STENCIL_BUFFER_BIT)
+						view.stencilRef = 0
+					}
+					ref = ++view.stencilRef
+				}
+				drawPart(draw, buffers, page.image, ref)
+			} else {
+				// The other modes read what is under the part: it draws alone into a layer, which then composites onto
+				// a copy of the frame by the preview's own composite program.
+				val world = scene.geometry.worldPositions[draw.drawableId] ?: continue
+				val region = screenRegion(world, scene.width, scene.height) ?: continue
+				val target = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)
+				val layers = ensureLayers(scene.width, scene.height)
+				GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, layers.layerFramebuffer)
+				GL11.glEnable(GL11.GL_SCISSOR_TEST)
+				GL11.glScissor(region[0], region[1], region[2], region[3])
+				GL11.glClear(GL11.GL_COLOR_BUFFER_BIT or GL11.GL_STENCIL_BUFFER_BIT)
+				drawPart(draw, buffers, page.image, 1)
+				GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, target)
+				GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, layers.snapshotFramebuffer)
+				val x1 = region[0] + region[2]; val y1 = region[1] + region[3]
+				GL30.glBlitFramebuffer(region[0], region[1], x1, y1, region[0], region[1], x1, y1, GL11.GL_COLOR_BUFFER_BIT, GL11.GL_NEAREST)
+				GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, target)
+				GL11.glDisable(GL11.GL_BLEND)
+				GL20.glUseProgram(composite.id)
+				GL20.glUniform2f(composite.uniform("screenTexSize"), layers.width.toFloat(), layers.height.toFloat())
+				GL20.glUniform1i(composite.uniform("colorMode"), packedColorModeOf(draw.blendMode))
+				GL20.glUniform1i(composite.uniform("alphaMode"), packedAlphaModeOf(draw.alphaBlend))
+				GL20.glUniform1f(composite.uniform("opacity"), 1f)
+				GL20.glUniform3f(composite.uniform("multiplyColor"), 1f, 1f, 1f)
+				GL20.glUniform3f(composite.uniform("screenColor"), 0f, 0f, 0f)
+				GL20.glUniform1i(composite.uniform("useMask"), 0)
+				GL20.glUniform1i(composite.uniform("invertMask"), 0)
+				GL20.glUniform1i(composite.uniform("layerTexture"), 1)
+				GL20.glUniform1i(composite.uniform("destTexture"), 2)
+				GL20.glUniform1i(composite.uniform("maskTexture"), 3)
+				GL13.glActiveTexture(GL13.GL_TEXTURE1)
+				GL11.glBindTexture(GL11.GL_TEXTURE_2D, layers.layerTexture)
+				GL13.glActiveTexture(GL13.GL_TEXTURE2)
+				GL11.glBindTexture(GL11.GL_TEXTURE_2D, layers.snapshotTexture)
+				GL30.glBindVertexArray(emptyVao)
+				GL11.glDrawArrays(GL11.GL_TRIANGLES, 0, 3)
+				GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0)
+				GL13.glActiveTexture(GL13.GL_TEXTURE1)
+				GL11.glBindTexture(GL11.GL_TEXTURE_2D, 0)
+				GL13.glActiveTexture(GL13.GL_TEXTURE0)
+				GL11.glDisable(GL11.GL_SCISSOR_TEST)
+				GL11.glEnable(GL11.GL_BLEND)
+				GL20.glUseProgram(artwork.id)
+			}
+		}
+		// The paint draft and textured quads share the program and draw untinted.
+		GL20.glUniform3f(multiply, 1f, 1f, 1f)
+		GL20.glUniform3f(screen, 0f, 0f, 0f)
 		GL30.glBindVertexArray(0)
 		// Meshes that left the scene (deleted, hidden for good) give their buffers back.
 		if (view.meshes.size > used.size) {
 			val gone = view.meshes.keys.filter { it !in used }
 			for (id in gone) view.meshes.remove(id)?.let(::deleteMesh)
 		}
+	}
+
+	private fun ensureLayers(width: Int, height: Int): Layers {
+		val current = layers
+		if (current != null && width <= current.width && height <= current.height) return current
+		current?.delete()
+		return Layers(maxOf(width, current?.width ?: 0), maxOf(height, current?.height ?: 0)).also { layers = it }
+	}
+
+	/** The framebuffer pixels (x, y from the bottom, width, height) [world]'s points cover, padded; null off the frame. */
+	private fun screenRegion(world: FloatArray, width: Int, height: Int): IntArray? {
+		var left = Float.POSITIVE_INFINITY; var right = Float.NEGATIVE_INFINITY
+		var bottom = Float.POSITIVE_INFINITY; var top = Float.NEGATIVE_INFINITY
+		for (i in 0 until world.size - 1 step 2) {
+			val x = ((worldUniform[0] * world[i] + worldUniform[1]) * 0.5f + 0.5f) * width
+			val y = ((worldUniform[2] * world[i + 1] + worldUniform[3]) * 0.5f + 0.5f) * height
+			left = minOf(left, x); right = maxOf(right, x); bottom = minOf(bottom, y); top = maxOf(top, y)
+		}
+		val x0 = (kotlin.math.floor(left).toInt() - 2).coerceAtLeast(0)
+		val y0 = (kotlin.math.floor(bottom).toInt() - 2).coerceAtLeast(0)
+		val x1 = (kotlin.math.ceil(right).toInt() + 2).coerceAtMost(width)
+		val y1 = (kotlin.math.ceil(top).toInt() + 2).coerceAtMost(height)
+		return if (x1 <= x0 || y1 <= y0) null else intArrayOf(x0, y0, x1 - x0, y1 - y0)
 	}
 
 	private fun drawMesh(buffers: MeshBuffers) {
@@ -777,4 +920,8 @@ internal class GlCanvasRenderer(
 		return Program(id)
 	}
 
+	private companion object {
+		/** `u_solid.a` that makes the artwork program write a mask: texels at least half opaque, no colour. */
+		const val MASK_WRITE = -2f
+	}
 }

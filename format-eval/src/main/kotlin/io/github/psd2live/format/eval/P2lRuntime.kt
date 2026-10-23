@@ -347,10 +347,19 @@ public class NativeGeometryEvaluator(private val runtime: P2lRuntime) : Geometry
 				rig.values = values
 				rig.evaluate()
 				val ids = rig.meshIds
+				val multiply = HashMap<String, FloatArray>()
+				val screen = HashMap<String, FloatArray>()
+				for (index in ids.indices) {
+					val m = FloatArray(3); val s = FloatArray(3)
+					rig.colors(index, m, s)
+					if (m[0] != 1f || m[1] != 1f || m[2] != 1f) multiply[ids[index]] = m
+					if (s[0] != 0f || s[1] != 0f || s[2] != 0f) screen[ids[index]] = s
+				}
 				return PoseGeometry(
 					ids.indices.associate { ids[it] to rig.vertices(it) },
 					ids.indices.associate { ids[it] to rig.opacity(it) },
-					ids.indices.associate { ids[it] to rig.drawOrder(it) })
+					ids.indices.associate { ids[it] to rig.drawOrder(it) },
+					multiply, screen)
 			}
 
 			override fun close() = rig.close()

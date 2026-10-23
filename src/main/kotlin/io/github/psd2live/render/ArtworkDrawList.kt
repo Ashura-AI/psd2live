@@ -3,7 +3,9 @@ package io.github.psd2live.render
 import io.github.psd2live.core.RigPreviewModel
 import io.github.psd2live.core.RigCanvasSupport
 import org.umamo.render.eval.DeformedGeometry
+import org.umamo.runtime.model.AlphaBlendMode
 import org.umamo.runtime.model.BlendMode
+import org.umamo.runtime.model.ColorRgb
 import org.umamo.runtime.model.DrawableId
 
 /**
@@ -13,9 +15,13 @@ import org.umamo.runtime.model.DrawableId
  * @property opacity     Final opacity, the drawable's own times the pass alpha and any dimming.
  * @property tintColor   ARGB colour washed over the mesh's triangles after it is drawn, 0 for none.
  * @property tintAlpha   Strength of that wash.
- * @property maskIds     Meshes whose triangles clip this one; empty draws it unclipped.
- * @property invertMask  The part shows only outside [maskIds]' triangles instead of inside them.
- * @property blend       How the mesh combines with what is under it.
+ * @property maskIds     Meshes whose opaque texels (alpha at least one half) clip this one; empty draws it unclipped.
+ * @property maskPages   The atlas page of each of [maskIds].
+ * @property invertMask  The part shows only outside its masks instead of inside them.
+ * @property blendMode   Colour blend with what is under the mesh.
+ * @property alphaBlend  Alpha blend with what is under the mesh.
+ * @property multiply    Multiply colour, applied to the texels' straight colour before [screen].
+ * @property screen      Screen colour.
  */
 internal class ArtworkDraw(
 	val drawableId: DrawableId,
@@ -24,28 +30,20 @@ internal class ArtworkDraw(
 	val tintColor: Int,
 	val tintAlpha: Float,
 	val maskIds: List<DrawableId>,
+	val maskPages: IntArray = IntArray(0),
 	val invertMask: Boolean = false,
-	val blend: ArtworkBlend = ArtworkBlend.NORMAL,
-)
+	val blendMode: BlendMode = BlendMode.Normal,
+	val alphaBlend: AlphaBlendMode = AlphaBlendMode.Over,
+	val multiply: ColorRgb = ColorRgb.MultiplyIdentity,
+	val screen: ColorRgb = ColorRgb.ScreenIdentity,
+) {
+	/**
+	 * Whether premultiplied fixed-function blending draws the mesh exactly: normal over, and the pre-5.3 add and
+	 * multiply under any alpha blend. Every other pair composites against a copy of what is under it.
+	 */
+	val fixedFunction: Boolean get() = (alphaBlend == AlphaBlendMode.Over && blendMode.isLegacy) || blendMode.ignoresAlphaBlend
 
-/**
- * The blends the artwork pass draws, with Cubism's fixed-function formulas: add keeps the colour under it and adds
- * the part's, multiply darkens by it; neither changes the alpha under it.
- */
-internal enum class ArtworkBlend {
-	NORMAL, ADD, MULTIPLY;
-
-	companion object {
-		/**
-		 * The pre-5.3 add and multiply exactly; the 5.3 add and multiply by the same formulas. The other 5.3 modes
-		 * need the preview's compositing and draw normally here.
-		 */
-		fun of(mode: BlendMode): ArtworkBlend = when (mode) {
-			BlendMode.AdditivePremultiplied, BlendMode.Additive, BlendMode.AdditiveGlow -> ADD
-			BlendMode.MultiplyPremultiplied, BlendMode.Multiply -> MULTIPLY
-			else -> NORMAL
-		}
-	}
+	val tinted: Boolean get() = multiply != ColorRgb.MultiplyIdentity || screen != ColorRgb.ScreenIdentity
 }
 
 /** How strongly a hovered part is washed with its component colour. */
@@ -91,8 +89,11 @@ internal object ArtworkDrawList {
 					val source = byId[id]
 					source != null && source.isVisible && source.mesh != null && id in geometry.worldPositions
 				}
-			out += ArtworkDraw(drawable.id, page, opacity, if (tinted) options.tintColor else 0, options.tintAlpha, masks,
-				invertMask = masks.isNotEmpty() && drawable.invertMask, blend = ArtworkBlend.of(drawable.blendMode))
+			val maskPages = IntArray(masks.size) { model.rig.pageByDrawableId[masks[it].raw] ?: byId.getValue(masks[it]).texturePage }
+			out += ArtworkDraw(drawable.id, page, opacity, if (tinted) options.tintColor else 0, options.tintAlpha, masks, maskPages,
+				invertMask = masks.isNotEmpty() && drawable.invertMask, blendMode = drawable.blendMode, alphaBlend = drawable.alphaBlendMode,
+				multiply = geometry.multiplyColor[drawable.id] ?: ColorRgb.MultiplyIdentity,
+				screen = geometry.screenColor[drawable.id] ?: ColorRgb.ScreenIdentity)
 		}
 		return out
 	}

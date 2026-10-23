@@ -22,15 +22,35 @@ void main() {
 }
 """
 
-	/** Textured when u_solid.a is negative; a flat premultiplied colour otherwise (the hover wash, mask writes). */
+	/**
+	 * Textured when u_solid.a is -1, with the multiply and screen colours on the texels' straight colour as the
+	 * preview applies them; a mask write when it is -2, keeping texels at least half opaque; a flat premultiplied
+	 * colour otherwise (the hover wash).
+	 */
 	const val ARTWORK_FRAGMENT = """#version 330 core
 in vec2 v_uv;
 uniform sampler2D u_texture;
 uniform float u_opacity;
 uniform vec4 u_solid;
+uniform vec3 u_multiply;
+uniform vec3 u_screen;
 out vec4 o_color;
 void main() {
-    o_color = u_solid.a < 0.0 ? texture(u_texture, v_uv) * u_opacity : u_solid;
+    if (u_solid.a >= 0.0) {
+        o_color = u_solid;
+        return;
+    }
+    vec4 c = texture(u_texture, v_uv);
+    if (u_solid.a < -1.5) {
+        if (c.a < 0.5) discard;
+        o_color = vec4(0.0);
+        return;
+    }
+    vec3 rgb = c.a > 0.0 ? c.rgb / c.a : vec3(0.0);
+    rgb *= u_multiply;
+    rgb = rgb + u_screen - rgb * u_screen;
+    float a = c.a * u_opacity;
+    o_color = vec4(rgb * a, a);
 }
 """
 

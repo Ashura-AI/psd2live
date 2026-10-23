@@ -1,5 +1,6 @@
 package org.umamo.render.eval
 
+import org.umamo.runtime.model.ColorRgb
 import org.umamo.runtime.model.DrawableId
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
@@ -10,12 +11,15 @@ import org.umamo.runtime.model.PuppetModel
  * [opacity] are the per-drawable scalars blended from the same keyform grid with the same weights -
  * [drawOrder] is the primary render-order sort key (the parts-tree order breaks ties), [opacity] is
  * multiplied into the drawable's alpha. All three maps share the same visible-drawable keys; hidden
- * drawables are absent from every map.
+ * drawables are absent from every map. [multiplyColor] and [screenColor] are the blended tints, already
+ * folded over the parent deformers; a drawable missing from them draws untinted.
  */
 class DeformedGeometry(
 	val worldPositions: Map<DrawableId, FloatArray>,
 	val drawOrder: Map<DrawableId, Float>,
 	val opacity: Map<DrawableId, Float>,
+	val multiplyColor: Map<DrawableId, ColorRgb> = emptyMap(),
+	val screenColor: Map<DrawableId, ColorRgb> = emptyMap(),
 )
 
 /**

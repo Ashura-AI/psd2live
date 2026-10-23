@@ -225,11 +225,16 @@ public interface FrameSession : AutoCloseable {
 		frames.map { (parameters, delta) -> render(parameters, delta, frame) }
 }
 
-/** Evaluated geometry of a rig at one pose: mesh vertices in canvas pixels (y down), opacity and draw order. */
+/**
+ * Evaluated geometry of a rig at one pose: mesh vertices in canvas pixels (y down), opacity and draw order, and
+ * the multiply and screen colours (RGB) of the meshes that have them.
+ */
 public class PoseGeometry(
 	public val positions: Map<String, FloatArray>,
 	public val opacity: Map<String, Float>,
 	public val drawOrder: Map<String, Float>,
+	public val multiplyColor: Map<String, FloatArray> = emptyMap(),
+	public val screenColor: Map<String, FloatArray> = emptyMap(),
 )
 
 /**

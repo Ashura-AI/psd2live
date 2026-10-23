@@ -4,6 +4,9 @@ import io.github.psd2live.core.Bounds
 import io.github.psd2live.core.RigPreviewModel
 import org.umamo.render.eval.CpuDeformationEvaluator
 import org.umamo.render.eval.DeformedGeometry
+import org.umamo.runtime.model.AlphaBlendMode
+import org.umamo.runtime.model.BlendMode
+import org.umamo.runtime.model.ColorRgb
 import org.umamo.runtime.model.Deformer
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.PuppetModel
@@ -16,6 +19,7 @@ import java.awt.RenderingHints
 import java.awt.geom.AffineTransform
 import java.awt.geom.Area
 import java.awt.geom.Path2D
+import java.awt.image.BufferedImage
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.min
@@ -91,10 +95,9 @@ internal object RigCanvasSupport {
 			val atlas = model.atlas.pages.getOrNull(pageIndex)?.image ?: continue
 			val opacity = ((geometry.opacity[drawable.id] ?: drawable.opacity) * effectiveAlpha).coerceIn(0f, 1f)
 			if (opacity <= 0.001f) continue
-			val maskClip = drawable.maskedBy.takeIf { it.isNotEmpty() }
-				?.let { maskIds -> maskClip(drawable, positions, maskIds, drawableById, geometry, viewport) }
-			g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity)
-			paintTriangles(g, mesh, positions, atlas, viewport, originalClip, maskClip)
+			paintDrawable(g, drawable, mesh, positions, atlas, opacity, geometry, viewport, originalClip, drawableById) {
+				model.atlas.pages.getOrNull(model.rig.pageByDrawableId[it.id.raw] ?: it.texturePage)?.image
+			}
 		}
 		g.clip = originalClip
 		g.composite = originalComposite
@@ -120,17 +123,16 @@ internal object RigCanvasSupport {
 			val atlas = pages.getOrNull(pageOf(drawable)) ?: continue
 			val opacity = (geometry.opacity[drawable.id] ?: drawable.opacity).coerceIn(0f, 1f)
 			if (opacity <= 0.001f) continue
-			val maskClip = drawable.maskedBy.takeIf { it.isNotEmpty() }
-				?.let { maskClip(drawable, positions, it, drawableById, geometry, viewport) }
-			g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity)
-			paintTriangles(g, mesh, positions, atlas, viewport, originalClip, maskClip)
+			paintDrawable(g, drawable, mesh, positions, atlas, opacity, geometry, viewport, originalClip, drawableById) {
+				pages.getOrNull(pageOf(it))
+			}
 		}
 		g.clip = originalClip
 		g.composite = originalComposite
 	}
 
 	private fun paintTriangles(g: Graphics2D, mesh: org.umamo.runtime.model.DrawableMesh, positions: FloatArray,
-	                           atlas: java.awt.image.BufferedImage, viewport: CanvasViewport, originalClip: java.awt.Shape?, maskClip: Area?) {
+	                           atlas: java.awt.image.BufferedImage, viewport: CanvasViewport, originalClip: java.awt.Shape?) {
 			for (offset in mesh.indices.indices step 3) {
 				val ia = mesh.indices[offset]
 				val ib = mesh.indices[offset + 1]
@@ -153,59 +155,99 @@ internal object RigCanvasSupport {
 					closePath()
 				}
 				g.clip = originalClip
-				maskClip?.let(g::clip)
 				g.clip(triangle)
 				g.drawImage(atlas, transform, null)
 			}
 	}
 
-	/** Where [drawable] may paint: inside its masks, or for an inverted mask its own bounds less them; null for anywhere. */
-	private fun maskClip(
+	/**
+	 * One drawable as the preview draws it. A plain one paints its triangles straight onto [g]; one with masks,
+	 * colours or a blend other than normal over draws alone into a layer, takes its colours, opacity and masks
+	 * there (mask texels at least half opaque cover, as the preview's stencil keeps them), and then composites by
+	 * its blend modes.
+	 */
+	private fun paintDrawable(
+		g: Graphics2D,
 		drawable: org.umamo.runtime.model.Drawable,
+		mesh: org.umamo.runtime.model.DrawableMesh,
 		positions: FloatArray,
-		maskIds: List<org.umamo.runtime.model.DrawableId>,
-		drawableById: Map<org.umamo.runtime.model.DrawableId, org.umamo.runtime.model.Drawable>,
+		atlas: BufferedImage,
+		opacity: Float,
 		geometry: DeformedGeometry,
 		viewport: CanvasViewport,
-	): Area? {
-		val masks = buildMaskArea(maskIds, drawableById, geometry, viewport) ?: return null
-		if (!drawable.invertMask) return masks
-		if (positions.size < 2) return null
+		originalClip: java.awt.Shape?,
+		drawableById: Map<org.umamo.runtime.model.DrawableId, org.umamo.runtime.model.Drawable>,
+		pageImage: (org.umamo.runtime.model.Drawable) -> BufferedImage?,
+	) {
+		val masks = drawable.maskedBy.mapNotNull { id ->
+			drawableById[id]?.takeIf { it.isVisible && it.mesh != null && id in geometry.worldPositions }
+		}
+		val multiply = geometry.multiplyColor[drawable.id] ?: ColorRgb.MultiplyIdentity
+		val screen = geometry.screenColor[drawable.id] ?: ColorRgb.ScreenIdentity
+		val tinted = multiply != ColorRgb.MultiplyIdentity || screen != ColorRgb.ScreenIdentity
+		val normal = drawable.blendMode == BlendMode.Normal && drawable.alphaBlendMode == AlphaBlendMode.Over
+		if (masks.isEmpty() && !tinted && normal) {
+			g.composite = AlphaComposite.getInstance(AlphaComposite.SRC_OVER, opacity)
+			paintTriangles(g, mesh, positions, atlas, viewport, originalClip)
+			return
+		}
+		var region = screenBounds(positions, viewport)
+		g.deviceConfiguration?.bounds?.let { region = region.intersection(it) }
+		originalClip?.bounds?.let { region = region.intersection(it) }
+		if (region.isEmpty) return
+		fun layerOf(paint: (Graphics2D) -> Unit): BufferedImage = BufferedImage(region.width, region.height, BufferedImage.TYPE_INT_ARGB_PRE).also { image ->
+			val lg = image.createGraphics()
+			try {
+				lg.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+				lg.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+				lg.translate(-region.x, -region.y)
+				paint(lg)
+			} finally { lg.dispose() }
+		}
+		val layer = layerOf { paintTriangles(it, mesh, positions, atlas, viewport, null) }
+		val cover = if (masks.isEmpty()) null else layerOf { lg ->
+			for (mask in masks) {
+				val page = pageImage(mask) ?: continue
+				paintTriangles(lg, mask.mesh ?: continue, geometry.worldPositions[mask.id] ?: continue, page, viewport, null)
+			}
+		}
+		val pixels = (layer.raster.dataBuffer as java.awt.image.DataBufferInt).data
+		val coverage = cover?.let { (it.raster.dataBuffer as java.awt.image.DataBufferInt).data }
+		for (i in pixels.indices) {
+			val p = pixels[i]
+			val a = p ushr 24
+			if (a == 0) continue
+			var k = opacity
+			if (coverage != null && ((coverage[i] ushr 24 >= 128) == drawable.invertMask)) k = 0f
+			if (k <= 0f) { pixels[i] = 0; continue }
+			var r = (p shr 16 and 0xff) / 255f; var gr = (p shr 8 and 0xff) / 255f; var b = (p and 0xff) / 255f
+			if (tinted) {
+				val alpha = a / 255f
+				// Multiply, then screen, on the straight colour.
+				r = (r / alpha * multiply.red).let { it + screen.red - it * screen.red } * alpha
+				gr = (gr / alpha * multiply.green).let { it + screen.green - it * screen.green } * alpha
+				b = (b / alpha * multiply.blue).let { it + screen.blue - it * screen.blue } * alpha
+			}
+			fun byte(v: Float) = (v * k * 255f + 0.5f).toInt().coerceIn(0, 255)
+			pixels[i] = (byte(a / 255f) shl 24) or (byte(r) shl 16) or (byte(gr) shl 8) or byte(b)
+		}
+		g.clip = originalClip
+		g.composite = if (normal) AlphaComposite.SrcOver else CubismComposite(drawable.blendMode, drawable.alphaBlendMode)
+		g.drawImage(layer, region.x, region.y, null)
+	}
+
+	/** The pixels [positions] cover in view space, padded by one. */
+	private fun screenBounds(positions: FloatArray, viewport: CanvasViewport): java.awt.Rectangle {
 		var left = Double.POSITIVE_INFINITY; var top = Double.POSITIVE_INFINITY
 		var right = Double.NEGATIVE_INFINITY; var bottom = Double.NEGATIVE_INFINITY
-		for (i in positions.indices step 2) {
+		for (i in 0 until positions.size - 1 step 2) {
 			val x = viewport.x(positions[i]); val y = viewport.yFromWorld(positions[i + 1])
 			left = minOf(left, x); right = maxOf(right, x); top = minOf(top, y); bottom = maxOf(bottom, y)
 		}
-		return Area(java.awt.geom.Rectangle2D.Double(left - 1.0, top - 1.0, right - left + 2.0, bottom - top + 2.0))
-			.apply { subtract(masks) }
-	}
-
-	private fun buildMaskArea(
-		maskIds: List<org.umamo.runtime.model.DrawableId>,
-		drawableById: Map<org.umamo.runtime.model.DrawableId, org.umamo.runtime.model.Drawable>,
-		geometry: DeformedGeometry,
-		viewport: CanvasViewport,
-	): Area? {
-		val area = Area()
-		for (maskId in maskIds) {
-			val mask = drawableById[maskId] ?: continue
-			if (!mask.isVisible) continue
-			val mesh = mask.mesh ?: continue
-			val positions = geometry.worldPositions[maskId] ?: continue
-			for (offset in mesh.indices.indices step 3) {
-				val a = mesh.indices[offset] * 2
-				val b = mesh.indices[offset + 1] * 2
-				val c = mesh.indices[offset + 2] * 2
-				area.add(Area(Path2D.Double().apply {
-					moveTo(viewport.x(positions[a]), viewport.yFromWorld(positions[a + 1]))
-					lineTo(viewport.x(positions[b]), viewport.yFromWorld(positions[b + 1]))
-					lineTo(viewport.x(positions[c]), viewport.yFromWorld(positions[c + 1]))
-					closePath()
-				}))
-			}
-		}
-		return area.takeUnless { it.isEmpty }
+		if (left > right) return java.awt.Rectangle()
+		val x0 = kotlin.math.floor(left).toInt() - 1
+		val y0 = kotlin.math.floor(top).toInt() - 1
+		return java.awt.Rectangle(x0, y0, kotlin.math.ceil(right).toInt() + 1 - x0, kotlin.math.ceil(bottom).toInt() + 1 - y0)
 	}
 
 	fun boundsByDrawable(geometry: DeformedGeometry): Map<String, Bounds> = buildMap {

@@ -2485,7 +2485,7 @@ private class DrawnGeometryMemo {
         val evaluated = editGeometry ?: RigCanvasSupport.evaluate(model, pose)
         val next = if (simulated == null) evaluated else org.umamo.render.eval.DeformedGeometry(
             evaluated.worldPositions + simulated.positions.filterKeys { it in evaluated.worldPositions },
-            evaluated.drawOrder, evaluated.opacity,
+            evaluated.drawOrder, evaluated.opacity, evaluated.multiplyColor, evaluated.screenColor,
         )
         puppet = model.rig.puppet
         edit = editGeometry
@@ -2555,7 +2555,7 @@ private class SimulationGhostMemo {
         val cached = geometry
         if (cached != null && this.exported === exported && this.frame === frame) return cached
         val next = org.umamo.render.eval.DeformedGeometry(exported.worldPositions + frame.positions.filterKeys { it in exported.worldPositions },
-            exported.drawOrder, exported.opacity)
+            exported.drawOrder, exported.opacity, exported.multiplyColor, exported.screenColor)
         this.exported = exported; this.frame = frame; geometry = next
         return next
     }

@@ -64,6 +64,30 @@ internal fun compositeFragmentShader(dialect: GlslDialect): String =
 		uniform int useMask;
 		uniform int invertMask;
 
+""" +
+		COMPOSITE_FUNCTIONS +
+		"""
+		void main() {
+			vec2 screenUv = gl_FragCoord.xy / screenTexSize;
+			vec4 layer = texture(layerTexture, screenUv);
+			vec4 dest = texture(destTexture, screenUv);
+			float layerScale = opacity;
+
+			if (useMask == 1) {
+				float coverage = texture(maskTexture, screenUv).a;
+				layerScale *= (invertMask == 1) ? (1.0 - coverage) : coverage;
+			}
+
+			layer *= layerScale;
+			fragColor = compositeLayer(layer, dest, multiplyColor, screenColor);
+		}
+		"""
+
+/**
+ * The blend formulas and the layer composite, shared by the GLSL program and the SkSL blender: `colorMode` and
+ * `alphaMode` are uniforms of the program that includes them.
+ */
+private const val COMPOSITE_FUNCTIONS = """
 		float lum3(vec3 c) {
 			return 0.3 * c.r + 0.59 * c.g + 0.11 * c.b;
 		}
@@ -180,52 +204,41 @@ internal fun compositeFragmentShader(dialect: GlslDialect): String =
 			return vec3(blendChannel(Cb.r, Cs.r), blendChannel(Cb.g, Cs.g), blendChannel(Cb.b, Cs.b));
 		}
 
-		void main() {
-			vec2 screenUv = gl_FragCoord.xy / screenTexSize;
-			vec4 layer = texture(layerTexture, screenUv);
-			vec4 dest = texture(destTexture, screenUv);
-			float layerScale = opacity;
-
-			if (useMask == 1) {
-				float coverage = texture(maskTexture, screenUv).a;
-				layerScale *= (invertMask == 1) ? (1.0 - coverage) : coverage;
-			}
-
-			layer *= layerScale;
-			float as = layer.a;
-			float ab = dest.a;
-			vec3 Cs = (as > 0.0) ? clamp(layer.rgb / as, 0.0, 1.0) : vec3(0.0);
-			Cs = Cs * multiplyColor;
-			Cs = Cs + screenColor - Cs * screenColor;
-			vec3 Cb = (ab > 0.0) ? clamp(dest.rgb / ab, 0.0, 1.0) : vec3(0.0);
+		vec4 compositeLayer(vec4 layer, vec4 dest, vec3 tintMultiply, vec3 tintScreen) {
+			float srcA = layer.a;
+			float dstA = dest.a;
+			vec3 Cs = (srcA > 0.0) ? clamp(layer.rgb / srcA, 0.0, 1.0) : vec3(0.0);
+			Cs = Cs * tintMultiply;
+			Cs = Cs + tintScreen - Cs * tintScreen;
+			vec3 Cb = (dstA > 0.0) ? clamp(dest.rgb / dstA, 0.0, 1.0) : vec3(0.0);
 			vec4 outColor;
 
 			if (colorMode == 1 || colorMode == 2 || (alphaMode == 0 && colorMode == 0)) {
 				//Repremultiply after tinting.
-				vec3 srcPremul = Cs * as;
+				vec3 srcPremul = Cs * srcA;
 
 				if (colorMode == 0) {
 					//Standard premultiplied source over.
-					outColor = vec4(srcPremul + dest.rgb * (1.0 - as), as + ab * (1.0 - as));
+					outColor = vec4(srcPremul + dest.rgb * (1.0 - srcA), srcA + dstA * (1.0 - srcA));
 				} else if (colorMode == 1) {
 					//Legacy Add
-					outColor = vec4(srcPremul + dest.rgb, ab);
+					outColor = vec4(srcPremul + dest.rgb, dstA);
 				} else {
 					//Legacy Multiply
-					outColor = vec4(srcPremul * dest.rgb + dest.rgb * (1.0 - as), ab);
+					outColor = vec4(srcPremul * dest.rgb + dest.rgb * (1.0 - srcA), dstA);
 				}
 			} else {
-				float p0 = as * ab; //Uncorrelated (OVER/ATOP): w == ab, the same as W3C.
+				float p0 = srcA * dstA; //Uncorrelated (OVER/ATOP): w == ab, the same as W3C.
 
 				if (alphaMode == 3) {
 					//CONJOINT, maximal overlap.
-					p0 = min(as, ab);
+					p0 = min(srcA, dstA);
 				} else if (alphaMode == 4) {
 					//DISJOINT, minimal overlap.
-					p0 = max(as + ab - 1.0, 0.0);
+					p0 = max(srcA + dstA - 1.0, 0.0);
 				}
 
-				float w = (as > 0.0) ? p0 / as : 0.0;
+				float w = (srcA > 0.0) ? p0 / srcA : 0.0;
 				//W3C Cs' = (1-w)*Cs + w*B(Cb, Cs).  The specification's uncorrelated case has w = ab.
 				vec3 mixed = (1.0 - w) * Cs + w * blendColor3(Cb, Cs);
 
@@ -235,28 +248,46 @@ internal fun compositeFragmentShader(dialect: GlslDialect): String =
 
 				if (alphaMode == 1) {
 					//SRC-ATOP: output keeps canvas alpha (ao = ab)
-					Fa = ab;
-					Fb = 1.0 - as;
+					Fa = dstA;
+					Fb = 1.0 - srcA;
 				} else if (alphaMode == 2) {
 					//DST-OUT: ao = ab*(1-as); Fa = 0 so 'mixed' is unused.
 					Fa = 0.0;
-					Fb = 1.0 - as;
+					Fb = 1.0 - srcA;
 				} else if (alphaMode == 3) {
 					//CONJOINT: ao = max(as, ab)
 					Fa = 1.0;
-					Fb = (ab <= 0.0 || as >= ab) ? 0.0 : 1.0 - as / ab;
+					Fb = (dstA <= 0.0 || srcA >= dstA) ? 0.0 : 1.0 - srcA / dstA;
 				} else if (alphaMode == 4) {
 					//DISJOINT: ao = min(1, as + ab)
 					Fa = 1.0;
-					Fb = (ab <= 0.0) ? 0.0 : min(1.0, (1.0 - as) / ab);
+					Fb = (dstA <= 0.0) ? 0.0 : min(1.0, (1.0 - srcA) / dstA);
 				} else {
 					//OVER
 					Fa = 1.0;
-					Fb = 1.0 - as;
+					Fb = 1.0 - srcA;
 				}
-				outColor = vec4(as * Fa * mixed + ab * Fb * Cb, as * Fa + ab * Fb);
+				outColor = vec4(srcA * Fa * mixed + dstA * Fb * Cb, srcA * Fa + dstA * Fb);
 			}
 			//UNORM target, also bounds legacy add.
-			fragColor = clamp(outColor, 0.0, 1.0);
+			return clamp(outColor, 0.0, 1.0);
 		}
-		""".trimIndent()
+
+"""
+
+/**
+ * The composite as an SkSL blender, for Skia painters that composite layers the same way (the editor's software
+ * canvas): blend a premultiplied source onto a premultiplied destination by the uniforms `colorMode` (0-17) and
+ * `alphaMode` (0-4), two 32-bit ints in that order. The source's own colours and opacity are already applied.
+ *
+ * @return String The SkSL source for `RuntimeEffect.makeForBlender`.
+ */
+public fun skslCompositeBlender(): String =
+	"""
+		uniform int colorMode;
+		uniform int alphaMode;
+""" + COMPOSITE_FUNCTIONS + """
+		half4 main(half4 src, half4 dst) {
+			return half4(compositeLayer(vec4(src), vec4(dst), vec3(1.0), vec3(0.0)));
+		}
+"""
