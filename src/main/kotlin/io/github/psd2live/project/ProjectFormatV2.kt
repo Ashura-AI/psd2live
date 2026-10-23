@@ -107,40 +107,20 @@ internal object ProjectFormatV2 {
 	class Packed(val index: JsonObject, val rasters: Collection<String>)
 
 	/**
-	 * Moves the working-store layout under [root]/workspace/[projectId] into the v2 layout under [root]. Revisions
-	 * staged already (their index in `history/revisions/`) are left as they are. Returns the revisions it split, by
-	 * snapshot key.
+	 * Moves what a save staged in working-store form under [root]/workspace/[projectId] into the v2 layout under [root]:
+	 * the rasters, and the auxiliary records and tasks. The history is staged in the archive layout already
+	 * ([WorkspaceStore.packHistory]).
 	 */
-	fun pack(root: Path, projectId: String): Map<String, Packed> {
+	fun pack(root: Path, projectId: String) {
 		val workspace = root.resolve("workspace")
 		val store = workspace.resolve(projectId)
-		require(Files.isRegularFile(store.resolve("HEAD.json"))) { "Project has no history" }
-		val history = root.resolve("history")
-		move(store.resolve("HEAD.json"), history.resolve("HEAD.json"))
-		moveTree(store.resolve("history/nodes"), history.resolve("nodes"))
-		val snapshots = store.resolve("history/snapshots")
-		val shared = WorkspaceStore.SharedContent()
-		val payloads = PayloadHashes()
-		val packed = LinkedHashMap<String, Packed>()
-		if (Files.isDirectory(snapshots)) Files.list(snapshots).use { paths -> paths.sorted().toList() }.forEach { file ->
-			val snapshot = WorkspaceStore.expandSnapshot(store, json.parseToJsonElement(Files.readString(file)).jsonObject, shared)
-			// Revisions shared chunks, so their entries are the same objects: each payload is written and hashed once.
-			val index = split(root, snapshot, PAYLOAD_MIN_CHARS.takeIf { needsNewerSchema(snapshot) }, payloads)
-			val key = file.fileName.toString().removeSuffix(".json")
-			writeRevision(root, key, index)
-			packed[key] = Packed(index, WorkspaceStore.rasterFiles(snapshot))
-			Files.delete(file)
-		}
-		// Journal chunks and payloads shared by working snapshots are now inside the document nodes.
-		WorkspaceStore.sharedContentFolders.forEach { deleteTree(store.resolve(it)) }
+		if (!Files.isDirectory(store)) return deleteTree(workspace)
 		moveTree(store.resolve("blobs"), root.resolve("assets"))
-		moveTree(store.resolve(WORKING_RIG_OBJECTS), root.resolve(RIG_OBJECTS))
 		for (folder in auxiliaryFolders) moveTree(store.resolve(folder), root.resolve("auxiliary").resolve(folder))
 		if (Files.isRegularFile(store.resolve("tasks.json"))) move(store.resolve("tasks.json"), root.resolve("auxiliary/tasks.json"))
 		val left = Files.walk(store).use { paths -> paths.filter(Files::isRegularFile).map { store.relativize(it).toString() }.toList() }
 		require(left.isEmpty()) { "Unknown project store entries: $left" }
 		deleteTree(workspace)
-		return packed
 	}
 
 	/** Writes revision [key]'s [index] into the archive layout under [root]. */

@@ -281,12 +281,9 @@ internal class WorkspaceStore(
         }
     }
 
-	/**
-	 * Writes [state]'s history nodes, HEAD and the snapshot of each revision this store does not have, except the
-	 * revisions whose snapshot key ([snapshotKey]) is in [staged]: a save stages those in the archive layout already.
-	 */
+	/** Writes [state]'s history nodes, HEAD and the snapshot of each revision this store does not have. */
 	@Synchronized
-	fun persistHistory(projectId: String, state: WorkspaceHistoryState<WorkspaceDocument>, staged: Set<String> = emptySet()) {
+	fun persistHistory(projectId: String, state: WorkspaceHistoryState<WorkspaceDocument>) {
 		val project = projectRoot(projectId)
 		// The rig objects checkpoints name are part of the document: on disk before the snapshot that names them.
 		val rigObjects = project.resolve(ProjectFormatV2.WORKING_RIG_OBJECTS)
@@ -298,7 +295,7 @@ internal class WorkspaceStore(
 			if (nodePath in stored) continue
 			val snapshotPath = project.resolve("history/snapshots/${fileKey(selection.node.snapshotHash)}.json")
 			val key = fileKey(selection.node.snapshotHash)
-			if (key !in staged && !hasSnapshot(project, key)) {
+			if (!hasSnapshot(project, key)) {
 				io.github.psd2live.core.RigObjects.writeTo(rigObjects, io.github.psd2live.core.RigCheckpoint.hashes(selection.snapshot.rigEdits.authoringJournal))
 				val snapshotBytes = shareContent(encodeDocument(selection.snapshot, project), project).toString().encodeToByteArray()
 				writeAtomic(snapshotPath, snapshotBytes, replace = false, pretty = false)
@@ -315,6 +312,49 @@ internal class WorkspaceStore(
                 putJsonArray("nodeOrder") { state.selections.forEach { add(JsonPrimitive(it.node.id)) } }
 			}.toString().encodeToByteArray(),
 		)
+	}
+
+	/**
+	 * Writes [state] into the v2 archive layout under a save's staging [root], without snapshot files: the history
+	 * nodes and HEAD under `history/`, and each revision whose snapshot key ([snapshotKey]) is not in [staged] (linked
+	 * from the archive mirror already) encoded and split into document nodes ([ProjectFormatV2.split]). Rasters go to
+	 * this store's `blobs/`, which [ProjectFormatV2.pack] moves into the archive; rig objects go to its `rig/objects/`.
+	 * Returns the revisions split, by snapshot key.
+	 */
+	@Synchronized
+	fun packHistory(projectId: String, state: WorkspaceHistoryState<WorkspaceDocument>, root: Path,
+	                staged: Set<String> = emptySet()): Map<String, ProjectFormatV2.Packed> {
+		val project = projectRoot(projectId)
+		val history = root.resolve("history")
+		val rigObjects = root.resolve(ProjectFormatV2.RIG_OBJECTS)
+		// Revisions share journal entries, so each payload is written and hashed once.
+		val payloads = ProjectFormatV2.PayloadHashes()
+		val packed = LinkedHashMap<String, ProjectFormatV2.Packed>()
+		// Revisions name mostly the same rig objects: each is written once.
+		val written = HashSet<String>()
+		for (selection in state.selections) {
+			val key = fileKey(selection.node.snapshotHash)
+			if (key !in staged && key !in packed) {
+				io.github.psd2live.core.RigObjects.writeTo(rigObjects, io.github.psd2live.core.RigCheckpoint.hashes(selection.snapshot.rigEdits.authoringJournal).filter(written::add))
+				val snapshot = encodeDocument(selection.snapshot, project)
+				val index = ProjectFormatV2.split(root, snapshot, ProjectFormatV2.PAYLOAD_MIN_CHARS.takeIf { ProjectFormatV2.needsNewerSchema(snapshot) }, payloads)
+				ProjectFormatV2.writeRevision(root, key, index)
+				packed[key] = ProjectFormatV2.Packed(index, rasterFiles(snapshot))
+			}
+			writePretty(history.resolve("nodes/${fileKey(selection.node.id)}.json"), encodeNode(selection.node))
+		}
+		writePretty(history.resolve("HEAD.json"), buildJsonObject {
+			put("version", STORE_VERSION)
+			put("headNodeId", state.headNodeId)
+			putJsonArray("nodeOrder") { state.selections.forEach { add(JsonPrimitive(it.node.id)) } }
+		})
+		return packed
+	}
+
+	/** [value] at [path] in a fresh staging directory, formatted as [writeAtomic] formats JSON. */
+	private fun writePretty(path: Path, value: JsonObject) {
+		Files.createDirectories(path.parent)
+		Files.write(path, json.encodeToString(JsonElement.serializer(), json.parseToJsonElement(value.toString())).encodeToByteArray())
 	}
 
 	@Synchronized
@@ -1586,9 +1626,6 @@ internal class WorkspaceStore(
 			}
 			return true
 		}
-
-		/** Working-store folders holding content shared by snapshots; [expandSnapshot] reads them. */
-		internal val sharedContentFolders = listOf("history/journal", "history/payloads", "history/bakes")
 
 		fun defaultRoot(): Path {
 			System.getProperty("psd2live.agent.store")?.takeIf(String::isNotBlank)?.let { return Path.of(it) }

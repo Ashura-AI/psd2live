@@ -35,7 +35,8 @@ internal class ProjectRepository(
                     val mirror = ArchiveMirror(live.resolve(ArchiveMirror.FOLDER))
                     val mirrored = mirror.stage(capture.history.selections.map { WorkspaceStore.snapshotKey(it.node.snapshotHash) }.distinct(),
                         root, live.resolve("blobs"), store.projectRoot(capture.projectId).resolve("blobs"))
-                    store.persistHistory(capture.projectId, capture.history, mirrored.keys)
+                    val packed = store.packHistory(capture.projectId, capture.history, root, mirrored.keys)
+                    packed.forEach { (key, revision) -> mirror.record(key, revision.index, root, revision.rasters) }
                     staged(1)
                     capture.store.copyAuxiliary(capture.projectId, root.resolve("workspace").resolve(capture.projectId),
                         capture.assetCatalog, viewImages = false)
@@ -75,7 +76,7 @@ internal class ProjectRepository(
                     })
                     ProjectArchive.writeJson(root.resolve("workspace.json"), JsonObject(ui))
                     staged(3)
-                    ProjectFormatV2.pack(root, capture.projectId).forEach { (key, packed) -> mirror.record(key, packed.index, root, packed.rasters) }
+                    ProjectFormatV2.pack(root, capture.projectId)
                     staged(4)
                     MaterializedRigStore.write(root, capture.history, mirrored)
                     staged(5)
