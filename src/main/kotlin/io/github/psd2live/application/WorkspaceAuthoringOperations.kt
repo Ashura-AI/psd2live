@@ -675,13 +675,16 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         val input = a.getValue("request").jsonObject
         validateOperationSchema(input, oneOf(canvasBranches))
         val mode = input.text("mode")
-        val command = WorkspaceCanvasCommands.create(workspace.currentPuppet() ?: error("No model is loaded"), mode, input)
+        val puppet = workspace.currentPuppet() ?: error("No model is loaded")
+        val command = WorkspaceCanvasCommands.create(puppet, mode, input)
         val writtenId = command.getValue("id").jsonPrimitive.content
+        val made = if (mode == "topology") WorkspaceMeshTopology.newVertices(puppet, command) else emptyList()
         val result = workspace.authorRig(input.text("state"), buildJsonArray { add(command) }, MutationAuthor.AGENT)
         buildJsonObject {
             put("state", requireNotNull(result.state)); put("history_node_id", result.historyNodeId); put("project_id", requireNotNull(result.projectId)); put("id", writtenId)
             if (!result.applied) put("applied", false)
             result.geometryDiagnostics?.let { put("geometry_diagnostics", it) }
+            if (mode == "topology" && result.applied) putJsonArray("new_vertices") { made.forEach { add(it) } }
             if (mode == "glue") {
                 put("mesh_a", command.getValue("mesh_a").jsonPrimitive.content)
                 put("mesh_b", command.getValue("mesh_b").jsonPrimitive.content)

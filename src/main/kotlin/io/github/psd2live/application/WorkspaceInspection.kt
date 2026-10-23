@@ -130,7 +130,7 @@ internal fun WorkspaceQueries.inspect(a: JsonObject): JsonObject {
                         put("mesh", queries.layerMeshSettings(layer.id))
                         putJsonArray("bounds") { listOf(layer.opaqueBounds.left, layer.opaqueBounds.top, layer.opaqueBounds.right, layer.opaqueBounds.bottom).forEach { add(JsonPrimitive(it)) } }
                     } }
-                    "parameters" -> snapshot.parameters.map { p -> buildJsonObject { put("id", p.id); put("name", p.name); put("min", p.min); put("max", p.max); put("default", p.default) } }
+                    "parameters" -> snapshot.parameters.map { p -> buildJsonObject { put("id", p.id); put("name", p.name); put("min", p.min); put("max", p.max); put("default", p.default); put("repeat", p.repeat) } }
                     "paths" -> queries.currentPuppet()?.deformPaths.orEmpty().map { p -> buildJsonObject {
                         put("id", p.id); put("target", "mesh:${p.drawableId.raw}"); put("level", p.editLevel)
                         put("width", p.width); put("hardness", p.hardness); put("closed", p.closed); put("pointCount", p.points.size)

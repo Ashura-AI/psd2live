@@ -35,7 +35,7 @@
 
 | 工具 | 编译为 | 说明 |
 | --- | --- | --- |
-| `workspace_overview` | 只读查询 | 一次捕获返回画布、参数、图层、变形器层级（含父级与子对象数）、网格数、物理组（输入/输出参数）与动作片段；每个列表带 `total`，按 `limit`（1–500，默认 200）截取 |
+| `workspace_overview` | 只读查询 | 一次捕获返回画布、参数、图层、变形器层级（含父级与子对象数）、网格数、物理组（输入/输出参数）与动作片段；每个列表带 `total`，按 `limit`（1–500，默认 200）截取；参数含 `kind` 与 `repeat`（循环参数） |
 | `author_axis` | `parameter_create`（参数不存在时）→ `keyform_apply` seed → `rig_deform` | `parameter.id` 不存在时创建（`name` 缺省为 ID）；已存在时给出的 `min/max/default` 必须与现值一致。每个形状目标先在参数默认值处 seed，使当前形状成为中立形（该轴已在默认值有关键点且未给 `key` 时跳过）；再在 `value` 处执行 `rig_deform` 的 `operations/selection`。目标上直接绑定的其他轴取各自默认值，`key` 可指定组合角的取值。`value` 等于默认值时拒绝。`mirror: true` 时再把每个形状镜像到相反值（`2×默认值 − value`，须在范围内），一侧写完两侧都有。新参数轴的关键点由引擎按 min/默认/max 建立 |
 | `author_physics` | `physics_put` → `physics_fit` | 字段同 `physics_put`，另加 `fit_target`（10–300，默认 100；`null` 跳过拟合）。只给 `id` 与 `fit_target` 时只重新拟合已有组；两者都不改时拒绝。输出参数需已有作者形状 |
 | `author_compile` | 只读查询 | 返回意图将提交的成员，见下文 |
@@ -115,7 +115,7 @@
 
 ### 网格拓扑
 
-`canvas_topology`（`request.mode` 为 `topology`）与编辑器的拓扑操作是同一条 `canvas_topology` 作者日志，必需 `state/id/action/vertices`（`id` 为网格 ID，`vertices` 为当前网格的顶点索引，可为空数组）。索引来自当前网格，须使用最新 `state`。`action`：
+`canvas_topology`（`request.mode` 为 `topology`）与编辑器的拓扑操作是同一条 `canvas_topology` 作者日志，必需 `state/id/action/vertices`（`id` 为网格 ID，`vertices` 为当前网格的顶点索引，可为空数组）。索引来自当前网格，须使用最新 `state`：用 `mesh_get_topology` 读取顶点索引与静止坐标（`add_points` 锚点所用的网格自身空间）、三角形与轮廓边。提交成功时结果的 `new_vertices` 列出该操作在新网格中新建或留下选中的顶点索引（`add_points` 为新建的点，`knife` 为切线上的点，`merge` 为合并后的点）；批量成员不返回此字段。`action`：
 
 | `action` | 输入 | 结果 |
 | --- | --- | --- |
@@ -135,7 +135,7 @@
 
 `mesh_duplicate`（`source`、`targets`）把源网格的拓扑按画布位置套到每个目标网格上，UV 取目标自己的纹理；每个目标写一条 `canvas_mesh_rebuild`，关键形、路径、权重与 Glue 照常迁移。
 
-`object_find`（只读）按名称或 ID（`field`）在 `kinds` 中查找，支持 `find`/`replace`、`regex`、`match_case`、`prefix`、`suffix`、`swap_sides`（独立的 L/R、Left/Right、左/右 互换）与 `standard_ids`（Cubism 2 式 ID 改为 Cubism 3 标准 ID），返回每项改前改后；`object_rename` 以同样参数一次提交；二者只列作者态 Rig 的对象，生成器在日志之后加入的对象保留生成器给的名称与 ID。按 ID 改名与 `object_convert_id`（`renames`：`target` 与新 `id`）都写一条 `convert_id` 日志项：引用它的关键形、混合形、遮罩、Glue、路径、顶点组、动作曲线、表情、姿势、命中区域、用户物理与摆动目标同时改名（尚未收入文档的标准表情也按新 ID 找到标准参数；透过刘海的复制件随原件改 ID，其本身不能转变、粘贴或复制网格，按 `generated_copy` 拒绝），之后的生成覆盖与延后面板编辑按新 ID 重放，内置物理、动作预设与表情按新 ID 找回标准参数。ID 必须为字母开头的 1–64 位 ASCII 字母、数字或下划线，同类重名、已被占用和生成器所有的对象（模拟、内部造型、摆动参数）被拒绝且不做任何修改；骨骼绑定或加权的网格、骨骼参数与骨骼变形器同样被拒绝（骨骼在日志之前按原 ID 烘焙），反过来骨骼也不能新绑定已转变 ID 的网格或日志新建的网格（粘贴副本、画布新建网格），自动骨骼跳过它们；目标 ID 上残留已删参数的动作曲线或表情条目时拒绝转变并指出所在动作或表情。拆分、删除图层与重新生成时，基础阶段按转变前的 ID 保持网格，再由日志项改名；再生成三方合并也把生成结果换算到转变后的 ID。导出前对实际导出的模型检查 ID：同类（Warp、旋转与运行时虚拟骨共用；含参数文件夹、模拟与碰撞体）重名拒绝导出，字符不合规只警告。
+`object_find`（只读）按名称或 ID（`field`）在 `kinds` 中查找，支持 `find`/`replace`、`regex`、`match_case`、`prefix`、`suffix`、`swap_sides`（独立的 L/R、Left/Right、左/右 互换）与 `standard_ids`（Cubism 2 式 ID 改为 Cubism 3 标准 ID），返回每项改前改后；`object_rename` 以同样参数一次提交；二者只列作者态 Rig 的对象，生成器在日志之后加入的对象保留生成器给的名称与 ID。按 ID 改名与 `object_convert_id`（`renames`：`target` 与新 `id`）都写一条 `convert_id` 日志项：引用它的关键形、混合形、遮罩、Glue、路径、顶点组、动作曲线、表情、姿势、命中区域、用户物理与摆动目标同时改名（尚未收入文档的标准表情也按新 ID 找到标准参数；透过刘海的复制件随原件改 ID，其本身不能转变、粘贴或复制网格，按 `generated_copy` 拒绝），之后的生成覆盖与延后面板编辑按新 ID 重放，内置物理、动作预设与表情按新 ID 找回标准参数；参数快照、各工作区的作者姿态与时间轴书签、隐藏、冻结随同一次提交改用新 ID，撤销或检出到转变之前时换回原 ID。ID 必须为字母开头的 1–64 位 ASCII 字母、数字或下划线，同类重名、已被占用和生成器所有的对象（模拟、内部造型、摆动参数）被拒绝且不做任何修改；骨骼绑定或加权的网格、骨骼参数与骨骼变形器同样被拒绝（骨骼在日志之前按原 ID 烘焙），反过来骨骼也不能新绑定已转变 ID 的网格或日志新建的网格（粘贴副本、画布新建网格），自动骨骼跳过它们；目标 ID 上残留已删参数的动作曲线或表情条目时拒绝转变并指出所在动作或表情。拆分、删除图层与重新生成时，基础阶段按转变前的 ID 保持网格，再由日志项改名；再生成三方合并也把生成结果换算到转变后的 ID。导出前对实际导出的模型检查 ID：同类（Warp、旋转与运行时虚拟骨共用；含参数文件夹、模拟与碰撞体）重名拒绝导出，字符不合规只警告。
 
 
 ### 纹理与纹理集
@@ -170,6 +170,7 @@
 | `hit_area_put / hit_area_delete / hit_area_preset` | 文档的点击区域（`rigEdits.hitAreas`），可批量的文档编辑，与检查器和层级树右键菜单共用：`put` 以 `id`（Cubism ID 字母表，如 `HitAreaHead`）新建或修改，`meshes` 为 `mesh:<id>` 列表（新建必需，给出时整体替换），`name` 为宿主查询的名称（缺省为去掉 `HitArea` 前缀的 ID），`new_id` 改名，`before_id` 排在另一区域之前（`null` 排最后）；`delete` 按 `id` 删除；`preset` 按语义加入 Head（脸）与 Body（上衣，否则颈或下装），已有同 ID 的保留。区域按列表顺序判定，先命中者优先；导出写入 model3.json `HitAreas`（每项一个 ArtMesh，多网格区域写成同名多项）与 `.p2lrt` 的 `HITA`，无区域时运行时使用自动的 Head/Body |
 | `hit_area_list / hit_area_test` | 查询，来自一次已提交捕获：`list` 按测试顺序返回各区域的现有网格与已不存在的 `missing` 网格，`automatic=true` 表示未设置任何区域；`test` 在画布点 `x, y`（画布单位，y 向下）、可选 `pose` 姿势上按运行时规则命中测试（网格可见、不透明度大于 0、三角形含该点），返回 `hit` 与命中区域的 `id/name/meshes` |
 | `warp_get_controls` | 从一次已提交捕获读取 Bezier 分段数与编辑控制；`detail=summary` 不含控制点，`points` 按锚点、切线顺序分页（每页最多 256）；坐标为父级局部空间，`persisted=false` 表示控制由采样格点重建。CMO3 只保存采样几何与分段信息，不含这些编辑控制 |
+| `mesh_get_topology` | 从一次已提交捕获读取一个网格（`target` 为 `mesh:ID`）的拓扑，即 `canvas_topology` 按索引所指的内容：`section` 选 `vertices`（默认，`[索引, x, y]`，网格自身静止空间）、`triangles`（`[索引, a, b, c]`）或 `outline`（只被一个三角形使用的轮廓边 `[a, b]`），按 `offset`/`limit`（1–4096，默认 1024）分页放在 `items`；顶点数、三角形数、轮廓边数与 `bounds` 总是返回。把返回的 `state` 交给 `canvas_topology`，索引才保证有效 |
 | `warp_set_topology` | 后台重采样全部普通与混合关键形；返回父级局部空间的实际表面采样误差 |
 | `warp_bezier_divisions / warp_bezier_anchor / warp_bezier_handle / warp_bezier_reset` | 后台保存分段数、锚点、切线或重置；控制坐标为父级局部空间，持久化完整编辑控制与采样格点 |
 | `swing_preview / swing_preview_get / swing_preview_render / swing_preview_commit` | 私有摆动草稿、试听时钟与 PNG 观察；确认一次历史提交，取消不发布草稿 |

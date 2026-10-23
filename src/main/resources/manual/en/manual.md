@@ -610,7 +610,7 @@ Gives parameters, parameter groups, parts, deformers and ArtMeshes new IDs, such
 A new ID uses letters, digits and underscores, starts with a letter, and is not taken by another object of its kind (warp and rotation deformers share one set of IDs); the dialog says why when one is not. To change many IDs by a rule, see [[search-and-replace]].
 ## Checked before export
 An export checks the IDs: objects of one kind sharing an ID stop the export, which names the conflicting IDs; an ID with characters other than letters, digits and underscores only warns.
-!> Parameters and meshes a swing, simulation or interior effect makes or reads cannot be converted on their own; remove them from that panel first. Meshes bound to the skeleton, bone parameters and bone deformers cannot be converted either. After a conversion in the editor, the current pose, parameter snapshots and deformer visibility follow the new IDs.
+!> Parameters and meshes a swing, simulation or interior effect makes or reads cannot be converted on their own; remove them from that panel first. Meshes bound to the skeleton, bone parameters and bone deformers cannot be converted either. After a conversion, the current pose, parameter snapshots, timeline bookmarks and deformer visibility follow the new IDs, and an undo takes them back.
 *> Unlike Cubism, no conversion table file is read or written. The conversion is recorded in the project history: later edits use the new IDs, and a regenerated model replays it in order.
 
 @@ autosave | Automatic Backup Function

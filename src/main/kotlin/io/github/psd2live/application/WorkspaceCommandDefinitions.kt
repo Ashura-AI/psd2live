@@ -1024,6 +1024,7 @@ private fun WorkspaceParameterSnapshot.toJson(): JsonObject = buildJsonObject {
 	put("default", default)
 	put("current", current)
 	put("kind", kind)
+	put("repeat", repeat)
 }
 
 private fun WorkspaceLayerSnapshot.toJson(): JsonObject = buildJsonObject {

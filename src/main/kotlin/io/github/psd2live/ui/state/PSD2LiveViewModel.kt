@@ -1806,9 +1806,10 @@ class PSD2LiveViewModel : AutoCloseable {
     }
 
     /**
-     * What makes the editor's own references - the pose and each workspace's, parameter snapshots, deformer
-     * visibility, the object clipboard - name [renames]' objects by their new IDs once the conversion commits. The
-     * pose is read now, before the rebuilt model drops values of parameters it no longer has.
+     * What makes the editor's own references - the pose and each workspace's, deformer visibility, the object
+     * clipboard - name [renames]' objects by their new IDs once the conversion commits; saved poses and timeline aids
+     * follow in the runtime with the commit itself. The pose is read now, before the rebuilt model drops values of
+     * parameters it no longer has.
      */
     private fun followConvertedIds(renames: List<io.github.psd2live.core.RigIdConversion.Rename>): () -> Unit {
         if (renames.isEmpty()) return {}
@@ -1831,8 +1832,6 @@ class PSD2LiveViewModel : AutoCloseable {
                 deformerVisibility = if (deformers.isEmpty()) s.deformerVisibility else s.deformerVisibility.mapKeys { deformers[it.key] ?: it.key },
                 workspaces = if (parameters.isEmpty()) s.workspaces else s.workspaces.map { w -> poses[w.id]?.let { w.copy(pose = it) } ?: w },
             ) }
-            if (parameters.isNotEmpty()) for (snapshot in _state.value.parameterSnapshots) if (snapshot.values.keys.any { it in parameters })
-                editSavedProjectData(io.github.psd2live.application.WorkspaceAuxiliaryEdit.UpdateSnapshot(snapshot.id, values = snapshot.values.renamed()))
         }
     }
 

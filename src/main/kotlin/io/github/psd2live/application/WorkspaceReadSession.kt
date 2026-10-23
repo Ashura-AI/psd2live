@@ -116,7 +116,7 @@ internal class WorkspaceReadSession(
             selectedLayerId = presentation.selectedLayerId, layers = active + deleted,
             parameters = currentPuppet()?.parameters.orEmpty().map { parameter ->
                 WorkspaceParameterSnapshot(parameter.id.raw, parameter.name, parameter.min, parameter.max, parameter.default,
-                    pose.values[parameter.id] ?: parameter.default, parameter.kind.name.lowercase())
+                    pose.values[parameter.id] ?: parameter.default, parameter.kind.name.lowercase(), parameter.repeat)
             }, projectFile = presentation.projectFile, projectDirty = captured?.dirty == true || presentation.projectDirty,
             projectSaving = presentation.projectSaving, projectSaveError = presentation.projectSaveError,
             persistenceStatus = presentation.persistenceStatus, persistenceError = presentation.persistenceError,

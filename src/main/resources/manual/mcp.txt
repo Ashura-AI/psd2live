@@ -8,7 +8,7 @@ home: project_import_psd project_create project_import_cmo3 project_open
 target-version-selection: project_export_model settings_update
 file-menu: project_open project_save project_save_as project_import_psd project_export_model project_export_target
 modeling-menu: rig_update_generation workspace_preview_regeneration project_import_cmo3 source_split_components rig_generate
-mesh-edit-menu: canvas_topology layer_mesh_rebuild layer_mesh_update source_split_components source_split_depth
+mesh-edit-menu: canvas_topology mesh_get_topology layer_mesh_rebuild layer_mesh_update source_split_components source_split_depth
 hittest: hit_area_put hit_area_delete hit_area_preset hit_area_list hit_area_test
 about-viewarea: view_render_model view_render_context
 preview-canvas: preview_set preview_playback preview_playback_get preview_physics view_sample_motion
@@ -46,7 +46,7 @@ search-and-replace: object_find object_rename
 draworder: layer_draw_order rig_edit_structure
 concept-of-artmesh: workspace_inspect view_render_layer
 mesh-edit: layer_mesh_update layer_mesh_rebuild
-mesh-edit-manual: canvas_topology
+mesh-edit-manual: canvas_topology mesh_get_topology
 mesh-duplication: mesh_duplicate layer_mesh_rebuild
 clipping-mask: rig_edit_structure
 reversed-mask: rig_edit_structure

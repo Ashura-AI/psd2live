@@ -46,7 +46,7 @@ internal object WorkspaceInspectionResultSchemas {
         "switch_id" to s.integer(), "mesh" to WorkspaceSettingsResultTypes.layerMesh, "bounds" to s.vector(4),
         "tags" to s.array(s.string()), "pending" to s.constant(true), "material_id" to s.handle()),
         setOf("id", "name", "visible", "role", "side", "type", "parameter", "switch_id", "mesh", "bounds", "tags"))
-    private val parameter = s.obj(mapOf("id" to s.handle(), "name" to s.string(), "min" to s.number(), "max" to s.number(), "default" to s.number()))
+    private val parameter = s.obj(mapOf("id" to s.handle(), "name" to s.string(), "min" to s.number(), "max" to s.number(), "default" to s.number(), "repeat" to s.boolean()))
     private val group = s.obj(mapOf("target" to s.handle(), "name" to s.string(),
         "kind" to s.choices(*VertexGroupKind.entries.map { it.jsonName }.toTypedArray()), "vertices" to s.integer(0), "weighted" to s.integer(0), "max" to s.number()))
     private fun page(scope: String, item: JsonObject) = scoped(scope,

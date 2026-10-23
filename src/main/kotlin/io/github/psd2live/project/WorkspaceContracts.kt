@@ -36,6 +36,7 @@ data class WorkspaceParameterSnapshot(
 	val default: Float,
 	val current: Float,
 	val kind: String,
+	val repeat: Boolean = false,
 )
 
 data class WorkspaceLayerSnapshot(

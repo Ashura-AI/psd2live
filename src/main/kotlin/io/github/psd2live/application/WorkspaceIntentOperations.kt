@@ -227,7 +227,7 @@ private val overviewSchema: JsonObject by lazy {
         "project_id" to s.nullable(s.handle()), "state" to s.handle(), "history_node_id" to s.handle(), "loaded" to s.boolean(),
         "canvas" to s.array(s.integer(0), 0, 2),
         "parameters" to page(s.obj(mapOf("id" to s.handle(), "name" to s.string(), "min" to s.number(), "max" to s.number(),
-            "default" to s.number(), "kind" to s.string()))),
+            "default" to s.number(), "kind" to s.string(), "repeat" to s.boolean()))),
         "layers" to page(s.obj(mapOf("id" to s.handle(), "name" to s.string(), "role" to s.string(), "side" to s.string(), "visible" to s.boolean()))),
         "meshes" to s.integer(0),
         "deformers" to page(s.obj(mapOf("target" to s.handle(), "name" to s.string(), "parent" to s.nullable(s.handle()),
@@ -251,7 +251,7 @@ private fun WorkspaceQueries.overview(limit: Int): JsonObject {
         put("loaded", snapshot.loaded)
         putJsonArray("canvas") { listOfNotNull(snapshot.canvasWidth, snapshot.canvasHeight).forEach { add(it) } }
         put("parameters", page(snapshot.parameters.map { p -> buildJsonObject {
-            put("id", p.id); put("name", p.name); put("min", p.min); put("max", p.max); put("default", p.default); put("kind", p.kind)
+            put("id", p.id); put("name", p.name); put("min", p.min); put("max", p.max); put("default", p.default); put("kind", p.kind); put("repeat", p.repeat)
         } }))
         put("layers", page(snapshot.layers.filterNot { it.deleted }.map { layer -> buildJsonObject {
             put("id", layer.id); put("name", layer.sourceName); put("role", layer.semanticTag); put("side", layer.side); put("visible", layer.visible)

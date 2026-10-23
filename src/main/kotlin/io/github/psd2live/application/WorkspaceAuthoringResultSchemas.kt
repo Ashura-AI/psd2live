@@ -56,7 +56,9 @@ internal object WorkspaceAuthoringResultSchemas {
         WorkspaceStructureMeshEdits.PREVIEW -> WorkspaceStructureMeshEdits.previewResult
         WorkspaceLayerTransform.OP, WorkspaceRasterEdits.REBUILD_MESH -> s.obj(s.identity + mapOf("layer_id" to s.handle(), "applied" to s.constant(false)), s.identity.keys + "layer_id")
         "rig_create_warp" -> compactWith(mapOf("target" to s.handle()))
-        "canvas_warp", "canvas_rotation", "canvas_topology" -> s.obj(s.identity + mapOf("id" to s.handle(), "applied" to s.constant(false), "geometry_diagnostics" to WorkspaceGeometrySafetySchemas.report), s.identity.keys + "id")
+        "canvas_warp", "canvas_rotation" -> s.obj(s.identity + mapOf("id" to s.handle(), "applied" to s.constant(false), "geometry_diagnostics" to WorkspaceGeometrySafetySchemas.report), s.identity.keys + "id")
+        "canvas_topology" -> s.obj(s.identity + mapOf("id" to s.handle(), "applied" to s.constant(false), "geometry_diagnostics" to WorkspaceGeometrySafetySchemas.report,
+            "new_vertices" to s.array(s.integer(0))), s.identity.keys + "id")
         "canvas_glue" -> s.obj(s.identity + mapOf("id" to s.handle(), "applied" to s.constant(false), "mesh_a" to s.handle(), "mesh_b" to s.handle(), "pair_count" to s.integer(0), "geometry_diagnostics" to WorkspaceGeometrySafetySchemas.report),
             s.identity.keys + setOf("id", "mesh_a", "mesh_b", "pair_count"))
         "path_put" -> s.obj(s.identity + mapOf("path_id" to s.handle(), "target" to s.handle()))

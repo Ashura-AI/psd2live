@@ -35,11 +35,20 @@ internal object PreviewSessions {
         putJsonObject("posesByWorkspace") { workspaceIds.forEach { put(it, pose) } }
     }
 
-    /** A new definition keeps the previous authored value; new axes start at their own default. */
-    fun migrate(previous: List<Parameter>, next: List<Parameter>, auxiliary: JsonObject): JsonObject {
+    /**
+     * A new definition keeps the previous authored value; new axes start at their own default. A parameter [renamed]
+     * to another ID keeps its value and lock under that ID.
+     */
+    fun migrate(previous: List<Parameter>, next: List<Parameter>, auxiliary: JsonObject,
+                renamed: Map<String, String> = emptyMap()): JsonObject {
         if (previous == next) return auxiliary
         val records = auxiliary["posesByWorkspace"]?.jsonObject ?: return auxiliary
-        val poses = records.mapValues { (id, _) -> encode(normalize(next, read(previous, auxiliary, id))) }
+        fun ParameterId.renamed() = renamed[raw]?.let(::ParameterId) ?: this
+        val poses = records.mapValues { (id, _) ->
+            val pose = read(previous, auxiliary, id)
+            encode(normalize(next, if (renamed.isEmpty()) pose
+                else WorkspacePose(pose.values.mapKeys { it.key.renamed() }, pose.locked.mapTo(HashSet()) { it.renamed() })))
+        }
         return if (poses == records) auxiliary else JsonObject(auxiliary + ("posesByWorkspace" to JsonObject(poses)))
     }
 
