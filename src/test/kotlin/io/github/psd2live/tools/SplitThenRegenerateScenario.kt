@@ -1,6 +1,8 @@
-package io.github.psd2live.scenario
+package io.github.psd2live.tools
 
 import io.github.psd2live.core.*
+import io.github.psd2live.scenario.*
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.io.TempDir
 import org.umamo.render.eval.CpuDeformationEvaluator
 import java.nio.file.Path
@@ -12,9 +14,13 @@ import kotlin.test.Test
  * simulation and a classification change regenerate the rig under them, the skeleton is put on, and the project is
  * reopened and exported. The pieces keep their IDs, stay where they were drawn, keep hanging from something that
  * moves, and reach the export.
+ *
+ * A development tool: it runs the whole pipeline end to end, too long for the suite (PSD2LIVE_TOOLS=1).
  */
 class SplitThenRegenerateScenario {
 	@TempDir lateinit var temp: Path
+
+	@BeforeEach fun tools() = requireTools()
 
 	@Test fun splitHairThroughSimulationReclassifySkeletonAndReopen() = Studio.run(temp, Characters.figure(physics = true)) {
 		edit("split the back hair", "source_split_polygon", req("layer_id" to "back_hair", "names" to listOf("Left", "Right"),

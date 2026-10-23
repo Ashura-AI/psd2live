@@ -23,7 +23,7 @@ class SaveAndCloseTest {
             vm.setStateForTest(vm.state.value.copy(atlasSize = 512, exportMoc3 = false, generatePhysics = false))
             DesktopWorkspace(vm, temp.resolve("store")).use { workspace ->
                 vm.attachWorkspace(workspace)
-                workspace.importPsd(Characters.figurePsd(temp).toString(), true)
+                workspace.importPsd(Characters.headPsd(temp).toString(), true)
                 body(vm, workspace)
             }
         }

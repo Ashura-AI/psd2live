@@ -1,16 +1,20 @@
-package io.github.psd2live.scenario
+package io.github.psd2live.tools
 
 import io.github.psd2live.core.IrGeometryEvaluator
 import io.github.psd2live.core.RigIrCompiler
 import io.github.psd2live.format.eval.NativeGeometryEvaluator
 import io.github.psd2live.format.eval.P2lRuntime
+import io.github.psd2live.scenario.*
 import kotlinx.serialization.json.*
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.io.TempDir
 import org.umamo.format.cmo3.Cmo3
 import org.umamo.format.cmo3.model.custom.CModelSource
+import org.umamo.format.moc3.Moc3
 import org.umamo.format.png.PngCodec
 import org.umamo.format.psd.PsdReader
 import org.umamo.interop.cmo3.Cmo3Import
+import org.umamo.interop.moc3.import.Moc3Import
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.math.abs
@@ -21,9 +25,13 @@ import kotlin.test.Test
  * pick. What the user saw is what each target holds: moc3 and cmo3 read back to the editor's deformation, exports are
  * byte-for-byte repeatable, the VTube Studio bundle references only files it wrote, the native runtime plays the
  * p2lrt like the editor, and the other targets write readable files.
+ *
+ * A development tool: it runs the whole pipeline end to end, too long for the suite (PSD2LIVE_TOOLS=1).
  */
 class ExportTargetsScenario {
 	@TempDir lateinit var temp: Path
+
+	@BeforeEach fun tools() = requireTools()
 
 	@Test fun anAuthoredCharacterThroughEveryTarget() = Studio.run(temp, Characters.figure(), checks = setOf(Studio.Check.REPLAY)) {
 		edit("apply the proposed skeleton", "skeleton_auto", req())
@@ -36,11 +44,13 @@ class ExportTargetsScenario {
 		edits("add a motion and export settings", "motion_seed_builtin" to req("builtin" to "Wave", "id" to "wave"),
 			"settings_update" to req("changes" to mapOf("exportMoc3" to true, "exportMotions" to true)))
 
-		exportMatchesEditor(this)
+		val moc3 = export("moc3")
+		val moc3File = moc3.single { it.toString().endsWith(".moc3") }
+		exportMatchesEditor(this, step("read the moc3 back") { Moc3Import.fromMocDocument(Moc3.read(Files.readAllBytes(moc3File)), null) })
 		unkeyedBlendShapeMatchesEditor(this, mesh("skirt"))
-		cubismCoreAccepts(this, export("moc3", name = "export moc3 for the Cubism Core").single { it.toString().endsWith(".moc3") })
-		val first = export("moc3", name = "export moc3 again").associate { it.fileName.toString() to Files.readAllBytes(it) }
-		val second = export("moc3", name = "export moc3 a third time").associate { it.fileName.toString() to Files.readAllBytes(it) }
+		cubismCoreAccepts(this, moc3File)
+		val first = moc3.associate { it.fileName.toString() to Files.readAllBytes(it) }
+		val second = export("moc3", name = "export moc3 again").associate { it.fileName.toString() to Files.readAllBytes(it) }
 		expect("repeatable", first.keys == second.keys && first.all { (name, bytes) -> bytes.contentEquals(second.getValue(name)) }) {
 			"exporting twice wrote different files: " + first.keys.filter { !first.getValue(it).contentEquals(second[it]) }
 		}

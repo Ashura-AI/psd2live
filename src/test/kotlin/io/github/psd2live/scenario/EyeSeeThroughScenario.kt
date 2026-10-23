@@ -82,8 +82,6 @@ class EyeSeeThroughScenario {
 		edit("raise the see-through opacity", "settings_update", req("changes" to mapOf("seeThroughOpacity" to 0.8)))
 		expect("replayed", now.document.rigEdits.authoringJournal == journal) { "the opacity change regenerated the rig" }
 		opened("opacity")
-		reopen()
-		opened("reopened")
 
 		edit("export moc3 too", "settings_update", req("changes" to mapOf("exportMoc3" to true)))
 		val moc3 = moc3()

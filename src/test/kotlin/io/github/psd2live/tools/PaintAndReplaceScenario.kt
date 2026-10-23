@@ -1,6 +1,8 @@
-package io.github.psd2live.scenario
+package io.github.psd2live.tools
 
 import io.github.psd2live.core.*
+import io.github.psd2live.scenario.*
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import kotlin.math.abs
@@ -10,9 +12,13 @@ import kotlin.test.Test
  * Painting on a rigged character: a sleeve bound to the skeleton is extended with the brush and its mesh rebuilt, the
  * face is erased without a rebuild, the top's image is replaced and made denser. Rebuilt meshes stay where the art is
  * and keep following their bones; painting never silently regenerates; the project reopens and exports.
+ *
+ * A development tool: it runs the whole pipeline end to end, too long for the suite (PSD2LIVE_TOOLS=1).
  */
 class PaintAndReplaceScenario {
 	@TempDir lateinit var temp: Path
+
+	@BeforeEach fun tools() = requireTools()
 
 	@Test fun paintRebuildReplaceUnderTheSkeleton() = Studio.run(temp, Characters.figure()) {
 		edit("apply the proposed skeleton", "skeleton_auto", req())

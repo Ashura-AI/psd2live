@@ -40,7 +40,6 @@ class LayoutGenerationScenario {
 			edit("generate from its tag", "rig_generate", req())
 			expect("bound", mesh(layer) == id && puppet.drawables.single { it.id.raw == id }.mesh!!.indices.toList() == topology &&
 				motion(id, "ParamAngleX", 30f) > 0.1) { "the image was not bound on its existing mesh: $id -> ${mesh(layer)}, parent ${puppet.drawables.single { it.id.raw == id }.parentDeformerId}, motion ${motion(id, "ParamAngleX", 30f)}" }
-			reopen()
 		}
 	}
 
@@ -64,7 +63,6 @@ class LayoutGenerationScenario {
 				allow("REGENERATION_CONFLICT")
 				edit("generate a sparse rig", "rig_generate", req())
 				expect("preserved", puppet.parameters.any { it.id.raw == "ParamUser" }) { "generation discarded user objects" }
-				reopen("save the generated layout")
 				if (count > 0) {
 					val files = export("cmo3")
 					val exported = files.single { it.toString().endsWith(".cmo3") }
@@ -105,7 +103,6 @@ class LayoutGenerationScenario {
 		expect("generated", mesh("sleeve_r") == sleeve) { "the sleeve's mesh was renamed" }
 		expect("generated", motion(sleeve, "ParamFlap", 1f) > 3.0) { "the user's axis no longer moves the sleeve" }
 		expect("generated", now.document.layout.generation == WorkspaceGeneration.Generated) { "something still waits: ${now.document.layout.generation}" }
-		reopen()
 	}
 
 	@Test fun aClassificationWaitsForTheNextGeneration() = Studio.run(temp, Characters.figure()) {

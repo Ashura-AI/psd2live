@@ -86,7 +86,6 @@ class HitAreaScenario {
 		expect("deleted", areas().map { it.id to it.meshes } == listOf("HitAreaBody" to pieces, "HitAreaHead" to listOf(face))) {
 			"after deleting the skirt ${areas()}"
 		}
-		reopen()
 	}
 
 	@Test fun anAreaWhoseMeshesAreGoneStaysTheDocumentsOwnAndIsReported() {

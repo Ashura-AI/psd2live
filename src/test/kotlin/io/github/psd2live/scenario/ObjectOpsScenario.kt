@@ -70,7 +70,6 @@ class ObjectOpsScenario {
 		expect("copy stays", bounds(copy).contentEquals(before) && !bounds(face).contentEquals(before)) {
 			"the copy moved with its original's layer: ${before.toList()} -> ${bounds(copy).toList()}"
 		}
-		reopen()
 	}
 
 	/** Conversions that hand a freed ID to another mesh, then a split of the first one's layer: each ID converts once. */
@@ -84,7 +83,6 @@ class ObjectOpsScenario {
 		expect("split", meshes("upper").size == 1 && meshes("lower").size == 1 && mesh("hair") == face && "ArtMeshCheek" !in ids()) {
 			"upper ${meshes("upper")}, lower ${meshes("lower")}, hair ${meshes("hair")} among ${ids()}"
 		}
-		reopen()
 	}
 
 	/**
@@ -127,7 +125,6 @@ class ObjectOpsScenario {
 		expect("regenerated", meshes("top") == listOf("ArtMeshTop") && puppet.drawables.single { it.id.raw == "ArtMeshTop" }.name == "Shirt") {
 			"the top layer names ${meshes("top")}; drawables ${puppet.drawables.map { it.id.raw to it.name }}"
 		}
-		reopen()
 	}
 
 	/** What the skeleton binds keeps the ID the skeleton bakes it under. */
@@ -165,7 +162,6 @@ class ObjectOpsScenario {
 		expect("expression", joy.entries.map { it.parameterId } == listOf("ParamTailSwing")) { "Joy names ${joy.entries}" }
 		val pose = now.document.rigEdits.pose!!.groups.single().parts.map { it.partId }
 		expect("pose", pose == listOf("PartRenamed", parts[1])) { "the pose names $pose" }
-		reopen()
 	}
 
 	/**
@@ -202,7 +198,6 @@ class ObjectOpsScenario {
 		expect("deleted", listOf("ArtMeshBrowLeft", pastedBrow, renamed).none { it in ids() }) { "left behind: ${ids()}" }
 		undo("take the deletion back")
 		expect("restored", listOf("ArtMeshBrowLeft", pastedBrow, renamed).all { it in ids() }) { "missing after undo: ${ids()}" }
-		reopen()
 	}
 
 	/** Objects a simulation adds after the journal are not found, copied or renamed: replay would not find them. */
@@ -215,6 +210,5 @@ class ObjectOpsScenario {
 		expect("find", found.none { it.id in generated }) { "find lists generated parameters ${found.map { it.id }.filter { it in generated }}" }
 		refused("paste a generated parameter", WorkspaceObjectEdits.PASTE, req("sources" to listOf("parameter:${generated.first()}")))
 		edit("rename every parameter", WorkspaceObjectEdits.RENAME, req("kinds" to listOf("parameter"), "field" to "name", "suffix" to " (edited)"))
-		reopen()
 	}
 }

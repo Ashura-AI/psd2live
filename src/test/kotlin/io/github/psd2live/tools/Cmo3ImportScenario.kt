@@ -1,7 +1,9 @@
-package io.github.psd2live.scenario
+package io.github.psd2live.tools
 
 import io.github.psd2live.core.RigCheckpoint
 import io.github.psd2live.core.RigEditOverlay
+import io.github.psd2live.scenario.*
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.io.TempDir
 import org.umamo.format.cmo3.Cmo3
 import org.umamo.format.cmo3.model.custom.CModelSource
@@ -14,9 +16,13 @@ import kotlin.test.Test
  * A model finished elsewhere comes in as a cmo3: it is imported, edited past a checkpoint interval, one of its layers
  * split and another's material recoloured, the project reopened, and exported back to cmo3. The import is never regenerated, edits replay on it, and the
  * cmo3 written reads back to what the editor shows.
+ *
+ * A development tool: it runs the whole pipeline end to end, too long for the suite (PSD2LIVE_TOOLS=1).
  */
 class Cmo3ImportScenario {
 	@TempDir lateinit var temp: Path
+
+	@BeforeEach fun tools() = requireTools()
 
 	@Test fun importEditSplitReopenAndExportBack() {
 		val source = temp.resolve("made-elsewhere")

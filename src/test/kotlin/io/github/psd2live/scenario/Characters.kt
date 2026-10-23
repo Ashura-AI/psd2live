@@ -135,6 +135,12 @@ internal object Characters {
 		return directory.resolve("figure.psd").also { Files.write(it, PsdWriter.write(source.widthPx, source.heightPx, source.layers, source.groups)) }
 	}
 
+	/** Writes [head]'s art as a PSD: the cheapest import that still generates a head turn. */
+	fun headPsd(directory: Path): Path {
+		val source = head(physics = false).source
+		return directory.resolve("head.psd").also { Files.write(it, PsdWriter.write(source.widthPx, source.heightPx, source.layers, source.groups)) }
+	}
+
 	/** [figure] at [scale] with both eyes on one layer, two islands a mesh split offers to separate. */
 	fun eyesPsd(directory: Path, scale: Float = 1f): Path {
 		fun ellipse(cx: Int, cy: Int, rx: Int, ry: Int) = Characters.ellipse((cx * scale).toInt(), (cy * scale).toInt(), (rx * scale).toInt(), (ry * scale).toInt())

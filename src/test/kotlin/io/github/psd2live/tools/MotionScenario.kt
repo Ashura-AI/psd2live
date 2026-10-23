@@ -1,9 +1,11 @@
-package io.github.psd2live.scenario
+package io.github.psd2live.tools
 
 import io.github.psd2live.core.*
+import io.github.psd2live.scenario.*
+import kotlinx.serialization.json.*
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.io.TempDir
 import org.umamo.runtime.model.ParameterId
-import kotlinx.serialization.json.*
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -12,9 +14,13 @@ import kotlin.test.Test
  * Animating a rigged character: a built-in motion is added and edited key by key on a custom axis, the axis range is
  * narrowed under the keys, the clip duplicated and renamed, the project reopened and the motions exported. The clip
  * plays within the axis it drives, survives the round trips, and the exported motion3.json is what Cubism reads.
+ *
+ * A development tool: it runs the whole pipeline end to end, too long for the suite (PSD2LIVE_TOOLS=1).
  */
 class MotionScenario {
 	@TempDir lateinit var temp: Path
+
+	@BeforeEach fun tools() = requireTools()
 
 	@Test fun builtInMotionEditedNarrowedDuplicatedAndExported() = Studio.run(temp, Characters.figure()) {
 		edit("apply the proposed skeleton", "skeleton_auto", req())

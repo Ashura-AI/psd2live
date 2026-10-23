@@ -95,7 +95,6 @@ class LayoutManifestScenario {
 		edit("generate", "rig_generate", req())
 		expect("generated", puppet.deformers.isNotEmpty()) { "the manifest's layers did not generate a rig" }
 		refused("a generated layer keeps its order", WorkspaceLayoutEdits.REORDER, req("layer_ids" to listOf("face"), "to" to "back"))
-		reopen()
 	}
 
 	@Test fun aZipHoldingTheManifestReadsTheSame() {

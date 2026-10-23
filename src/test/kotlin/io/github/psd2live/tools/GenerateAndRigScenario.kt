@@ -1,6 +1,8 @@
-package io.github.psd2live.scenario
+package io.github.psd2live.tools
 
 import io.github.psd2live.core.*
+import io.github.psd2live.scenario.*
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Path
 import kotlin.test.Test
@@ -10,9 +12,13 @@ import kotlin.test.Test
  * the fact, the skeleton proposed and applied, an arm-waving motion added, the settings changed back, the project
  * saved and reopened, and the model exported. At every step the rig rebuilds from the document alone, and at the end
  * the exported moc3 moves as the editor does.
+ *
+ * A development tool: it runs the whole pipeline end to end, too long for the suite (PSD2LIVE_TOOLS=1).
  */
 class GenerateAndRigScenario {
 	@TempDir lateinit var temp: Path
+
+	@BeforeEach fun tools() = requireTools()
 
 	private val parts = mapOf(
 		"back_hair" to ("back_hair" to "none"), "leg_r" to ("legwear" to "right"), "leg_l" to ("legwear" to "left"),

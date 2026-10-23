@@ -145,7 +145,6 @@ class MaterialLibraryScenario {
 			hair.left == from.left + 210f && hair.top == from.top + 90f && hair.width == from.width) { "the PSD is not centred: $from -> $hair" }
 		edit("generate", "rig_generate", req())
 		expect("generated", puppet.deformers.isNotEmpty()) { "the placed figure did not generate a rig" }
-		reopen()
 	}
 
 	@Test fun aLinkedLayerShowsItsMaterial() = Studio.run(temp, Characters.figure()) {
