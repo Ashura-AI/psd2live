@@ -244,7 +244,8 @@ class WorkspacePaintSession internal constructor(
             paintRasterGesture(buffer.workingImage, request, object : WorkspaceRasterWork {
                 override fun checkpoint() = checkpoint()
                 override fun progress(fraction: Float, message: String) {}
-            }, before = { checkpoint(); buffer.willWrite(it) }, space = space, area = area, selection = selection.takeIf { transform })
+            }, before = { checkpoint(); buffer.willWrite(it) }, space = space, area = area, selection = selection.takeIf { transform },
+                symmetryAxes = canvasWidth / 2f to canvasHeight / 2f)
             // Every gesture lands through the selection, and with lock_alpha only on what is already painted.
             if (!transform) buffer.confinePending(selection, lockAlpha)
             checkpoint(); buffer.recordStroke(name)

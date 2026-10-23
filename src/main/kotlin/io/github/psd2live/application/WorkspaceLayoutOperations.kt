@@ -283,13 +283,14 @@ internal fun registerLayoutOperations(registry: WorkspaceOperationRegistry, port
         "Import 1..${WorkspaceMaterialFiles.MAX_PATHS} absolute paths into the material library under folder_id: PNG, BMP, TIFF, WebP and JPEG images as items; " +
             "a PSD as a folder of its layers (its groups as subfolders, each layer keeping its place, opacity and visibility); a CMO3 as a folder of its ArtMesh images, each the pixels importing the model " +
             "as a project (project_import_cmo3) gives that mesh's layer; an SVG as a vector item rendered at its own size " +
-            "(material_set_resolution changes it); a folder as a folder of the files it holds, its subfolders nested as they are (hidden ones left out, names in number order). Each image is at most 16 megapixels. as_reference=true also lays the first new material over the canvas as the reference image. The library is part of the " +
+            "(material_set_resolution changes it); a folder as a folder of the files it holds, its subfolders nested as they are (hidden ones left out, names in number order). Each image is at most 16 megapixels. as_reference=true also lays the first new material over the canvas as the reference image (behind the model with reference_under=true), in the same history edit. The library is part of the " +
             "document: one history edit, undoable. Returns a process-owned job handle; the result's changed list names the new materials (material:<id>).",
         WorkspaceLayoutOperations.schema(mapOf("state" to buildJsonObject { put("type", "string"); put("minLength", 1) },
             "paths" to buildJsonObject { put("type", "array"); put("minItems", 1); put("maxItems", WorkspaceMaterialFiles.MAX_PATHS)
                 put("items", buildJsonObject { put("type", "string"); put("minLength", 1) }) },
             "folder_id" to buildJsonObject { put("type", JsonArray(listOf(JsonPrimitive("string"), JsonPrimitive("null")))) },
-            "as_reference" to buildJsonObject { put("type", "boolean") }), listOf("state", "paths")),
+            "as_reference" to buildJsonObject { put("type", "boolean") }, "reference_under" to buildJsonObject { put("type", "boolean") }),
+            listOf("state", "paths")),
         WorkspaceOperationKind.DOCUMENT, jobBacked = true,
         resultSchema = requireNotNull(WorkspaceJobResultSchemas.operationOutput(WorkspaceLayoutOperations.IMPORT)),
         jobResultSchema = WorkspaceJobResultSchemas.result(WorkspaceLayoutOperations.IMPORT))) { request, context ->
@@ -297,6 +298,8 @@ internal fun registerLayoutOperations(registry: WorkspaceOperationRegistry, port
         val state = request.getValue("state").jsonPrimitive.content
         val folder = request["folder_id"]?.takeUnless { it is JsonNull }
         val asReference = request["as_reference"]?.jsonPrimitive?.boolean == true
+        val under = request["reference_under"]?.jsonPrimitive?.boolean == true
+        require(!under || asReference) { "reference_under places a reference; set as_reference too" }
         startWorkspaceOperationJob(reads, jobs, WorkspaceLayoutOperations.IMPORT) {
             val coroutine = currentCoroutineContext()
             coroutine[WorkspaceJobContext]?.progress(0.05f, "Reading files")
@@ -304,6 +307,7 @@ internal fun registerLayoutOperations(registry: WorkspaceOperationRegistry, port
             val edits = listOf(WorkspaceDocumentOperation(WorkspaceMaterialEdits.ADD, buildJsonObject {
                 put("staging", WorkspaceMaterialStaging.stage(entries)); folder?.let { put("folder_id", it) }
                 if (asReference) put("as_reference", true)
+                if (under) put("reference_under", true)
             }))
             val execution = WorkspaceBatchJobExecution(edits, requireNotNull(coroutine[WorkspaceJobCompletion]), coroutine[WorkspaceJobContext])
             withContext(execution) {

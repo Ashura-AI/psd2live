@@ -58,9 +58,11 @@ private fun geometrySelectionSchema(): JsonObject = buildJsonObject {
                             put("type","object");put("additionalProperties",false)
                             putJsonObject("properties") {
                                 for((key,size) in mapOf("rect" to 4,"center" to 2,"line" to 4))putJsonObject(key) { put("type","array");put("minItems",size);put("maxItems",size);putJsonObject("items") { put("type","number") } }
-                                putJsonObject("indices") { put("type","array");put("maxItems",512);putJsonObject("items") { put("type","integer");put("minimum",0) } }
+                                putJsonObject("indices") { put("type","array");put("maxItems",4096);putJsonObject("items") { put("type","integer");put("minimum",0) } }
                                 putJsonObject("radius") { put("type","number");put("exclusiveMinimum",0) }
                                 putJsonObject("feather") { put("type","number");put("minimum",0);put("maximum",0.5) }
+                                putJsonObject("soft_radius") { put("type","number");put("exclusiveMinimum",0) }
+                                putJsonObject("falloff") { put("type","string");put("enum",JsonArray(io.github.psd2live.core.BrushFalloff.entries.map { JsonPrimitive(it.name.lowercase()) })) }
                             }
-                            put("description","Stable normalized rest domain: rect=[left,top,right,bottom], indices, center+radius, or line=[x0,y0,x1,y1]+radius. Smooth radial falloff; optional rectangle feather.")
+                            put("description","Stable normalized rest domain: rect=[left,top,right,bottom], indices, center+radius, or line=[x0,y0,x1,y1]+radius. Smooth radial falloff; optional rectangle feather. With indices, soft_radius is the editor's soft selection: the picked points move fully and the others by falloff (default smooth) of their distance to the nearest picked point, out to soft_radius in the same normalized frame.")
 }

@@ -156,4 +156,33 @@ class AgentReadBackScenario {
 		val unknown = refused("hit_area_test", "x" to 32, "y" to 32, "pose" to mapOf("ParamNone" to 1), query = true)
 		assertEquals("invalid_argument", unknown.getValue("code").jsonPrimitive.content, "$unknown")
 	}
+
+	@Test fun guidesReferenceDropsAndExpressionPreviewTakeOneCall() = agent {
+		val set = edit("canvas_guides_set", "guides" to listOf(mapOf("axis" to "x", "position" to 32), mapOf("id" to "guide_4", "axis" to "y", "position" to 10)))
+		assertEquals(listOf("guide_5", "guide_4"), set.getValue("guides").jsonArray.map { it.jsonObject.getValue("id").jsonPrimitive.content })
+		val read = call("canvas_guides_get", req()).getValue("guides").jsonArray
+		assertEquals(listOf("x", "y"), read.map { it.jsonObject.getValue("axis").jsonPrimitive.content })
+		assertEquals(2, host.savedProjectData().data.canvasGuides.size)
+
+		val files = Files.createDirectories(temp.resolve("drops"))
+		val nodes = host.history().nodes.size
+		val job = edit("material_import", "paths" to listOf(Characters.disc(files, size = 16).toString()), "as_reference" to true, "reference_under" to true)
+		job["id"]?.let { call("job_wait", req("id" to it.jsonPrimitive.content, "timeout_ms" to 20000)) }
+		assertTrue(assertNotNull(host.layoutState()).layout.references.single().under, "the background reference is not behind the model")
+		assertEquals(nodes + 1, host.history().nodes.size, "the background reference took more than one history edit")
+		val layersBefore = assertNotNull(host.layoutState()).layers.map { it.id.raw }.toSet()
+		val layers = edit("layer_import_images", "paths" to listOf(Characters.disc(files, size = 12).toString()), "as_reference" to true)
+		layers["id"]?.let { call("job_wait", req("id" to it.jsonPrimitive.content, "timeout_ms" to 20000)) }
+		val after = assertNotNull(host.layoutState())
+		val imported = after.layers.map { it.id.raw } - layersBefore
+		assertTrue(imported.isNotEmpty() && imported.all { it in after.layout.referenceLayerIds }, "imported $imported as layers, not references: $layers")
+
+		edit("parameter_create", "parameter_id" to "ParamMood", "name" to "Mood", "min" to 0, "max" to 10, "default" to 0)
+		edit("preview_set", "values" to mapOf("ParamMood" to 2))
+		val created = edit("expression_create", "name" to "Up", "entries" to listOf(mapOf("parameter" to "ParamMood", "value" to 3, "blend" to "ADD")))
+		val expression = call("expression_list", req()).getValue("expressions").jsonArray.single { it.jsonObject.getValue("name").jsonPrimitive.content == "Up" }
+			.jsonObject.getValue("id").jsonPrimitive.content
+		val previewed = edit("preview_set", "expression" to expression)
+		assertEquals(5f, previewed.getValue("values").jsonObject.getValue("ParamMood").jsonPrimitive.float, "the expression did not add to the pose: $created")
+	}
 }

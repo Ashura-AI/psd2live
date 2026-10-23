@@ -48,6 +48,7 @@ concept-of-artmesh: workspace_inspect view_render_layer
 mesh-edit: layer_mesh_update layer_mesh_rebuild
 mesh-edit-manual: canvas_topology mesh_get_topology layer_mesh_structure
 random-pose: preview_set preview_reset
+guide-function: canvas_guides_get canvas_guides_set
 mesh-duplication: mesh_duplicate layer_mesh_rebuild
 clipping-mask: rig_edit_structure
 reversed-mask: rig_edit_structure

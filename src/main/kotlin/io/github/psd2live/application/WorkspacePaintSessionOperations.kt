@@ -14,19 +14,21 @@ internal object WorkspacePaintSessionSchemas {
     private val common = mapOf("color" to color, "opacity" to s.number(0, 1), "lock_alpha" to s.boolean())
     private fun branch(mode: String, fields: Map<String, JsonObject>, required: Set<String>) =
         s.obj(common + fields + ("mode" to s.constant(mode)), required + "mode")
+    /** Mirrors a stroke across the canvas middle, as the editor's symmetry does: vertical is left and right. */
+    private val symmetry = mapOf("symmetry" to s.choices("off", "vertical", "horizontal", "both"))
     val gesture = s.union(listOf(
         branch("brush", mapOf("points" to s.array(s.vector(2), 1, 512), "radius" to s.number(0.5, 512),
-            "hardness" to s.number(0, 1)), setOf("points")),
-        branch("pencil", mapOf("points" to s.array(s.vector(2), 1, 512), "radius" to s.number(0.5, 512)), setOf("points")),
+            "hardness" to s.number(0, 1)) + symmetry, setOf("points")),
+        branch("pencil", mapOf("points" to s.array(s.vector(2), 1, 512), "radius" to s.number(0.5, 512)) + symmetry, setOf("points")),
         branch("eraser", mapOf("points" to s.array(s.vector(2), 1, 512), "radius" to s.number(0.5, 512),
-            "hardness" to s.number(0, 1)), setOf("points")),
+            "hardness" to s.number(0, 1)) + symmetry, setOf("points")),
         branch("bucket", mapOf("point" to s.vector(2), "tolerance" to s.integer(0, 255), "contiguous" to s.boolean()), setOf("point")),
         branch("shape", mapOf("from" to s.vector(2), "to" to s.vector(2), "shape" to s.choices("line", "rectangle", "ellipse"),
             "stroke_width" to s.number(1, 512), "filled" to s.boolean()), setOf("from", "to", "shape")),
         s.obj(mapOf("mode" to s.constant("clear"))),
         // A blur stroke takes opacity as its strength and has no colour of its own.
         branch("blur", mapOf("points" to s.array(s.vector(2), 1, 512), "radius" to s.number(0.5, 512),
-            "hardness" to s.number(0, 1)), setOf("points")),
+            "hardness" to s.number(0, 1)) + symmetry, setOf("points")),
         branch("fill", emptyMap(), emptySet()),
         // Free transform of the selection's pixels - the layer's content without one - by an affine map in canvas units.
         s.obj(mapOf("mode" to s.constant("transform"), "matrix" to s.array(s.number(), 6, 6), "smooth" to s.boolean()),
@@ -143,7 +145,7 @@ internal fun registerPaintSessionOperations(registry: WorkspaceOperationRegistry
     }
     registry.register(WorkspaceOperationDefinition("paint_session_control",
         "Edit, undo, redo or jump within the private paint candidate; cancel discards the entire session, abandon discards only the active live stroke. Sample and render read candidate pixels. " +
-            "select changes the session's selection (rectangle, ellipse, lasso, wand, quick - a brush stroke grown across like colours up to edges - or opaque - the layer's alpha - met with it by op replace/add/subtract/intersect, or all, none, invert, feather, expand, contract); every later gesture lands only inside it, and lock_alpha keeps a gesture to already painted pixels. The selection is not in the stroke history. Pass the latest session_state to prevent concurrent stroke loss. Mutations reject a changed committed workspace; inspection and cancellation remain available.",
+            "select changes the session's selection (rectangle, ellipse, lasso, wand, quick - a brush stroke grown across like colours up to edges - or opaque - the layer's alpha - met with it by op replace/add/subtract/intersect, or all, none, invert, feather, expand, contract); every later gesture lands only inside it, and lock_alpha keeps a gesture to already painted pixels. A brush, pencil, eraser or blur stroke with symmetry vertical, horizontal or both is mirrored across the canvas middle in the same stroke, overlaps landing once, as the editor's symmetry paints. The selection is not in the stroke history. Pass the latest session_state to prevent concurrent stroke loss. Mutations reject a changed committed workspace; inspection and cancellation remain available.",
         s.obj(ids + ("edit" to WorkspacePaintSessionSchemas.edit)), WorkspaceOperationKind.SESSION,
         resultSchema = WorkspacePaintSessionSchemas.result)) { request, _ ->
         val result = port.controlPaintSession(request)

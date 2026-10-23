@@ -69,6 +69,11 @@ interface WorkspaceQueries : WorkspaceStatePort {
     fun sourceMeshComponents(layerId: String): JsonObject
     /** [WorkspaceStructureMeshEdits.preview] on the captured version. */
     fun structureMeshPreview(request: JsonObject, checkpoint: () -> Unit = {}): JsonObject
+
+    companion object {
+        /** A checkpoint for work under `runInterruptible`: an interrupted thread stops there, and the caller sees cancellation. */
+        fun interrupted() { if (Thread.currentThread().isInterrupted) throw InterruptedException() }
+    }
     /** [WorkspaceObjectEdits.find] on the captured version: the objects a find matches and what a replace makes of them. */
     fun findObjects(request: JsonObject): JsonObject
     /** [WorkspaceObjectEdits.planned] on the captured version: the request that records exactly what the result fields name. */

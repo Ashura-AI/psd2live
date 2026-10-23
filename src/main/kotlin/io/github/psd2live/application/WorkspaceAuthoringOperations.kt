@@ -87,13 +87,13 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         }
     }
 
-    register(WorkspaceImageLayerCommands.OP, "Import 1..128 PNG, lossless WebP, TIFF or BMP files as editable layers. Trims transparent borders, centres and scales down to fit the canvas without resampling the pixels. Each image gets its own mesh in the authored rig, which the generators never regenerate; parent_deformer_id attaches it to that existing deformer (default the model root); anchor_layer_id draws the batch just in front of that layer (in_front=false: just behind it), the first image in front of the rest; at [x, y] centres each image there in canvas units instead of the canvas centre. Move, scale or rotate it afterwards with layer_transform; undo removes it. Preserves existing object identities and commits the complete batch as one history edit. Each file is limited to 64 MiB and 16 megapixels; the complete batch is limited to 32 megapixels.",
+    register(WorkspaceImageLayerCommands.OP, "Import 1..128 PNG, lossless WebP, TIFF or BMP files as editable layers. Trims transparent borders, centres and scales down to fit the canvas without resampling the pixels. Each image gets its own mesh in the authored rig, which the generators never regenerate; parent_deformer_id attaches it to that existing deformer (default the model root); anchor_layer_id draws the batch just in front of that layer (in_front=false: just behind it), the first image in front of the rest; at [x, y] centres each image there in canvas units instead of the canvas centre; as_reference=true imports them as reference layers in the layer stack (no mesh, never exported), as dropping onto the layer list as a reference does. Move, scale or rotate it afterwards with layer_transform; undo removes it. Preserves existing object identities and commits the complete batch as one history edit. Each file is limited to 64 MiB and 16 megapixels; the complete batch is limited to 32 megapixels.",
         objectSchema(buildJsonObject { put("state", string()); put("paths", arraySchema(string(), 1, 128)); put("parent_deformer_id", string())
-            put("anchor_layer_id", string()); put("in_front", boolean()); put("at", arraySchema(number(), 2, 2)) },
+            put("anchor_layer_id", string()); put("in_front", boolean()); put("at", arraySchema(number(), 2, 2)); put("as_reference", boolean()) },
             listOf("state", "paths")), WorkspaceOperationKind.DOCUMENT) { request ->
         val at = request["at"]?.jsonArray?.map { it.jsonPrimitive.float }
         val insertion = ImageLayerInsertion(request["parent_deformer_id"]?.jsonPrimitive?.content, request["anchor_layer_id"]?.jsonPrimitive?.content,
-            request["in_front"]?.jsonPrimitive?.boolean ?: true, at?.let { it[0] to it[1] })
+            request["in_front"]?.jsonPrimitive?.boolean ?: true, at?.let { it[0] to it[1] }, reference = request["as_reference"]?.jsonPrimitive?.boolean == true)
         WorkspaceOperationOutput(workspace.importImages(request.text("state"), request.getValue("paths").jsonArray.map {
             java.nio.file.Path.of(it.jsonPrimitive.content)
         }, insertion).layerResult())
@@ -150,7 +150,11 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
     }
     register(WorkspaceStructureMeshEdits.PREVIEW, "What layer_mesh_structure would build on one mesh, from one captured version, without changing anything: the lines found (kind FOLD, SHADE or PATTERN; followed tells whether the mesh follows it, banded whether it straddles it), in source pixels and canvas units, and the new mesh's canvas points and triangles.",
         objectSchema(structureSchema, listOf("target")), WorkspaceOperationKind.QUERY) { request ->
-        WorkspaceOperationOutput(workspace.captureQueries().structureMeshPreview(request))
+        // Off the caller's thread and stopped where the mesher checks in when the call is cancelled.
+        val queries = workspace.captureQueries()
+        WorkspaceOperationOutput(kotlinx.coroutines.runInterruptible(kotlinx.coroutines.Dispatchers.Default) {
+            queries.structureMeshPreview(request, WorkspaceQueries::interrupted)
+        })
     }
 
     register(WorkspaceGenerationUpdate.OP, "Regenerate the rig with this build's generators. A project whose journal has a regeneration checkpoint keeps what the generators made when it was written, even after an update; this merges what they make now onto the user's edits: what the user left follows the new output, the user's changes stay, and what does not carry over cleanly is reported in issues (also in workspace_inspect quality.regeneration). Earlier regeneration merges this build makes differently are merged again first and their correction carried onto the current rig (issue kind remerged, target journal:<index>). Commits one undoable history node, or none when the generators make the same rig and every merge comes out alike (updated: false). Imported CMO3 models have no generated rig and are refused.",
@@ -269,11 +273,26 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
     }
     val previewValues = buildJsonObject { put("type", "object"); put("additionalProperties", number()) }
     val previewLocks = buildJsonObject { put("type", "object"); put("additionalProperties", boolean()) }
-    registerJsonOperation("preview", "Set authored preview parameter values and locks, or reset them, against the captured committed pose. Values are checked against parameter ranges; unspecified values survive independently of animation frames. This persists auxiliary session state without authoring model keyforms or history.",
+    registerJsonOperation("preview", "Set authored preview parameter values and locks, or reset them, against the captured committed pose. Values are checked against parameter ranges; unspecified values survive independently of animation frames. expression shows that expression at full weight over the pose (the committed one with values applied first), as the animation panel's preview does and a host plays it over a motion. This persists auxiliary session state without authoring model keyforms or history.",
         buildJsonObject { put("request", oneOf(listOf(
-            variant("mode", "set", buildJsonObject { put("state", string()); put("values", previewValues); put("locks", previewLocks) }, listOf("state")),
+            variant("mode", "set", buildJsonObject { put("state", string()); put("values", previewValues); put("locks", previewLocks); put("expression", string()) }, listOf("state")),
             variant("mode", "reset", buildJsonObject { put("state", string()) }, listOf("state"))
-        ))) }, listOf("request"), true) { a -> workspace.setPreviewSession(a.getValue("request").jsonObject) }
+        ))) }, listOf("request"), true) { a ->
+        val request = a.getValue("request").jsonObject
+        val expressionId = request["expression"]?.jsonPrimitive?.content
+        if (expressionId == null) workspace.setPreviewSession(request) else {
+            // The expression's values over the pose this call makes, read on the version the state names.
+            val queries = workspace.captureQueries()
+            if (queries.snapshot().state != request.text("state")) throw WorkspaceConflict(request.text("state"), queries.snapshot().state)
+            val expression = queries.modelSidecars().expressions.firstOrNull { it.id == expressionId }
+                ?: throw io.github.psd2live.core.RigRefusal(io.github.psd2live.core.RigRefusal.Code.NOT_FOUND, "Expression not found: $expressionId", "expression:$expressionId")
+            val base = queries.previewSession().getValue("values").jsonObject.mapValues { it.value.jsonPrimitive.float } +
+                request["values"]?.jsonObject.orEmpty().mapValues { it.value.jsonPrimitive.float }
+            val applied = io.github.psd2live.core.ModelExpressions.applied(expression, base, queries.currentPuppet()?.parameters.orEmpty())
+            val values = request["values"]?.jsonObject.orEmpty() + applied.mapValues { JsonPrimitive(it.value) }
+            workspace.setPreviewSession(JsonObject(request - "expression" + ("values" to JsonObject(values))))
+        }
+    }
     register("preview_pose", "Author parameter values or an FK/IK bone target and optionally record automatic timeline keys atomically. Merge against the committed authored pose. auto_key preserves existing handles and records the previous authored value at zero for a new curve. This command is separate from preview_set/reset and returns the committed pose and keys.",
         objectSchema(buildJsonObject {
             put("state", string()); put("values", previewValues); put("locks", previewLocks)
@@ -335,6 +354,9 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
     val key = buildJsonObject { put("type", "object"); put("minProperties", 1); put("additionalProperties", number()) }
     val selection = objectSchema(buildJsonObject {
         put("rect", vector(4)); put("center", vector(2)); put("line", vector(4)); put("radius", number()); put("feather", number()); put("hardness", number())
+        // The editor's picked points and soft selection: indices move fully, soft_radius carries the points around them.
+        put("indices", arraySchema(integer(0), 1, 4096)); put("soft_radius", number())
+        put("falloff", choices(*io.github.psd2live.core.BrushFalloff.entries.map { it.name.lowercase() }.toTypedArray()))
     })
     fun operation(type: String, properties: JsonObject, required: List<String>) = variant("type", type, JsonObject(properties + ("selection" to selection)), required)
     val operations = arraySchema(oneOf(listOf(
@@ -345,7 +367,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         operation("curve", buildJsonObject { put("axis", choices("x", "y")); put("controls", vector(4)) }, listOf("controls")),
         operation("landmarks", buildJsonObject { put("from", arraySchema(vector(2), 1, 16)); put("to", arraySchema(vector(2), 1, 16)) }, listOf("from", "to"))
     )), 1, 16)
-    registerJsonOperation("deform", "Edit whole ArtMesh/Warp surfaces at exact keys, atomically across changes. All points participate including empty cage regions. Units: fixed input bounds, normalized x-right/y-down; rotations in degrees. arc bends cross-sections along root→tip; root_pin is a fixed length fraction. Optional brush hardness gives a broad plateau. Unspecified directly bound axes are an error. This edits local shapes; parent motion is inherited.",
+    registerJsonOperation("deform", "Edit whole ArtMesh/Warp surfaces at exact keys, atomically across changes. All points participate including empty cage regions. Units: fixed input bounds, normalized x-right/y-down; rotations in degrees. arc bends cross-sections along root→tip; root_pin is a fixed length fraction. Optional brush hardness gives a broad plateau. selection.indices picks points by index (mesh_get_topology lists a mesh's); with soft_radius and falloff the points around them follow, as the editor's soft selection carries them, and landmarks moves picked points the way the temporary lattice does. Unspecified directly bound axes are an error. This edits local shapes; parent motion is inherited.",
         buildJsonObject {
             put("state", string()); put("changes", arraySchema(objectSchema(buildJsonObject {
                 put("target", string()); put("key", key); put("operations", operations); put("selection", selection)

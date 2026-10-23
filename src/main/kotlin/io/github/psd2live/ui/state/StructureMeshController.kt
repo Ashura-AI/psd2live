@@ -65,7 +65,8 @@ internal class StructureMeshController(
 			try {
 				val result = withContext(Dispatchers.Default) {
 					val queries = workspace.captureQueries()
-					runInterruptible { queries.structureMeshPreview(buildJsonObject { put("target", target); put("settings", options) }) }
+					runInterruptible { queries.structureMeshPreview(buildJsonObject { put("target", target); put("settings", options) },
+						io.github.psd2live.application.WorkspaceQueries::interrupted) }
 				}
 				preview = decode(result, target, options)
 			} catch (e: CancellationException) {

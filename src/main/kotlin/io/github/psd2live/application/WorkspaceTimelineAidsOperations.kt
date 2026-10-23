@@ -66,9 +66,48 @@ internal fun registerTimelineAidsOperations(registry: WorkspaceOperationRegistry
             put("id", stored.id); put("time", stored.time); put("label", stored.label); put("color", stored.color)
         }))
     }
+    register("canvas_guides_get", "Read the edit canvases' ruler guides: each with its id, axis (x: a vertical line at x = position, y: a horizontal one at y = position) and position in canvas pixels. Drawing help only; the rig and its exports never see them.",
+        emptyMap(), emptyList(), WorkspaceOperationKind.QUERY) { _ ->
+        val captured = port.savedProjectData()
+        JsonObject(captured.result() + ("guides" to WorkspaceCanvasGuides.encode(captured.data.canvasGuides)))
+    }
+    register("canvas_guides_set", "Replace the edit canvases' ruler guides (empty clears them), as dragging, adding or clearing guides on the rulers does: each {axis: x or y, position in canvas pixels, optional id}; a guide without id gets the next guide_<n>. At most ${WorkspaceAuxiliaryEdits.MAX_CANVAS_GUIDES}. Canvas snapping uses them. Saved with the project; no history node.",
+        mapOf("state" to string(), "guides" to buildJsonObject {
+            put("type", "array"); put("maxItems", WorkspaceAuxiliaryEdits.MAX_CANVAS_GUIDES)
+            putJsonObject("items") {
+                put("type", "object"); put("additionalProperties", false)
+                putJsonObject("properties") {
+                    put("id", string()); putJsonObject("axis") { put("type", "string"); putJsonArray("enum") { add("x"); add("y") } }
+                    put("position", number())
+                }
+                putJsonArray("required") { add("axis"); add("position") }
+            }
+        }), listOf("state", "guides")) { request ->
+        val next = port.editSavedProjectData(request.text("state"), WorkspaceAuxiliaryEdit.SetCanvasGuides(
+            WorkspaceCanvasGuides.decode(request.getValue("guides").jsonArray)))
+        JsonObject(next.result() + ("guides" to WorkspaceCanvasGuides.encode(next.data.canvasGuides)))
+    }
     register("timeline_marker_delete", "Delete a motion's timeline marker. Saved with the project; no history node.",
         mapOf("state" to string(), "clip_id" to string(), "id" to string()), listOf("state", "clip_id", "id")) { request ->
         edit(request, TimelineAidsEdit.DeleteMarker(request.text("clip_id"), request.text("id"))).result()
+    }
+}
+
+/** Ruler guides as agents read and write them: a vertical guide is axis x, as the project stores it. */
+internal object WorkspaceCanvasGuides {
+    fun encode(guides: List<CanvasGuide>) = JsonArray(guides.map { guide -> buildJsonObject {
+        put("id", guide.id); put("axis", if (guide.vertical) "x" else "y"); put("position", guide.position)
+    } })
+
+    /** [items] as guides, those without an id numbered after the highest guide_<n> given. */
+    fun decode(items: JsonArray): List<CanvasGuide> {
+        val given = items.mapNotNull { it.jsonObject["id"]?.jsonPrimitive?.content }
+        var next = (given.filter { it.startsWith("guide_") }.mapNotNull { it.removePrefix("guide_").toIntOrNull() }.maxOrNull() ?: 0) + 1
+        return items.map { item ->
+            val guide = item.jsonObject
+            val id = guide["id"]?.jsonPrimitive?.content ?: generateSequence { "guide_${next++}" }.first { it !in given }
+            CanvasGuide(id, guide.getValue("axis").jsonPrimitive.content == "x", guide.getValue("position").jsonPrimitive.float)
+        }
     }
 }
 
@@ -81,6 +120,8 @@ internal object WorkspaceTimelineAidsResultSchemas {
     fun forOperation(id: String): JsonObject = when (id) {
         "timeline_aids_get" -> s.obj(s.identity + mapOf("bookmarks" to s.array(s.handle()), "clips" to s.dictionary(clip)))
         "timeline_marker_put" -> s.obj(s.identity + ("marker" to marker))
+        "canvas_guides_get", "canvas_guides_set" -> s.obj(s.identity + ("guides" to s.array(s.obj(mapOf("id" to s.handle(),
+            "axis" to s.choices("x", "y"), "position" to s.number())), 0, WorkspaceAuxiliaryEdits.MAX_CANVAS_GUIDES)))
         "timeline_bookmark_set", "timeline_shy_set", "timeline_freeze_set", "timeline_marker_delete" -> s.obj(s.identity)
         else -> error("Timeline aid operation has no result schema: $id")
     }

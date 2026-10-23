@@ -239,10 +239,11 @@ internal object RigGeometryTools {
             require(required == null || required in op) { "Missing $required for $type" }
             val pivot = op.vector("pivot", listOf(0.5f, 0.5f), 2)
             val selection = op["selection"]?.jsonObject ?: sharedSelection
-            require((selection.keys - setOf("indices","rect","center","line","radius","feather","hardness")).isEmpty()) { "Unexpected selection field" }
+            require((selection.keys - setOf("indices","rect","center","line","radius","feather","hardness","soft_radius","falloff")).isEmpty()) { "Unexpected selection field" }
             require(!("center" in selection && "line" in selection)) { "Choose point or line falloff" }
             require("radius" !in selection || "center" in selection || "line" in selection) { "radius requires center or line" }
-            val weights = FloatArray(result.size / 2) { i -> weight(selection, g.domain[i*2], g.domain[i*2+1], i, result.size/2) }
+            require(("soft_radius" !in selection && "falloff" !in selection) || "indices" in selection) { "soft_radius and falloff carry the points around indices" }
+            val weights = soft(selection, g.domain) ?: FloatArray(result.size / 2) { i -> weight(selection, g.domain[i*2], g.domain[i*2+1], i, result.size/2) }
             val delta = op.vector("delta", listOf(0f, 0f), 2)
             val factors = op.vector("factors", listOf(1f, 1f), 2)
             if (type == "scale") require(factors.all { it > 0f }) { "Scale factors must be positive" }
@@ -336,9 +337,30 @@ internal object RigGeometryTools {
         return result
     }
 
+    /**
+     * The editor's soft selection: the points [s] picks by indices move fully and the others by the falloff's share
+     * of their distance to the nearest picked point, out to soft_radius in the same normalized frame as radius.
+     * Null without soft_radius.
+     */
+    private fun soft(s: JsonObject, domain: FloatArray): FloatArray? {
+        val reach = s["soft_radius"]?.jsonPrimitive?.float ?: return null
+        require(reach.isFinite() && reach > 0f) { "soft_radius must be positive" }
+        val count = domain.size / 2
+        val picked = s.getValue("indices").jsonArray.map { it.jsonPrimitive.int }.toSet()
+        require(picked.size <= 4096 && picked.all { it in 0 until count }) { "indices must name 1..4096 of the target's points" }
+        val falloff = s["falloff"]?.jsonPrimitive?.content?.let { name -> BrushFalloff.entries.firstOrNull { it.name.equals(name, ignoreCase = true) }
+            ?: throw IllegalArgumentException("Unknown falloff: $name") } ?: BrushFalloff.SMOOTH
+        return FloatArray(count) { i ->
+            if (i in picked) 1f else {
+                val d = picked.minOfOrNull { hypot(domain[i * 2] - domain[it * 2], domain[i * 2 + 1] - domain[it * 2 + 1]) } ?: Float.MAX_VALUE
+                if (d >= reach) 0f else falloff.weight(1f - d / reach, i)
+            }
+        }
+    }
+
     private fun weight(s: JsonObject, u: Float, v: Float, index: Int, count: Int): Float {
         val ids=s["indices"]?.jsonArray?.map { it.jsonPrimitive.int }
-        if(ids != null) { require(ids.size <= 512 && ids.all { it in 0 until count }); if(index !in ids) return 0f }
+        if(ids != null) { require(ids.size <= 4096 && ids.all { it in 0 until count }); if(index !in ids) return 0f }
         val rect=s.vector("rect", listOf(0f,0f,1f,1f),4)
         require(rect[0] < rect[2] && rect[1] < rect[3])
         if(u<rect[0] || u>rect[2] || v<rect[1] || v>rect[3]) return 0f
