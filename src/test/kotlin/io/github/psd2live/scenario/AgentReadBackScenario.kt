@@ -40,6 +40,16 @@ class AgentReadBackScenario {
 		return content["data"]?.jsonObject?.let { it["result"]?.jsonObject ?: it } ?: fail("$operation gave no data: $content")
 	}
 
+	/** The structured error of a call that must fail. */
+	private suspend fun Agent.refused(operation: String, vararg fields: Pair<String, Any?>, query: Boolean = false): JsonObject {
+		val request = if (query) req(*fields) else req("state" to state(), *fields)
+		val result = server.tools.getValue("workspace_call").handler.invoke(client,
+			CallToolRequest(CallToolRequestParams("workspace_call", buildJsonObject { put("operation", operation); put("request", request) })))
+		val content = result.structuredContent ?: error("No structured result from $operation")
+		assertEquals(false, content["ok"]?.jsonPrimitive?.boolean, "$operation succeeded: $content")
+		return content["error"]?.jsonObject ?: fail("$operation gave no error: $content")
+	}
+
 	private suspend fun Agent.state(): String = call("workspace_inspect", req("scope" to "project")).getValue("state").jsonPrimitive.content
 	private suspend fun Agent.edit(operation: String, vararg fields: Pair<String, Any?>) = call(operation, req("state" to state(), *fields))
 
@@ -114,5 +124,36 @@ class AgentReadBackScenario {
 		assertEquals(count + 1, after.getValue("vertex_count").jsonPrimitive.int)
 		val point = after.getValue("items").jsonArray.single().jsonArray
 		assertEquals(x, point[1].jsonPrimitive.float, 1e-3f); assertEquals(y, point[2].jsonPrimitive.float, 1e-3f)
+	}
+
+	@Test fun refusalsSayWhatKindTheyAre() = agent {
+		edit("parameter_create", "parameter_id" to "ParamA", "name" to "A")
+		edit("parameter_create", "parameter_id" to "ParamB", "name" to "B")
+		val taken = refused("object_convert_id", "renames" to listOf(mapOf("target" to "parameter:ParamA", "id" to "ParamB")))
+		assertEquals("id_conflict", taken.getValue("code").jsonPrimitive.content, "$taken")
+		assertEquals("parameter:ParamA", taken["target"]?.jsonPrimitive?.content)
+		val missing = refused("parameter_update", "parameter_id" to "ParamGone", "name" to "Gone")
+		assertEquals("not_found", missing.getValue("code").jsonPrimitive.content, "$missing")
+		// A batch is a job: its terminal error carries the member's category.
+		val job = call("workspace_apply_edits", req("state" to state(), "edits" to listOf(mapOf("operation" to "hit_area_delete", "request" to mapOf("id" to "HitAreaNone")))))
+		val batch = job["error"]?.jsonObject ?: call("job_wait", req("id" to job.getValue("id").jsonPrimitive.content, "timeout_ms" to 20000)).getValue("error").jsonObject
+		assertEquals("not_found", batch.getValue("code").jsonPrimitive.content, "$batch")
+		assertEquals(0, batch["edit_index"]?.jsonPrimitive?.int)
+	}
+
+	@Test fun noChangeAndTouchedAreasReadBack() = agent {
+		val drawable = assertNotNull(host.captureQueries().currentPuppet()).drawables.first { it.mesh != null }
+		val first = edit("canvas_topology", "id" to drawable.id.raw, "action" to "retriangulate")
+		val again = edit("canvas_topology", "id" to drawable.id.raw, "action" to "retriangulate")
+		assertEquals(false, again["applied"]?.jsonPrimitive?.boolean, "a tidy mesh retriangulated again: $again (first $first)")
+		val vertexAnchor = refused("canvas_topology", "id" to drawable.id.raw, "action" to "add_points", "anchors" to listOf(mapOf("vertex" to 0)))
+		assertEquals("invalid_argument", vertexAnchor.getValue("code").jsonPrimitive.content, "$vertexAnchor")
+
+		edit("hit_area_put", "id" to "HitAreaDisc", "meshes" to listOf("mesh:${drawable.id.raw}"))
+		val renamed = edit("hit_area_put", "id" to "HitAreaDisc", "new_id" to "HitAreaBody")
+		assertEquals(listOf("hit_area:HitAreaDisc", "hit_area:HitAreaBody"), renamed.getValue("changed").jsonArray.map { it.jsonPrimitive.content })
+		assertNotNull(call("hit_area_list", req())["project_id"])
+		val unknown = refused("hit_area_test", "x" to 32, "y" to 32, "pose" to mapOf("ParamNone" to 1), query = true)
+		assertEquals("invalid_argument", unknown.getValue("code").jsonPrimitive.content, "$unknown")
 	}
 }

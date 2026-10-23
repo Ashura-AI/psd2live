@@ -97,19 +97,26 @@ internal fun registerSidecarOperations(registry: WorkspaceOperationRegistry, wor
         val schema = JsonObject(business + mapOf("properties" to JsonObject(properties),
             "required" to JsonArray(listOf(JsonPrimitive("state")) + business.getValue("required").jsonArray)))
         registry.register(WorkspaceOperationDefinition(id, WorkspaceSidecarSchemas.descriptions.getValue(id), schema, WorkspaceOperationKind.DOCUMENT,
-            batchable = true, destructive = id in setOf("expression_delete", "expression_reset", "pose_delete_group", "pose_clear"),
+            batchable = true, destructive = id in setOf("expression_delete", "expression_reset", "expression_put", "pose_delete_group", "pose_clear", "pose_put"),
             resultSchema = WorkspaceSidecarSchemas.edit)) { request, context ->
             var fields = JsonObject(request - "state" - extra.keys)
             if (id == "expression_create") {
                 val sources = listOf("values", "entries", "from_snapshot", "from_current").filter { it in request && request[it] != JsonPrimitive(false) }
                 require(sources.size <= 1) { "Give one of values, entries, from_snapshot or from_current" }
                 val values = when {
+                    // Both read the version the state names, so the values are the ones the caller saw.
                     "from_snapshot" in sources -> {
                         val snapshotId = request.getValue("from_snapshot").jsonPrimitive.content
-                        auxiliary.savedProjectData().data.parameterSnapshots.firstOrNull { it.id == snapshotId }?.values
+                        val saved = auxiliary.savedProjectData()
+                        if (saved.state != request.getValue("state").jsonPrimitive.content) throw WorkspaceConflict(request.getValue("state").jsonPrimitive.content, saved.state)
+                        saved.data.parameterSnapshots.firstOrNull { it.id == snapshotId }?.values
                             ?: throw IllegalArgumentException("Snapshot not found: $snapshotId")
                     }
-                    "from_current" in sources -> workspace.snapshot().parameters.associate { org.umamo.runtime.model.ParameterId(it.id) to it.current }
+                    "from_current" in sources -> {
+                        val captured = workspace.captureQueries().snapshot()
+                        if (captured.state != request.getValue("state").jsonPrimitive.content) throw WorkspaceConflict(request.getValue("state").jsonPrimitive.content, captured.state)
+                        captured.parameters.associate { org.umamo.runtime.model.ParameterId(it.id) to it.current }
+                    }
                     else -> null
                 }
                 if (values != null) fields = JsonObject(fields + ("values" to JsonObject(values.entries.associate { it.key.raw to JsonPrimitive(it.value) })))

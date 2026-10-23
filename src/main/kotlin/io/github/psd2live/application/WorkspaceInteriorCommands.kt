@@ -147,7 +147,7 @@ internal object WorkspaceInteriorSchemas {
 					put(
 						"guides",
 						describe(
-							s.array(guide, 0, 256),
+							s.array(guide, 0, io.github.psd2live.core.interior.InteriorGuideEdits.MAX_GUIDES),
 							"Replace guide list; empty list clears local folds. Does not remesh (layer_mesh_structure does).",
 						),
 					)

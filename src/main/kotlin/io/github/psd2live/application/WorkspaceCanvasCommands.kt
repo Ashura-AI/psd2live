@@ -26,6 +26,11 @@ internal object WorkspaceCanvasCommands {
             // A new rotation keeps every mesh where it shows, as the canvas makes it; only journals written before
             // this replay the old remount, which moved meshes by the pivot.
             if (mode == "rotation" && "preservePose" !in request) put("preservePose", true)
+            if (mode == "topology") {
+                if ("vertices" !in request) put("vertices", JsonArray(emptyList()))
+                require(request.getValue("action").jsonPrimitive.content != "add_points" ||
+                    request["anchors"]?.jsonArray.orEmpty().none { "vertex" in it.jsonObject }) { "add_points takes free points {x, y}, not existing vertices" }
+            }
             if (mode == "rotation") request["origin"]?.let { put("origin", parentLocalOrigin(model, request, it.jsonArray)) }
             if (mode == "glue") {
                 fun mesh(key: String): String {

@@ -22,7 +22,7 @@
 
 - **精简（默认）**：27 个工具，直接覆盖 123 项操作（输入 schema 与说明约 8.5 万字符；完整工具集约 76 万字符，另有约 426 万字符的输出 schema）。
   - 单项工具：`workspace_overview`、`workspace_inspect`、`workspace_list_operations`、`workspace_get_operation`、`workspace_apply_edits`、`workspace_preview_edits`、`rig_deform`、`keyform_apply`，以及意图工具 `author_axis`、`author_physics`、`author_compile`（见[意图工具](#意图工具)）。
-  - 族工具：`view`、`parameter`、`motion`、`expression`、`pose`、`skeleton`、`path`、`physics`、`simulation`、`swing`、`source_paint`、`snapshot`、`history`、`project`、`job`。调用 `{"op":"set_key","request":{...},"wait_ms":20000}` 执行 `<族>_<op>`（此例为 `motion_set_key`），结果的 `operation` 为该操作 ID，`request` 按该操作的完整 schema 校验。成员取注册表中带该前缀的全部操作，私有草稿、试听与实时预览会话（`skeleton_draft_*`、`physics_audition*`、`*_preview*`）、历史注释和全局物理预设库除外。族工具发布各成员字段的扁平并集（不含 `oneOf`、`const`、`$ref`，形状因成员而异的字段只给说明），各 op 的必填字段列在工具说明中。
+  - 族工具：`view`、`parameter`、`motion`、`expression`、`hit_area`、`pose`、`skeleton`、`path`、`physics`、`simulation`、`swing`、`source_paint`、`snapshot`、`history`、`project`、`job`。调用 `{"op":"set_key","request":{...},"wait_ms":20000}` 执行 `<族>_<op>`（此例为 `motion_set_key`），结果的 `operation` 为该操作 ID，`request` 按该操作的完整 schema 校验。成员取注册表中带该前缀的全部操作，私有草稿、试听与实时预览会话（`skeleton_draft_*`、`physics_audition*`、`*_preview*`）、历史注释和全局物理预设库除外。族工具发布各成员字段的扁平并集（不含 `oneOf`、`const`、`$ref`，形状因成员而异的字段只给说明），各 op 的必填字段列在工具说明中。
   - 其他操作经 `workspace_call` 调用：`{"operation":"layer_classify","request":{...}}`。操作 ID 同时是 `workspace_apply_edits` 成员名。
   - 不发布 `outputSchema`（结果仍以 `structuredContent` 返回，契约见 `workspace_get_operation`）；原子批量的 `edits` 成员只发布操作名枚举与 `request` 对象，成员字段执行时按单项 schema 严格校验。
   - `request_id` 与 `project_id` 可省略。`project_id` 取当前加载的工程；`state` 仍为必填，属于其他加载的 `state` 照常报 `state_conflict`。`request_id` 由操作与参数（含 `state`）派生，相同参数的重试取回原结果；上次相同调用已失败（含任务 `failed/cancelled`）时，再次调用作为新尝试执行。
@@ -53,7 +53,7 @@
 | `workspace_preview_regeneration` | `state`、`edits`（1–128 项，资源图层操作除外），共用请求上下文 | 后台试运行会再生成 Rig 的编辑（设置、分类、拆分、`rig_update_generation` 等），返回候选 revision、将写入的固化点及其合并问题、增删的对象；不发布任何东西 |
 | `workspace_inspect` | `request` 内 `scope` / `target` | scope 为 `project/settings/preview/generation/objects/layers/parameters/physics/swings/paths/simulations/interiors/vertex_groups`；图层摘要包含有效网格配置、语义标签 `tags`，生成后放置或分类等待生成的图层带 `pending:true`，来自素材的带 `material_id`；`generation` 返回是否已生成、待生成图层、等待的分类与可刷新几何的图层；工程已加载时 `project` 带 `quality.overrides`：观察报告（版本 4），三项检查——未按记录生效的生成结果覆盖（冲突 / 孤立，均为 warning；颜色、透明度等通道的覆盖在 `evidence.channel` 给出通道），因只引用后续版本 2 拆分所取代的网格而按空操作重放的日志条目（`SUPERSEDED_ENTRY_SKIPPED`，info，`target` 为 `journal:<序号>`），以及设置要求却没能生成的透过刘海复制件（`SEE_THROUGH_DROPPED`，info，`target` 为原件 `mesh:<ID>`，`evidence.reason` 为 `original_missing` / `masks_missing` / `id_taken`，眼部图层在刘海上开窗时还有 `bangs_clipped`（刘海已有自己的蒙版）/ `target_unsupported`（运行时目标没有反向蒙版））；另带 `quality.regeneration`：观察报告（版本 2，两项检查），先列出日志最后一个固化点的再生成合并未能干净迁移的内容（`REGENERATION_CONFLICT`、`REGENERATION_TOPOLOGY_KEPT` 为 warning，`REGENERATION_DROPPED` 为 warning / validity，改挂、随生成器的接替改挂（`REGENERATION_FOLLOWED`）、保留退役对象、改父级、顶点迁移、用户拓扑跟随生成（`REGENERATION_TOPOLOGY_FOLLOWED`）与按本程序重新合并的固化点（`REGENERATION_REMERGED`）为 info），再列出较早版本合并、本程序会合并成不同结构且影响到 Rig 的再生成固化点（`REGENERATION_REPAIR_AVAILABLE`，warning，`target` 为 `journal:<序号>`，`evidence.detail` 列出结构不同的对象；执行 `rig_update_generation` 即可修复；每个模型第一次检查要重新合并，可能需要数秒），`can_proceed` 恒为 true；另带 `quality.skeleton`：观察报告（版本 1），列出骨骼绑定却不受其肢体骨骼带动的网格（`SKELETON_BINDING_INEFFECTIVE`）、挂在呼吸 Warp 下却绕过骨架躯干 Warp 的网格（`SKELETON_TORSO_BYPASSED`），均为 warning，以及绑定了 Rig 中没有的网格（`SKELETON_BINDING_MISSING`，info / validity）；`target` 为 `mesh:<ID>`，`evidence.bone` 为绑定它的骨骼，`can_proceed` 恒为 true |
 | `layer_classify` | `request` 内 `state`、`layer_id` 及分类字段 | 后台更新既有源图层的类型、部件、侧别、参数关联和切换 ID；省略的字段保持捕获时的原值。已生成的图层不立即重新生成：结果带 `pending:true`，在下一次 `rig_generate` 时生效；需要立刻看到效果时在同一 `workspace_apply_edits` 批量末尾加 `rig_generate`。未生成的图层立即采用 |
-| `interior_put` | `state`、`target`，可选 `enabled/settings/motion/parameters/guides` | 后台生成/更新单网格内部造型；target为网格ID或mesh:ID。只给enabled时保留配方并开关效果，不重采样。参数省略时优先身体X/Y，显式空ID新建。写原生紧凑关键形和物理组；可进workspace_apply_edits，与UI共用作者链路 |
+| `interior_put` | `state`、`target`，可选 `enabled/settings/motion/parameters/guides`（最多 64 条引导线） | 后台生成/更新单网格内部造型；target为网格ID或mesh:ID。只给enabled时保留配方并开关效果，不重采样。参数省略时优先身体X/Y，显式空ID新建。写原生紧凑关键形和物理组；可进workspace_apply_edits，与UI共用作者链路 |
 | `interior_delete` | `state`、`target`（Mesh ID 或 mesh:ID） | 删除内部造型和自有物理；保留被其他功能引用的参数，可撤销。`workspace_inspect scope=interiors` 读回设置、引导线、输入/输出 ID 与失效原因；不返回形变数组 |
 | `layer_mesh_update` | `request` 内 `state`、`layer_id`、`changes` 或 `reset` | 后台逐图层覆盖或重置自适应网格参数；用 `workspace_inspect scope=layers` 读取当前值 |
 | `source_sample_color` | `layer_id`、`x`、`y` | 读取源图层在画布整数坐标的 RGBA；不改变文档或历史 |
@@ -82,7 +82,7 @@
 | `keyform_apply` | `request` 内 `state`、`changes` | `op: seed/copy/set/delete/mirror/reset/interpolate/paste/multi_key`，编辑关键形集合、标量 / 颜色通道与旋转形状；旋转 `set` 只给部分字段（例如只给 `angle`）时，其余字段取该旋转在此关键点处的现值 |
 | `rig_create_warp` | `name`、`targets`；可选 `id`、`rows/columns`、`fit_local` | 后台创建共用父 Warp 的 Mesh 的独立 Warp，也支持原子批量；终态返回 `target` |
 | `object_edit_appearance` | `request` 内 `state`、`edits` | 名称、显隐、结构等有序编辑；网格 `bind` 的 `space=local` 保留局部坐标与关键形（继承的运动与位置随新父级改变），`space=canvas` 把静止网格、关键形与混合形经新父级换算，使网格在默认姿态下留在画布原位（层级树拖放与检查器改父级即用此项）；变形器 `move` 只接受 `space=local` |
-| `rig_edit_structure` | `request` 内 `state`、`edits` | 静态对象属性、变形器删除与 Part 归属、参数文件夹和 XY 关联 |
+| `rig_edit_structure` | `request` 内 `state`、`edits` | 静态对象属性（`blend_mode` 取 `workspace_inspect` 读回的同一组混合模式名，如 `Normal`、`Multiply`、`Screen`）、变形器删除与 Part 归属、参数文件夹和 XY 关联 |
 | `object_paste / mesh_duplicate / object_rename / object_convert_id` | `request` 内 `state` 及各自字段 | 复制粘贴物体、把网格拓扑复制到其他网格、批量改名与 ID 转变；均可批量，见[物体复制、查找替换与 ID 转变](#物体复制查找替换与-id-转变) |
 | `canvas_warp / canvas_rotation / canvas_glue / canvas_topology` | `request` | `warp/rotation/glue/topology`。`glue` 必须同时给出两个不同的画元 `mesh_a` 与 `mesh_b`。`rotation` 的 `origin` 为画布像素（y 向下），提交时换算到其父变形器的局部空间；`preservePose` 缺省为 true，网格在静止姿态下保持原位。`topology` 见下文[网格拓扑](#网格拓扑) |
 | `view_render_model / view_render_layer / view_render_context / view_render_poses / view_render_pad / view_check_coverage / view_compare_history / view_sample_motion` | `request` | `model/layer/context/poses/pad/coverage/compare/motion`；动作采样返回只读任务句柄，终态包含采样拼图与参数范围 |
@@ -115,7 +115,7 @@
 
 ### 网格拓扑
 
-`canvas_topology`（`request.mode` 为 `topology`）与编辑器的拓扑操作是同一条 `canvas_topology` 作者日志，必需 `state/id/action/vertices`（`id` 为网格 ID，`vertices` 为当前网格的顶点索引，可为空数组）。索引来自当前网格，须使用最新 `state`：用 `mesh_get_topology` 读取顶点索引与静止坐标（`add_points` 锚点所用的网格自身空间）、三角形与轮廓边。提交成功时结果的 `new_vertices` 列出该操作在新网格中新建或留下选中的顶点索引（`add_points` 为新建的点，`knife` 为切线上的点，`merge` 为合并后的点）；批量成员不返回此字段。`action`：
+`canvas_topology`（`request.mode` 为 `topology`）与编辑器的拓扑操作是同一条 `canvas_topology` 作者日志，必需 `state/id/action`（`id` 为网格 ID；`vertices` 为当前网格的顶点索引，缺省为空）。`anchors` 每项是已有顶点 `{vertex}` 或自由点 `{x, y}` 之一，`add_points` 只接受自由点。拒绝时错误码为 `topology_refused`。索引来自当前网格，须使用最新 `state`：用 `mesh_get_topology` 读取顶点索引与静止坐标（`add_points` 锚点所用的网格自身空间）、三角形与轮廓边。提交成功时结果的 `new_vertices` 列出该操作在新网格中新建或留下选中的顶点索引（`add_points` 为新建的点，`knife` 为切线上的点，`merge` 为合并后的点）；批量成员不返回此字段。`action`：
 
 | `action` | 输入 | 结果 |
 | --- | --- | --- |
@@ -125,13 +125,13 @@
 | `knife` | `anchors` | 沿折线加边（编辑器布点工具的「线」）：每个锚点落到网格上，相邻锚点之间连成边；锚点为 `{vertex}` 或网格自身静止空间的 `{x, y}` |
 | `add_points` | `anchors`（`{x, y}`，网格自身静止空间，与 `knife` 相同） | 每点加一个顶点：三角形内 1→3，边上拆边，网格外从最近可见轮廓边扩一个三角形；落在已有顶点上的点忽略；新顶点的 UV、关键形、混合形与权重由周围顶点按同一权重得出，随后在不改变贴图的前提下翻边 |
 | `delete_edges` | `edges`（`[[a, b], …]`，必须给出；`vertices` 不决定删哪些边） | 内部边在其四边形内换到另一条对角线（四边形在静止形、任一关键形或混合形中不凸则失败），轮廓边删掉所在三角形，不再使用的顶点一并删除；造成顶点点接或删光三角形时整批失败 |
-| `retriangulate` | `vertices`（空数组为全网格） | 在这些顶点周围向 Delaunay 翻边（在默认姿态的画布空间判定），只翻贴图映射不变、且在静止形与各关键形、混合形中都凸的四边形；顶点与关键形不变；已无可翻时失败 |
+| `retriangulate` | `vertices`（空数组为全网格） | 在这些顶点周围向 Delaunay 翻边（在默认姿态的画布空间判定），只翻贴图映射不变、且在静止形与各关键形、混合形中都凸的四边形；顶点与关键形不变；已无可翻时为无变化（`applied:false`，不追加历史） |
 
 操作不适用时返回错误，不写入任何内容。关键形、混合形、顶点组与 Glue 随拓扑迁移（被删顶点的 Glue 对删除），路径重新绑定；目标网格有内部造型且改动前一致时，同一节点内按新网格重新烘焙（烘焙失败不拒绝编辑，造型报告网格已变化）。结果须通过[几何检查](#几何检查与试运行)。算法与 Cubism 网格编辑的对照见[网格拓扑](../spec/MESH_TOPOLOGY_AND_SPLIT.md#手工拓扑编辑)。
 
 ### 物体复制、查找替换与 ID 转变
 
-`object_paste`（`sources` 为 `mesh:/warp:/rotation:/part:/parameter:` 句柄；可选 `parent`、`part`、`parameter_group`、`ids`）复制网格、变形器（连同子树与其中网格）、Part（连同其子项）和参数，新 ID 在记录时确定（缺省为 `<ID>_copy`，冲突时加序号，`ids` 可逐项指定），重放结果与 ID 固定一致；副本之间的父级、遮罩、Glue、路径与顶点组改指副本，指向未复制对象的引用保留。给出 `parent` 时网格按画布坐标改挂、变形器按局部坐标改挂。粘贴在作者态 Rig 上规划：摆动、模拟与内部造型生成的对象不在其中，指名它们会被拒绝，复制子树时也不带上它们。副本不算其图层的网格：按图层查找网格（拾取、拆分与删除时保持网格 ID）只认原网格，删除图层时副本随之删除；副本按自身网格 ID 设绘制顺序，图层整体变换不移动副本。单独调用时结果的 `ids` 给出原句柄到新 ID 的映射，与写入的记录一致（请求按捕获版本固定全部新 ID 后提交）；批量成员从 `changed` 读取新句柄。
+`object_paste`（`sources` 为 `mesh:/warp:/rotation:/part:/parameter:` 句柄；可选 `parent`、`part`、`parameter_group`、`ids`）复制网格、变形器（连同子树与其中网格）、Part（连同其子项）和参数，新 ID 在记录时确定（缺省为 `<ID>_copy`，冲突时加序号，`ids` 可逐项指定），重放结果与 ID 固定一致；副本之间的父级、遮罩、Glue、路径与顶点组改指副本，指向未复制对象的引用保留。给出 `parent` 时网格按画布坐标改挂、变形器按局部坐标改挂。粘贴在作者态 Rig 上规划：摆动、模拟与内部造型生成的对象不在其中，指名它们会被拒绝，复制子树时也不带上它们。副本不算其图层的网格：按图层查找网格（拾取、拆分与删除时保持网格 ID）只认原网格，删除图层时副本随之删除；副本按自身网格 ID 设绘制顺序，图层整体变换不移动副本。单独调用时结果的 `ids` 给出原句柄到新 ID 的映射，与写入的记录一致（请求按捕获版本固定全部新 ID 后提交），`paths` 给出随网格复制的变形路径（`path:<原 ID>` 到新 ID）；批量成员从 `changed` 读取新句柄。
 
 `mesh_duplicate`（`source`、`targets`）把源网格的拓扑按画布位置套到每个目标网格上，UV 取目标自己的纹理；每个目标写一条 `canvas_mesh_rebuild`，关键形、路径、权重与 Glue 照常迁移。
 
@@ -167,8 +167,8 @@
 | `canvas_deform_stroke` | brush/smooth/inflate、多网格、连通限制及 Glue 保持；采样为画布像素，edit 保留图像，deform 写精确关键形；整笔一次提交 |
 | `canvas_glue_edit / vertex_group_paint` | Glue 刷接、方向权重、解绑、重连及模拟权重笔刷/渐变/反转；保留连续 Glue 顺序与动画通道 |
 | `layer_draw_order` | 以 `target` 设置 0–1000 的显式绘制顺序；`order:null` 重置为原有生成或作者动画顺序 |
-| `hit_area_put / hit_area_delete / hit_area_preset` | 文档的点击区域（`rigEdits.hitAreas`），可批量的文档编辑，与检查器和层级树右键菜单共用：`put` 以 `id`（Cubism ID 字母表，如 `HitAreaHead`）新建或修改，`meshes` 为 `mesh:<id>` 列表（新建必需，给出时整体替换），`name` 为宿主查询的名称（缺省为去掉 `HitArea` 前缀的 ID），`new_id` 改名，`before_id` 排在另一区域之前（`null` 排最后）；`delete` 按 `id` 删除；`preset` 按语义加入 Head（脸）与 Body（上衣，否则颈或下装），已有同 ID 的保留。区域按列表顺序判定，先命中者优先；导出写入 model3.json `HitAreas`（每项一个 ArtMesh，多网格区域写成同名多项）与 `.p2lrt` 的 `HITA`，无区域时运行时使用自动的 Head/Body |
-| `hit_area_list / hit_area_test` | 查询，来自一次已提交捕获：`list` 按测试顺序返回各区域的现有网格与已不存在的 `missing` 网格，`automatic=true` 表示未设置任何区域；`test` 在画布点 `x, y`（画布单位，y 向下）、可选 `pose` 姿势上按运行时规则命中测试（网格可见、不透明度大于 0、三角形含该点），返回 `hit` 与命中区域的 `id/name/meshes` |
+| `hit_area_put / hit_area_delete / hit_area_preset` | 文档的点击区域（`rigEdits.hitAreas`），可批量的文档编辑，与检查器和层级树右键菜单共用：`put` 以 `id`（Cubism ID 字母表，如 `HitAreaHead`）新建或修改，`meshes` 为 `mesh:<id>` 列表（新建必需，给出时整体替换），`name` 为宿主查询的名称（缺省为去掉 `HitArea` 前缀的 ID），`new_id` 改名，`before_id` 排在另一区域之前（`null` 排最后）；`delete` 按 `id` 删除；`preset` 按语义加入 Head（脸）与 Body（上衣，否则颈或下装），已有同 ID 的保留。区域按列表顺序判定，先命中者优先；导出写入 model3.json `HitAreas`（每项一个 ArtMesh，多网格区域写成同名多项）与 `.p2lrt` 的 `HITA`，无区域时运行时使用自动的 Head/Body。单项调用的 `changed` 以 `hit_area:<id>` 列出涉及的区域（改名时新旧 ID 都在，`preset` 列出新加的区域） |
+| `hit_area_list / hit_area_test` | 查询，来自一次已提交捕获：`list` 按测试顺序返回各区域的现有网格与已不存在的 `missing` 网格，`automatic=true` 表示未设置任何区域；`test` 在画布点 `x, y`（画布单位，y 向下）、可选 `pose` 姿势上按运行时规则命中测试（网格可见、不透明度大于 0、三角形含该点），返回 `hit` 与命中区域的 `id/name/meshes`；`pose` 含模型没有的参数时拒绝，未加载工程时为 `invalid_state` |
 | `warp_get_controls` | 从一次已提交捕获读取 Bezier 分段数与编辑控制；`detail=summary` 不含控制点，`points` 按锚点、切线顺序分页（每页最多 256）；坐标为父级局部空间，`persisted=false` 表示控制由采样格点重建。CMO3 只保存采样几何与分段信息，不含这些编辑控制 |
 | `mesh_get_topology` | 从一次已提交捕获读取一个网格（`target` 为 `mesh:ID`）的拓扑，即 `canvas_topology` 按索引所指的内容：`section` 选 `vertices`（默认，`[索引, x, y]`，网格自身静止空间）、`triangles`（`[索引, a, b, c]`）或 `outline`（只被一个三角形使用的轮廓边 `[a, b]`），按 `offset`/`limit`（1–4096，默认 1024）分页放在 `items`；顶点数、三角形数、轮廓边数与 `bounds` 总是返回。把返回的 `state` 交给 `canvas_topology`，索引才保证有效 |
 | `warp_set_topology` | 后台重采样全部普通与混合关键形；返回父级局部空间的实际表面采样误差 |
@@ -224,6 +224,7 @@ CMO3 导入共用独立应用层导入器，GUI 入口确认后携带可信用�
 | `invalid_request` | 读取当前 schema；`field` 定位字段 |
 | `output_contract` | 服务实现返回了不符合声明的结果；`operation/field` 定位契约问题。先查询工程或任务的实际状态，不能据此假定修改已回滚或直接重做 |
 | `invalid_argument` / `invalid_edit` | 修正参数或编辑；批量错误另带 `edit_index` 和 `edit_operation` |
+| `not_found` / `id_conflict` / `owned_by_generator` / `key_incomplete` / `topology_refused` | 可区分的拒绝，带 `target`（`kind:id`，如 `parameter:ParamAngleX`、`hit_area:HitAreaHead`），批量成员另带 `edit_index` 和 `edit_operation`：所指对象、键或条目不存在；新 ID 或转变后的 ID 已被占用（含已删参数留下的动作曲线或表情条目）；对象归摆动、模拟、内部造型或骨骼所有，须在其面板中处理；关键形编辑的键缺少目标直接绑定的轴；拓扑操作不适用于该网格与选择。均未提交任何修改 |
 | `tile_collides` | 移动、旋转或改密度后，`layer_ids` 中的图块会被挤离排布位置（超出页面或与其他图块的网格相交），整次修改未提交；用 `atlas_check_placement` 换一个位置，或把相关移动放进同一批量 |
 | `state_conflict` | 重读工程；错误带 `expected_state` 和 `actual_state` |
 | `project_conflict` | 确认目标工程；错误带可空的 `expected_project` 和 `actual_project` |
@@ -516,7 +517,7 @@ GUI 参数定义、文件夹位置和参数关键点可组合为一次共享提�
 
 镜像的是对象自身的形变：两对象的点以默认姿势的父级映射到画布，来源各点相对默认形状的位移取 x 反向后，按目标点的镜像位置在来源三角形（Warp 为格子对角分割）上插值，再映射回目标的父级空间；旋转变形器镜像原点位移并把角度变化取反。对称对象或成对对象点对点对应。不支持融合变形键。
 
-`keyform_apply op=reset / interpolate / paste` 写一个键的整个几何形状（或只写 `vertices` 给出的点），提交时同样展开为普通 `set`，重放不再读取其他键；几何 `set` 作用在生成器拥有的关键形上时记为生成结果覆盖。`paste` 写的是位移：网格相对原形，Warp 与旋转变形器相对默认键形状；来源在编译该条命令时取样：MCP 批量中后续的 `paste` 读到前序成员写入后的候选模型（A、B 互贴需分两次提交，或先 `copy` 到空键）；编辑器的粘贴在复制时定格来源，并按粘贴前的模型一次算出全部 `set`：
+`keyform_apply op=reset / interpolate / paste` 写一个键的整个几何形状（或只写 `vertices` 给出的点），提交时同样展开为普通 `set`，重放不再读取其他键；几何 `set` 作用在生成器拥有的关键形上时记为生成结果覆盖。`paste` 写的是位移：网格相对原形，Warp 与旋转变形器相对默认键形状；来源在编译该条命令时取样：MCP 批量中后续的 `paste` 读到前序成员写入后的候选模型（因此两次 `paste` 换不了 A、B：无论同批还是分两次提交，第二次读到的都是第一次写入后的结果；要互换，先用 `copy` 把 A 存到一个空键 C，再把 B 贴到 A、C 贴到 B，可在同一批量中按此顺序）；编辑器的粘贴在复制时定格来源，并按粘贴前的模型一次算出全部 `set`：
 
 | 字段 | 含义 |
 | --- | --- |

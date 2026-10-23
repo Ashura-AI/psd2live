@@ -67,7 +67,7 @@ internal object RigObjectPaste {
 		for (source in sources) {
 			val kind = source.substringBefore(':', ""); val id = source.substringAfter(':', "")
 			require(kind in KINDS && id.isNotEmpty()) { "Use kind:id with kind ${KINDS.joinToString("|")}: $source" }
-			require(exists(model, kind, id)) { "$kind not found: $id" }
+			RigRefusal.found(exists(model, kind, id), "$kind:$id") { "$kind not found: $id" }
 			wanted += kind to id
 		}
 		// A deformer brings its descendants and the meshes they hold; a part its child parts, meshes and deformers.
@@ -101,7 +101,7 @@ internal object RigObjectPaste {
 			val namespace = namespace(kind)
 			val newId = explicit["$kind:$id"]?.also { chosen ->
 				require(RigIdConversion.ID_PATTERN.matches(chosen)) { "ID $chosen must be 1-64 ASCII letters, digits or underscores and start with a letter" }
-				require(chosen !in taken(namespace)) { "ID already exists: $chosen" }
+				RigRefusal.free(chosen !in taken(namespace), "$kind:$id") { "ID already exists: $chosen" }
 			} ?: StableIds.fresh("${id}_copy") { it in taken(namespace) }
 			taken(namespace) += newId
 			val pathIds = if (kind != "mesh") emptyMap() else model.deformPaths.filter { it.drawableId.raw == id }.associate { path ->

@@ -14,7 +14,8 @@ internal data class WorkspaceOperationDefinition(
     val batchable: Boolean = false,
     val jobBacked: Boolean = false,
     val idempotent: Boolean = kind == WorkspaceOperationKind.QUERY,
-    val destructive: Boolean = false,
+    /** Edits that delete, remove or clear what they name; a client may ask before calling them. */
+    val destructive: Boolean = kind != WorkspaceOperationKind.QUERY && Regex("_(delete|remove|clear)(_|$)").containsMatchIn(id),
     val workspaceBound: Boolean = kind != WorkspaceOperationKind.QUERY,
     val resultSchema: JsonObject,
     val jobResultSchema: JsonObject? = null,

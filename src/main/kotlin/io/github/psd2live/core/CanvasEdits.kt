@@ -446,9 +446,8 @@ internal object CanvasEdits {
                     val values = pair.jsonArray
                     MeshElement.Edge.of(values[0].jsonPrimitive.int, values[1].jsonPrimitive.int)
                 }?.toSet().orEmpty()
-                val result = requireNotNull(CanvasTopology.build(mesh, action, selected, anchors, edges) { CanvasTopology.shapes(model, drawable.id) }) {
-                    "The $action operation does not apply to this selection"
-                }.edit
+                val result = (CanvasTopology.build(mesh, action, selected, anchors, edges) { CanvasTopology.shapes(model, drawable.id) }
+                    ?: throw RigRefusal(RigRefusal.Code.TOPOLOGY_REFUSED, "The $action operation does not apply to this selection", "mesh:$id")).edit
                 var next = model.withMeshTopologyEdit(drawable.id, result)
                 // Path anchors carry triangle indices. Rebind them before the old topology disappears.
                 val paths = model.deformPaths.filter { it.drawableId == drawable.id }.associate { path ->

@@ -50,19 +50,26 @@ internal object RigIdConversion {
 	}
 
 	/** Why [renames] cannot apply to [model], or null. */
-	fun problem(model: PuppetModel, renames: List<Rename>): String? {
-		if (renames.isEmpty() || renames.size > 4096) return "Use 1..4096 renames"
+	fun problem(model: PuppetModel, renames: List<Rename>): String? = refusal(model, renames)?.message
+
+	/** Why [renames] cannot apply to [model], as the refusal a caller tells apart by its code; null when they can. */
+	fun refusal(model: PuppetModel, renames: List<Rename>): IllegalArgumentException? {
+		if (renames.isEmpty() || renames.size > 4096) return IllegalArgumentException("Use 1..4096 renames")
 		for (r in renames) {
-			if (r.kind !in KINDS) return "Unknown object kind: ${r.kind}"
-			if (!ID_PATTERN.matches(r.to)) return "ID ${r.to} must be 1-64 ASCII letters, digits or underscores and start with a letter"
-			if (!exists(model, r)) return "${r.kind} not found: ${r.from}"
-			if (r.from == r.to) return "${r.kind} ${r.from} already has that ID"
+			if (r.kind !in KINDS) return IllegalArgumentException("Unknown object kind: ${r.kind}")
+			if (!ID_PATTERN.matches(r.to)) return IllegalArgumentException("ID ${r.to} must be 1-64 ASCII letters, digits or underscores and start with a letter")
+			if (!exists(model, r)) return RigRefusal(RigRefusal.Code.NOT_FOUND, "${r.kind} not found: ${r.from}", "${r.kind}:${r.from}")
+			if (r.from == r.to) return IllegalArgumentException("${r.kind} ${r.from} already has that ID")
 		}
 		for ((namespace, group) in renames.groupBy { it.namespace }) {
-			if (group.map { it.from }.distinct().size != group.size) return "Each object is converted once per entry"
-			if (group.map { it.to }.distinct().size != group.size) return "Two objects cannot take the same ID ${group.groupBy { it.to }.filterValues { it.size > 1 }.keys.first()}"
+			if (group.map { it.from }.distinct().size != group.size) return IllegalArgumentException("Each object is converted once per entry")
+			group.groupBy { it.to }.filterValues { it.size > 1 }.entries.firstOrNull()?.let { (id, pair) ->
+				return RigRefusal(RigRefusal.Code.ID_CONFLICT, "Two objects cannot take the same ID $id", "${pair.first().kind}:${pair.first().from}")
+			}
 			val taken = ids(model, namespace) - group.mapTo(HashSet()) { it.from }
-			group.firstOrNull { it.to in taken || it.to in group.map { r -> r.from } }?.let { return "ID already exists: ${it.to}" }
+			group.firstOrNull { it.to in taken || it.to in group.map { r -> r.from } }?.let {
+				return RigRefusal(RigRefusal.Code.ID_CONFLICT, "ID already exists: ${it.to}", "${it.kind}:${it.from}")
+			}
 		}
 		return null
 	}

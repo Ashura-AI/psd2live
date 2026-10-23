@@ -216,7 +216,7 @@ internal object KeyformTools {
     private fun checkKey(model: PuppetModel, target: Shape, key: Map<String, Float>) {
         require(key.isNotEmpty()) { "Specify the exact destination key" }
         key.keys.forEach { id -> require(model.parameters.any { it.id.raw == id }) { "Unknown parameter: $id" } }
-        require(target.axes.all { it in key }) { "KEY_INCOMPLETE: include all directly bound geometry axes of ${target.id}" }
+        if (!target.axes.all { it in key }) throw RigRefusal(RigRefusal.Code.KEY_INCOMPLETE, "KEY_INCOMPLETE: include all directly bound geometry axes of ${target.id}", "${target.kind}:${target.id}")
     }
 
     private fun checkVertices(target: Shape, vertices: Set<Int>?): Set<Int>? = vertices?.toSortedSet()?.also { picked ->

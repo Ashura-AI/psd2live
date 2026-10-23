@@ -89,7 +89,7 @@ internal object WorkspaceSidecarEdits {
 
     private fun expression(mode: String, current: List<ModelExpression>, request: JsonObject,
                            parameters: List<org.umamo.runtime.model.Parameter>): List<ModelExpression> {
-        fun find(id: String) = requireNotNull(current.firstOrNull { it.id == id }) { "Expression not found: $id" }
+        fun find(id: String) = current.firstOrNull { it.id == id } ?: throw io.github.psd2live.core.RigRefusal(io.github.psd2live.core.RigRefusal.Code.NOT_FOUND, "Expression not found: $id", "expression:$id")
         fun replaced(expression: ModelExpression) = current.map { if (it.id == expression.id) expression else it }
         fun pose(key: String) = request.getValue(key).jsonObject.mapValues { it.value.jsonPrimitive.float }
         fun fades(expression: ModelExpression) = expression.copy(
@@ -98,7 +98,7 @@ internal object WorkspaceSidecarEdits {
         return when (mode) {
             "create" -> {
                 val id = request["id"]?.jsonPrimitive?.content ?: ModelExpressions.newId(current)
-                require(current.none { it.id.equals(id, ignoreCase = true) }) { "Expression ID already exists: $id" }
+                io.github.psd2live.core.RigRefusal.free(current.none { it.id.equals(id, ignoreCase = true) }, "expression:$id") { "Expression ID already exists: $id" }
                 require(!("values" in request && "entries" in request)) { "Give values or entries, not both" }
                 val entries = when {
                     "values" in request -> ModelExpressions.entriesOfPose(pose("values"), parameters)
@@ -148,7 +148,7 @@ internal object WorkspaceSidecarEdits {
             "duplicate" -> {
                 val source = find(request.text("id"))
                 val id = request["new_id"]?.jsonPrimitive?.content ?: ModelExpressions.newId(current)
-                require(current.none { it.id.equals(id, ignoreCase = true) }) { "Expression ID already exists: $id" }
+                io.github.psd2live.core.RigRefusal.free(current.none { it.id.equals(id, ignoreCase = true) }, "expression:$id") { "Expression ID already exists: $id" }
                 insert(current, source.copy(id = id, name = ModelExpressions.uniqueName(current, source.name)), current.indexOf(source) + 1)
             }
             "move" -> {
@@ -182,7 +182,7 @@ internal object WorkspaceSidecarEdits {
             }
         }
         fun index(pose: ModelPose): Int = request.getValue("index").jsonPrimitive.int.also {
-            require(it in pose.groups.indices) { "Pose group not found: $it" }
+            io.github.psd2live.core.RigRefusal.found(it in pose.groups.indices, "pose_group:$it") { "Pose group not found: $it" }
         }
         val pose = current ?: ModelPose()
         return when (mode) {

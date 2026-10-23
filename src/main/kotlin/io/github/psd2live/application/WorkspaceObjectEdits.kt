@@ -54,9 +54,13 @@ internal object WorkspaceObjectEdits {
 
 	private fun plan(operation: String, model: RigPreviewModel, request: JsonObject): Pair<JsonObject, JsonObject> = when (operation) {
 		PASTE -> {
-			val ids = RigObjectPaste.plan(model.authored.rig.puppet, request, model.rig.puppet).ids
-			JsonObject(request + ("ids" to JsonObject(ids.mapValues { JsonPrimitive(it.value) }))) to
-				buildJsonObject { put("ids", JsonObject(ids.mapValues { JsonPrimitive(it.value) })) }
+			val plan = RigObjectPaste.plan(model.authored.rig.puppet, request, model.rig.puppet)
+			val ids = plan.ids
+			JsonObject(request + ("ids" to JsonObject(ids.mapValues { JsonPrimitive(it.value) }))) to buildJsonObject {
+				put("ids", JsonObject(ids.mapValues { JsonPrimitive(it.value) }))
+				// Deform paths copied with their meshes, by path:<id>; the same plan the commit compiles on this state.
+				putJsonObject("paths") { for (copy in plan.copies) for ((from, to) in copy.paths) put("path:$from", to) }
+			}
 		}
 		RENAME -> {
 			val matches = find(model, JsonObject(request - setOf("offset", "limit")))
@@ -199,12 +203,14 @@ internal object WorkspaceObjectEdits {
 	// --- ID conversion ----------------------------------------------------------------------------------------------
 
 	/** Why [rename] cannot convert in [document]: what outside the rig holds the ID in a way only its owner can change. */
-	private fun refusal(document: WorkspaceDocument, model: RigPreviewModel, rename: RigIdConversion.Rename): String? {
+	private fun refusal(document: WorkspaceDocument, model: RigPreviewModel, rename: RigIdConversion.Rename): RigRefusal? {
+		fun owned(message: String) = RigRefusal(RigRefusal.Code.OWNED_BY_GENERATOR, message, "${rename.kind}:${rename.from}")
+		fun leftover(message: String) = RigRefusal(RigRefusal.Code.ID_CONFLICT, message, "${rename.kind}:${rename.from}")
 		val shown = model.rig.puppet
 		val authored = model.authored.rig.puppet
 		val id = rename.from
 		if (RigIdConversion.ids(shown, rename.namespace).contains(id) && !RigIdConversion.ids(authored, rename.namespace).contains(id))
-			return "${rename.kind} $id belongs to a swing, simulation or interior effect; its ID follows that generator"
+			return owned("${rename.kind} $id belongs to a swing, simulation or interior effect; its ID follows that generator")
 		val overlay = document.rigEdits
 		// The skeleton bakes into the generated rig before the journal replays, under the IDs it names; renaming what
 		// it binds would leave the bake and the conversion naming different objects.
@@ -212,31 +218,31 @@ internal object WorkspaceObjectEdits {
 			val bones = skeleton.bones
 			when (rename.kind) {
 				"mesh" -> if (bones.any { id in it.drawableIds } || id in skeleton.manualWeights)
-					return "Mesh $id is bound to the skeleton; unbind it before converting its ID"
+					return owned("Mesh $id is bound to the skeleton; unbind it before converting its ID")
 				"parameter" -> if (bones.any { it.parameterId == id } || skeleton.savedPoses.values.any { id in it })
-					return "Parameter $id belongs to the skeleton; its ID follows the bone"
-				"warp", "rotation" -> bones.firstOrNull { it.deformerId == id }?.let { return "Deformer $id belongs to the bone ${it.id}; its ID follows the bone" }
+					return owned("Parameter $id belongs to the skeleton; its ID follows the bone")
+				"warp", "rotation" -> bones.firstOrNull { it.deformerId == id }?.let { return owned("Deformer $id belongs to the bone ${it.id}; its ID follows the bone") }
 			}
 		}
 		when (rename.kind) {
 			"mesh" -> {
 				overlay.simEdits.firstOrNull { sim -> id in sim.targets || sim.colliders.any { it.mesh == id } }
-					?.let { return "Mesh $id is simulated by ${it.id}; remove the simulation before converting its ID" }
+					?.let { return owned("Mesh $id is simulated by ${it.id}; remove the simulation before converting its ID") }
 				overlay.interiorEffects.firstOrNull { it.target == id }
-					?.let { return "Mesh $id has the interior effect ${it.id}; remove it before converting its ID" }
+					?.let { return owned("Mesh $id has the interior effect ${it.id}; remove it before converting its ID") }
 			}
 			"parameter" -> {
 				// What a deleted parameter left under the new ID would be overwritten by the converted one's.
 				overlay.motionClips.firstOrNull { clip -> clip.curves.any { it.parameterId == rename.to } }
-					?.let { return "Motion ${it.id} still has a curve on the deleted parameter ${rename.to}; remove it before converting $id to that ID" }
+					?.let { return leftover("Motion ${it.id} still has a curve on the deleted parameter ${rename.to}; remove it before converting $id to that ID") }
 				overlay.expressions.orEmpty().firstOrNull { expression -> expression.entries.any { it.parameterId == rename.to } }
-					?.let { return "Expression ${it.id} still has an entry on the deleted parameter ${rename.to}; remove it before converting $id to that ID" }
+					?.let { return leftover("Expression ${it.id} still has an entry on the deleted parameter ${rename.to}; remove it before converting $id to that ID") }
 				overlay.simEdits.firstOrNull { sim -> sim.inputs.any { it.parameter == id } || id in sim.inputRanges || id in sim.staticInputs.orEmpty() ||
 					id in sim.forcedInputs || id in sim.outputs || id in sim.outputNames }
-					?.let { return "Parameter $id drives the simulation ${it.id}; remove it from the simulation before converting its ID" }
+					?.let { return owned("Parameter $id drives the simulation ${it.id}; remove it from the simulation before converting its ID") }
 				overlay.interiorEffects.firstOrNull { effect -> effect.sources.any { it.id.raw == id } || id in effect.parameterIds }
-					?.let { return "Parameter $id drives the interior effect ${it.id}; remove it before converting its ID" }
-				overlay.swingEdits.firstOrNull { id in it.parameterIds }?.let { return "Parameter $id belongs to the swing ${it.id}" }
+					?.let { return owned("Parameter $id drives the interior effect ${it.id}; remove it before converting its ID") }
+				overlay.swingEdits.firstOrNull { id in it.parameterIds }?.let { return owned("Parameter $id belongs to the swing ${it.id}") }
 			}
 		}
 		return null
@@ -248,9 +254,9 @@ internal object WorkspaceObjectEdits {
 	 * same edit.
 	 */
 	fun convert(document: WorkspaceDocument, model: RigPreviewModel, renames: List<RigIdConversion.Rename>): WorkspaceDocument {
-		RigIdConversion.problem(model.rig.puppet, renames)?.let { throw IllegalArgumentException(it) }
-		RigIdConversion.problem(model.authored.rig.puppet, renames)?.let { throw IllegalArgumentException(it) }
-		for (rename in renames) refusal(document, model, rename)?.let { throw IllegalArgumentException(it) }
+		RigIdConversion.refusal(model.rig.puppet, renames)?.let { throw it }
+		RigIdConversion.refusal(model.authored.rig.puppet, renames)?.let { throw it }
+		for (rename in renames) refusal(document, model, rename)?.let { throw it }
 		val journaled = WorkspaceDocumentEdits.journal(document, model, JsonArray(listOf(RigIdConversion.encode(renames))))
 		val parameters = renames.filter { it.kind == "parameter" }.associate { it.from to it.to }
 		val deformers = renames.filter { it.namespace == "deformer" }.associate { it.from to it.to }

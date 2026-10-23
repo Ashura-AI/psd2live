@@ -33,7 +33,7 @@ internal object WorkspaceHitAreaEdits {
             PUT -> put(areas, model, request)
             DELETE -> {
                 val id = request.getValue("id").jsonPrimitive.content
-                require(areas.any { it.id == id }) { "Hit area not found: $id" }
+                io.github.psd2live.core.RigRefusal.found(areas.any { it.id == id }, "hit_area:$id") { "Hit area not found: $id" }
                 areas.filterNot { it.id == id }
             }
             PRESET -> {
@@ -60,7 +60,7 @@ internal object WorkspaceHitAreaEdits {
         }?.distinct()
         require(current != null || meshes != null) { "A new hit area needs meshes" }
         val newId = request["new_id"]?.jsonPrimitive?.content ?: id
-        require(newId == id || areas.none { it.id == newId }) { "Hit area ID already exists: $newId" }
+        io.github.psd2live.core.RigRefusal.free(newId == id || areas.none { it.id == newId }, "hit_area:$id") { "Hit area ID already exists: $newId" }
         val area = RigHitArea(newId, request["name"]?.jsonPrimitive?.content?.trim() ?: current?.name ?: defaultName(newId),
             meshes ?: current!!.meshes)
         val rest = areas.filterNot { it.id == id }
@@ -69,7 +69,7 @@ internal object WorkspaceHitAreaEdits {
             current != null -> areas.getOrNull(areas.indexOf(current) + 1)?.id
             else -> null
         }
-        val at = before?.let { target -> rest.indexOfFirst { it.id == target }.also { require(it >= 0) { "Hit area not found: $target" } } } ?: rest.size
+        val at = before?.let { target -> rest.indexOfFirst { it.id == target }.also { io.github.psd2live.core.RigRefusal.found(it >= 0, "hit_area:$target") { "Hit area not found: $target" } } } ?: rest.size
         return rest.subList(0, at) + area + rest.subList(at, rest.size)
     }
 
@@ -107,7 +107,8 @@ internal object WorkspaceHitAreaSchemas {
     val result = s.obj(s.identity + mapOf("applied" to s.constant(false), "changed" to s.array(s.handle())), s.identity.keys)
 
     val area = s.obj(mapOf("id" to s.handle(), "name" to s.handle(), "meshes" to s.array(s.handle()), "missing" to s.array(s.handle())))
-    val listResult = s.obj(mapOf("state" to s.handle(), "hit_areas" to s.array(area), "automatic" to s.boolean()))
+    val listResult = s.obj(mapOf("project_id" to s.handle(), "state" to s.handle(), "hit_areas" to s.array(area), "automatic" to s.boolean()),
+        setOf("state", "hit_areas", "automatic"))
     val testRequest = s.obj(mapOf("x" to s.number(), "y" to s.number(), "pose" to s.dictionary(s.number())), setOf("x", "y"))
     val testResult = s.obj(mapOf("state" to s.handle(), "hit" to s.boolean(), "id" to s.handle(), "name" to s.handle(),
         "meshes" to s.array(s.handle())), setOf("state", "hit"))
@@ -132,8 +133,16 @@ internal fun registerHitAreaOperations(registry: WorkspaceOperationRegistry, por
             WorkspaceOperationKind.DOCUMENT, batchable = true, destructive = operation == WorkspaceHitAreaEdits.DELETE,
             resultSchema = WorkspaceHitAreaSchemas.result)) { request, context ->
             val edit = WorkspaceDocumentOperation(operation, JsonObject(request - "state"))
-            WorkspaceOperationOutput(port.applyDocumentEdits(request.getValue("state").jsonPrimitive.content,
-                "Updated hit areas", listOf(edit), context.author).compact())
+            val before = read.captureQueries().hitAreas()
+            val result = port.applyDocumentEdits(request.getValue("state").jsonPrimitive.content,
+                "Updated hit areas", listOf(edit), context.author).compact()
+            // The areas the edit touched as hit_area:<id>: a renamed area under both IDs, a preset's new areas.
+            val touched = when (operation) {
+                WorkspaceHitAreaEdits.PRESET -> read.captureQueries().hitAreas().map { it.id } - before.map { it.id }.toSet()
+                else -> listOfNotNull(request.getValue("id").jsonPrimitive.content, request["new_id"]?.jsonPrimitive?.contentOrNull).distinct()
+            }
+            WorkspaceOperationOutput(if (result["applied"] == JsonPrimitive(false)) result
+                else JsonObject(result + ("changed" to JsonArray(touched.map { JsonPrimitive("hit_area:$it") }))))
         }
     }
     registry.register(WorkspaceOperationDefinition("hit_area_list",
@@ -143,18 +152,24 @@ internal fun registerHitAreaOperations(registry: WorkspaceOperationRegistry, por
         val queries = read.captureQueries()
         val areas = queries.hitAreas()
         WorkspaceOperationOutput(buildJsonObject {
-            put("state", queries.snapshot().state)
+            val snapshot = queries.snapshot()
+            snapshot.projectId?.let { put("project_id", it) }; put("state", snapshot.state)
             put("hit_areas", WorkspaceHitAreaEdits.listing(areas, queries.hitAreaModel()))
             put("automatic", areas.isEmpty())
         })
     }
     registry.register(WorkspaceOperationDefinition("hit_area_test",
         "Hit-test the committed model at canvas point x, y (canvas units, y down) posed at pose (parameter values; others at default), as the " +
-            "runtime does: the first area with a visible, not fully transparent mesh whose triangles contain the point. hit=false on a miss.",
+            "runtime does: the first area with a visible, not fully transparent mesh whose triangles contain the point. hit=false on a miss. " +
+            "A pose naming a parameter the model does not have is refused.",
         WorkspaceHitAreaSchemas.testRequest, WorkspaceOperationKind.QUERY, resultSchema = WorkspaceHitAreaSchemas.testResult)) { request, _ ->
         val queries = read.captureQueries()
-        val model = requireNotNull(queries.hitAreaModel()) { "No workspace is loaded" }
-        val pose = request["pose"]?.jsonObject.orEmpty().map { (key, value) -> ParameterId(key) to value.jsonPrimitive.float }.toMap()
+        val model = queries.hitAreaModel() ?: throw IllegalStateException("No workspace is loaded")
+        val known = model.rig.puppet.parameters.mapTo(HashSet()) { it.id.raw }
+        val pose = request["pose"]?.jsonObject.orEmpty().map { (key, value) ->
+            require(key in known) { "Unknown parameter: $key" }
+            ParameterId(key) to value.jsonPrimitive.float
+        }.toMap()
         val hit = WorkspaceHitAreaEdits.test(queries.hitAreas(), model, pose, request.getValue("x").jsonPrimitive.float, request.getValue("y").jsonPrimitive.float)
         WorkspaceOperationOutput(buildJsonObject {
             put("state", queries.snapshot().state); put("hit", hit != null)

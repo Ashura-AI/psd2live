@@ -58,6 +58,12 @@ internal data class WorkspaceFailure private constructor(
                 put("target", copyEdit.copy); put("original", copyEdit.original)
                 if (failure is WorkspaceBatchEditException) { put("edit_index", failure.index); put("edit_operation", failure.editOperation) }
             })
+            // A refusal of a named kind keeps its category, inside a batch member too.
+            val refusal = generateSequence(failure) { it.cause }.take(8).firstOrNull { it is io.github.psd2live.core.RigRefusal } as io.github.psd2live.core.RigRefusal?
+            if (refusal != null) return WorkspaceFailure(refusal.code.json, refusal.message ?: refusal.code.json, buildJsonObject {
+                refusal.target?.let { put("target", it) }
+                if (failure is WorkspaceBatchEditException) { put("edit_index", failure.index); put("edit_operation", failure.editOperation) }
+            })
             val code = when (failure) {
                 is io.github.psd2live.core.GeometrySafetyRejectedException -> "geometry_unsafe"
                 is WorkspaceBatchEditException -> "invalid_edit"

@@ -125,8 +125,13 @@ internal object WorkspaceDocumentEdits {
                 journal(document, model, JsonArray(listOf(command)))
             }
             else -> when {
-                operation.operation.startsWith("canvas_") -> journal(document, model, JsonArray(listOf(
-                    WorkspaceCanvasCommands.create(model.rig.puppet, operation.operation.removePrefix("canvas_"), request))))
+                operation.operation.startsWith("canvas_") -> {
+                    val command = WorkspaceCanvasCommands.create(model.rig.puppet, operation.operation.removePrefix("canvas_"), request)
+                    // A mesh already as Delaunay as it can be is no change, not a refusal.
+                    if (operation.operation == "canvas_topology" && request["action"]?.jsonPrimitive?.content == "retriangulate" &&
+                        !WorkspaceMeshTopology.changes(model.rig.puppet, command)) document
+                    else journal(document, model, JsonArray(listOf(command)))
+                }
                 operation.operation.startsWith("source_paint_") -> paint(document, model,
                     JsonObject(request + ("mode" to JsonPrimitive(operation.operation.removePrefix("source_paint_")))), rasterWork)
                 operation.operation.startsWith("skeleton_") -> skeleton(document, model,
@@ -189,20 +194,19 @@ internal object WorkspaceDocumentEdits {
         val id = request.text("parameter_id").trim()
         val current = model.rig.puppet.parameters.firstOrNull { it.id.raw == id }
         if (mode == "delete") {
-            require(current != null) { "Parameter not found: $id" }
+            io.github.psd2live.core.RigRefusal.found(current != null, "parameter:$id") { "Parameter not found: $id" }
             // A generator's own parameter goes with the generator; once the user has taken it in, it is theirs to delete.
-            require(id !in GeneratedParameterAdoption.generated(model.rig.puppet, model.authored.rig.puppet)) {
-                "$id belongs to a swing or simulation; remove that instead"
-            }
+            if (id in GeneratedParameterAdoption.generated(model.rig.puppet, model.authored.rig.puppet))
+                throw io.github.psd2live.core.RigRefusal(io.github.psd2live.core.RigRefusal.Code.OWNED_BY_GENERATOR, "$id belongs to a swing or simulation; remove that instead", "parameter:$id")
             return appendParameterCommand(document, model, mode, id).withMotionClips { MotionClips.withoutParameter(it, id) }
                 .let { it.copy(rigEdits = ModelSidecars.withoutParameter(it.rigEdits, id)) }
         }
         if (mode == "create") {
             require(Regex("[A-Za-z][A-Za-z0-9_]{0,63}").matches(id)) { "New parameter ID must be 1-64 ASCII letters, digits, or underscores and start with a letter" }
-            require(current == null) { "Parameter already exists: $id" }
+            io.github.psd2live.core.RigRefusal.free(current == null, "parameter:$id") { "Parameter already exists: $id" }
         } else {
             require(mode == "update") { "Unknown parameter edit: $mode" }
-            require(current != null) { "Parameter not found: $id" }
+            io.github.psd2live.core.RigRefusal.found(current != null, "parameter:$id") { "Parameter not found: $id" }
             require(listOf("name", "min", "max", "default", "kind", "repeat").any { it in request }) { "parameter_update requires at least one editable field" }
         }
         val kind = request["kind"]?.jsonPrimitive?.content?.let { raw ->

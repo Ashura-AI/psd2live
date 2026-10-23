@@ -136,7 +136,10 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
     register(WorkspaceStructureMeshEdits.OP, "Rebuild the inside of one mesh along the structure drawn into its texture: creases, shading boundaries and pattern lines become rows of vertices with edges along them, and by default no vertex lies anywhere else: triangles span from line to line and to the edge rows, as hand-made meshes do. settings.fill adds vertices between the lines; settings.bands straddles drawn creases with a row on each side and rungs across. The outline row and edge band stay exactly as they are; keyforms, blend shapes, paths, weights and glue migrate as for layer_mesh_rebuild. On a mesh with an interior effect the effect's detected TOPOLOGY guides are replaced (drawn guides and guides marked FOLD stay and lead the mesh) and the effect is baked again in the same history edit (interior_rebaked). Fails without changing anything when the region cannot be meshed or max_vertices would be exceeded. Check first with layer_mesh_structure_preview.",
         objectSchema(JsonObject(structureSchema + ("state" to string())), listOf("state", "target")), WorkspaceOperationKind.DOCUMENT) { request ->
         val target = request.text("target").removePrefix("mesh:")
-        val rebake = workspace.captureQueries().listInteriorEffects().any { it.target == target }
+        // Read on the version the state names: the commit fails on any other.
+        val captured = workspace.captureQueries()
+        if (captured.snapshot().state != request.text("state")) throw WorkspaceConflict(request.text("state"), captured.snapshot().state)
+        val rebake = captured.listInteriorEffects().any { it.target == target }
         val edits = listOf(WorkspaceDocumentOperation(WorkspaceStructureMeshEdits.OP, JsonObject(request - "state")))
         val result = workspace.applyDocumentEdits(request.text("state"), "Remeshed $target along its texture", edits, MutationAuthor.AGENT)
         WorkspaceOperationOutput(buildJsonObject {
@@ -617,7 +620,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         put("part_id", buildJsonObject {}); put("space", choices("local"))
         put("opacity", number()); put("draw_order", integer(0, 1000))
         put("multiply_color", vector(3)); put("screen_color", vector(3))
-        put("blend_mode", string()); put("masked_by", arraySchema(string(), 0, 64))
+        put("blend_mode", choices(*org.umamo.runtime.model.BlendMode.entries.map { it.name }.toTypedArray())); put("masked_by", arraySchema(string(), 0, 64))
         put("invert_mask", boolean()); put("culling", boolean())
         put("selectable", boolean()); put("quad", boolean()); put("user_data", string())
         put("partner_id", string()); put("linked", boolean()); put("open", boolean())
@@ -664,13 +667,17 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
             put("state", string()); put("id", string())
             put("action", choices(*io.github.psd2live.core.CanvasTopology.ACTIONS.toTypedArray()))
             put("vertices", arraySchema(integer(0), 0, 65536))
-            put("anchors", arraySchema(objectSchema(buildJsonObject {
+            // An anchor is an existing vertex or a free point, never both or neither.
+            put("anchors", arraySchema(JsonObject(objectSchema(buildJsonObject {
                 put("vertex", integer(0)); put("x", number()); put("y", number())
-            }), 0, 4096))
+            }) + ("oneOf" to buildJsonArray {
+                add(buildJsonObject { put("type", "object"); put("required", buildJsonArray { add("vertex") }) })
+                add(buildJsonObject { put("type", "object"); put("required", buildJsonArray { add("x"); add("y") }) })
+            })), 0, 4096))
             put("edges", arraySchema(arraySchema(integer(0), 2, 2), 0, 65536))
-        }, listOf("state", "id", "action", "vertices")),
+        }, listOf("state", "id", "action")),
     )
-    registerJsonOperation("canvas", "Use the canvas editor's persisted algorithms to create a Warp or Rotation, pair Glue vertices where both meshes rest (the default pose, as Cubism's glue), or edit mesh topology. Glue requires two different art-mesh ids (mesh_a and mesh_b) and fails when a mesh is missing, the ids match, or no vertices fall inside distance. Set replace to update an existing glue on that pair. Topology indices are from the current mesh and require fresh state. Topology actions: merge/duplicate/connect (two vertices)/delete (vertices, the hole is refilled)/subdivide/split act on vertices or edges; knife cuts through anchors; add_points adds a vertex at each anchor {x,y} given in the mesh's own rest space (inside: splits the face or edge, outside: grows the outline); delete_edges deletes exactly the edges given in edges, which it requires (an interior edge flips across its quad, an outline edge removes its triangle; refuses what would break the triangulation); retriangulate flips edges around the given vertices (all when empty) toward Delaunay without moving the picture. Creation accepts an optional stable ID; otherwise one is generated.",
+    registerJsonOperation("canvas", "Use the canvas editor's persisted algorithms to create a Warp or Rotation, pair Glue vertices where both meshes rest (the default pose, as Cubism's glue), or edit mesh topology. Glue requires two different art-mesh ids (mesh_a and mesh_b) and fails when a mesh is missing, the ids match, or no vertices fall inside distance. Set replace to update an existing glue on that pair. Topology indices are from the current mesh (mesh_get_topology reads them) and require fresh state; vertices defaults to none. Topology actions: merge/duplicate/connect (two vertices)/delete (vertices, the hole is refilled)/subdivide/split act on vertices or edges; knife cuts through anchors; add_points adds a vertex at each anchor {x,y} given in the mesh's own rest space (a {vertex} anchor is refused) (inside: splits the face or edge, outside: grows the outline); delete_edges deletes exactly the edges given in edges, which it requires (an interior edge flips across its quad, an outline edge removes its triangle; refuses what would break the triangulation); retriangulate flips edges around the given vertices (all when empty) toward Delaunay without moving the picture; a mesh already there is no change (applied=false). Creation accepts an optional stable ID; otherwise one is generated.",
         buildJsonObject { put("request", oneOf(canvasBranches)) }, listOf("request"), true) { a ->
         val input = a.getValue("request").jsonObject
         validateOperationSchema(input, oneOf(canvasBranches))
@@ -679,6 +686,15 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         val command = WorkspaceCanvasCommands.create(puppet, mode, input)
         val writtenId = command.getValue("id").jsonPrimitive.content
         val made = if (mode == "topology") WorkspaceMeshTopology.newVertices(puppet, command) else emptyList()
+        if (mode == "topology" && command.getValue("action").jsonPrimitive.content == "retriangulate" && !WorkspaceMeshTopology.changes(puppet, command)) {
+            // Already as Delaunay as it gets: no change on the state the caller holds, as the batch member answers.
+            val snapshot = workspace.captureQueries().snapshot()
+            if (snapshot.state != input.text("state")) throw WorkspaceConflict(input.text("state"), snapshot.state)
+            return@registerJsonOperation buildJsonObject {
+                put("state", snapshot.state); snapshot.historyHeadNodeId?.let { put("history_node_id", it) }
+                put("project_id", requireNotNull(snapshot.projectId)); put("id", writtenId); put("applied", false)
+            }
+        }
         val result = workspace.authorRig(input.text("state"), buildJsonArray { add(command) }, MutationAuthor.AGENT)
         buildJsonObject {
             put("state", requireNotNull(result.state)); put("history_node_id", result.historyNodeId); put("project_id", requireNotNull(result.projectId)); put("id", writtenId)

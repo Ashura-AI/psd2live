@@ -46,13 +46,14 @@ search-and-replace: object_find object_rename
 draworder: layer_draw_order rig_edit_structure
 concept-of-artmesh: workspace_inspect view_render_layer
 mesh-edit: layer_mesh_update layer_mesh_rebuild
-mesh-edit-manual: canvas_topology mesh_get_topology
+mesh-edit-manual: canvas_topology mesh_get_topology layer_mesh_structure
+random-pose: preview_set preview_reset
 mesh-duplication: mesh_duplicate layer_mesh_rebuild
 clipping-mask: rig_edit_structure
 reversed-mask: rig_edit_structure
-sketch: material_mark_reference layer_place layer_mark_reference layer_pin_reference reference_place_grid layout_set_reference
+sketch: material_mark_reference layer_place layer_mark_reference layer_pin_reference reference_place_grid layout_set_reference layout_add_reference layout_order_reference reference_set_mode reference_set_opacity
 blend-mode: rig_edit_structure
-interior-shape: interior_put interior_delete
+interior-shape: interior_put interior_delete layer_mesh_structure layer_mesh_structure_preview
 deformer: workspace_overview workspace_inspect canvas_warp canvas_rotation
 making-and-placement-of-warp-deformer: canvas_warp rig_create_warp warp_set_topology warp_get_controls warp_bezier_divisions warp_bezier_reset
 making-and-rotation-of-rotationdeformer: canvas_rotation rig_deform workspace_inspect
@@ -116,10 +117,10 @@ simulation: simulation_put simulation_bake model_apply_preset vertex_group_paint
 external-application-integration: workspace_inspect workspace_overview workspace_list_operations
 external-application-integration-api: workspace_list_operations workspace_get_operation workspace_apply_edits workspace_preview_edits job_wait job_get
 external-application-integration-api-list: workspace_list_operations workspace_get_operation
-pose-setting: pose_get pose_add_group pose_set_group pose_update pose_put
-facial-expression-system: expression_list expression_get expression_set_entries expression_reset
+pose-setting: pose_get pose_add_group pose_set_group pose_delete_group pose_update pose_put pose_clear
+facial-expression-system: expression_list expression_get expression_set_entries expression_reset expression_put
 create-facial-expressions: expression_create expression_capture snapshot_list preview_set
-setting-and-exporting-facial-expressions: expression_update expression_set_entries expression_move project_export_model
+setting-and-exporting-facial-expressions: expression_update expression_set_entries expression_move expression_duplicate expression_delete project_export_model
 userdata-event-information: motion_events motion_set_event rig_edit_structure
 t-eye-blink: settings_update rig_deform canvas_deform_stroke keyform_apply layer_tag preview_set
 t-mouth-aiueo: settings_update rig_deform canvas_deform_stroke keyform_apply preview_set

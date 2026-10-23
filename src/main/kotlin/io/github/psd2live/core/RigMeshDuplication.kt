@@ -25,11 +25,11 @@ internal object RigMeshDuplication {
 		val targets = request.getValue("targets").jsonArray.map { mesh(it.jsonPrimitive.content) }
 		require(targets.size in 1..128 && targets.distinct().size == targets.size) { "Name 1..128 distinct target meshes" }
 		require(sourceId !in targets) { "The source mesh cannot be its own target" }
-		val source = requireNotNull(model.drawables.singleOrNull { it.id.raw == sourceId }) { "Mesh not found: $sourceId" }
+		val source = model.drawables.singleOrNull { it.id.raw == sourceId } ?: throw RigRefusal(RigRefusal.Code.NOT_FOUND, "Mesh not found: $sourceId", "mesh:$sourceId")
 		val sourceMesh = requireNotNull(source.mesh) { "Mesh $sourceId has no mesh" }
 		val canvas = RasterMeshJournal.TextureCoordinates(model, source).toCanvas(sourceMesh.uvs)
 		return targets.map { id ->
-			val target = requireNotNull(model.drawables.singleOrNull { it.id.raw == id }) { "Mesh not found: $id" }
+			val target = model.drawables.singleOrNull { it.id.raw == id } ?: throw RigRefusal(RigRefusal.Code.NOT_FOUND, "Mesh not found: $id", "mesh:$id")
 			val previous = requireNotNull(target.mesh) { "Mesh $id has no mesh" }
 			val texture = RasterMeshJournal.TextureCoordinates(model, target)
 			// The target's own triangles map its artwork onto its rest positions; each copied vertex lands where that

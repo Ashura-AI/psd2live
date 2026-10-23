@@ -25,6 +25,7 @@ internal val AGENT_TOOL_FAMILIES = listOf(
     AgentToolFamily("parameter", "Create, update or delete Cubism parameters. Deleting collapses every keyform axis at its default."),
     AgentToolFamily("motion", "Read and edit motion clips and their parameter timelines: clips, keys, curves, poses, events and generated presets."),
     AgentToolFamily("expression", "Read and edit the model's expressions (exp3): create from a pose or snapshot, set entries with Add/Multiply/Overwrite blends and fades."),
+    AgentToolFamily("hit_area", "Set up, order, delete or test the model's hit areas (model3 HitAreas): name meshes, add the Head/Body preset, test a point at a pose."),
     AgentToolFamily("pose", "Read and edit the pose (pose3): groups of parts of which one shows at a time, with linked parts and the switch fade."),
     AgentToolFamily("skeleton", "Read, infer and edit the authored skeleton (bones, binding, enable) and solve FK/IK poses.") {
         it.startsWith("draft_")

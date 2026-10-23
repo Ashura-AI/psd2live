@@ -37,6 +37,10 @@ internal object WorkspaceLayoutOperations {
         put("type", "object"); put("additionalProperties", false); put("properties", JsonObject(fields))
         put("required", JsonArray(required.map(::JsonPrimitive)))
     }
+    /** A reference names its target by reference_id or layer_id, exactly one of them. */
+    private fun oneTarget(schema: JsonObject) = JsonObject(schema + ("oneOf" to JsonArray(listOf("reference_id", "layer_id").map { field ->
+        buildJsonObject { put("type", "object"); put("required", JsonArray(listOf(JsonPrimitive(field)))) }
+    })))
     private val rect = schema(listOf("left", "top", "width", "height").associateWith { number() }, listOf("left", "top", "width", "height"))
     private val state = mapOf("state" to string())
     private fun choices(vararg values: String) = buildJsonObject { put("type", "string"); put("enum", JsonArray(values.map(::JsonPrimitive))) }
@@ -84,11 +88,11 @@ internal object WorkspaceLayoutOperations {
                 put("items", buildJsonObject { put("type", "object"); put("additionalProperties", number()) }) }), listOf("state", "material_id")),
         WorkspaceMaterialEdits.ORDER_REFERENCE to schema(state + mapOf("id" to string(), "index" to buildJsonObject { put("type", "integer"); put("minimum", 0) }),
             listOf("state", "id", "index")),
-        WorkspaceReferenceOpacity.OP to schema(state + mapOf("reference_id" to string(), "layer_id" to string(), "opacity" to range(0, 1)),
-            listOf("state", "opacity")),
+        WorkspaceReferenceOpacity.OP to oneTarget(schema(state + mapOf("reference_id" to string(), "layer_id" to string(), "opacity" to range(0, 1)),
+            listOf("state", "opacity"))),
         WorkspaceReferenceModes.OP to schema(state + mapOf("reference_id" to string(), "layer_id" to string(),
             "mode" to buildJsonObject { put("type", "string"); put("enum", JsonArray(listOf("background", "layer", "foreground").map(::JsonPrimitive))) }),
-            listOf("state", "mode")),
+            listOf("state", "mode")).let(::oneTarget),
         WorkspaceMaterialEdits.CROP to schema(state + mapOf("id" to string(), "rect" to rect, "canvas_rect" to rect, "name" to string(),
             "new_id" to string(), "folder_id" to nullableString()), listOf("state", "id")),
         WorkspaceMaterialPixels.SET_PIXELS to schema(state + mapOf("id" to string(), "staging" to string()), listOf("state", "id", "staging")),

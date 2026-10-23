@@ -46,6 +46,8 @@ internal object WorkspaceResultSchema {
             branch(constant("tile_collides"), mapOf("layer_ids" to array(handle()))),
             branch(constant("state_conflict"), mapOf("expected_state" to string(), "actual_state" to string())),
             branch(constant("project_conflict"), mapOf("expected_project" to nullable(string()), "actual_project" to nullable(string()))),
+            obj(linkedMapOf("code" to choices(*io.github.psd2live.core.RigRefusal.Code.entries.map { it.json }.toTypedArray()),
+                "message" to string(), "target" to handle(), "edit_index" to integer(0), "edit_operation" to handle()), setOf("code", "message")),
             branch(choices("request_id_reused", "unsaved_changes", "workspace_busy", "permission_denied", "io_error",
                 "invalid_argument", "invalid_state", "operation_failed")),
         ))

@@ -49,7 +49,8 @@ internal object WorkspaceObjectSchemas {
 	private val changed = s.array(s.handle(), 1, Int.MAX_VALUE)
 	private fun result(fields: Map<String, JsonObject>) =
 		s.obj(s.identity + mapOf("applied" to s.constant(false), "changed" to changed) + fields, s.identity.keys + fields.keys)
-	val pasteResult = result(mapOf("ids" to s.dictionary(s.handle())))
+	val pasteResult = s.obj(s.identity + mapOf("applied" to s.constant(false), "changed" to changed, "ids" to s.dictionary(s.handle()),
+		"paths" to s.dictionary(s.handle())), s.identity.keys + "ids")
 	val meshDuplicateResult = result(mapOf("targets" to s.array(s.obj(mapOf("target" to s.handle(), "vertices" to s.integer(3),
 		"outside" to s.integer(0))))))
 	val renameResult = result(mapOf("field" to s.choices("name", "id"), "renamed" to s.array(s.obj(mapOf("target" to s.handle(),
@@ -74,7 +75,7 @@ internal fun registerObjectOperations(registry: WorkspaceOperationRegistry, work
 		}
 	}
 
-	register(WorkspaceObjectEdits.PASTE, "Paste copies of objects, as Cubism's copy and paste: meshes, warp and rotation deformers with their descendants, parts with their contents, and parameters. Copies keep keyforms, blend shapes, masks, paths, vertex groups and the glue between copied meshes, share the original's texture and layer, and reference other copies in place of their originals; a copied parameter is a new axis with the original's range and no keyforms. Swings, simulations and interior effects are not copied. New IDs are fixed when the paste is recorded and returned in ids. One undoable history edit.",
+	register(WorkspaceObjectEdits.PASTE, "Paste copies of objects, as Cubism's copy and paste: meshes, warp and rotation deformers with their descendants, parts with their contents, and parameters. Copies keep keyforms, blend shapes, masks, paths, vertex groups and the glue between copied meshes, share the original's texture and layer, and reference other copies in place of their originals; a copied parameter is a new axis with the original's range and no keyforms. Swings, simulations and interior effects are not copied. New IDs are fixed when the paste is recorded and returned in ids; the deform paths copied with the meshes in paths. One undoable history edit.",
 		schemas.paste, schemas.pasteResult, { "Pasted ${it.getValue("sources").jsonArray.size} objects" })
 	register(WorkspaceObjectEdits.MESH_DUPLICATE, "Duplicate one mesh's topology onto other meshes, as Cubism's mesh duplication: each target takes the source's vertices and triangles where the source has them on the canvas and samples its own texture there; its keyforms, blend shapes, paths, vertex groups and glue migrate as for layer_mesh_rebuild. outside counts copied vertices that fall outside a target's artwork. One undoable history edit.",
 		schemas.meshDuplicate, schemas.meshDuplicateResult, { "Duplicated mesh ${it.getValue("source").jsonPrimitive.content}" })

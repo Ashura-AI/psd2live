@@ -30,18 +30,24 @@ internal object WorkspaceMeshTopology {
      * The vertices [command] leaves selected in the editor - what add_points creates, where knife cuts, what merge
      * joins - by their indices in the mesh it makes. The same pure op the reducer runs, asked of the same mesh.
      */
-    fun newVertices(puppet: org.umamo.runtime.model.PuppetModel, command: JsonObject): List<Int> {
-        val drawable = puppet.drawables.firstOrNull { it.id.raw == command.getValue("id").jsonPrimitive.content } ?: return emptyList()
-        val mesh = drawable.mesh ?: return emptyList()
+    fun newVertices(puppet: org.umamo.runtime.model.PuppetModel, command: JsonObject): List<Int> =
+        io.github.psd2live.core.CanvasTopology.selectedVertices(build(puppet, command)).sorted()
+
+    /** Whether [command] changes its mesh at all; a mesh it does not name answers true so the reducer reports why. */
+    fun changes(puppet: org.umamo.runtime.model.PuppetModel, command: JsonObject): Boolean =
+        puppet.drawables.none { it.id.raw == command.getValue("id").jsonPrimitive.content && it.mesh != null } || build(puppet, command) != null
+
+    private fun build(puppet: org.umamo.runtime.model.PuppetModel, command: JsonObject): org.umamo.edit.TopologyOpResult? {
+        val drawable = puppet.drawables.firstOrNull { it.id.raw == command.getValue("id").jsonPrimitive.content } ?: return null
+        val mesh = drawable.mesh ?: return null
         val edges = command["edges"]?.jsonArray?.mapTo(LinkedHashSet()) { pair ->
             org.umamo.edit.MeshElement.Edge.of(pair.jsonArray[0].jsonPrimitive.int, pair.jsonArray[1].jsonPrimitive.int)
         }.orEmpty()
-        val result = io.github.psd2live.core.CanvasTopology.build(mesh, command.getValue("action").jsonPrimitive.content,
+        return io.github.psd2live.core.CanvasTopology.build(mesh, command.getValue("action").jsonPrimitive.content,
             command["vertices"]?.jsonArray?.mapTo(LinkedHashSet()) { it.jsonPrimitive.int }.orEmpty(),
             io.github.psd2live.core.CanvasTopology.parseAnchors(command["anchors"]?.jsonArray), edges) {
             io.github.psd2live.core.CanvasTopology.shapes(puppet, drawable.id)
         }
-        return io.github.psd2live.core.CanvasTopology.selectedVertices(result).sorted()
     }
 
     fun read(queries: WorkspaceQueries, request: JsonObject): JsonObject {
