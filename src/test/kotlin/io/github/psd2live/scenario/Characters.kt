@@ -48,38 +48,6 @@ internal object Characters {
 	), PipelineConfig(atlasSize = 512, generatePhysics = false, exportMoc3 = false))
 
 	/**
-	 * [figure] with a tail out of the hips. [curled]: a band to the right that turns up and runs back above itself,
-	 * the two strands 4 px apart on the canvas and far apart along the art. Otherwise a fish tail: a stalk to the right
-	 * that forks into an upper and a lower lobe with a notch between them.
-	 */
-	fun tailed(curled: Boolean): WorkspaceDocument = tailed(if (curled) TailShape.CURLED else TailShape.FORKED)
-
-	enum class TailShape { CURLED, FORKED, ARC }
-
-	/** [ARC]: a band 30 px across curving a quarter turn about (240, 170) at radius 100, down from the hips round to the right. */
-	fun tailed(shape: TailShape): WorkspaceDocument {
-		val curled = shape == TailShape.CURLED
-		val tail: (Int, Int) -> Boolean = if (shape == TailShape.ARC) { x, y ->
-			val dx = x + 0.5 - 240.0; val dy = y + 0.5 - 170.0
-			dx >= 0 && dy >= 0 && kotlin.math.hypot(dx, dy) in 85.0..115.0
-		} else if (curled) { x, y ->
-			(x in 240 until 372 && y in 266 until 282) || (x in 356 until 372 && y in 240 until 282) || (x in 280 until 372 && y in 240 until 262)
-		} else { x, y ->
-			val stalk = x in 240 until 330 && y in 263 until 279
-			fun lobe(dy: Int): Boolean {
-				// A band from the stalk's end out to (390, 271 + dy), 14 px across.
-				val ax = 322.0; val ay = 271.0; val bx = 390.0; val by = 271.0 + dy
-				val t = (((x + 0.5 - ax) * (bx - ax) + (y + 0.5 - ay) * (by - ay)) / ((bx - ax) * (bx - ax) + (by - ay) * (by - ay))).coerceIn(0.0, 1.0)
-				return kotlin.math.hypot(x + 0.5 - (ax + (bx - ax) * t), y + 0.5 - (ay + (by - ay) * t)) < 7.0
-			}
-			stalk || lobe(-48) || lobe(48)
-		}
-		// Behind the figure, as a tail is drawn.
-		val parts = listOf(Part("tail", 0, SemanticTag.TAIL, Side.NONE, tail)) + figureParts(1f).map { Part(it.id, it.order + 1, it.tag, it.side, it.inside) }
-		return document(420, 420, parts, PipelineConfig(atlasSize = 512, generatePhysics = false, exportMoc3 = false))
-	}
-
-	/**
 	 * [figure] with an eyebrow on each side under the bangs, the hair reaching over both: what the copies over the bangs
 	 * are made for ([SeeThroughLayers]).
 	 */
