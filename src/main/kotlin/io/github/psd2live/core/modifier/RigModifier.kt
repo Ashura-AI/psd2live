@@ -182,12 +182,23 @@ sealed interface ModifierValue {
  * Where a modifier acts: these [meshes], or every mesh under [part] (its sub-parts included) but the [excluded] ones -
  * a mesh moved into the part joins, one moved out leaves. Each mesh is keyed on its own; the settings are shared.
  */
-data class ModifierTarget(val meshes: List<String> = emptyList(), val part: String? = null, val excluded: Set<String> = emptySet()) {
+data class ModifierTarget(val meshes: List<String> = emptyList(), val part: String? = null, val excluded: Set<String> = emptySet(),
+                          /** Warp deformers: the modifier moves their control points, and so all they carry. */
+                          val warps: List<String> = emptyList()) {
 	init {
 		require(meshes.distinct().size == meshes.size && meshes.all { it.isNotBlank() }) { "A modifier names distinct meshes" }
-		require(if (part == null) meshes.isNotEmpty() && excluded.isEmpty() else meshes.isEmpty() && part.isNotBlank()) {
-			"A modifier names one or more meshes, or one part"
+		require(warps.distinct().size == warps.size && warps.all { it.isNotBlank() }) { "A modifier names distinct warps" }
+		require(if (part == null) (meshes.isNotEmpty() || warps.isNotEmpty()) && excluded.isEmpty() else meshes.isEmpty() && warps.isEmpty() && part.isNotBlank()) {
+			"A modifier names one or more meshes or warps, or one part"
 		}
+	}
+
+	/** What this names on [model] as stack keys: its meshes by ID, its warps as `warp:<id>`. */
+	fun keys(model: PuppetModel?): List<String> = resolve(model) + warps.map { WARP + it }
+
+	companion object {
+		/** The stack key of a warp target. */
+		const val WARP = "warp:"
 	}
 
 	/** The meshes this names on [model]: a part's at the time; none for a part without [model]. */
@@ -207,8 +218,11 @@ data class ModifierTarget(val meshes: List<String> = emptyList(), val part: Stri
 	}
 
 	/** This target without [mesh]; null when nothing would be left. */
-	fun without(mesh: String): ModifierTarget? = if (part != null) copy(excluded = excluded + mesh)
-		else (meshes - mesh).takeIf { it.isNotEmpty() }?.let { ModifierTarget(it) }
+	fun without(mesh: String): ModifierTarget? = when {
+		part != null -> copy(excluded = excluded + mesh)
+		mesh.startsWith(WARP) -> copy(warps = warps - mesh.removePrefix(WARP)).takeIf { it.meshes.isNotEmpty() || it.warps.isNotEmpty() }
+		else -> copy(meshes = meshes - mesh).takeIf { it.meshes.isNotEmpty() || it.warps.isNotEmpty() }
+	}
 }
 
 /** A vertex group limiting the modifier per vertex: its weight, or one minus it when [invert]. */
@@ -285,6 +299,7 @@ class RigModifier(
 			put("name", name)
 			putJsonArray("targets") { target.meshes.forEach { add(it) } }
 			target.part?.let { put("part", it) }
+			if (target.warps.isNotEmpty()) putJsonArray("warps") { target.warps.forEach { add(it) } }
 			if (target.excluded.isNotEmpty()) putJsonArray("excluded") { target.excluded.sorted().forEach { add(it) } }
 			put("enabled", enabled)
 			putJsonObject("settings") { settings.toSortedMap().forEach { (k, v) -> put(k, ModifierValue.toJson(v)) } }
@@ -321,7 +336,8 @@ class RigModifier(
 				o.getValue("kind").jsonPrimitive.content,
 				o.getValue("name").jsonPrimitive.content,
 				ModifierTarget(o.getValue("targets").jsonArray.map { it.jsonPrimitive.content }, o["part"]?.jsonPrimitive?.content,
-					o["excluded"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty()),
+					o["excluded"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty(),
+					o["warps"]?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()),
 				o.getValue("enabled").jsonPrimitive.boolean,
 				o.getValue("settings").jsonObject.mapValues { ModifierValue.fromJson(it.value) },
 				o["created"]?.jsonArray?.map { parameter(it.jsonObject) }.orEmpty(),

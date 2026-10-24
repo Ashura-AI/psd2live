@@ -58,7 +58,7 @@ internal object WorkspaceModifierSchemas {
 			put("id", describe(s.handle(), "The modifier to change; a new one when absent or unknown (an unknown ID becomes the new one's)."))
 			put("kind", describe(s.choices(*kinds), "Required for a new modifier."))
 			put("name", s.string())
-			put("targets", describe(s.array(s.handle(), 1, 256), "Mesh IDs (or mesh:<ID>); the settings are shared, each mesh is keyed on its own."))
+			put("targets", describe(s.array(s.handle(), 1, 256), "Mesh IDs (or mesh:<ID>), and warp:<ID> for a warp deformer, whose control points move and carry everything under it; the settings are shared, each target is keyed on its own."))
 			put("part", describe(s.handle(), "Instead of targets: every mesh under this part (or part:<ID>), sub-parts included; a mesh moved in or out joins or leaves."))
 			put("excluded", describe(s.array(s.handle(), 0, 256), "With part: meshes left out."))
 			put("enabled", s.boolean())
@@ -141,7 +141,7 @@ internal fun registerModifierCommands(catalog: WorkspaceCommands, workspace: Wor
 			"(keys sets single keys, as the field's key button does); it is sampled into ordinary mesh keyforms on those parameters after the other " +
 			"generators, and modifiers on one mesh chain in stack order. Read them with workspace_inspect scope=modifiers.",
 		ModifierAuthoring.DELETE to "Delete a modifier; parameters it made that other content uses stay as ordinary parameters.",
-		ModifierAuthoring.MOVE to "Move a modifier in the stack order: modifiers on one mesh act in this order, each on the shape the earlier ones made.",
+		ModifierAuthoring.MOVE to "Move a stack entry - a modifier, or a swing, simulation or interior effect by its node ID (swing:<id>, simulation:<id>, interiorEffect:<id>) - in the order the stack runs: each entry acts on what the ones before it made. workspace_inspect scope=modifiers lists the order as stack. A simulation whose earlier entries change reports its bake stale.",
 		ModifierAuthoring.APPLY to "Apply a modifier: write what it does into the journal as ordinary keyforms (mode=keyforms) or into the rest shape at a pose (mode=rest), and remove it; with mesh, for that mesh alone. The rig looks as before.",
 		ModifierAuthoring.SPLIT to "Give one of a modifier's meshes a copy of its own, which then is adjusted apart; it leaves the original.",
 		ModifierAuthoring.COPY to "Put a copy of a modifier on other meshes, right after it in the stack; the copy is independent and keyed on the same parameters.",

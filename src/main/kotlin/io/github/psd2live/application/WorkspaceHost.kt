@@ -1329,6 +1329,7 @@ internal class WorkspaceHost<V>(
 
     override fun listInteriorEffects() = captureQueries().listInteriorEffects()
     override fun listModifiers() = captureQueries().listModifiers()
+    override fun currentRigEdits() = captureQueries().currentRigEdits()
     override fun modifierIssues() = captureQueries().modifierIssues()
     override fun listSwings() = captureQueries().listSwings()
     override fun hitAreas() = captureQueries().hitAreas()

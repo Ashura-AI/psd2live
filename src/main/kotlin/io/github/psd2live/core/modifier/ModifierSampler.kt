@@ -4,6 +4,7 @@ import io.github.psd2live.core.DocumentGenerators
 import org.umamo.edit.withParameterCreated
 import org.umamo.edit.withParameterKeys
 import org.umamo.render.eval.DrawableSpaceMapping
+import org.umamo.render.eval.buildDeformerWorlds
 import org.umamo.render.eval.drawableLocalPosed
 import org.umamo.render.eval.drawableSpaceMapping
 import org.umamo.runtime.eval.meshGridDefaultDeltas
@@ -54,7 +55,7 @@ object ModifierSampler {
 	/** Each mesh's stack: the enabled modifiers that name it on [model] (a part's meshes need it), in document order. */
 	fun stacks(modifiers: List<RigModifier>, model: PuppetModel? = null): Map<String, List<RigModifier>> {
 		val stacks = LinkedHashMap<String, MutableList<RigModifier>>()
-		for (modifier in modifiers) if (modifier.enabled) for (mesh in modifier.target.resolve(model)) stacks.getOrPut(mesh) { ArrayList() } += modifier
+		for (modifier in modifiers) if (modifier.enabled) for (key in modifier.target.keys(model)) stacks.getOrPut(key) { ArrayList() } += modifier
 		return stacks
 	}
 
@@ -64,7 +65,10 @@ object ModifierSampler {
 	 */
 	fun claims(modifiers: List<RigModifier>, model: PuppetModel? = null): List<String> =
 		modifiers.flatMap { m -> m.created.map { "parameter:${it.id.raw}" } } +
-			stacks(modifiers, model).flatMap { (mesh, stack) -> stack.flatMap { it.drivers }.distinct().map { DocumentGenerators.keyform("mesh", mesh, it) } }
+			stacks(modifiers, model).flatMap { (key, stack) ->
+				val (kind, id) = if (key.startsWith(ModifierTarget.WARP)) "warp" to key.removePrefix(ModifierTarget.WARP) else "mesh" to key
+				stack.flatMap { it.drivers }.distinct().map { DocumentGenerators.keyform(kind, id, it) }
+			}
 
 	fun apply(model: PuppetModel, modifiers: List<RigModifier>): PuppetModel = run(model, modifiers, write = true).model
 
@@ -160,13 +164,55 @@ object ModifierSampler {
 	 */
 	fun offsets(model: PuppetModel, mesh: String, modifiers: List<RigModifier>, issues: MutableList<Issue> = ArrayList()):
 		Pair<List<ModifierValue.Keyed.Axis>, ModifierValue>? {
+		if (mesh.startsWith(ModifierTarget.WARP)) return warpOffsets(model, mesh.removePrefix(ModifierTarget.WARP), modifiers, issues)
 		val (stack, mapping) = stack(model, mesh, modifiers, issues) ?: return null
 		val drawable = model.drawables.first { it.id.raw == mesh }
 		val local = local(model, drawable)
 		val own = drawable.geometryGrid?.axes.orEmpty()
-		// The mesh as its keyforms pose it, in its parent space and on the canvas at the default pose.
+		// The mesh as its keyforms pose it, in its parent space.
 		fun localAt(pose: Map<String, Float>): FloatArray =
 			if (own.isEmpty()) local else drawableLocalPosed(model, pose.mapKeys { ParameterId(it.key) }, drawable.id) ?: local
+		return sampled(model, mesh, stack, mapping, own, local, ::localAt, issues)
+	}
+
+	/**
+	 * What [modifiers] add to warp [id]'s control points, as [offsets] for a mesh: the warp's lattice as its own
+	 * keyforms pose it is the shape the stack takes, through its parents at the default pose, and the offsets go onto
+	 * its control points. A warp has no vertex groups, so a modifier limited to one is left out of it.
+	 */
+	private fun warpOffsets(model: PuppetModel, id: String, modifiers: List<RigModifier>, issues: MutableList<Issue>):
+		Pair<List<ModifierValue.Keyed.Axis>, ModifierValue>? {
+		val key = ModifierTarget.WARP + id
+		val warp = model.deformers.firstOrNull { it.id.raw == id } as? Deformer.Warp
+		if (warp?.geometryGrid == null) { modifiers.forEach { issues += Issue(IssueKind.TARGET_MISSING, it.id, key) }; return null }
+		val parameters = model.parameters.associateBy { it.id.raw }
+		val kept = modifiers.filter { m ->
+			val missing = m.drivers.filter { it !in parameters }
+			when {
+				missing.isNotEmpty() -> { issues += Issue(IssueKind.PARAMETER_MISSING, m.id, key, missing.joinToString()); false }
+				m.weights != null -> { issues += Issue(IssueKind.VERTEX_GROUP_MISSING, m.id, key, m.weights.group); false }
+				else -> true
+			}
+		}
+		if (kept.isEmpty()) return null
+		val defaults = model.parameters.associate { it.id to it.default }
+		val worlds = buildDeformerWorlds(model.deformers, { defaults[it] ?: 0f }, { defaults[it] ?: 0f })
+		val parent = warp.parent?.let { worlds[it] ?: run { kept.forEach { issues += Issue(IssueKind.UNMAPPABLE, it.id, key) }; return null } }
+		val mapping = DrawableSpaceMapping(parent)
+		fun localAt(pose: Map<String, Float>) = io.github.psd2live.core.RigGeometryTools.geometry(model, "warp", id, pose).points
+		val local = localAt(emptyMap())
+		val world = mapping.localToWorld(local)
+		val stack = Stack(key, kept, FloatArray(world.size) { if (it % 2 == 0) world[it] else -world[it] }, emptyMap(), model.parameters.associate { it.id.raw to it.default })
+		return sampled(model, key, stack, mapping, warp.geometryGrid!!.axes, local, ::localAt, issues)
+	}
+
+	/**
+	 * [stack] sampled on its driving parameters and the target's own keyform [own] axes: at each combination the
+	 * target's shape there ([localAt], in its parent space; [local] at the default pose) is taken onto the canvas
+	 * through [mapping], deformed and taken back, and the difference is the offset.
+	 */
+	private fun sampled(model: PuppetModel, key: String, stack: Stack, mapping: DrawableSpaceMapping, own: List<KeyformAxis>, local: FloatArray,
+						localAt: (Map<String, Float>) -> FloatArray, issues: MutableList<Issue>): Pair<List<ModifierValue.Keyed.Axis>, ModifierValue>? {
 		fun canvasOf(l: FloatArray) = mapping.localToWorld(l).let { w -> FloatArray(w.size) { if (it % 2 == 0) w[it] else -w[it] } }
 		val shape: (Map<String, Float>) -> FloatArray = { pose -> stack.canvasFrom(canvasOf(localAt(pose)), pose) }
 		val drivers = stack.modifiers.flatMap { it.drivers }.distinct()
@@ -175,15 +221,15 @@ object ModifierSampler {
 		val maxKeys = stack.modifiers.minOf { it.sampling.maxKeys }
 		val keys = parameters.map { p -> keys(p, stack.modifiers, tolerance, maxKeys, shape) }
 		val worst = keys.maxOfOrNull { it.second } ?: 0f
-		if (worst > tolerance) stack.modifiers.forEach { issues += Issue(IssueKind.TOLERANCE_EXCEEDED, it.id, mesh, error = worst) }
-		// The driving parameters with their sampled keys, then the mesh's own axes; a parameter that is both takes both's keys.
+		if (worst > tolerance) stack.modifiers.forEach { issues += Issue(IssueKind.TOLERANCE_EXCEEDED, it.id, key, error = worst) }
+		// The driving parameters with their sampled keys, then the target's own axes; a parameter that is both takes both's keys.
 		val axes = parameters.mapIndexed { i, p ->
 			val keyed = own.firstOrNull { it.parameterId == p.id }?.keys?.toList().orEmpty()
 			ModifierValue.Keyed.Axis(p.id.raw, merged(keys[i].first.toList() + keyed))
 		} + own.filter { a -> a.parameterId.raw !in drivers }.map { ModifierValue.Keyed.Axis(it.parameterId.raw, it.keys.copyOf()) }
 		val combinations = axes.fold(1L) { n, a -> n * a.keys.size }
 		if (combinations > MAX_CELLS) {
-			stack.modifiers.forEach { issues += Issue(IssueKind.TOO_MANY_KEYFORMS, it.id, mesh, "$combinations") }
+			stack.modifiers.forEach { issues += Issue(IssueKind.TOO_MANY_KEYFORMS, it.id, key, "$combinations") }
 			return null
 		}
 		val offsets = ArrayList<FloatArray>(combinations.toInt())
@@ -229,6 +275,19 @@ object ModifierSampler {
 		for ((mesh, stack) in stacks(modifiers, current)) {
 			val (axes, table) = offsets(current, mesh, stack, issues) ?: continue
 			if (!write) continue
+			if (mesh.startsWith(ModifierTarget.WARP)) {
+				val id = mesh.removePrefix(ModifierTarget.WARP)
+				val warp = current.deformers.first { it.id.raw == id } as Deformer.Warp
+				val grid = withWarpOffsets(warp.geometryGrid!!, axes, table)
+				if (grid == null) { stack.forEach { issues += Issue(IssueKind.TOO_MANY_KEYFORMS, it.id, mesh, "sparse") }; continue }
+				current = current.copy(deformers = current.deformers.map { if (it.id == warp.id) warp.copy(geometryGrid = grid) else it })
+				for (axis in axes) {
+					val pid = ParameterId(axis.parameter)
+					val authored = current.parameters.first { it.id == pid }.keys ?: continue
+					current = current.withParameterKeys(pid, (authored + axis.keys.toList()).distinct().sorted())
+				}
+				continue
+			}
 			val drawable = current.drawables.first { it.id.raw == mesh }
 			val grid = withOffsets(drawable.geometryGrid, drawable.mesh!!.positions.size, axes, table)
 			if (grid == null) { stack.forEach { issues += Issue(IssueKind.TOO_MANY_KEYFORMS, it.id, mesh, "sparse") }; continue }
@@ -253,7 +312,8 @@ object ModifierSampler {
 		val raw = parameter.id.raw
 		val authored = modifiers.flatMap { m -> m.settings.values.filterIsInstance<ModifierValue.Keyed>() }
 			.flatMap { v -> v.axes.filter { it.parameter == raw }.flatMap { it.keys.toList() } }
-		val keys = merged((authored + parameter.default).map { it.coerceIn(parameter.min, parameter.max) }).toMutableList()
+		// The axis spans the whole range: past its end keys a keyform axis hides what it carries, as Cubism's does.
+		val keys = merged((authored + parameter.default + parameter.min + parameter.max).map { it.coerceIn(parameter.min, parameter.max) }).toMutableList()
 		if (keys.size < 2) return keys.toFloatArray() to 0f
 		fun at(v: Float) = shape(mapOf(raw to v))
 		val shapes = keys.map(::at).toMutableList()
@@ -308,10 +368,32 @@ object ModifierSampler {
 	 * the kind and settings stay in the project.
 	 */
 	fun losses(modifiers: List<RigModifier>, model: PuppetModel): List<io.github.psd2live.format.compile.LossEntry> = modifiers.filter { it.enabled }.flatMap { m ->
-		m.target.resolve(model).map { mesh ->
+		m.target.keys(model).map { mesh ->
 			io.github.psd2live.format.compile.LossEntry(mesh, io.github.psd2live.format.compile.Feature.PARAMETER_GRID,
 				io.github.psd2live.format.compile.Handling.BAKED, note = "Modifier ${m.id} (${m.kind}) is written as keyforms")
 		}
+	}
+
+	/** [grid], a warp's keyforms, with [table]'s offsets added to its control points as [withOffsets] adds a mesh's. */
+	internal fun withWarpOffsets(grid: KeyformGrid<WarpLatticeForm>, axes: List<ModifierValue.Keyed.Axis>, table: ModifierValue): KeyformGrid<WarpLatticeForm>? {
+		var next = grid
+		if (!next.isDense) return null
+		for (axis in axes) {
+			val id = ParameterId(axis.parameter)
+			if (next.axisIndexOf(id) < 0) {
+				val cells = ArrayList<KeyformCell<WarpLatticeForm>>(next.cells.size * axis.keys.size)
+				for (k in axis.keys.indices) for (cell in next.cells) cells += KeyformCell(cell.coordinate + k, cell.form)
+				next = KeyformGrid(next.axes + KeyformAxis(id, axis.keys.copyOf()), cells)
+			} else for (key in axis.keys) next = next.withKeyInserted(id, key, org.umamo.runtime.keyform.WarpLatticeInterpolator)
+			if (next.cells.size > MAX_CELLS) return null
+		}
+		val indices = axes.map { next.axisIndexOf(ParameterId(it.parameter)) }
+		return KeyformGrid(next.axes, next.cells.map { cell ->
+			val pose = axes.withIndex().associate { (i, a) -> a.parameter to next.axes[indices[i]].keys[cell.coordinate[indices[i]]] }
+			val add = table.at { pose.getValue(it) }
+			val base = cell.form.controlPoints
+			KeyformCell(cell.coordinate, WarpLatticeForm(FloatArray(base.size) { base[it] + add[it] }))
+		})
 	}
 
 	/** The largest vertex distance between two interleaved shapes. */

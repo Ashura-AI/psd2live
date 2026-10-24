@@ -131,12 +131,13 @@ internal fun SimulationPanelView(
 	var open by remember { mutableStateOf(SECTIONS - "groups" - "compare") }
 	val listOpen = "bodies" in open
 	// Staleness hashes the targets' keyforms: once per rig and edit, not per frame.
-	val bakeStates = remember(puppet, sims) {
+	val overlay = state.rigEdits
+	val bakeStates = remember(puppet, sims, overlay) {
 		sims.associate { sim ->
 			sim.id to when {
 				!sim.enabled -> BakeState.DISABLED
 				sim.bake == null -> BakeState.UNBAKED
-				puppet != null && SimBake.stale(puppet, sim) -> BakeState.STALE
+				puppet != null && SimBake.stale(puppet, sim, overlay) -> BakeState.STALE
 				else -> BakeState.BAKED
 			}
 		}

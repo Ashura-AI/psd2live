@@ -57,7 +57,7 @@ internal object WorkspaceInspectionResultSchemas {
         scoped("physics", mapOf("fps" to s.integer(), "groups" to s.array(WorkspacePhysicsResultTypes.group))),
         scoped("swings", mapOf("swings" to s.array(swing))),
         scoped("interiors", mapOf("effects" to s.array(WorkspaceInteriorSchemas.inspected))),
-        scoped("modifiers", mapOf("modifiers" to s.array(WorkspaceModifierSchemas.inspected))),
+        scoped("modifiers", mapOf("modifiers" to s.array(WorkspaceModifierSchemas.inspected), "stack" to s.array(s.handle()))),
         scoped("simulations", mapOf("simulations" to s.array(WorkspaceSimulationResultSchemas.inspectedSimulation),
             "glues" to s.array(s.obj(mapOf("key" to s.handle(), "pairs" to s.integer(0)))))),
         scoped("settings", mapOf("settings" to WorkspaceSettingsResultTypes.settings)),

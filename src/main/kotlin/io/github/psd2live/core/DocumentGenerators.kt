@@ -176,44 +176,48 @@ internal object DocumentGenerators {
 	 * simulations - in the graph's order. Each is a pure function of its settings and the rig before it.
 	 */
 	fun generate(model: PuppetModel, overlay: RigEditOverlay, graph: GeneratorGraph = graph(overlay)): PuppetModel {
-		val swings = overlay.swingEdits.associateBy(::swingId)
-		val sims = overlay.simEdits.associateBy(::simulationId)
 		var current = model
-		for (node in graph.order) {
-			if (node.id == SKIN) {
-				val spec = overlay.skeleton ?: continue
+		// The skeleton's skin of the meshes the journal placed comes first; the stack runs after it, in its own order.
+		graph.order.firstOrNull { it.id == SKIN }?.let { node ->
+			val spec = overlay.skeleton
+			if (spec != null) {
 				val placed = SkeletonCanvasSkin.placed(overlay)
 				current = GeneratorReuse.run(node.id, spec to placed, current, SkeletonCanvasSkin.reads(current, placed)) {
 					RigBuildProfile.stage("skeleton: canvas skin") { SkeletonCanvasSkin.apply(it, spec, placed) }
 				}
 			}
-			swings[node.id]?.let { swing ->
-				current = GeneratorReuse.run(node.id, swing, current, swingReads(current, swing)) { SwingGenerator.apply(it, listOf(swing)) }
-			}
-			overlay.interiorEffects
-				.firstOrNull { node.id == "interiorEffect:" + it.id }
-				?.let { effect ->
-					val drawable = current.drawables.singleOrNull { it.id.raw == effect.target }
-					val reads =
-						GeneratorReuse.Reads(
-							current.parameters,
-							current.parameterTree,
-							listOf(current.sources, current.atlas),
-							emptySet(),
-							emptyList(),
-							setOf(effect.target),
-							listOf(drawable),
-						)
-					current = GeneratorReuse.run(node.id, effect, current, reads) { effect.apply(it) }
-				}
-			sims[node.id]?.let { sim ->
-				current = GeneratorReuse.run(node.id, sim, current, simulationReads(current, sim)) { SimGenerator.apply(it, listOf(sim)) }
-			}
-			if (node.id == io.github.psd2live.core.modifier.ModifierSampler.NODE)
-				current = GeneratorReuse.run(node.id, overlay.modifiers, current, modifierReads(current, overlay.modifiers)) {
-					io.github.psd2live.core.modifier.ModifierSampler.apply(it, overlay.modifiers)
-				}
 		}
+		val nodes = graph.order.mapTo(HashSet()) { it.id }
+		// Consecutive modifiers sample together; each run reads what the entries before it made.
+		val run = ArrayList<io.github.psd2live.core.modifier.RigModifier>()
+		var runs = 0
+		fun flush() {
+			if (run.isEmpty()) return
+			val modifiers = run.toList()
+			run.clear()
+			if (io.github.psd2live.core.modifier.ModifierSampler.NODE !in nodes) return
+			current = GeneratorReuse.run("${io.github.psd2live.core.modifier.ModifierSampler.NODE}#${runs++}", modifiers, current, modifierReads(current, modifiers)) {
+				io.github.psd2live.core.modifier.ModifierSampler.apply(it, modifiers)
+			}
+		}
+		for (entry in io.github.psd2live.core.modifier.ModifierStack.entries(overlay)) {
+			if (entry is io.github.psd2live.core.modifier.ModifierStack.Entry.Modifier) { run += entry.modifier; continue }
+			flush()
+			if (entry.id !in nodes) continue
+			when (entry) {
+				is io.github.psd2live.core.modifier.ModifierStack.Entry.Swing -> { val swing = entry.swing
+					current = GeneratorReuse.run(entry.id, swing, current, swingReads(current, swing)) { SwingGenerator.apply(it, listOf(swing)) } }
+				is io.github.psd2live.core.modifier.ModifierStack.Entry.Simulation -> { val sim = entry.simulation
+					current = GeneratorReuse.run(entry.id, sim, current, simulationReads(current, sim)) { SimGenerator.apply(it, listOf(sim)) } }
+				is io.github.psd2live.core.modifier.ModifierStack.Entry.Interior -> { val effect = entry.effect
+					val drawable = current.drawables.singleOrNull { it.id.raw == effect.target }
+					val reads = GeneratorReuse.Reads(current.parameters, current.parameterTree, listOf(current.sources, current.atlas), emptySet(), emptyList(),
+						setOf(effect.target), listOf(drawable))
+					current = GeneratorReuse.run(entry.id, effect, current, reads) { effect.apply(it) } }
+				else -> Unit
+			}
+		}
+		flush()
 		return current
 	}
 
@@ -259,6 +263,11 @@ internal object DocumentGenerators {
 			var id: String? = drawables[mesh]?.parentDeformerId?.raw
 			while (id != null && id !in chain) { val deformer = byId[id]; chain[id] = deformer; id = deformer?.parent?.raw }
 		}
+		// A warp target is written itself, and read with its parents.
+		for (warp in modifiers.filter { it.enabled }.flatMap { it.target.warps }) {
+			var id: String? = warp
+			while (id != null && id !in chain) { val deformer = byId[id]; chain[id] = deformer; id = deformer?.parent?.raw }
+		}
 		return GeneratorReuse.Reads(model.parameters, model.parameterTree, listOf(model.vertexGroups) + parts, chain.keys, chain.values.toList(), meshes, meshes.map { drawables[it] })
 	}
 
@@ -273,6 +282,8 @@ internal object DocumentGenerators {
 			add("document:modifiers")
 			if (before.modifiers.isEmpty() != after.modifiers.isEmpty()) add("document:generators")
 		}
+		// Reordered, every entry reads what now runs before it.
+		if (before.stackOrder != after.stackOrder) { add("document:modifiers"); add("document:generators") }
 		val journal = { overlay: RigEditOverlay -> overlay.authoringJournal.filterNot { GeneratedOverrides.isOverride(it) } }
 		if (journal(before) != journal(after) || before.parameterEdits != after.parameterEdits || before.structureEdits != after.structureEdits ||
 			before.keyformSetEdits != after.keyformSetEdits || before.keyformCopyEdits != after.keyformCopyEdits ||

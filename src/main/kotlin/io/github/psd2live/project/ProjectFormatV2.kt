@@ -55,7 +55,7 @@ internal object ProjectFormatV2 {
 	const val NODE_SCHEMA_SIDECARS = 5
 	/** A rig node holding hit areas (`rigEdits.hitAreas`), which older readers would drop. */
 	const val NODE_SCHEMA_HIT_AREAS = 5
-	/** A rig node holding modifiers (`rigEdits.modifiers`), which older readers would drop. */
+	/** A rig node holding modifiers or a stack order (`rigEdits.modifiers`, `rigEdits.stackOrder`), which older readers would drop. */
 	const val NODE_SCHEMA_MODIFIERS = 6
 	/** Schema of a revision index whose journal names no payload node. */
 	const val REVISION_SCHEMA = 1
@@ -306,7 +306,7 @@ internal object ProjectFormatV2 {
 			else -> false
 		}
 		if (transformed) return NODE_SCHEMA_TRANSFORMS
-		if (kind == "rig" && (value["rigEdits"] as? JsonObject)?.containsKey("modifiers") == true) return NODE_SCHEMA_MODIFIERS
+		if (kind == "rig" && (value["rigEdits"] as? JsonObject)?.let { "modifiers" in it || "stackOrder" in it } == true) return NODE_SCHEMA_MODIFIERS
 		if (kind == "rig" && (value["rigEdits"] as? JsonObject)?.containsKey("hitAreas") == true) return NODE_SCHEMA_HIT_AREAS
 		// Layout nodes hold their state under one key ([layoutParts]), as source parts do.
 		val layoutValue = value[kind] as? JsonObject

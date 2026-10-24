@@ -62,11 +62,15 @@ internal object ModifierAuthoring {
 		val target = when {
 			request["part"] != null -> ModifierTarget(part = request.text("part").removePrefix("part:"),
 				excluded = request["excluded"]?.jsonArray?.map { mesh(it.jsonPrimitive.content) }?.toSet().orEmpty())
-			request["targets"] != null -> ModifierTarget(request.getValue("targets").jsonArray.map { mesh(it.jsonPrimitive.content) })
+			request["targets"] != null -> request.getValue("targets").jsonArray.map { it.jsonPrimitive.content }.let { all ->
+				// `warp:<id>` names a warp deformer; anything else a mesh.
+				ModifierTarget(all.filterNot { it.startsWith(ModifierTarget.WARP) }.map(::mesh), warps = all.filter { it.startsWith(ModifierTarget.WARP) }.map { it.removePrefix(ModifierTarget.WARP) })
+			}
 			else -> old?.target ?: error("targets or part is required for a new modifier")
 		}
 		target.part?.let { part -> requireNotNull(authored.parts.firstOrNull { it.id.raw == part }) { "Not a part: $part" } }
 		for (mesh in target.meshes) requireNotNull(authored.drawables.firstOrNull { it.id.raw == mesh }?.mesh) { "Not a mesh: $mesh" }
+		for (warp in target.warps) require(authored.deformers.firstOrNull { it.id.raw == warp } is org.umamo.runtime.model.Deformer.Warp) { "Not a warp: $warp" }
 		val targets = target.resolve(authored)
 		val created = (old?.created.orEmpty() + request["parameters"]?.jsonArray.orEmpty().map { e ->
 			val o = e.jsonObject
@@ -201,17 +205,29 @@ internal object ModifierAuthoring {
 		}
 	}
 
+	/**
+	 * Moves stack entry `id` - a modifier, or a swing's, simulation's or interior effect's node (`swing:<id>`…) - before
+	 * entry `before`, or `to` first or last. Moving a generator, or moving among them, writes the whole order
+	 * ([ModifierStack.ordered]); moving modifiers among themselves in a stack that was never ordered only reorders them.
+	 */
 	fun move(overlay: RigEditOverlay, request: JsonObject): RigEditOverlay {
 		val id = request.text("id")
-		val modifier = requireNotNull(overlay.modifiers.firstOrNull { it.id == id }) { "Modifier not found: $id" }
-		val rest = overlay.modifiers.filterNot { it.id == id }
+		val ids = ModifierStack.entries(overlay).map { it.id }
+		require(id in ids) { "Stack entry not found: $id" }
+		val rest = ids - id
 		val index = when {
-			request["before"] != null -> rest.indexOfFirst { it.id == request.text("before") }.also { require(it >= 0) { "Modifier not found: ${request.text("before")}" } }
+			request["before"] != null -> rest.indexOf(request.text("before")).also { require(it >= 0) { "Stack entry not found: ${request.text("before")}" } }
 			request["to"]?.jsonPrimitive?.contentOrNull == "first" -> 0
 			request["to"]?.jsonPrimitive?.contentOrNull == "last" -> rest.size
-			else -> error("Give before (a modifier ID) or to (first or last)")
+			else -> error("Give before (a stack entry ID) or to (first or last)")
 		}
-		return overlay.copy(modifiers = rest.subList(0, index) + modifier + rest.subList(index, rest.size))
+		val order = rest.subList(0, index) + id + rest.subList(index, rest.size)
+		val modifiers = overlay.modifiers.associateBy { it.id }
+		// Never ordered, and the generators still first as they always ran: the modifiers' own order is the stack's.
+		val generators = ids.filterNot { it in modifiers }
+		if (overlay.stackOrder.isEmpty() && order.take(generators.size) == generators)
+			return overlay.copy(modifiers = order.mapNotNull { modifiers[it] })
+		return ModifierStack.ordered(overlay, order)
 	}
 
 	/**
@@ -229,8 +245,8 @@ internal object ModifierAuthoring {
 		val mode = request["mode"]?.jsonPrimitive?.contentOrNull ?: "keyforms"
 		require(mode == "keyforms" || mode == "rest") { "mode is keyforms or rest" }
 		val authored = preview.authoredPuppet(overlay)
-		val all = modifier.target.resolve(authored)
-		val only = request["mesh"]?.jsonPrimitive?.contentOrNull?.let(::mesh)
+		val all = modifier.target.keys(authored)
+		val only = request["mesh"]?.jsonPrimitive?.contentOrNull?.let { if (it.startsWith(ModifierTarget.WARP)) it else mesh(it) }
 		require(only == null || only in all) { "$only is not one of ${modifier.id}'s meshes" }
 		val meshes = only?.let(::listOf) ?: all
 		// Applying to one mesh leaves the modifier on the others; applying to its last mesh removes it.
@@ -251,6 +267,7 @@ internal object ModifierAuthoring {
 			modifier.created.filter { it.id !in known }.takeIf { it.isNotEmpty() }?.let { commands += creation(it) }
 			for (mesh in meshes) {
 				val (sampled, offsets) = ModifierSampler.offsets(before, mesh, listOf(modifier)) ?: continue
+				if (mesh.startsWith(ModifierTarget.WARP)) { commands += warpKeys(overlay, authored, before, mesh, modifier, sampled, offsets); continue }
 				val drawable = authored.drawables.first { it.id.raw == mesh }
 				// The axes other generators add are not the journal's: the offsets are taken at their defaults.
 				val keep = drawable.geometryGrid?.axes.orEmpty().map { it.parameterId.raw }.toSet() + modifier.drivers
@@ -276,6 +293,7 @@ internal object ModifierAuthoring {
 			// Nothing keyed, or the shape at one pose: the rest shape moves, and every keyform with it.
 			val pose = request["pose"]?.jsonObject.orEmpty().mapValues { it.value.jsonPrimitive.float }
 			for (mesh in meshes) {
+				if (mesh.startsWith(ModifierTarget.WARP)) { warpRest(authored, before, mesh, modifier, pose)?.let { commands += it }; continue }
 				val (stack, mapping) = ModifierSampler.stack(before, mesh, listOf(modifier)) ?: continue
 				val local = ModifierSampler.local(before, before.drawables.first { it.id.raw == mesh })
 				val canvas = stack.canvasAt(pose)
@@ -290,7 +308,7 @@ internal object ModifierAuthoring {
 		}
 		val journal = overlay.authoringJournal.filterNot { entry ->
 			keyed && GeneratedOverrides.isOverride(entry) && entry["generator"]?.jsonPrimitive?.contentOrNull == ModifierSampler.NODE &&
-				meshes.any { entry["target"]?.jsonPrimitive?.contentOrNull == "mesh:$it" }
+				meshes.any { entry["target"]?.jsonPrimitive?.contentOrNull == if (it.startsWith(ModifierTarget.WARP)) it else "mesh:$it" }
 		} + commands
 		val next = without.copy(authoringJournal = journal)
 		val removed = dropStaleOverrides(next, preview.authoredPuppet(next))
@@ -305,17 +323,21 @@ internal object ModifierAuthoring {
 	/** [overlay] with [copy] right after [after]. */
 	private fun inserted(overlay: RigEditOverlay, after: String, copy: RigModifier): RigEditOverlay {
 		val index = overlay.modifiers.indexOfFirst { it.id == after }
-		return overlay.copy(modifiers = overlay.modifiers.subList(0, index + 1) + copy + overlay.modifiers.subList(index + 1, overlay.modifiers.size))
+		val next = overlay.copy(modifiers = overlay.modifiers.subList(0, index + 1) + copy + overlay.modifiers.subList(index + 1, overlay.modifiers.size))
+		if (overlay.stackOrder.isEmpty()) return next
+		val order = ModifierStack.entries(overlay).map { it.id }.toMutableList().also { it.add(it.indexOf(after) + 1, copy.id) }
+		return ModifierStack.ordered(next, order)
 	}
 
 	/** Gives `mesh` its own copy of modifier `id`, which leaves it: from then on the two are adjusted apart. */
 	fun split(preview: RigPreviewModel, overlay: RigEditOverlay, request: JsonObject): RigEditOverlay {
 		val modifier = requireNotNull(overlay.modifiers.firstOrNull { it.id == request.text("id") }) { "Modifier not found: ${request.text("id")}" }
 		val authored = preview.authoredPuppet(overlay)
-		val mesh = mesh(request.text("mesh"))
-		require(mesh in modifier.target.resolve(authored)) { "$mesh is not one of ${modifier.id}'s meshes" }
+		val mesh = request.text("mesh").let { if (it.startsWith(ModifierTarget.WARP)) it else mesh(it) }
+		require(mesh in modifier.target.keys(authored)) { "$mesh is not one of ${modifier.id}'s targets" }
 		val rest = requireNotNull(modifier.target.without(mesh)) { "${modifier.id} acts on $mesh alone" }
-		val copy = copyOf(overlay, modifier, ModifierTarget(listOf(mesh)), request["new_id"]?.jsonPrimitive?.contentOrNull)
+		val own = if (mesh.startsWith(ModifierTarget.WARP)) ModifierTarget(warps = listOf(mesh.removePrefix(ModifierTarget.WARP))) else ModifierTarget(listOf(mesh))
+		val copy = copyOf(overlay, modifier, own, request["new_id"]?.jsonPrimitive?.contentOrNull)
 		val next = inserted(overlay.copy(modifiers = overlay.modifiers.map { if (it.id == modifier.id) modifier.copy(target = rest) else it }), modifier.id, copy)
 		requireOwnership(next, authored)
 		return next
@@ -330,6 +352,57 @@ internal object ModifierAuthoring {
 		val next = inserted(overlay, modifier.id, copyOf(overlay, modifier, ModifierTarget(targets), request["new_id"]?.jsonPrimitive?.contentOrNull))
 		requireOwnership(next, authored)
 		return next
+	}
+
+	/**
+	 * The journal entries keying warp [key] with what [modifier] adds there ([sampled] axes, [offsets]): the keys of its
+	 * driving parameters, then every cell's control points, the user's edits of its cells folded in.
+	 */
+	private fun warpKeys(overlay: RigEditOverlay, authored: PuppetModel, before: PuppetModel, key: String, modifier: RigModifier,
+						 sampled: List<ModifierValue.Keyed.Axis>, offsets: ModifierValue): List<JsonObject> {
+		val id = key.removePrefix(ModifierTarget.WARP)
+		val warp = authored.deformers.first { it.id.raw == id } as org.umamo.runtime.model.Deformer.Warp
+		val keep = warp.geometryGrid?.axes.orEmpty().map { it.parameterId.raw }.toSet() + modifier.drivers
+		val (axes, table) = ModifierSampler.reduced(sampled, offsets, keep, before.parameters.associate { it.id.raw to it.default })
+		val grid = requireNotNull(warp.geometryGrid?.let { ModifierSampler.withWarpOffsets(it, axes, table) }) { "$key keyforms cannot take the modifier's keys" }
+		fun at(cell: KeyformCell<WarpLatticeForm>) = grid.axes.withIndex().associate { (a, axis) -> axis.parameterId.raw to axis.keys[cell.coordinate[a]] }
+		return buildList {
+			for (axis in grid.axes) if (axis.parameterId.raw in modifier.drivers) add(buildJsonObject {
+				put("op", "parameter_keys"); put("target", key); put("parameter", axis.parameterId.raw)
+				put("action", "add"); put("track", "geometry")
+				putJsonArray("values") { axis.keys.forEach { add(it) } }
+			})
+			for (cell in grid.cells) {
+				val pose = at(cell)
+				val points = cell.form.controlPoints
+				val edit = overlay.authoringJournal.firstOrNull { e ->
+					GeneratedOverrides.isOverride(e) && e["generator"]?.jsonPrimitive?.contentOrNull == ModifierSampler.NODE && e["target"]?.jsonPrimitive?.contentOrNull == key &&
+						e["key"]?.jsonObject?.mapValues { it.value.jsonPrimitive.float }?.let { k -> pose.all { (p, v) -> kotlin.math.abs((k[p] ?: v) - v) <= ModifierValue.EPS } } == true
+				}
+				val shown = edit?.let { e ->
+					val base = e.getValue("base").jsonArray.map { it.jsonPrimitive.float }; val user = e.getValue("points").jsonArray.map { it.jsonPrimitive.float }
+					if (base.size == points.size && user.size == points.size) FloatArray(points.size) { points[it] + user[it] - base[it] } else null
+				} ?: points
+				add(buildJsonObject {
+					put("op", "set"); put("target", key)
+					putJsonObject("key") { pose.forEach { (p, v) -> put(p, v) } }
+					putJsonObject("geometry") { putJsonArray("controlPoints") { shown.forEach { add(it) } } }
+				})
+			}
+		}
+	}
+
+	/** The canvas edit moving warp [key]'s every keyform by what [modifier] does there at [pose]. */
+	private fun warpRest(authored: PuppetModel, before: PuppetModel, key: String, modifier: RigModifier, pose: Map<String, Float>): JsonObject? {
+		val id = key.removePrefix(ModifierTarget.WARP)
+		val (_, offsets) = ModifierSampler.offsets(before, key, listOf(modifier)) ?: return null
+		val defaults = before.parameters.associate { it.id.raw to it.default }
+		val offset = offsets.at { pose[it] ?: defaults[it] ?: 0f }
+		val shown = io.github.psd2live.core.RigGeometryTools.geometry(authored, "warp", id, emptyMap()).points
+		return buildJsonObject {
+			put("op", "canvas_geometry"); put("kind", "warp"); put("id", id); putJsonObject("key") {}
+			putJsonArray("points") { for (i in shown.indices) add(shown[i] + offset[i]) }
+		}
 	}
 
 	/** The journal entries giving [mesh] [grid]: the keys of the [added] axes, then every cell's shape. */

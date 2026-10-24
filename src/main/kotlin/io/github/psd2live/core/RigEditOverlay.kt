@@ -252,6 +252,11 @@ data class RigEditOverlay(
     val pose: ModelPose? = null,
     /** Non-destructive modifiers, in stack order; sampled into keyforms after the other generators ([io.github.psd2live.core.modifier.ModifierSampler]). */
     val modifiers: List<io.github.psd2live.core.modifier.RigModifier> = emptyList(),
+    /**
+     * The order the stack runs in, by entry ID - the modifiers' and the swings', simulations' and interior effects'
+     * graph nodes ([io.github.psd2live.core.modifier.ModifierStack]); empty for the order documents always ran in.
+     */
+    val stackOrder: List<String> = emptyList(),
 ) {
 	init {
         RigHitAreas.problem(hitAreas)?.let { throw IllegalArgumentException(it) }

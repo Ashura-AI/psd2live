@@ -244,4 +244,30 @@ class ModifierStackTest {
 			ModifierAuthoring.apply(preview, overlay, buildJsonObject { put("id", "Shift") })
 		}
 	}
+
+	@Test
+	fun `a warp target moves its control points and everything it carries, and applies to the warp's keyforms`() {
+		val authored = preview.authored.rig.puppet
+		val deformers = authored.deformers.associateBy { it.id }
+		val warp = generateSequence(authored.drawables.single { it.id.raw == target }.parentDeformerId) { deformers[it]?.parent }
+			.first { deformers[it] is Deformer.Warp }.raw
+		val overlay = ModifierAuthoring.put(preview, RigEditOverlay(), buildJsonObject {
+			put("id", "Slide"); put("kind", "transform"); putJsonArray("targets") { add("warp:$warp") }; putJsonArray("parameters") { add(driver) }
+			putJsonArray("keys") { addJsonObject { put("setting", "offset"); putJsonObject("at") { put("ParamModTurn", 10) }; putJsonArray("value") { add(20); add(0) } } }
+		})
+		assertTrue(DocumentGenerators.keyform("warp", warp, "ParamModTurn") in DocumentGenerators.graph(overlay).order.single { it.id == ModifierSampler.NODE }.writes)
+		val plain = RigEditOverlay().applyTo(preview.baseRig.puppet)
+		val shown = overlay.applyTo(preview.baseRig.puppet)
+		assertTrue((shown.deformers.single { it.id.raw == warp } as Deformer.Warp).geometryGrid!!.axes.any { it.parameterId.raw == "ParamModTurn" })
+		val moved = canvas(shown, mapOf("ParamModTurn" to 10f)); val rest = canvas(plain, emptyMap())
+		assertTrue(distance(moved, canvas(shown, mapOf("ParamModTurn" to -10f))) < 0.05f, "the axis spans the range: below its one key it holds, nothing vanishes")
+		for (v in 0 until rest.size / 2) {
+			assertEquals(rest[v * 2] + 20f, moved[v * 2], 0.05f)
+			assertEquals(rest[v * 2 + 1], moved[v * 2 + 1], 0.05f)
+		}
+		val applied = ModifierAuthoring.apply(preview, overlay, buildJsonObject { put("id", "Slide") })
+		assertTrue(applied.modifiers.isEmpty())
+		val replayed = applied.applyTo(preview.baseRig.puppet)
+		for (v in listOf(-10f, 0f, 4f, 10f)) assertTrue(distance(canvas(shown, mapOf("ParamModTurn" to v)), canvas(replayed, mapOf("ParamModTurn" to v))) < 0.05f, "at $v")
+	}
 }

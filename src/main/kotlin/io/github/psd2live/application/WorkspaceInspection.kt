@@ -86,6 +86,8 @@ internal fun WorkspaceQueries.inspect(a: JsonObject): JsonObject {
             "modifiers" -> {
                 val issues = queries.modifierIssues()
                 put("modifiers", JsonArray(queries.listModifiers().map { WorkspaceModifierSchemas.inspect(it, issues) }))
+                // The whole stack in the order it runs: modifiers, and swings, simulations and interior effects by graph node.
+                putJsonArray("stack") { queries.currentRigEdits()?.let(io.github.psd2live.core.modifier.ModifierStack::entries).orEmpty().forEach { add(it.id) } }
             }
             "simulations" -> {
                 val puppet = queries.currentPuppet()
@@ -93,7 +95,7 @@ internal fun WorkspaceQueries.inspect(a: JsonObject): JsonObject {
                 put("simulations", JsonArray(queries.listSimulations().map { sim -> JsonObject(sim.toJson() - "bake" + buildJsonObject {
                     sim.bake?.let { bake ->
                         put("bake", bake.summary())
-                        if (puppet != null) put("bake_stale", io.github.psd2live.core.sim.SimBake.stale(puppet, sim))
+                        if (puppet != null) put("bake_stale", io.github.psd2live.core.sim.SimBake.stale(puppet, sim, queries.currentRigEdits()))
                     }
                 }) }))
                 // Glue keys are what glue_roles take.

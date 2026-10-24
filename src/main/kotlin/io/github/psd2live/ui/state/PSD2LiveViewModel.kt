@@ -628,7 +628,7 @@ class PSD2LiveViewModel : AutoCloseable {
         val ids = withContext(Dispatchers.Default) {
             round.keys.filter { id ->
                 val edit = start.rigEdits.simEdits.firstOrNull { it.id == id && it.enabled } ?: return@filter false
-                round.getValue(id) || edit.bake == null || io.github.psd2live.core.sim.SimBake.stale(model.rig.puppet, edit)
+                round.getValue(id) || edit.bake == null || io.github.psd2live.core.sim.SimBake.stale(model.rig.puppet, edit, start.rigEdits)
             }
         }
         if (ids.isEmpty()) return
@@ -715,7 +715,7 @@ class PSD2LiveViewModel : AutoCloseable {
     internal fun simulationsToBake(current: PSD2LiveState = _state.value): List<String> {
         val puppet = current.previewModel?.rig?.puppet ?: return emptyList()
         val enabled = current.rigEdits.simEdits.filter { it.enabled }
-        val outdated = enabled.filter { it.bake == null || io.github.psd2live.core.sim.SimBake.stale(puppet, it) }
+        val outdated = enabled.filter { it.bake == null || io.github.psd2live.core.sim.SimBake.stale(puppet, it, current.rigEdits) }
         return (outdated.ifEmpty { enabled }).map { it.id }
     }
 

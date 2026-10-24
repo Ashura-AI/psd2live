@@ -178,6 +178,7 @@ internal class WorkspaceReadSession(
     }
     override fun listInteriorEffects() = capture().document.rigEdits.interiorEffects
     override fun listModifiers() = capture().document.rigEdits.modifiers
+    override fun currentRigEdits() = read.runtime.capture?.document?.rigEdits
     override fun modifierIssues(): List<io.github.psd2live.core.modifier.ModifierSampler.Issue> {
         val captured = capture()
         val overlay = captured.document.rigEdits
