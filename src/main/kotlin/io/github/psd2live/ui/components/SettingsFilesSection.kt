@@ -21,8 +21,6 @@ import io.github.psd2live.ui.state.PSD2LiveViewModel
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.utils.DesktopUtils
-import io.github.psd2live.ui.views.InspectorFormRow
-import io.github.psd2live.ui.views.InspectorSectionBox
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -90,10 +88,9 @@ internal object AppDataFolders {
  */
 @Composable
 internal fun SettingsFilesSection(state: PSD2LiveState, viewModel: PSD2LiveViewModel) {
-	val colors = LocalToolColors.current
 	SettingsSectionDescription(tr("settings.files.desc"))
 
-	InspectorSectionBox(tr("settings.files.recent")) {
+	SettingsGroup(tr("settings.files.recent")) {
 		val psds = state.recentFiles.count { it.endsWith(".psd", ignoreCase = true) }
 		EntryRow(
 			label = tr("settings.files.recent.list"),
@@ -103,7 +100,7 @@ internal fun SettingsFilesSection(state: PSD2LiveState, viewModel: PSD2LiveViewM
 		)
 	}
 
-	InspectorSectionBox(tr("settings.files.export")) {
+	SettingsGroup(tr("settings.files.export")) {
 		val lastExport = remember { viewModel.lastExportDirectory }
 		EntryRow(
 			label = tr("settings.files.export.last"),
@@ -114,7 +111,7 @@ internal fun SettingsFilesSection(state: PSD2LiveState, viewModel: PSD2LiveViewM
 		)
 	}
 
-	InspectorSectionBox(tr("settings.files.data")) {
+	SettingsGroup(tr("settings.files.data")) {
 		FolderRow(tr("settings.files.data.install"), AppDataFolders.install)
 		FolderRow(tr("settings.files.data.workspaces"), AppDataFolders.workspaces)
 		FolderRow(tr("settings.files.data.runtime"), AppDataFolders.runtime)
@@ -127,11 +124,7 @@ internal fun SettingsFilesSection(state: PSD2LiveState, viewModel: PSD2LiveViewM
 			value = AppDataFolders.preferences,
 			open = RowAction(tr("dialog.agent.copy")) { DesktopUtils.copyToClipboard(AppDataFolders.preferences) },
 		)
-		Text(
-			tr("settings.files.data.clearHint"),
-			style = LocalToolTypography.current.caption.copy(fontSize = 10.5.sp, lineHeight = 14.sp),
-			color = colors.textMuted,
-		)
+		SettingsHint(tr("settings.files.data.clearHint"))
 	}
 }
 
@@ -211,7 +204,7 @@ private fun EntryRow(
 	open: RowAction? = null,
 	clear: RowAction? = null,
 ) {
-	InspectorFormRow(label) {
+	SettingsRow(label) {
 		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
 			Value(value, Modifier.weight(1f), mono = mono, muted = muted)
 			Value(info.orEmpty(), Modifier.width(InfoColumn), muted = true, end = true)

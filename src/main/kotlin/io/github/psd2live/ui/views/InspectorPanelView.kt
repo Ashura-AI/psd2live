@@ -1022,7 +1022,7 @@ private fun RotationDeformerInspector(
 internal fun InspectorFormRow(
     label: String,
     modifier: Modifier = Modifier,
-    /** Pages of longer labels (the settings) widen the column; inspectors keep the default. */
+    /** Sections of longer labels widen the column; inspectors keep the default. */
     labelWidth: androidx.compose.ui.unit.Dp = 88.dp,
     content: @Composable () -> Unit,
 ) {

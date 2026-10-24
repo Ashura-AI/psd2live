@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.Divider
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -71,14 +70,15 @@ internal fun SettingsThemeSection(
 
 	SettingsSectionDescription(tr("dialog.settings.theme.desc"))
 
-	ThemeSectionTitle(tr("theme.builtIn"))
-	ThemeCardGrid(
-		cards = ThemeCatalog.builtIns.map { Triple(it.id, tr(it.nameKey), it.colors) },
-		selectedId = themeId,
-		onSelect = onSelect,
-	)
+	SettingsGroup(tr("theme.builtIn")) {
+		ThemeCardGrid(
+			cards = ThemeCatalog.builtIns.map { Triple(it.id, tr(it.nameKey), it.colors) },
+			selectedId = themeId,
+			onSelect = onSelect,
+		)
+	}
 
-	ThemeSectionTitle(tr("theme.custom")) {
+	SettingsGroup(tr("theme.custom"), actions = {
 		CompactButton(
 			text = tr("theme.custom.import"),
 			onClick = { importFailed = !onImport(readClipboardText().orEmpty()) },
@@ -89,21 +89,20 @@ internal fun SettingsThemeSection(
 			onClick = { onDuplicate(themeId) },
 			height = 20.dp,
 		)
+	}) {
+		if (importFailed) {
+			Text(tr("theme.custom.importFailed"), style = LocalToolTypography.current.caption, color = colors.error)
+		}
+		if (customThemes.isEmpty()) {
+			SettingsSectionDescription(tr("theme.custom.empty"))
+		} else {
+			ThemeCardGrid(
+				cards = customThemes.map { Triple(it.id, it.name, it.resolve()) },
+				selectedId = themeId,
+				onSelect = onSelect,
+			)
+		}
 	}
-	if (importFailed) {
-		Text(tr("theme.custom.importFailed"), style = LocalToolTypography.current.caption, color = colors.error)
-	}
-	if (customThemes.isEmpty()) {
-		SettingsSectionDescription(tr("theme.custom.empty"))
-	} else {
-		ThemeCardGrid(
-			cards = customThemes.map { Triple(it.id, it.name, it.resolve()) },
-			selectedId = themeId,
-			onSelect = onSelect,
-		)
-	}
-
-	Divider(color = colors.divider, thickness = 1.dp)
 
 	val custom = customThemes.firstOrNull { it.id == themeId }
 	if (custom == null) {
@@ -127,25 +126,6 @@ internal fun SettingsThemeSection(
 			onDuplicate = { onDuplicate(custom.id) },
 			onDelete = { onDelete(custom.id) },
 		)
-	}
-}
-
-@Composable
-private fun ThemeSectionTitle(text: String, actions: @Composable () -> Unit = {}) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	Row(
-		modifier = Modifier.fillMaxWidth(),
-		horizontalArrangement = Arrangement.spacedBy(6.dp),
-		verticalAlignment = Alignment.CenterVertically,
-	) {
-		Text(
-			text = text,
-			style = typography.header.copy(fontSize = 13.sp, fontWeight = FontWeight.SemiBold),
-			color = colors.textPrimary,
-			modifier = Modifier.weight(1f),
-		)
-		actions()
 	}
 }
 
@@ -295,12 +275,7 @@ private fun CustomThemeEditor(
 
 	for (group in ColorTokenGroup.entries) {
 		val tokens = ColorToken.entries.filter { it.group == group }
-		Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-			Text(
-				text = tr(group.labelKey),
-				style = typography.header.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
-				color = colors.textPrimary,
-			)
+		SettingsGroup(tr(group.labelKey), spacing = 4.dp) {
 			for (pair in tokens.chunked(2)) {
 				Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
 					for (token in pair) {
