@@ -52,7 +52,7 @@ Open the **Simulation** panel and select **Front hair (preset)** in the **Bodies
 
 While tuning, turn on the preview switch at the top of the panel so the label reads **Reference sim**. The editor's live simulation then runs, and you can turn the head and tilt the body in the Parameters panel to watch how the strands follow.
 
-To change the pins, select the front hair mesh, switch the mode at the top left of the canvas to **Simulate**, and choose **Weight paint → Pin** in the left toolbar. You can also expand **Vertex groups** in the Simulation panel and click **Paint** on the Pin row to enter the tool.
+To change the pins, select the front hair mesh, switch the mode at the top left of the canvas to **Simulate**, and choose **Weight paint → Pin** in the left toolbar. You can also open the simulation card in the front hair mesh's stack in the **Modifiers** panel, and click **Paint** on the Pin row under **Vertex groups** to enter the tool.
 
 ![Simulate mode with the pin group selected: the front hair roots are red, the tips blue](../../imgs/simulation-tutorial/pin-weights.webp)
 
@@ -95,7 +95,7 @@ Below is one adjusted distribution: the top still holds a high pin weight, which
 
 Go back to **Preview** mode and keep **Reference sim** on. Turn the head slowly, then quickly and stop, watching the follow-through, the fling and the swing back. If the hair barely moves as a whole, check whether it is pinned too much; if the roots drift, check whether the joins have enough pin weight.
 
-You can also adjust the **Material** in the Simulation panel:
+You can also adjust the **Material** in the simulation card (in the front hair mesh's stack in the **Modifiers** panel, or through **Edit settings** in the Simulation panel):
 
 | Item | Purpose |
 | --- | --- |

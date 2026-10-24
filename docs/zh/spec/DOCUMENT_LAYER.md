@@ -441,7 +441,7 @@
 - **应用**（`modifier_apply`）：`keyforms` 在日志末尾写参数创建、`parameter_keys` 与每个格点的 `set`（其他生成器加的轴取默认值），并把该修改器格点上的覆盖按“应用值 + 用户差值”写成 `set`；要求它是每个目标栈中的第一个——后面的修改器读取网格的关键形，应用后看到的形状与之前相同。`rest` 写一条默认键上的 `canvas_geometry`（`preserve_image: false`），把指定姿态下的形状写入网格原形。给出 `mesh` 时只对该网格应用，并把它移出修改器的目标（部件目标写入 `excluded`）。
 - **拆分与复制**：`modifier_split` 为一个网格建一份独立副本（原修改器不再作用于它），`modifier_copy` 把副本放到其他网格上；副本排在原修改器之后，设置相同、不自建参数，打键在原修改器的参数上，原修改器删除时这些参数因仍被使用而保留。
 - **预设**：属于用户而非工程，每份一个 JSON 文件，存于 `~/.psd2live/modifier-presets`（`core/modifier/ModifierPresets`、`ui/state/ModifierPresetStore`）；套用时按顺序为所选网格写 `modifier_put`，在一个历史节点内，自建参数已存在时沿用。
-- **生成器条目**：未烘焙的摆动、内部造型与模拟在面板中是栈里的卡片，可开关（模拟、内部造型）、上下移动、应用与删除，详细设置在各自的面板中编辑；骨骼蒙皮以锁定卡片列在最前。摆动的「应用为关键形」即 `swing_delete bake=true`，模拟的「应用」为 `simulation_apply`（`core/sim/SimApply`：模式参数与每个格点写入日志、合入覆盖，摆锤转为普通物理组，模拟删除；以混合形写回的模式拒绝）。内部造型仍保存在 `interiorEffects`，在其自己的面板中编辑。
+- **生成器条目**：未烘焙的摆动、内部造型与模拟在面板中是栈里的卡片，与修改器卡片一样可展开、开关（模拟、内部造型）、上下移动、应用与删除；展开后就是该生成器的设置（`SwingSettings`、`SimulationSettings`、`InteriorSettings`），摆动经 `swing_put`（`SwingAuthoring.arguments` 写回整条摆动）、模拟经 `simulation_put`、内部造型经共享草稿与 `interior_put` 提交。各自的面板只留设置以外的内容：模拟面板为物理体列表、烘焙与质量、对比和输出，内部造型面板为开关、隔离显示与试动，摆动在画布会话中用手柄调整。模态写成混合形状的模拟不能应用，菜单项禁用并说明原因。骨骼蒙皮以锁定卡片列在最前。
 - **画布与界面**：修改器面板（`ui/views/ModifierPanelView`）按栈顺序列出卡片，设置旁的键按钮在当前参数值处打键或删键；字段拖动时经 `ModifierController.preview` 以候选 Rig 预览，松手提交一次；按住 Alt 完成编辑时同值写入所选其他网格上同种类的第一个修改器。画布右键（物体模式）可直接添加修改器。
 - **工程格式**：带 `modifiers` 的 rig 节点为 schema 6（`NODE_SCHEMA_MODIFIERS`），更早的读取器拒绝打开而不是丢掉修改器；没有修改器的文档修订号与节点不变。
 - **导出**：修改器只以关键形存在于模型中，每个启用的修改器在每个目标上记一条 `parameter_grid` / `baked` 损失。

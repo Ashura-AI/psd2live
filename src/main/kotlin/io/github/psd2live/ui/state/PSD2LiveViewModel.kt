@@ -904,6 +904,12 @@ class PSD2LiveViewModel : AutoCloseable {
         _simulationAutoBake.value = on
     }
 
+    /** Shows the modifier stack [mesh] is in, where its generators' settings are edited: selects its layer, brings the panel forward. */
+    internal fun showStackOf(mesh: String) {
+        selectLayer(_state.value.previewModel?.rig?.layerIdByDrawableId?.get(mesh) ?: mesh)
+        requestSelectDockModule("modifiers")
+    }
+
     /**
      * Creates or replaces [edit] as one history node at once; with [simulationAutoBake] on, a missing or stale
      * bake then follows in the background as its own node.

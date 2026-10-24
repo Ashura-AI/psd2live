@@ -22,12 +22,16 @@ import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.views.physics.FieldLabel
 import io.github.psd2live.ui.views.physics.PhysicsRowDivider
 import io.github.psd2live.ui.views.physics.PhysicsSection
+import io.github.psd2live.ui.views.physics.CardSubsection
 import java.util.Locale
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.*
 
-private val INTERIOR_SECTIONS = setOf("audition", "shape", "mesh", "motion", "more", "binding", "folds")
-private val INTERIOR_OPEN = INTERIOR_SECTIONS - "more" - "mesh"
+private val INTERIOR_SECTIONS = setOf("audition")
+private val INTERIOR_OPEN = INTERIOR_SECTIONS
+
+/** The folds of an interior card open at first. */
+private val INTERIOR_CARD_OPEN = setOf("shape", "motion", "binding", "folds")
 
 /** Transmission presets, as the direction row offers them: label key, from, to. */
 private val INTERIOR_DIRECTIONS =
@@ -41,7 +45,7 @@ private val INTERIOR_DIRECTIONS =
 /** Icon turn per preset: the icon points down. */
 private val INTERIOR_DIRECTION_DEGREES = listOf(0f, 180f, -90f, 90f)
 
-/** Native dock: authoring settings persist; audition and view isolation are temporary. */
+/** Native dock: the effect switched on, auditioned and isolated in view; its settings are its card in the modifier stack ([InteriorSettings]). */
 @Composable
 internal fun InteriorPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	val colors = LocalToolColors.current
@@ -240,6 +244,11 @@ private fun InteriorBody(
 					CompactButton(tr("interior.regenerate"), ::save, isPrimary = true, height = 22.dp)
 				}
 			}
+			// Its settings are its card in the modifier stack; here it is auditioned.
+			if (effect != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+				Text(tr("interior.settingsInStack"), style = caption, color = colors.textMuted, modifier = Modifier.weight(1f))
+				CompactButton(tr("interior.editSettings"), { vm.showStackOf(target) }, height = 22.dp)
+			}
 		}
 		PhysicsRowDivider()
 		if (effect?.enabled != true) return@Column
@@ -309,261 +318,279 @@ private fun InteriorBody(
 				)
 			}
 		}
+	}
+}
 
-		val shapeReset: @Composable RowScope.() -> Unit = {
-			CompactIconButton(
-				onClick = {
-					draft.shape = InteriorSurfaceSettings()
-					save()
-				},
-				tooltip = tr("interior.shapeReset"),
-				size = 18.dp,
-			) {
-				IconReset(modifier = Modifier.size(11.dp), tint = colors.textMuted)
-			}
-		}
-		PhysicsSection(
-			tr("interior.shape"),
-			"shape" in open,
-			{ toggle("shape") },
-			icon = icon(InteriorIcon.SHAPE),
-			trailing = shapeReset.takeIf { draft.shape != InteriorSurfaceSettings() },
+/**
+ * An interior effect's settings, as its card in the modifier stack shows them: the shape, the mesh's folds, the
+ * motion, how it reads its parameters and the drawn folds. Sliders move the shared draft (which an audition running in
+ * the interior panel previews) and commit on release.
+ */
+@Composable
+internal fun InteriorSettings(vm: PSD2LiveViewModel, state: PSD2LiveState, preview: io.github.psd2live.core.RigPreviewModel, target: String,
+                              effect: NativeInteriorEffect) {
+	val colors = LocalToolColors.current
+	val caption = LocalToolTypography.current.caption.copy(fontSize = 10.sp)
+	val draft = vm.interior.draft(target, effect)
+	fun save() = vm.interior.put(draft.request(target, effect.enabled))
+	LaunchedEffect(target, draft.version, draft.dirty, vm.interior.poseTarget != null) {
+		vm.interior.previewLater(target, effect.enabled, draft)
+	}
+	var open by remember(target) { mutableStateOf(INTERIOR_CARD_OPEN) }
+	fun toggle(key: String) { open = if (key in open) open - key else open + key }
+	val editing = state.activeCanvas.mode == CanvasMode.EDIT
+	val layer = preview.rig.layerIdByDrawableId[target] ?: target
+
+	val shapeReset: @Composable RowScope.() -> Unit = {
+		CompactIconButton(
+			onClick = {
+				draft.shape = InteriorSurfaceSettings()
+				save()
+			},
+			tooltip = tr("interior.shapeReset"),
+			size = 18.dp,
 		) {
-			InteriorSlider("interior.horizontal", draft.shape.horizontal, 0f..2f, { draft.shape = draft.shape.copy(horizontal = it) }, ::save)
-			InteriorSlider("interior.vertical", draft.shape.vertical, 0f..2f, { draft.shape = draft.shape.copy(vertical = it) }, ::save)
-			InteriorSlider("interior.bulge", draft.shape.bulge, 0f..2f, { draft.shape = draft.shape.copy(bulge = it) }, ::save)
-			InteriorSlider("interior.press", draft.shape.press, 0f..2f, { draft.shape = draft.shape.copy(press = it) }, ::save)
-			InteriorSlider("interior.folds", draft.shape.folds, 0f..2f, { draft.shape = draft.shape.copy(folds = it) }, ::save)
-			InteriorSlider("interior.contour", draft.shape.contour, 0f..1f, { draft.shape = draft.shape.copy(contour = it) }, ::save)
+			IconReset(modifier = Modifier.size(11.dp), tint = colors.textMuted)
 		}
+	}
+	CardSubsection(
+		tr("interior.shape"),
+		"shape" in open,
+		{ toggle("shape") },
+		trailing = shapeReset.takeIf { draft.shape != InteriorSurfaceSettings() },
+	) {
+		InteriorSlider("interior.horizontal", draft.shape.horizontal, 0f..2f, { draft.shape = draft.shape.copy(horizontal = it) }, ::save)
+		InteriorSlider("interior.vertical", draft.shape.vertical, 0f..2f, { draft.shape = draft.shape.copy(vertical = it) }, ::save)
+		InteriorSlider("interior.bulge", draft.shape.bulge, 0f..2f, { draft.shape = draft.shape.copy(bulge = it) }, ::save)
+		InteriorSlider("interior.press", draft.shape.press, 0f..2f, { draft.shape = draft.shape.copy(press = it) }, ::save)
+		InteriorSlider("interior.folds", draft.shape.folds, 0f..2f, { draft.shape = draft.shape.copy(folds = it) }, ::save)
+		InteriorSlider("interior.contour", draft.shape.contour, 0f..1f, { draft.shape = draft.shape.copy(contour = it) }, ::save)
+	}
 
-		// The mesh inside the edge band, rebuilt along the texture; the lines it found can be made folds.
-		val detected = draft.guides.withIndex().filter { it.value.detected != null }
-		PhysicsSection(
-			tr("interior.mesh"),
-			"mesh" in open,
-			{ toggle("mesh") },
-			count = detected.size,
-			icon = icon(InteriorIcon.SHAPE),
-		) {
-			StructureMeshControls(vm, state, target, enabled = editing)
-			if (detected.isEmpty()) Text(tr("interior.mesh.noLines"), style = caption, color = colors.textMuted)
-			for ((i, g) in detected) {
-				val fold = g.purpose == InteriorGuidePurpose.FOLD
-				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-					Text(
-						"${tr("mesh.structure.kind.${g.detected!!.name.lowercase()}")} · ${g.id}",
-						style = caption,
-						color = if (fold) colors.textPrimary else colors.textMuted,
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
-						modifier = Modifier.weight(1f),
-					)
-					CompactToggleChip(
-						tr("interior.markFold"),
-						fold,
-						{
-							draft.guides = draft.guides.toMutableList().also {
-								it[i] = g.copy(purpose = if (fold) InteriorGuidePurpose.TOPOLOGY else InteriorGuidePurpose.FOLD)
-							}
-							save()
-						},
-						tooltip = tr("interior.markFoldTip"),
-					)
-				}
-				if (fold) InteriorSlider("interior.foldAmount", g.amount, 0f..2f, {
-					draft.guides = draft.guides.toMutableList().also { list -> list[i] = g.copy(amount = it) }
-				}, ::save)
-			}
-		}
-
-		val motionOn = draft.motion.enabled
-		val motionSwitch: @Composable RowScope.() -> Unit = {
-			PanelToolSwitch(
-				tr("interior.dynamics"),
-				showLabel = false,
-				checked = motionOn,
-				onCheckedChange = {
-					draft.motion = draft.motion.copy(enabled = it)
-					save()
-				},
-				enabled = true,
-				tooltip = tr("interior.dynamicsTip"),
-			)
-		}
-		PhysicsSection(tr("interior.dynamics"), "motion" in open, { toggle("motion") }, icon = icon(InteriorIcon.MOTION), trailing = motionSwitch) {
-			InteriorSlider("interior.response", draft.motion.responseSeconds, 0f..0.6f, { draft.motion = draft.motion.copy(responseSeconds = it) }, ::save, enabled = motionOn)
-			InteriorSlider("interior.transmission", draft.motion.transmissionSeconds, 0f..0.5f, { draft.motion = draft.motion.copy(transmissionSeconds = it) }, ::save, enabled = motionOn)
-			InteriorSlider("interior.strength", draft.motion.transmissionStrength, 0f..1f, { draft.motion = draft.motion.copy(transmissionStrength = it) }, ::save, enabled = motionOn)
+	// The mesh inside the edge band, rebuilt along the texture; the lines it found can be made folds.
+	val detected = draft.guides.withIndex().filter { it.value.detected != null }
+	CardSubsection(
+		tr("interior.mesh"),
+		"mesh" in open,
+		{ toggle("mesh") },
+		count = detected.size,
+	) {
+		StructureMeshControls(vm, state, target, enabled = editing)
+		if (detected.isEmpty()) Text(tr("interior.mesh.noLines"), style = caption, color = colors.textMuted)
+		for ((i, g) in detected) {
+			val fold = g.purpose == InteriorGuidePurpose.FOLD
 			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-				FieldLabel(tr("interior.direction"))
-				INTERIOR_DIRECTIONS.forEachIndexed { i, (key, from, to) ->
-					val selected = draft.motion.from == from && draft.motion.to == to
-					CompactToggleChip(
-						"",
-						selected,
-						{
-							draft.motion = draft.motion.copy(from = from, to = to)
-							save()
-						},
-						enabled = motionOn,
-						leadingIcon = {
-							InteriorIconView(
-								InteriorIcon.DIRECTION,
-								if (!motionOn) colors.textDisabled else if (selected) colors.accent else colors.textMuted,
-								size = 13.dp,
-								degrees = INTERIOR_DIRECTION_DEGREES[i],
-							)
-						},
-						showCheckWhenSelected = false,
-						tooltip = tr(key),
-					)
-				}
+				Text(
+					"${tr("mesh.structure.kind.${g.detected!!.name.lowercase()}")} · ${g.id}",
+					style = caption,
+					color = if (fold) colors.textPrimary else colors.textMuted,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
+					modifier = Modifier.weight(1f),
+				)
+				CompactToggleChip(
+					tr("interior.markFold"),
+					fold,
+					{
+						draft.guides = draft.guides.toMutableList().also {
+							it[i] = g.copy(purpose = if (fold) InteriorGuidePurpose.TOPOLOGY else InteriorGuidePurpose.FOLD)
+						}
+						save()
+					},
+					tooltip = tr("interior.markFoldTip"),
+				)
 			}
+			if (fold) InteriorSlider("interior.foldAmount", g.amount, 0f..2f, {
+				draft.guides = draft.guides.toMutableList().also { list -> list[i] = g.copy(amount = it) }
+			}, ::save)
 		}
+	}
 
-		PhysicsSection(tr("interior.more"), "more" in open, { toggle("more") }, icon = icon(InteriorIcon.MOTION)) {
-			InteriorSlider("interior.sensitivityX", draft.motion.sensitivityX, .1f..1f, { draft.motion = draft.motion.copy(sensitivityX = it) }, ::save)
-			InteriorSlider("interior.sensitivityY", draft.motion.sensitivityY, .1f..1f, { draft.motion = draft.motion.copy(sensitivityY = it) }, ::save)
-			for (end in 0..1) {
-				val p = if (end == 0) draft.motion.from else draft.motion.to
-				val other = if (end == 0) draft.motion.to else draft.motion.from
-				fun set(next: InteriorPoint) {
-					// The two ends must stay apart, or the transmission has no direction.
-					if (kotlin.math.hypot((next.x - other.x).toDouble(), (next.y - other.y).toDouble()) >= .05)
-						draft.motion = if (end == 0) draft.motion.copy(from = next) else draft.motion.copy(to = next)
-				}
-				InteriorPointRow(
-					tr(if (end == 0) "interior.from" else "interior.to"),
-					p,
-					1f,
-					1f,
-					decimals = 2,
-					step = .05,
-					onChange = ::set,
-					onFinish = ::save,
+	val motionOn = draft.motion.enabled
+	val motionSwitch: @Composable RowScope.() -> Unit = {
+		PanelToolSwitch(
+			tr("interior.dynamics"),
+			showLabel = false,
+			checked = motionOn,
+			onCheckedChange = {
+				draft.motion = draft.motion.copy(enabled = it)
+				save()
+			},
+			enabled = true,
+			tooltip = tr("interior.dynamicsTip"),
+		)
+	}
+	CardSubsection(tr("interior.dynamics"), "motion" in open, { toggle("motion") }, trailing = motionSwitch) {
+		InteriorSlider("interior.response", draft.motion.responseSeconds, 0f..0.6f, { draft.motion = draft.motion.copy(responseSeconds = it) }, ::save, enabled = motionOn)
+		InteriorSlider("interior.transmission", draft.motion.transmissionSeconds, 0f..0.5f, { draft.motion = draft.motion.copy(transmissionSeconds = it) }, ::save, enabled = motionOn)
+		InteriorSlider("interior.strength", draft.motion.transmissionStrength, 0f..1f, { draft.motion = draft.motion.copy(transmissionStrength = it) }, ::save, enabled = motionOn)
+		Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			FieldLabel(tr("interior.direction"))
+			INTERIOR_DIRECTIONS.forEachIndexed { i, (key, from, to) ->
+				val selected = draft.motion.from == from && draft.motion.to == to
+				CompactToggleChip(
+					"",
+					selected,
+					{
+						draft.motion = draft.motion.copy(from = from, to = to)
+						save()
+					},
+					enabled = motionOn,
+					leadingIcon = {
+						InteriorIconView(
+							InteriorIcon.DIRECTION,
+							if (!motionOn) colors.textDisabled else if (selected) colors.accent else colors.textMuted,
+							size = 13.dp,
+							degrees = INTERIOR_DIRECTION_DEGREES[i],
+						)
+					},
+					showCheckWhenSelected = false,
+					tooltip = tr(key),
 				)
 			}
 		}
+	}
 
-		PhysicsSection(tr("interior.binding"), "binding" in open, { toggle("binding") }, icon = icon(InteriorIcon.BINDING)) {
-			val candidates =
-				remember(preview) {
-					preview.rig.puppet.parameters.filter {
-						it.kind == ParameterKind.NORMAL && !it.repeat && it.min < it.default && it.default < it.max
-					}
+	CardSubsection(tr("interior.more"), "more" in open, { toggle("more") }) {
+		InteriorSlider("interior.sensitivityX", draft.motion.sensitivityX, .1f..1f, { draft.motion = draft.motion.copy(sensitivityX = it) }, ::save)
+		InteriorSlider("interior.sensitivityY", draft.motion.sensitivityY, .1f..1f, { draft.motion = draft.motion.copy(sensitivityY = it) }, ::save)
+		for (end in 0..1) {
+			val p = if (end == 0) draft.motion.from else draft.motion.to
+			val other = if (end == 0) draft.motion.to else draft.motion.from
+			fun set(next: InteriorPoint) {
+				// The two ends must stay apart, or the transmission has no direction.
+				if (kotlin.math.hypot((next.x - other.x).toDouble(), (next.y - other.y).toDouble()) >= .05)
+					draft.motion = if (end == 0) draft.motion.copy(from = next) else draft.motion.copy(to = next)
+			}
+			InteriorPointRow(
+				tr(if (end == 0) "interior.from" else "interior.to"),
+				p,
+				1f,
+				1f,
+				decimals = 2,
+				step = .05,
+				onChange = ::set,
+				onFinish = ::save,
+			)
+		}
+	}
+
+	CardSubsection(tr("interior.binding"), "binding" in open, { toggle("binding") }) {
+		val candidates =
+			remember(preview) {
+				preview.rig.puppet.parameters.filter {
+					it.kind == ParameterKind.NORMAL && !it.repeat && it.min < it.default && it.default < it.max
 				}
-			val names = remember(preview) { preview.rig.puppet.parameters.associate { it.id.raw to it.name } }
-			for (axis in 0..1) {
-				val selected = draft.sources.getOrElse(axis) { "" }
+			}
+		val names = remember(preview) { preview.rig.puppet.parameters.associate { it.id.raw to it.name } }
+		for (axis in 0..1) {
+			val selected = draft.sources.getOrElse(axis) { "" }
+			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+				FieldLabel(tr(if (axis == 0) "interior.axisX" else "interior.axisY"))
+				CompactDropdown(
+					(listOf("") + candidates.map { it.id.raw } + selected).distinct(),
+					selected,
+					{ id ->
+						draft.sources = draft.sources.toMutableList().also { it[axis] = id }
+						save()
+					},
+					Modifier.weight(1f),
+					itemLabel = { if (it.isEmpty()) tr("interior.newParameter") else names[it] ?: it },
+					height = 22.dp,
+				)
+			}
+		}
+	}
+
+	val raster =
+		preview.analysis.layers
+			.singleOrNull { it.source.id.raw == layer }
+			?.source
+			?.raster
+	val addFold: @Composable RowScope.() -> Unit = {
+		CompactIconButton(
+			onClick = {
+				if (raster != null) {
+					draft.guides =
+						draft.guides +
+							InteriorGuide(
+								nextInteriorFoldId(draft.guides),
+								listOf(
+									InteriorPoint(raster.width * .5f, raster.height * .2f),
+									InteriorPoint(raster.width * .5f, raster.height * .8f),
+								),
+								InteriorGuidePurpose.FOLD,
+							)
+					save()
+				}
+			},
+			enabled = raster != null,
+			tooltip = tr("interior.addFold"),
+			size = 18.dp,
+		) {
+			IconAdd(modifier = Modifier.size(10.dp), tint = colors.textPrimary)
+		}
+	}
+	CardSubsection(
+		tr("interior.guides"),
+		"folds" in open,
+		{ toggle("folds") },
+		count = draft.guides.count { it.detected == null },
+		trailing = addFold,
+	) {
+		// Lines a remesh found are listed under the mesh; here are the guides drawn by hand.
+		val drawn = draft.guides.withIndex().filter { it.value.detected == null }
+		if (drawn.isEmpty()) Text(tr("interior.noFolds"), style = caption, color = colors.textMuted)
+		drawn.forEachIndexed { n, (i, g) ->
+			fun replace(next: InteriorGuide) {
+				draft.guides = draft.guides.toMutableList().also { it[i] = next }
+			}
+			InspectorSectionBox("${tr("interior.fold")} ${n + 1}") {
 				Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-					FieldLabel(tr(if (axis == 0) "interior.axisX" else "interior.axisY"))
-					CompactDropdown(
-						(listOf("") + candidates.map { it.id.raw } + selected).distinct(),
-						selected,
-						{ id ->
-							draft.sources = draft.sources.toMutableList().also { it[axis] = id }
+					CompactToggleChip(
+						tr("interior.pitchOnly"),
+						g.pitchOnly,
+						{
+							replace(g.copy(pitchOnly = !g.pitchOnly))
 							save()
 						},
-						Modifier.weight(1f),
-						itemLabel = { if (it.isEmpty()) tr("interior.newParameter") else names[it] ?: it },
-						height = 22.dp,
+						tooltip = tr("interior.pitchOnlyTip"),
 					)
-				}
-			}
-		}
-
-		val raster =
-			preview.analysis.layers
-				.singleOrNull { it.source.id.raw == state.selectedLayerId }
-				?.source
-				?.raster
-		val addFold: @Composable RowScope.() -> Unit = {
-			CompactIconButton(
-				onClick = {
-					if (raster != null) {
-						draft.guides =
-							draft.guides +
-								InteriorGuide(
-									nextInteriorFoldId(draft.guides),
-									listOf(
-										InteriorPoint(raster.width * .5f, raster.height * .2f),
-										InteriorPoint(raster.width * .5f, raster.height * .8f),
-									),
-									InteriorGuidePurpose.FOLD,
-								)
-						save()
+					Spacer(Modifier.weight(1f))
+					CompactIconButton(
+						onClick = {
+							draft.guides = draft.guides.filterIndexed { n, _ -> n != i }
+							save()
+						},
+						tooltip = tr("interior.removeFold"),
+						size = 18.dp,
+					) {
+						IconTrash(modifier = Modifier.size(11.dp))
 					}
-				},
-				enabled = raster != null,
-				tooltip = tr("interior.addFold"),
-				size = 18.dp,
-			) {
-				IconAdd(modifier = Modifier.size(10.dp), tint = colors.textPrimary)
-			}
-		}
-		PhysicsSection(
-			tr("interior.guides"),
-			"folds" in open,
-			{ toggle("folds") },
-			count = draft.guides.count { it.detected == null },
-			icon = icon(InteriorIcon.FOLDS),
-			trailing = addFold,
-		) {
-			// Lines a remesh found are listed under the mesh; here are the guides drawn by hand.
-			val drawn = draft.guides.withIndex().filter { it.value.detected == null }
-			if (drawn.isEmpty()) Text(tr("interior.noFolds"), style = caption, color = colors.textMuted)
-			drawn.forEachIndexed { n, (i, g) ->
-				fun replace(next: InteriorGuide) {
-					draft.guides = draft.guides.toMutableList().also { it[i] = next }
 				}
-				InspectorSectionBox("${tr("interior.fold")} ${n + 1}") {
-					Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-						CompactToggleChip(
-							tr("interior.pitchOnly"),
-							g.pitchOnly,
-							{
-								replace(g.copy(pitchOnly = !g.pitchOnly))
-								save()
-							},
-							tooltip = tr("interior.pitchOnlyTip"),
-						)
-						Spacer(Modifier.weight(1f))
-						CompactIconButton(
-							onClick = {
-								draft.guides = draft.guides.filterIndexed { n, _ -> n != i }
-								save()
-							},
-							tooltip = tr("interior.removeFold"),
-							size = 18.dp,
-						) {
-							IconTrash(modifier = Modifier.size(11.dp))
-						}
-					}
-					InteriorSlider("interior.foldAmount", g.amount, 0f..2f, { replace(g.copy(amount = it)) }, ::save)
-					InteriorSlider(
-						"interior.radius",
-						g.radius,
-						1f..maxOf(2f, (raster?.width ?: 128).toFloat()),
-						{ replace(g.copy(radius = it)) },
-						::save,
-						format = "%.0f",
+				InteriorSlider("interior.foldAmount", g.amount, 0f..2f, { replace(g.copy(amount = it)) }, ::save)
+				InteriorSlider(
+					"interior.radius",
+					g.radius,
+					1f..maxOf(2f, (raster?.width ?: 128).toFloat()),
+					{ replace(g.copy(radius = it)) },
+					::save,
+					format = "%.0f",
+				)
+				g.points.forEachIndexed { j, p ->
+					InteriorPointRow(
+						tr("interior.point", j + 1),
+						p,
+						maxOf(1f, raster?.width?.toFloat() ?: 1f),
+						maxOf(1f, raster?.height?.toFloat() ?: 1f),
+						decimals = 0,
+						step = 1.0,
+						onChange = { next ->
+							val pts = g.points.toMutableList().also { it[j] = next }
+							if (pts.zipWithNext().all { (a, b) -> a != b }) replace(g.copy(points = pts))
+						},
+						onFinish = ::save,
 					)
-					g.points.forEachIndexed { j, p ->
-						InteriorPointRow(
-							tr("interior.point", j + 1),
-							p,
-							maxOf(1f, raster?.width?.toFloat() ?: 1f),
-							maxOf(1f, raster?.height?.toFloat() ?: 1f),
-							decimals = 0,
-							step = 1.0,
-							onChange = { next ->
-								val pts = g.points.toMutableList().also { it[j] = next }
-								if (pts.zipWithNext().all { (a, b) -> a != b }) replace(g.copy(points = pts))
-							},
-							onFinish = ::save,
-						)
-					}
 				}
 			}
 		}
