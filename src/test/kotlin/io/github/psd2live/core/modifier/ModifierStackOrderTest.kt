@@ -101,6 +101,48 @@ class ModifierStackOrderTest {
 	}
 
 	@Test
+	fun `a stack saves as one list, its bakes shared, and reads back as it was`(@org.junit.jupiter.api.io.TempDir directory: java.nio.file.Path) = kotlinx.coroutines.runBlocking {
+		val overlay = ModifierAuthoring.move(shift(RigEditOverlay(simEdits = listOf(simulation()))), buildJsonObject { put("id", "Shift"); put("to", "first") })
+		val source = preview.analysis.source as WorkspaceSourceArt
+		val before = WorkspaceDocument(source, emptyMap(), emptySet(), emptyMap(), emptyMap(), RigEditOverlay())
+		val after = before.copy(rigEdits = overlay)
+		val history = io.github.psd2live.history.WorkspaceHistoryTree(before, WorkspaceRevisions.of(before), WorkspaceRevisions.of(before))
+		history.commit(history.head().node.id, after, WorkspaceRevisions.of(after), WorkspaceRevisions.of(after), "Stack", "user")
+		val store = WorkspaceStore(directory.resolve("store"))
+		store.persistHistory("stack", history.state())
+		val file = directory.resolve("stack.psd2live")
+		ProjectRepository(writeHeadCache = false).save(ProjectSaveCapture("stack", history.state(), JsonObject(emptyMap()), null, store), file)
+		ProjectRepository(writeHeadCache = false).open(file).use { opened ->
+			val loaded = opened.history.head().snapshot
+			assertEquals(WorkspaceRevisions.of(after), WorkspaceRevisions.of(loaded), "the revision is the overlay's, not its storage's")
+			assertEquals(overlay.simEdits, loaded.rigEdits.simEdits, "the bake comes back from the stack's simulation entry")
+			assertEquals(overlay.modifiers, loaded.rigEdits.modifiers)
+			assertEquals(overlay.stackOrder, loaded.rigEdits.stackOrder)
+		}
+		assertEquals(ProjectFormatV2.NODE_SCHEMA_STACK, ProjectFormatV2.schemaOf("rig", buildJsonObject {
+			putJsonObject("rigEdits") { putJsonArray(WorkspaceStore.STACK) {} }
+		}))
+	}
+
+	@Test
+	fun `one command acts on any entry, and on a component`() {
+		val overlay = shift(RigEditOverlay(simEdits = listOf(simulation())))
+		val document = WorkspaceDocument(preview.analysis.source as WorkspaceSourceArt, emptyMap(), emptySet(), emptyMap(), emptyMap(), overlay)
+		fun route(op: String, request: JsonObjectBuilder.() -> Unit) =
+			io.github.psd2live.application.WorkspaceStackCommands.route(io.github.psd2live.application.WorkspaceDocumentOperation(op, buildJsonObject(request)), document)
+		assertEquals("simulation_delete", route("contribution_delete") { put("id", "simulation:Skirt") }.operation)
+		assertEquals(ModifierAuthoring.DELETE, route("contribution_delete") { put("id", "Shift") }.operation)
+		assertEquals(io.github.psd2live.core.sim.SimApply.OP, route("contribution_apply") { put("id", "simulation:Skirt") }.operation)
+		val put = route("contribution_put") { put("type", "modifier"); putJsonObject("value") { put("id", "Shift"); put("enabled", false) } }
+		assertEquals(ModifierAuthoring.PUT, put.operation)
+		assertEquals(false, put.request.getValue("enabled").jsonPrimitive.boolean)
+		val component = route("component_put") { put("id", "eyes"); put("enabled", false); putJsonObject("left") { put("blinkDepth", 30) } }
+		assertEquals("settings_update", component.operation)
+		assertEquals(listOf("eyes"), component.request.getValue("changes").jsonObject.getValue("disabledComponents").jsonArray.map { it.jsonPrimitive.content })
+		assertFailsWith<IllegalArgumentException> { route("component_put") { put("id", "eyes"); putJsonObject("values") { put("faceTurn", 3) } } }
+	}
+
+	@Test
 	fun `the order saves and restores with the project`() {
 		val overlay = ModifierAuthoring.move(shift(RigEditOverlay(simEdits = listOf(simulation()))), buildJsonObject { put("id", "Shift"); put("to", "first") })
 		val document = WorkspaceDocument(preview.analysis.source as WorkspaceSourceArt, emptyMap(), emptySet(), emptyMap(), emptyMap(), overlay)

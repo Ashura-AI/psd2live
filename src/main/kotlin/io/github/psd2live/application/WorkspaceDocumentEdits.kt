@@ -27,7 +27,8 @@ internal object WorkspaceDocumentEdits {
         setOf("warp", "rotation", "glue", "topology").map { "canvas_$it" } +
         setOf("put", "delete", "deform").map { "path_$it" } +
         setOf("swing_put", "swing_delete", "interior_put", "interior_delete") + io.github.psd2live.core.modifier.ModifierAuthoring.supported + io.github.psd2live.core.sim.SimApply.OP + WorkspacePhysicsEdits.batchable + WorkspaceSimulationEdits.supported + WorkspaceCanvasWeightEdits.supported + WorkspaceCanvasDeformEdits.supported + WorkspaceTextureEdits.supported +
-        WorkspaceLayoutEdits.supported + WorkspaceMaterialEdits.supported + WorkspaceHitAreaEdits.supported + WorkspaceSidecarEdits.supported + WorkspaceObjectEdits.supported
+        WorkspaceLayoutEdits.supported + WorkspaceMaterialEdits.supported + WorkspaceHitAreaEdits.supported + WorkspaceSidecarEdits.supported + WorkspaceObjectEdits.supported +
+        WorkspaceStackCommands.supported
 
     /**
      * [operation] on the complete editing document. Layout generation state only gates automatic semantic rigging;
@@ -55,6 +56,9 @@ internal object WorkspaceDocumentEdits {
         // Every document operation, not only journal edits: a copy over the bangs is made anew on each build.
         refuseCopies(model, request)
         return when (operation.operation) {
+            // One command for every stack entry and component, routed to the entry's own.
+            in WorkspaceStackCommands.supported ->
+                applyGenerated(WorkspaceStackCommands.route(operation, document), document, model, simulationWork, physicsWork, rasterWork, assetResources)
             WorkspaceDrawOrderEdits.OP -> WorkspaceDrawOrderEdits.apply(document, model, request)
             WorkspaceLayerTransform.OP -> WorkspaceLayerTransform.apply(document, model, request)
             WorkspaceRasterEdits.REBUILD_MESH -> WorkspaceRasterEdits.rebuildMesh(document, model, request.text("layer_id"), rasterWork)

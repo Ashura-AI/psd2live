@@ -43,6 +43,7 @@ internal fun registerWorkspaceCommands(catalog: WorkspaceCommands, workspace: Wo
     registerCatalogSwingCommands(catalog, workspace)
     registerInteriorCommands(catalog, workspace)
     registerModifierCommands(catalog, workspace)
+    registerStackCommands(catalog, workspace)
 
     registerCatalogAssetCommands(catalog, workspace)
     registerCatalogSourceCommands(catalog, workspace)
