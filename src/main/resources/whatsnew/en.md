@@ -1,3 +1,21 @@
+## v3.6.7 · 2026-10-24
+
+### New
+
+- **Graphics settings**: a new Settings > Graphics page: render path (GPU / software canvas / software), graphics card, a quality preset, window and canvas antialiasing (MSAA, SSAA), texture filtering, vsync, preview and background frame rates.
+- **One call per editor gesture in MCP**: read and set ruler guides, import as reference, preview expressions, soft-selection deforms, symmetric strokes and more; refusals tell their causes apart and writes read back.
+
+### Improved
+
+- **Settings layout**: flat headings and two-column rows instead of cards.
+- **Lighter GPU canvas**: less work per frame, and a drag no longer recomposes the toolbars and status bar.
+- **Faster saves**: small projects save about a third faster, with identical archives.
+
+### Fixes
+
+- The editing canvas draws on the GPU on Linux again instead of skipping every frame, and the restore prompt no longer opens blank and frozen (#62).
+- The editing canvas draws masks, multiply / screen colours and every blend mode as the preview does.
+
 ## v3.6.6 · 2026-10-24
 
 ### New
