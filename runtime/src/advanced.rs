@@ -11,6 +11,8 @@
 //!   static corrections are taken back out, so the evaluated targets are the scene's goals; each update then
 //!   steps the scene at its own rate and draws the particles in their place.
 //! - Collision (`COLLISION`): the simulations' colliders, placed each step from the pose.
+//! - Modifiers (`MODIFIERS`): each modifier stack's departure from its sampled keyforms between their keys
+//!   (`modifier`); a wave's phase advances with the time updates step.
 
 use crate::eval::{deformer_frame, mesh_local, span, Pose, Transform};
 use crate::rig::{Rig, Skin};
@@ -21,6 +23,7 @@ pub const SKIN: u32 = 1;
 pub const EXACT_LINKS: u32 = 2;
 pub const SIM: u32 = 4;
 pub const COLLISION: u32 = 8;
+pub const MODIFIERS: u32 = 16;
 
 /// A 2D affine map: `x' = a x + b y + tx`, `y' = c x + d y + ty`.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -127,6 +130,10 @@ pub struct Advanced {
     enabled: u32,
     skinning: Arc<PreparedSkinning>,
     cells: Vec<(usize, f32)>,
+    /// Per mesh its modifier stack, while modifiers are on.
+    modifier_of: Vec<Option<usize>>,
+    /// Seconds updates have stepped since modifiers came on: what moves a wave with a phase speed.
+    time: f64,
 }
 
 impl Advanced {
@@ -141,6 +148,7 @@ impl Advanced {
             | (if ext.arcs.is_empty() { 0 } else { EXACT_LINKS })
             | (if ext.simulations.is_empty() { 0 } else { SIM })
             | (if ext.simulations.iter().any(|s| !s.colliders.is_empty()) { COLLISION } else { 0 })
+            | (if ext.modifier_stacks.is_empty() { 0 } else { MODIFIERS })
     }
 
     pub fn enabled(&self) -> u32 {
@@ -184,8 +192,20 @@ impl Advanced {
         // Collision only acts inside a simulation.
         let features = if features & SIM == 0 { features & !COLLISION } else { features };
         self.runs = if features & SIM == 0 { Vec::new() } else { rig.extensions.simulations.iter().map(SimRun::new).collect() };
+        self.modifier_of = vec![None; if features & MODIFIERS == 0 { 0 } else { rig.meshes.len() }];
+        for (k, st) in rig.extensions.modifier_stacks.iter().enumerate().filter(|_| features & MODIFIERS != 0) {
+            self.modifier_of[st.mesh] = Some(k);
+        }
+        self.time = 0.0;
         self.enabled = features;
         features
+    }
+
+    /// Advances the time a wave's phase speed moves it by, while modifiers are on.
+    pub fn advance_time(&mut self, dt: f32) {
+        if self.enabled & MODIFIERS != 0 && dt.is_finite() && dt > 0.0 {
+            self.time += dt as f64;
+        }
     }
 
     /// Starts every simulation again from the pose of its next update.
@@ -484,6 +504,9 @@ impl Advanced {
     pub(crate) fn correct_mesh(&mut self, rig: &Rig, m: usize, values: &[f32], defaults: &[f32], out: &mut [f32]) {
         if self.enabled & SIM != 0 {
             Advanced::without_statics(rig, m, values, out);
+        }
+        if let Some(k) = self.modifier_of.get(m).copied().flatten() {
+            rig.extensions.modifier_stacks[k].correct(values, self.time, out);
         }
         if self.enabled & SKIN == 0 {
             return;

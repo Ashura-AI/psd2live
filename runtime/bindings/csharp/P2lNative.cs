@@ -77,6 +77,7 @@ namespace PSD2Live.Runtime
         public const uint EXACT_LINKS = 2;
         public const uint SIM = 4;
         public const uint COLLISION = 8;
+        public const uint MODIFIERS = 16;
         public const uint RENDER_STRAIGHT = 1;
         public const uint RENDER_KEEP = 2;
 

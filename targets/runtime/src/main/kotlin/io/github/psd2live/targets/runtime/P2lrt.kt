@@ -130,11 +130,24 @@ public object P2lrt {
 	private const val EXACT_LINKS = 2
 	private const val SIM = 4
 	private const val COLLISION = 8
+	private const val MODIFIERS = 16
 	private const val H1 = 1
 	private const val H2 = 2
 	private const val H3 = 4
 	private const val H4 = 8
 	private const val H6 = 32
+
+	/** The modifier kinds `MODS` names, in their code order, each with its settings in the order written and their component counts. */
+	private val MODIFIER_KINDS: Map<String, List<Pair<String, Int>>> = linkedMapOf(
+		"transform" to listOf("offset" to 2, "rotation" to 1, "scale" to 2, "pivot" to 2),
+		"bend" to listOf("angle" to 1, "origin" to 2, "direction" to 1, "length" to 1),
+		"twist" to listOf("angle" to 1, "center" to 2, "radius" to 1),
+		"wave" to listOf("amplitude" to 1, "wavelength" to 1, "phase" to 1, "origin" to 2, "direction" to 1, "ramp" to 1),
+		"lattice" to listOf("bounds" to 4, "offsets" to 32),
+		"path" to listOf("path" to 8, "offsets" to 8, "radius" to 1),
+	)
+	/** A stack sampled on more parameters than this stays baked: each evaluation visits every corner of its axes. */
+	private const val MAX_MODIFIER_AXES = 8
 
 	private class Chunk(val tag: String, val required: Boolean, val data: ByteArray, val compressible: Boolean = true, val version: Int = 1)
 
@@ -264,7 +277,7 @@ public object P2lrt {
 			return container(chunks, options)
 		}
 
-		/** The advanced chunks the rig offers, each a tag and its body: BONE (bones and arcs), SKIN, COLL, SIMS. */
+		/** The advanced chunks the rig offers, each a tag and its body: BONE (bones and arcs), SKIN, COLL, SIMS, MODS. */
 		private fun advanced(): List<Pair<String, () -> Unit>> {
 			val arcs = AdvancedData.arcs(ir)
 			val skins = AdvancedData.skins(ir)
@@ -286,6 +299,12 @@ public object P2lrt {
 				sims.any { c.id in it.colliders } && (c.mesh == null || c.mesh in meshIndex) && (c.deformer == null || c.deformer in deformerIndex)
 			}
 			val colliderIndex = colliders.withIndex().associate { it.value.id to it.index }
+			// Modifier stacks on meshes and parameters the file has, of kinds the format names; the rest stay baked.
+			val stacks = ir.advanced.modifiers.filter { st ->
+				st.mesh in meshIndex && st.axes.size <= MAX_MODIFIER_AXES && st.axes.all { it.parameter in parameterIndex } &&
+					st.modifiers.all { m -> m.kind in MODIFIER_KINDS && m.settings.values.all { v -> v.axes.all { a -> st.axes.any { it.parameter == a.parameter } } } } &&
+					st.start.axes.all { a -> st.axes.any { it == a } }
+			}
 			val groupIndex = ir.physics.groups.withIndex().associate { it.value.id to it.index }
 			return buildList {
 				if (bones.isNotEmpty()) add("BONE" to {
@@ -322,6 +341,27 @@ public object P2lrt {
 					out.u32(sims.size)
 					sims.forEach { simulation(it, ::mesh, groupIndex, colliderIndex) }
 				})
+				if (stacks.isNotEmpty()) add("MODS" to {
+					extensionHeader(MODIFIERS, H4)
+					out.u32(stacks.size)
+					stacks.forEach(::modifierStack)
+				})
+			}
+		}
+
+		/** One mesh's stack: its sampling axes, start shape, map to its parent, then each modifier with every setting of its kind. */
+		private fun modifierStack(st: ModifierStackIR) {
+			fun axes(axes: List<KeyAxis>) { out.u32(axes.size); axes.forEach { out.u32(parameter(it.parameter)); out.floats(it.keys) } }
+			out.u32(mesh(st.mesh)); axes(st.axes); axes(st.start.axes); out.floats(st.start.values); out.floats(st.toParent)
+			out.u32(st.modifiers.size)
+			for (m in st.modifiers) {
+				val settings = MODIFIER_KINDS.getValue(m.kind)
+				out.u8(MODIFIER_KINDS.keys.indexOf(m.kind)); out.f32(m.phaseSpeed); out.floats(m.weights)
+				for ((key, size) in settings) {
+					val value = requireNotNull(m.settings[key]) { "${m.kind} has no $key" }
+					require(value.values.size == size * value.axes.fold(1) { n, a -> n * a.keys.size }) { "${m.kind} $key has the wrong number of values" }
+					axes(value.axes); out.floats(value.values)
+				}
 			}
 		}
 

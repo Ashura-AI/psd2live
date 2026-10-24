@@ -186,7 +186,8 @@ object ModifierKinds {
 	 * Waves across an axis from `origin` along `direction`: a point at distance u along it moves across it (to the
 	 * axis's right) by `amplitude`·sin(2π·u / `wavelength` + `phase`) · clamp(u / `ramp`, 0, 1). The ramp holds the
 	 * root still, as a strand waves from where it grows; nothing before the origin moves. Keying `phase` on a
-	 * parameter that a loop or a pendulum drives makes the wave travel.
+	 * parameter that a loop or a pendulum drives makes the wave travel. `phaseSpeed` (degrees per second) leaves
+	 * the deformation alone: only the runtime's advanced mode adds it to the phase as time passes.
 	 */
 	object Wave : ModifierKind {
 		override val id = "wave"
@@ -197,6 +198,9 @@ object ModifierKinds {
 			ModifierSetting("origin", 2, floatArrayOf(0f, 0f), description = "Where the axis starts [x, y], canvas pixels; nothing before it moves."),
 			ModifierSetting("direction", 1, floatArrayOf(90f), -360f, 360f, "Axis direction in degrees: 0 right, -90 up, 90 down."),
 			ModifierSetting("ramp", 1, floatArrayOf(100f), 0f, 100_000f, "Distance from the origin over which the wave grows to full, canvas pixels; 0 for none."),
+			// Not part of the deformation: the runtime's advanced mode alone advances the phase with time.
+			ModifierSetting("phaseSpeed", 1, floatArrayOf(0f), -36_000f, 36_000f,
+				"Degrees per second the phase advances in the PSD2Live runtime's advanced mode only; editor and Cubism exports keep the phase as set.", field = false),
 		)
 		override val suits = setOf(SemanticTag.BACK_HAIR, SemanticTag.FRONT_HAIR, SemanticTag.TAIL, SemanticTag.BOTTOMWEAR, SemanticTag.WINGS)
 

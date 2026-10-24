@@ -87,7 +87,8 @@ object ModifierSampler {
 		val mesh: String,
 		val modifiers: List<RigModifier>,
 		private val rest: FloatArray,
-		private val weights: Map<String, FloatArray?>,
+		/** Per modifier its vertex weights, null for all ones. */
+		internal val weights: Map<String, FloatArray?>,
 		private val defaults: Map<String, Float>,
 	) {
 		/** The rest shape on the canvas (interleaved x, y, y down). */

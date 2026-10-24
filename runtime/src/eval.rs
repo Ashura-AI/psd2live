@@ -14,7 +14,7 @@ pub(crate) struct Span {
 }
 
 /// Keyform grids take a key exactly when the value is this close to it; blend shapes do not snap.
-const KEY_SNAP: f32 = 0.001;
+pub(crate) const KEY_SNAP: f32 = 0.001;
 
 pub(crate) fn span(keys: &[f32], value: f32) -> Span {
     match keys.iter().find(|k| (value - **k).abs() < KEY_SNAP) {

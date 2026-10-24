@@ -17,8 +17,15 @@ import io.github.psd2live.targets.cubism.PuppetIr
  * their presets into curves.
  */
 internal object RigIrCompiler {
-	fun compile(preview: RigPreviewModel, tileArt: Boolean = false, simulations: Boolean = false): RigIR =
-		compile(preview.analysis, preview.atlas, preview.rig, preview.config, tileArt, simulations)
+	/** As the overload below; with [simulations], also the modifiers' stacks as the runtime's advanced mode evaluates them. */
+	fun compile(preview: RigPreviewModel, tileArt: Boolean = false, simulations: Boolean = false): RigIR {
+		val ir = compile(preview.analysis, preview.atlas, preview.rig, preview.config, tileArt, simulations)
+		val overlay = preview.config.rigEdits
+		if (!simulations || overlay.modifiers.none { it.enabled }) return ir
+		// The stacks act on the rig as the other generators leave it, before their own keyforms.
+		val before = DocumentGenerators.generate(preview.authoredPuppet(overlay), overlay.copy(modifiers = emptyList()))
+		return ir.copy(advanced = ir.advanced.copy(modifiers = io.github.psd2live.core.modifier.ModifierExact.stacks(before, overlay.modifiers)))
+	}
 
 	/**
 	 * [tileArt] adds every tile's unpacked source pixels, which only formats with editable source layers need;
