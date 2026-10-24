@@ -273,11 +273,9 @@ internal object WorkspaceStateCodec {
                 ?.let { saved -> WorkspacePreset.entries.firstOrNull { it.name == saved } }
                 ?: WorkspacePreset.EDIT,
             layoutJson = obj["layout"]?.jsonPrimitive?.contentOrNull,
-            hiddenModules = obj["hiddenModules"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty().toSet().let { hidden ->
-                // Layouts from before the simulation tab gain it beside physics, hidden wherever physics is.
-                val layout = obj["layout"]?.jsonPrimitive?.contentOrNull
-                if (layout != null && "\"simulation\"" !in layout && "physics" in hidden) hidden + "simulation" else hidden
-            },
+            // The simulation, interior and model presets panels are the modifiers panel now ([RETIRED_DOCK_MODULES]).
+            hiddenModules = obj["hiddenModules"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }.orEmpty().toSet() -
+                io.github.psd2live.ui.views.RETIRED_DOCK_MODULES.toSet(),
             sidebarRestore = (obj["sidebarRestore"] as? JsonObject)?.mapNotNull { (side, modules) ->
                 (modules as? JsonArray)?.let { array -> side to array.mapNotNull { it.jsonPrimitive.contentOrNull }.toSet() }
             }?.toMap().orEmpty(),

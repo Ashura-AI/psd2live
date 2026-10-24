@@ -67,6 +67,38 @@ class ModifierStackOrderTest {
 	}
 
 	@Test
+	fun `a mesh's stages are its own keyforms then each parent deformer's, each with what acts on it`() {
+		val overlay = shift(RigEditOverlay(simEdits = listOf(simulation())))
+		val model = overlay.applyTo(preview.baseRig.puppet)
+		val stages = RigStages.chain(model, overlay, mesh.id.raw)
+		val own = stages.first()
+		assertEquals("mesh", own.kind)
+		assertNull(own.owner)
+		assertEquals(listOf("simulation:Skirt", "Shift"), own.entries.map { it.id }, "the mesh's own stage holds the entries on it, in stack order")
+		assertTrue(own.axes.any { it.owner == RigStages.Owner(RigStages.Owner.Kind.SIMULATION, "Skirt") }, "the bake's axes are the simulation's")
+		// Then every parent, innermost first, as the hierarchy nests them.
+		val parents = generateSequence(model.drawables.single { it.id == mesh.id }.parentDeformerId?.raw) { id -> model.deformers.single { it.id.raw == id }.parent?.raw }.toList()
+		assertEquals(parents, stages.drop(1).map { it.id })
+		assertTrue(stages.drop(1).all { it.owner != null && it.entries.isEmpty() })
+		// A modifier on a warp acts on that stage alone.
+		val warp = stages.drop(1).firstOrNull { it.kind == "warp" } ?: return
+		val onWarp = ModifierAuthoring.put(preview, overlay, buildJsonObject {
+			put("id", "Lift"); put("kind", "transform"); putJsonArray("targets") { add(warp.key) }
+		})
+		val again = RigStages.chain(onWarp.applyTo(preview.baseRig.puppet), onWarp, mesh.id.raw)
+		assertEquals(listOf("Lift"), again.single { it.key == warp.key }.entries.map { it.id })
+		assertEquals(listOf("simulation:Skirt", "Shift"), again.first().entries.map { it.id })
+	}
+
+	@Test
+	fun `a deformer is the base rig's by its ID, a swing's when the swing wraps it, else the user's`() {
+		assertEquals(RigStages.Owner(RigStages.Owner.Kind.COMPONENT, "eyes"), RigStages.deformerOwner(RigEditOverlay(), "DeformEyeGaze"))
+		assertEquals(RigStages.Owner(RigStages.Owner.Kind.COMPONENT, "breath"), RigStages.deformerOwner(RigEditOverlay(), "DeformBodyZBreath"))
+		assertEquals(RigStages.Owner(RigStages.Owner.Kind.COMPONENT, "body"), RigStages.deformerOwner(RigEditOverlay(), "DeformBodyXY"))
+		assertEquals(RigStages.Owner(RigStages.Owner.Kind.MANUAL, ""), RigStages.deformerOwner(RigEditOverlay(), "WarpMine"))
+	}
+
+	@Test
 	fun `the order saves and restores with the project`() {
 		val overlay = ModifierAuthoring.move(shift(RigEditOverlay(simEdits = listOf(simulation()))), buildJsonObject { put("id", "Shift"); put("to", "first") })
 		val document = WorkspaceDocument(preview.analysis.source as WorkspaceSourceArt, emptyMap(), emptySet(), emptyMap(), emptyMap(), overlay)

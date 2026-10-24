@@ -27,11 +27,8 @@ import java.util.Locale
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.*
 
-private val INTERIOR_SECTIONS = setOf("audition")
-private val INTERIOR_OPEN = INTERIOR_SECTIONS
-
 /** The folds of an interior card open at first. */
-private val INTERIOR_CARD_OPEN = setOf("shape", "motion", "binding", "folds")
+private val INTERIOR_CARD_OPEN = setOf("audition", "shape", "motion", "binding", "folds")
 
 /** Transmission presets, as the direction row offers them: label key, from, to. */
 private val INTERIOR_DIRECTIONS =
@@ -45,164 +42,20 @@ private val INTERIOR_DIRECTIONS =
 /** Icon turn per preset: the icon points down. */
 private val INTERIOR_DIRECTION_DEGREES = listOf(0f, 180f, -90f, 90f)
 
-/** Native dock: the effect switched on, auditioned and isolated in view; its settings are its card in the modifier stack ([InteriorSettings]). */
+/**
+ * The audition of [effect]: the pair of parameters it reads posed on a pad (or by the mouse), the trial running while
+ * the card is shown. Only the edit canvas runs it.
+ */
 @Composable
-internal fun InteriorPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
+private fun InteriorAudition(vm: PSD2LiveViewModel, state: PSD2LiveState, preview: io.github.psd2live.core.RigPreviewModel, target: String,
+                             effect: NativeInteriorEffect, issue: String?, open: Boolean, onToggle: () -> Unit) {
 	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	val preview = state.previewModel
-	val target =
-		preview
-			?.rig
-			?.layerIdByDrawableId
-			?.entries
-			?.firstOrNull { it.value == state.selectedLayerId }
-			?.key ?: state.selectedLayerId
-	val drawable = preview?.rig?.puppet?.drawables?.singleOrNull { it.id.raw == target }
-	val effect = state.rigEdits.interiorEffects.singleOrNull { it.target == target }
-	var open by remember { mutableStateOf(INTERIOR_OPEN) }
-	Column(Modifier.fillMaxSize()) {
-		InteriorToolbar(
-			vm,
-			state,
-			drawable = drawable?.takeIf { it.mesh != null },
-			effect = effect,
-			onOpen = { open = it },
-		)
-		if (drawable?.mesh == null || target == null) {
-			Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-				Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-					InteriorIconView(InteriorIcon.SHAPE, colors.textDisabled, size = 24.dp)
-					Text(
-						tr("interior.select"),
-						style = typography.caption.copy(fontSize = 10.5.sp),
-						color = colors.textMuted,
-						textAlign = TextAlign.Center,
-					)
-				}
-			}
-			return@Column
-		}
-		InteriorBody(vm, state, preview, target, drawable, effect, open) { open = it }
-	}
-}
-
-/** Enable, solo and delete, and the expand pair; edits report progress in the status bar, so nothing here moves. */
-@Composable
-private fun InteriorToolbar(
-	vm: PSD2LiveViewModel,
-	state: PSD2LiveState,
-	drawable: Drawable?,
-	effect: NativeInteriorEffect?,
-	onOpen: (Set<String>) -> Unit,
-) {
-	val colors = LocalToolColors.current
-	val solo = vm.interior.soloActiveFor(state)
-	val labels = listOf(tr("interior.enabled"), tr(if (solo) "interior.restoreView" else "interior.solo"), tr("interior.delete"),
-		tr("interior.canvasEdit"))
-	val onCanvas = state.activeCanvas.mode == CanvasMode.EDIT &&
-		vm.canvasEditorFor(state.activeCanvas.id).tool == io.github.psd2live.ui.CanvasTool.INTERIOR
-	PanelToolbar(
-		labels = labels,
-		iconCount = 6,
-	) { labelsShown ->
-		PanelToolSwitch(
-			labels[0],
-			showLabel = labelsShown > 0,
-			checked = effect?.enabled == true,
-			onCheckedChange = { value ->
-				if (!value) vm.interior.stopTrial()
-				vm.interior.put(
-					buildJsonObject {
-						put("target", drawable!!.id.raw)
-						put("enabled", value)
-					}
-				)
-			},
-			enabled = drawable != null,
-			tooltip = tr("interior.enabledTip"),
-		)
-		PanelToolButton(
-			labels[1],
-			showLabel = labelsShown > 1,
-			onClick = { vm.interior.toggleSolo() },
-			enabled = drawable != null,
-			tooltip = tr("interior.soloTip"),
-			active = solo,
-		) {
-			InteriorIconView(InteriorIcon.SOLO, if (solo) colors.accent else colors.textPrimary, size = 11.dp)
-		}
-		val key = state.keymap.labelFor(ShortcutAction.TOOL_INTERIOR)
-		PanelToolButton(
-			labels[3],
-			showLabel = labelsShown > 3,
-			onClick = { editInteriorOnCanvas(vm, state) },
-			enabled = drawable != null,
-			tooltip = tr("interior.canvasEditTip") + (key?.let { " ($it)" } ?: ""),
-			active = onCanvas,
-		) {
-			androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
-				drawToolIcon(io.github.psd2live.ui.CanvasTool.INTERIOR, if (onCanvas) colors.accent else colors.textPrimary)
-			}
-		}
-		PanelToolbarSeparator()
-		PanelToolButton(
-			labels[2],
-			showLabel = labelsShown > 2,
-			onClick = { drawable?.let { vm.interior.delete(it.id.raw) } },
-			enabled = drawable != null && effect != null,
-			tooltip = tr("interior.delete"),
-		) {
-			IconTrash(modifier = Modifier.size(11.dp), tint = colors.textPrimary)
-		}
-		Spacer(Modifier.weight(1f))
-		PanelExpandCollapseButtons(
-			onExpandAll = { onOpen(INTERIOR_SECTIONS) },
-			onCollapseAll = { onOpen(emptySet()) },
-			enabled = effect?.enabled == true,
-		)
-	}
-}
-
-@Composable
-private fun InteriorBody(
-	vm: PSD2LiveViewModel,
-	state: PSD2LiveState,
-	preview: io.github.psd2live.core.RigPreviewModel,
-	target: String,
-	drawable: Drawable,
-	effect: NativeInteriorEffect?,
-	open: Set<String>,
-	onOpen: (Set<String>) -> Unit,
-) {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	val caption = typography.caption.copy(fontSize = 10.sp)
-	val draft = vm.interior.draft(drawable.id.raw, effect)
-	val issue = remember(effect, preview) { effect?.issue(preview.authored.rig.puppet) }
-	fun request() = draft.request(target, effect?.enabled ?: true)
-	fun save() = vm.interior.put(request())
-	LaunchedEffect(target, draft.version, draft.dirty, vm.interior.poseTarget != null) {
-		vm.interior.previewLater(target, effect?.enabled == true, draft)
-	}
-	DisposableEffect(
-		target,
-		state.projectOpenGeneration,
-		state.activeWorkspace.id,
-		state.activeCanvas.id,
-		state.activeCanvas.mode,
-	) {
+	val caption = LocalToolTypography.current.caption.copy(fontSize = 10.sp)
+	DisposableEffect(target, state.projectOpenGeneration, state.activeWorkspace.id, state.activeCanvas.id, state.activeCanvas.mode) {
 		onDispose { vm.interior.stopTrial() }
 	}
-	LaunchedEffect(effect, preview) {
-		if (effect?.enabled != true || issue != null || vm.interior.poseTarget == null) {
-			vm.interior.stopTrial()
-			return@LaunchedEffect
-		}
-		vm.interior.startTrial(effect)
-	}
-	LaunchedEffect(target, effect, vm.interior.poseTarget != null) {
-		if (effect?.enabled != true || issue != null || vm.interior.poseTarget == null) {
+	LaunchedEffect(target, effect, preview, vm.interior.poseTarget != null) {
+		if (!effect.enabled || issue != null || vm.interior.poseTarget == null) {
 			vm.interior.stopTrial()
 			return@LaunchedEffect
 		}
@@ -214,117 +67,60 @@ private fun InteriorBody(
 			last = now
 		}
 	}
-	fun toggle(key: String) = onOpen(if (key in open) open - key else open + key)
-	@Composable fun icon(icon: InteriorIcon): @Composable () -> Unit = { InteriorIconView(icon, colors.accent) }
-
-	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-		Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-			Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-				Text(
-					drawable.name,
-					style = typography.body.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
-					color = colors.textPrimary,
-					maxLines = 1,
-					overflow = TextOverflow.Ellipsis,
-					modifier = Modifier.weight(1f),
-				)
-				if (effect?.enabled == true)
-					Text(
-						effect.sources.joinToString(" · ") { it.name },
-						style = typography.monoSmall,
-						color = colors.textMuted,
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
-					)
-			}
-			when {
-				effect?.enabled != true -> Text(tr("interior.disabledHint"), style = caption, color = colors.textMuted)
-				issue != null -> {
-					Text(tr(issue), style = caption, color = colors.warning)
-					CompactButton(tr("interior.regenerate"), ::save, isPrimary = true, height = 22.dp)
+	val editing = state.activeCanvas.mode == CanvasMode.EDIT
+	val tools: @Composable RowScope.() -> Unit = {
+		val mouse = vm.interior.mouse
+		CompactIconButton(
+			onClick = {
+				vm.interior.mouse = !mouse
+				if (!mouse) {
+					vm.interior.poseTarget = 0f to 0f
+					vm.interior.startTrial(effect)
 				}
-			}
-			// Its settings are its card in the modifier stack; here it is auditioned.
-			if (effect != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-				Text(tr("interior.settingsInStack"), style = caption, color = colors.textMuted, modifier = Modifier.weight(1f))
-				CompactButton(tr("interior.editSettings"), { vm.showStackOf(target) }, height = 22.dp)
-			}
-		}
-		PhysicsRowDivider()
-		if (effect?.enabled != true) return@Column
-		val editing = state.activeCanvas.mode == CanvasMode.EDIT
-
-		val auditionTools: @Composable RowScope.() -> Unit = {
-			val mouse = vm.interior.mouse
-			CompactIconButton(
-				onClick = {
-					vm.interior.mouse = !mouse
-					if (!mouse) {
-						vm.interior.poseTarget = 0f to 0f
-						vm.interior.startTrial(effect)
-					}
-				},
-				enabled = editing && issue == null,
-				tooltip = tr("interior.mouse"),
-				size = 18.dp,
-			) {
-				IconMouse(mouse, modifier = Modifier.size(12.dp), tint = if (mouse) colors.accent else colors.textMuted)
-			}
-			CompactIconButton(
-				onClick = { vm.interior.stopTrial() },
-				enabled = editing && vm.interior.poseTarget != null,
-				tooltip = tr("interior.stop"),
-				size = 18.dp,
-			) {
-				IconPause(modifier = Modifier.size(10.dp), tint = colors.textMuted)
-			}
-		}
-		PhysicsSection(
-			tr("interior.audition"),
-			"audition" in open,
-			{ toggle("audition") },
-			icon = icon(InteriorIcon.AUDITION),
-			trailing = auditionTools,
+			},
+			enabled = editing && issue == null,
+			tooltip = tr("interior.mouse"),
+			size = 18.dp,
 		) {
-			if (!editing) {
-				Text(tr("interior.auditionEditOnly"), style = caption, color = colors.textMuted)
-				CompactButton(
-					tr("interior.editAudition"),
-					{ vm.setCanvasMode(state.activeCanvas.id, CanvasMode.EDIT) },
-					height = 22.dp,
-				)
-			} else {
-				// The audition pose is the pair the effect reads, posed here as the parameter panel poses it.
-				val axes = effect.sources
-				fun pose() = vm.interior.poseTarget ?: (0f to 0f)
-				fun parameterValue(p: Parameter, v: Float) =
-					p.default + v * (if (v < 0) p.default - p.min else p.max - p.default)
-				fun normalized(p: Parameter, v: Float) =
-					(v - p.default) / (if (v < p.default) p.default - p.min else p.max - p.default)
-				ParameterPairPad(
-					axes[0],
-					axes[1],
-					{ parameterValue(axes[0], pose().first) },
-					{ parameterValue(axes[1], pose().second) },
-					enabled = issue == null,
-					horizontalKeys = ParameterKeyMarks(listOf(axes[0].min, axes[0].default, axes[0].max), emptyList()),
-					verticalKeys = ParameterKeyMarks(listOf(axes[1].min, axes[1].default, axes[1].max), emptyList()),
-					onChange = { x, y ->
-						vm.interior.mouse = false
-						vm.interior.poseTarget = normalized(axes[0], x) to normalized(axes[1], y)
-						vm.interior.startTrial(effect)
-					},
-					reverseY = true,
-				)
-			}
+			IconMouse(mouse, modifier = Modifier.size(12.dp), tint = if (mouse) colors.accent else colors.textMuted)
+		}
+		CompactIconButton(onClick = { vm.interior.stopTrial() }, enabled = editing && vm.interior.poseTarget != null, tooltip = tr("interior.stop"), size = 18.dp) {
+			IconPause(modifier = Modifier.size(10.dp), tint = colors.textMuted)
+		}
+	}
+	CardSubsection(tr("interior.audition"), open, onToggle, trailing = tools) {
+		if (!editing) {
+			Text(tr("interior.auditionEditOnly"), style = caption, color = colors.textMuted)
+			CompactButton(tr("interior.editAudition"), { vm.setCanvasMode(state.activeCanvas.id, CanvasMode.EDIT) }, height = 22.dp)
+		} else {
+			// The audition pose is the pair the effect reads, posed here as the parameter panel poses it.
+			val axes = effect.sources
+			fun pose() = vm.interior.poseTarget ?: (0f to 0f)
+			fun parameterValue(p: Parameter, v: Float) = p.default + v * (if (v < 0) p.default - p.min else p.max - p.default)
+			fun normalized(p: Parameter, v: Float) = (v - p.default) / (if (v < p.default) p.default - p.min else p.max - p.default)
+			ParameterPairPad(
+				axes[0],
+				axes[1],
+				{ parameterValue(axes[0], pose().first) },
+				{ parameterValue(axes[1], pose().second) },
+				enabled = issue == null,
+				horizontalKeys = ParameterKeyMarks(listOf(axes[0].min, axes[0].default, axes[0].max), emptyList()),
+				verticalKeys = ParameterKeyMarks(listOf(axes[1].min, axes[1].default, axes[1].max), emptyList()),
+				onChange = { x, y ->
+					vm.interior.mouse = false
+					vm.interior.poseTarget = normalized(axes[0], x) to normalized(axes[1], y)
+					vm.interior.startTrial(effect)
+				},
+				reverseY = true,
+			)
 		}
 	}
 }
 
 /**
- * An interior effect's settings, as its card in the modifier stack shows them: the shape, the mesh's folds, the
- * motion, how it reads its parameters and the drawn folds. Sliders move the shared draft (which an audition running in
- * the interior panel previews) and commit on release.
+ * An interior effect, as its card in the modifier stack shows it: what keeps it from being built and Regenerate, its
+ * audition, then the shape, the mesh's folds, the motion, how it reads its parameters and the drawn folds. Sliders move
+ * the draft (which a running audition previews) and commit on release.
  */
 @Composable
 internal fun InteriorSettings(vm: PSD2LiveViewModel, state: PSD2LiveState, preview: io.github.psd2live.core.RigPreviewModel, target: String,
@@ -340,6 +136,12 @@ internal fun InteriorSettings(vm: PSD2LiveViewModel, state: PSD2LiveState, previ
 	fun toggle(key: String) { open = if (key in open) open - key else open + key }
 	val editing = state.activeCanvas.mode == CanvasMode.EDIT
 	val layer = preview.rig.layerIdByDrawableId[target] ?: target
+	val issue = remember(effect, preview) { effect.issue(preview.authored.rig.puppet) }
+	if (issue != null) {
+		Text(tr(issue), style = caption, color = colors.warning)
+		CompactButton(tr("interior.regenerate"), ::save, isPrimary = true, height = 22.dp)
+	}
+	InteriorAudition(vm, state, preview, target, effect, issue, "audition" in open) { toggle("audition") }
 
 	val shapeReset: @Composable RowScope.() -> Unit = {
 		CompactIconButton(
@@ -598,7 +400,7 @@ internal fun InteriorSettings(vm: PSD2LiveViewModel, state: PSD2LiveState, previ
 }
 
 /** Arms the interior tool on the active canvas, in object mode, and hands the keyboard back to the canvas. */
-private fun editInteriorOnCanvas(vm: PSD2LiveViewModel, state: PSD2LiveState) {
+internal fun editInteriorOnCanvas(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	val canvas = state.activeCanvas.id
 	if (state.activeCanvas.mode != CanvasMode.EDIT) vm.setCanvasMode(canvas, CanvasMode.EDIT)
 	vm.canvasEditorFor(canvas).activateTool(io.github.psd2live.ui.CanvasTool.INTERIOR)

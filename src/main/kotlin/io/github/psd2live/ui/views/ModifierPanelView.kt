@@ -18,6 +18,10 @@ import io.github.psd2live.ui.components.*
 import io.github.psd2live.ui.state.*
 import io.github.psd2live.ui.theme.LocalToolColors
 import io.github.psd2live.ui.theme.LocalToolTypography
+import io.github.psd2live.ui.theme.handCursor
+import io.github.psd2live.ui.tutorial.TutorialTargetId
+import io.github.psd2live.ui.tutorial.tutorialTarget
+import androidx.compose.foundation.clickable
 import io.github.psd2live.ui.views.physics.FieldLabel
 import io.github.psd2live.ui.views.physics.PhysicsSection
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
@@ -37,75 +41,209 @@ private val MODIFIER_FIELDS = mapOf("offset" to (1.0 to 1), "rotation" to (1.0 t
 	"amplitude" to (1.0 to 1), "wavelength" to (1.0 to 1), "phase" to (5.0 to 1), "ramp" to (1.0 to 1), "bounds" to (1.0 to 1))
 
 /**
- * The selected mesh's (or warp's) stack: one card per entry in the order they run, the skeleton's skin locked first. A
- * modifier's card holds its settings, keyed on parameters by the key button; a swing's, simulation's or interior
- * effect's holds that generator's settings, its own panel keeping what it bakes, previews and checks.
+ * The modifiers panel, in two pages. The object page shows the selection as Live2D computes it: its own keyforms, then
+ * each parent deformer's, innermost first ([RigStages]) - each stage with who made it and the cards acting on it, in
+ * the order they run. The world page holds what belongs to the whole model: every simulation and its bake, the
+ * problems of every card, and the generation settings.
  */
 @Composable
 internal fun ModifierPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
+	Column(Modifier.fillMaxSize()) {
+		CompactTabBar(listOf(tr("modifiers.page.object"), tr("modifiers.page.world")), vm.modifiers.page, { vm.modifiers.page = it }, height = 24.dp)
+		if (vm.modifiers.page == ModifierController.WORLD) WorldPage(vm, state) else ObjectPage(vm, state)
+	}
+}
+
+/** The problems the modifiers' sampling reports, worked out off the UI thread for the committed document. */
+@Composable
+private fun rememberModifierIssues(state: PSD2LiveState): List<ModifierSampler.Issue> {
+	val preview = state.previewModel
+	val issues by produceState(emptyList<ModifierSampler.Issue>(), preview, state.rigEdits.modifiers) {
+		value = withContext(Dispatchers.Default) {
+			runCatching {
+				val overlay = preview!!.config.rigEdits
+				if (overlay.modifiers.isEmpty()) emptyList()
+				else ModifierSampler.issues(DocumentGenerators.generate(preview.authoredPuppet(overlay), overlay.copy(modifiers = emptyList())), overlay.modifiers)
+			}.getOrDefault(emptyList())
+		}
+	}
+	return issues
+}
+
+@Composable
+private fun ObjectPage(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	val colors = LocalToolColors.current
 	val typography = LocalToolTypography.current
 	val preview = state.previewModel
 	val target = preview?.rig?.layerIdByDrawableId?.entries?.firstOrNull { it.value == state.selectedLayerId }?.key ?: state.selectedLayerId
 	val puppet = preview?.rig?.puppet
 	val mesh = puppet?.drawables?.singleOrNull { it.id.raw == target }?.takeIf { it.mesh != null }
-	// A warp picked on the canvas shows its own stack; otherwise the selected layer's mesh.
-	val warp = vm.canvasEditorFor(state.activeCanvas.id).selectionTarget()?.takeIf { it.kind == "warp" }?.id
-	val key = warp?.let { ModifierTarget.WARP + it } ?: mesh?.id?.raw
-	val stack = state.rigEdits.modifiers.filter { key != null && key in it.target.keys(puppet) }
+	// A deformer picked on the canvas or in the hierarchy shows its own stages; otherwise the selected layer's mesh.
+	val picked = vm.canvasEditorFor(state.activeCanvas.id).selectionTarget()
+	val key = when (picked?.kind) {
+		"warp" -> ModifierTarget.WARP + picked.id
+		"rotation" -> RigStages.ROTATION + picked.id
+		else -> mesh?.id?.raw
+	}
 	// The committed model shows what was previewed: the preview steps aside.
 	LaunchedEffect(preview) { vm.modifiers.dropPreview() }
 	DisposableEffect(key, state.activeCanvas.id) { onDispose { vm.modifiers.dropPreview() } }
-	// Cards start open, a new one too: the panel keeps the ones closed.
+	val stages = remember(state.rigEdits, puppet, key) {
+		if (key == null || puppet == null) emptyList() else runCatching { RigStages.chain(puppet, state.rigEdits, key) }.getOrDefault(emptyList())
+	}
+	// The selection's own stage starts open, the parents folded; cards start open and the panel keeps the ones closed.
+	var openStages by remember(key) { mutableStateOf(setOfNotNull(key)) }
 	var closed by remember(key) { mutableStateOf(emptySet<String>()) }
-	val rows = remember(state.rigEdits, puppet, key) { if (key == null || puppet == null) emptyList() else stackRows(state.rigEdits, puppet, key) }
-	Column(Modifier.fillMaxSize()) {
-		val labels = listOf(tr("modifiers.add"))
-		var adding by remember { mutableStateOf(false) }
-		PanelToolbar(labels = labels, iconCount = 2) { shown ->
-			Box {
-				PanelToolButton(labels[0], showLabel = shown > 0, onClick = { adding = true }, enabled = key != null, tooltip = tr("modifiers.addTip")) {
-					IconAdd(modifier = Modifier.size(10.dp), tint = colors.textPrimary)
-				}
-				if (key != null && puppet != null) PressMenu(expanded = adding, press = Offset(0f, 0f), onDismissRequest = { adding = false }) {
-					ModifierAddMenu(vm, state, puppet, if (warp != null) listOf(key) else selectedMeshes(state, puppet, key), stack) { adding = false }
-				}
+	var contributedOnly by remember { mutableStateOf(false) }
+	val own = stages.firstOrNull()
+	val labels = listOf(tr("modifiers.add"), tr("modifiers.contributedOnly"))
+	var adding by remember { mutableStateOf(false) }
+	PanelToolbar(labels = labels, iconCount = 4) { shown ->
+		Box {
+			PanelToolButton(labels[0], showLabel = shown > 0, onClick = { adding = true }, enabled = own != null && own.kind != "rotation",
+				tooltip = tr("modifiers.addTip")) {
+				IconAdd(modifier = Modifier.size(10.dp), tint = colors.textPrimary)
 			}
-			Spacer(Modifier.weight(1f))
-			PanelExpandCollapseButtons(onExpandAll = { closed = emptySet() }, onCollapseAll = { closed = rows.map { it.first }.toSet() }, enabled = rows.isNotEmpty())
-		}
-		if (key == null || puppet == null) {
-			Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-				Text(tr("modifiers.select"), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textMuted, textAlign = TextAlign.Center)
-			}
-			return@Column
-		}
-		val issues by produceState(emptyList<ModifierSampler.Issue>(), preview, state.rigEdits.modifiers) {
-			value = withContext(Dispatchers.Default) {
-				runCatching {
-					val overlay = preview.config.rigEdits
-					if (overlay.modifiers.isEmpty()) emptyList()
-					else ModifierSampler.issues(DocumentGenerators.generate(preview.authoredPuppet(overlay), overlay.copy(modifiers = emptyList())), overlay.modifiers)
-				}.getOrDefault(emptyList())
+			if (own != null && puppet != null) PressMenu(expanded = adding, press = Offset(0f, 0f), onDismissRequest = { adding = false }) {
+				ModifierAddMenu(vm, state, puppet, own) { adding = false }
 			}
 		}
-		val skin = remember(state.rigEdits, key) { key in runCatching { io.github.psd2live.core.SkeletonCanvasSkin.placed(state.rigEdits) }.getOrDefault(emptySet()) }
-		val ids = rows.map { it.first }
-		Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-			// The skeleton's skin is baked before every other entry; the rest run in the stack's order.
-			if (skin) SkinCard()
-			if (rows.isEmpty() && !skin) Text(tr("modifiers.empty"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted,
-				modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp))
-			rows.forEachIndexed { index, (_, row) ->
-				when (row) {
-					is RigModifier -> ModifierCard(vm, state, puppet, key, ids, index, row, issues.filter { it.modifier == row.id && it.target == key },
-						row.id !in closed) { closed = if (row.id in closed) closed - row.id else closed + row.id }
-					is SystemModifier -> GeneratorCard(vm, state, puppet, row, ids, index, row.id !in closed) {
-						closed = if (row.id in closed) closed - row.id else closed + row.id
-					}
-				}
+		PanelToolSwitch(labels[1], showLabel = shown > 1, checked = contributedOnly, onCheckedChange = { contributedOnly = it }, enabled = stages.isNotEmpty(),
+			tooltip = tr("modifiers.contributedOnlyTip"))
+		Spacer(Modifier.weight(1f))
+		PanelExpandCollapseButtons(onExpandAll = { openStages = stages.map { it.key }.toSet(); closed = emptySet() },
+			onCollapseAll = { openStages = emptySet() }, enabled = stages.isNotEmpty())
+	}
+	if (key == null || puppet == null || preview == null) {
+		Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
+			Text(tr("modifiers.select"), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textMuted, textAlign = TextAlign.Center)
+		}
+		return
+	}
+	val issues = rememberModifierIssues(state)
+	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+		for (stage in stages) {
+			if (contributedOnly && !stage.contributed && stage.key != key) continue
+			StageSection(vm, state, puppet, stage, stage.key in openStages, { openStages = if (stage.key in openStages) openStages - stage.key else openStages + stage.key },
+				closed, { id -> closed = if (id in closed) closed - id else closed + id }, issues)
+		}
+	}
+}
+
+/** Who made a stage or an axis, as its row names it. */
+private fun ownerLabel(overlay: io.github.psd2live.core.RigEditOverlay, owner: RigStages.Owner): String = when (owner.kind) {
+	RigStages.Owner.Kind.COMPONENT -> tr("modifiers.component.${owner.id}")
+	RigStages.Owner.Kind.SWING -> overlay.swingEdits.firstOrNull { it.id == owner.id }?.name ?: owner.id
+	RigStages.Owner.Kind.SIMULATION -> overlay.simEdits.firstOrNull { it.id == owner.id }?.name ?: owner.id
+	RigStages.Owner.Kind.INTERIOR -> overlay.interiorEffects.firstOrNull { it.id == owner.id }?.name ?: owner.id
+	RigStages.Owner.Kind.MODIFIERS -> tr("modifiers.owner.modifiers")
+	RigStages.Owner.Kind.SKIN -> tr("modifiers.system.skin")
+	RigStages.Owner.Kind.MANUAL -> tr("modifiers.owner.manual")
+}
+
+/**
+ * One stage: its row (what it is, who made it, how many cards act on it, a way to select its deformer and to add to it),
+ * and when open the keys the base rig and the user gave it, then its cards in the order they run.
+ */
+@Composable
+private fun StageSection(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: PuppetModel, stage: RigStages.Stage, open: Boolean, onToggle: () -> Unit,
+                         closed: Set<String>, onToggleCard: (String) -> Unit, issues: List<ModifierSampler.Issue>) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	val caption = typography.caption.copy(fontSize = 9.5.sp)
+	var adding by remember { mutableStateOf(false) }
+	val trailing: @Composable RowScope.() -> Unit = {
+		Text(stage.owner?.let { if (it.kind == RigStages.Owner.Kind.MANUAL) ownerLabel(state.rigEdits, it) else tr("modifiers.stage.by", ownerLabel(state.rigEdits, it)) } ?: "", style = caption, color = colors.textMuted, maxLines = 1,
+			overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+		if (stage.kind != "mesh") CompactIconButton(onClick = { vm.selectDeformer(stage.id) }, tooltip = tr("modifiers.stage.select"), size = 18.dp) {
+			GridIcon(Modifier.size(11.dp), colors.textMuted) { line(5f, 13f, 13f, 5f); line(8f, 5f, 13f, 5f); line(13f, 5f, 13f, 10f) }
+		}
+		if (stage.kind != "rotation") Box {
+			CompactIconButton(onClick = { adding = true }, tooltip = tr("modifiers.stage.add"), size = 18.dp) {
+				IconAdd(modifier = Modifier.size(9.dp), tint = colors.textMuted)
+			}
+			PressMenu(expanded = adding, press = Offset(0f, 0f), onDismissRequest = { adding = false }) {
+				ModifierAddMenu(vm, state, puppet, stage) { adding = false }
 			}
 		}
+	}
+	val title = tr("modifiers.stage.${stage.kind}", stage.name)
+	PanelSectionRow(title, open, onToggle, count = stage.entries.size.takeIf { it > 0 }, icon = null, trailing = trailing)
+	io.github.psd2live.ui.views.physics.PhysicsRowDivider()
+	if (!open) return
+	// The keys no card stands for: the base rig's generators', the skin's and the user's own, by who made them.
+	val plain = stage.axes.filter { it.owner.kind in setOf(RigStages.Owner.Kind.COMPONENT, RigStages.Owner.Kind.SKIN, RigStages.Owner.Kind.MANUAL) }
+		.groupBy { it.owner }
+	if (plain.isNotEmpty()) Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+		val names = puppet.parameters.associate { it.id.raw to it.name }
+		for ((owner, axes) in plain) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+			Text(ownerLabel(state.rigEdits, owner), style = caption, color = colors.textPrimary, modifier = Modifier.width(72.dp), maxLines = 1)
+			Text(axes.joinToString(" · ") { names[it.parameter] ?: it.parameter }, style = caption, color = colors.textMuted, maxLines = 2,
+				overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+		}
+	}
+	val ids = stage.entries.map { it.id }
+	if (ids.isEmpty() && plain.isEmpty()) Text(tr("modifiers.stage.empty"), style = caption, color = colors.textMuted,
+		modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
+	stage.entries.forEachIndexed { index, entry ->
+		when (entry) {
+			is ModifierStack.Entry.Modifier -> ModifierCard(vm, state, puppet, stage.key, ids, index, entry.modifier,
+				issues.filter { it.modifier == entry.modifier.id && it.target == stage.key }, entry.id !in closed) { onToggleCard(entry.id) }
+			else -> systemOf(entry, state.rigEdits, puppet)?.let { system ->
+				GeneratorCard(vm, state, puppet, system, ids, index, entry.id !in closed) { onToggleCard(entry.id) }
+			}
+		}
+	}
+}
+
+/** What belongs to the whole model: every simulation and its bake, every card's problems, and the generation settings. */
+@Composable
+private fun WorldPage(vm: PSD2LiveViewModel, state: PSD2LiveState) {
+	val colors = LocalToolColors.current
+	val caption = LocalToolTypography.current.caption.copy(fontSize = 10.sp)
+	var open by remember { mutableStateOf(setOf("simulations", "issues", "generate")) }
+	fun toggle(key: String) { open = if (key in open) open - key else open + key }
+	val issues = rememberModifierIssues(state)
+	val preview = state.previewModel
+	val interior = remember(state.rigEdits, preview) {
+		if (preview == null) emptyList() else state.rigEdits.interiorEffects.filter { it.enabled }.mapNotNull { e -> e.issue(preview.authored.rig.puppet)?.let { e to it } }
+	}
+	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+		Column(Modifier.tutorialTarget(TutorialTargetId.SIMULATION_DOCK)) {
+			PanelSectionRow(tr("modifiers.world.simulations"), "simulations" in open, { toggle("simulations") }, count = state.rigEdits.simEdits.size, icon = null)
+			io.github.psd2live.ui.views.physics.PhysicsRowDivider()
+			if ("simulations" in open) io.github.psd2live.ui.views.simulation.SimulationOverview(vm, state)
+		}
+		PanelSectionRow(tr("modifiers.world.issues"), "issues" in open, { toggle("issues") }, count = issues.size + interior.size, icon = null)
+		io.github.psd2live.ui.views.physics.PhysicsRowDivider()
+		if ("issues" in open) Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+			if (issues.isEmpty() && interior.isEmpty()) Text(tr("modifiers.world.noIssues"), style = caption, color = colors.textMuted)
+			val names = state.rigEdits.modifiers.associate { it.id to it.name }
+			for (issue in issues) IssueRow("${names[issue.modifier] ?: issue.modifier} · ${issue.target.removePrefix(ModifierTarget.WARP)}",
+				tr("modifiers.issue.${issue.kind.code}", issue.detail.ifEmpty { issue.error?.let { "%.1f".format(it) } ?: "" })) {
+				if (issue.target.startsWith(ModifierTarget.WARP)) vm.selectDeformer(issue.target.removePrefix(ModifierTarget.WARP)) else vm.showStackOf(issue.target)
+				vm.modifiers.page = ModifierController.OBJECT
+			}
+			for ((effect, issue) in interior) IssueRow(effect.name, tr(issue)) { vm.showStackOf(effect.target); vm.modifiers.page = ModifierController.OBJECT }
+		}
+		Column(Modifier.tutorialTarget(TutorialTargetId.MODEL_SETTINGS)) {
+			PanelSectionRow(tr("modifiers.world.generate"), "generate" in open, { toggle("generate") }, icon = null)
+			io.github.psd2live.ui.views.physics.PhysicsRowDivider()
+			if ("generate" in open) ModelPresetsSection(state, vm)
+		}
+	}
+}
+
+/** One problem on the world page: what it is on, what is wrong; a click shows the card. */
+@Composable
+private fun IssueRow(subject: String, problem: String, onClick: () -> Unit) {
+	val colors = LocalToolColors.current
+	val caption = LocalToolTypography.current.caption.copy(fontSize = 10.sp)
+	Row(Modifier.fillMaxWidth().handCursor().clickable(onClick = onClick).padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+		Text(subject, style = caption, color = colors.textPrimary, maxLines = 1, modifier = Modifier.width(110.dp),
+			overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+		Text(problem, style = caption, color = colors.warning, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
 	}
 }
 
@@ -271,20 +409,38 @@ internal fun selectedMeshes(state: PSD2LiveState, puppet: PuppetModel, current: 
 }
 
 /**
- * What can go on [meshes]: the kinds, those suiting the layer's role first, then the saved presets, and saving
- * [stack] as one.
+ * What can be added to [stage]: the kinds, those suiting the layer's role first, then the saved presets and saving the
+ * stage's modifiers as one; on a mesh's own stage also a simulation of the selected meshes and an interior effect. A
+ * mesh stage's modifiers go on every selected mesh, as Alt edits do.
  */
 @Composable
-private fun ModifierAddMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: PuppetModel, meshes: List<String>, stack: List<RigModifier>, close: () -> Unit) {
+private fun ModifierAddMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: PuppetModel, stage: RigStages.Stage, close: () -> Unit) {
 	val colors = LocalToolColors.current
 	val rows = mutableListOf<Pair<Boolean, @Composable () -> Unit>>()
-	val role = state.previewModel?.analysis?.layers?.firstOrNull { it.source.id.raw == state.selectedLayerId }?.semantic?.tag
+	val mesh = stage.kind == "mesh"
+	val meshes = if (mesh) selectedMeshes(state, puppet, stage.key) else listOf(stage.key)
+	val stack = state.rigEdits.modifiers.filter { stage.key in it.target.keys(puppet) }
+	rows += false to @Composable { FloatingMenuSection(tr("modifiers.addTo", tr("modifiers.stage.${stage.kind}", stage.name))) }
+	val role = if (!mesh) null else state.previewModel?.analysis?.layers?.firstOrNull { it.source.id.raw == state.selectedLayerId }?.semantic?.tag
 	val kinds = ModifierKinds.forRole(role)
 	val suited = kinds.filter { role != null && role in it.suits }
 	if (suited.isNotEmpty()) rows += false to @Composable { FloatingMenuSection(tr("modifiers.suggested")) }
 	for ((i, kind) in kinds.withIndex()) {
 		if (i == suited.size && suited.isNotEmpty()) rows += false to @Composable { FloatingMenuSection(tr("modifiers.allKinds")) }
 		rows += true to @Composable { FloatingMenuRow(tr("modifiers.kind.${kind.id}"), { close(); vm.modifiers.add(kind.id, meshes) }, hint = tr("modifiers.kindTip.${kind.id}")) }
+	}
+	if (mesh) {
+		rows += false to @Composable { FloatingMenuSection(tr("modifiers.category.dynamics")) }
+		for (kind in io.github.psd2live.core.sim.SimKind.entries) rows += !state.canvasEditBusy to @Composable {
+			FloatingMenuRow(tr("modifiers.addSimulation", tr("sim.kind.${kind.jsonName}")), { close(); vm.createSimulationFromSelection(kind) },
+				enabled = !state.canvasEditBusy, hint = tr("sim.newTip"))
+		}
+		rows += false to @Composable { FloatingMenuSection(tr("modifiers.category.shape")) }
+		val has = state.rigEdits.interiorEffects.any { it.target == stage.key }
+		rows += !has to @Composable {
+			FloatingMenuRow(tr("modifiers.system.interior"), { close(); vm.interior.put(buildJsonObject { put("target", stage.key); put("enabled", true) }) },
+				enabled = !has, hint = tr("interior.enabledTip"))
+		}
 	}
 	rows += false to @Composable { FloatingMenuSection(tr("modifiers.presets")) }
 	val parameters = puppet.parameters.mapTo(HashSet()) { it.id.raw } + state.rigEdits.modifiers.flatMap { m -> m.created.map { it.id.raw } }
@@ -307,7 +463,7 @@ private fun ModifierAddMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet:
 internal fun ModifierPresetDialog(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	val mesh = vm.modifiers.presetDialog ?: return
 	val puppet = state.previewModel?.rig?.puppet
-	val stack = state.rigEdits.modifiers.filter { mesh in it.target.resolve(puppet) }
+	val stack = state.rigEdits.modifiers.filter { mesh in it.target.keys(puppet) }
 	val default = puppet?.drawables?.firstOrNull { it.id.raw == mesh }?.name ?: mesh
 	var name by remember(mesh) { mutableStateOf(default) }
 	val taken = vm.modifiers.presets.any { it.name == name.trim() }
@@ -350,57 +506,31 @@ internal class SystemModifier(
 	val warn: Boolean = false,
 )
 
-/**
- * The entries of the stack that act on [mesh], in the order they run (after the skeleton's skin): its modifiers, the
- * unbaked swings on its parents, its interior effect and the simulations baked onto it. Each is its ID and the
- * modifier or the generator's [SystemModifier].
- */
-internal fun stackRows(overlay: io.github.psd2live.core.RigEditOverlay, puppet: PuppetModel, mesh: String): List<Pair<String, Any>> {
-	val deformers = puppet.deformers.associateBy { it.id.raw }
-	// A warp's own stack holds what moves it; a mesh's what moves it or its parents.
-	val chain = if (mesh.startsWith(ModifierTarget.WARP)) setOf(mesh.removePrefix(ModifierTarget.WARP))
-		else generateSequence(puppet.drawables.firstOrNull { it.id.raw == mesh }?.parentDeformerId?.raw) { deformers[it]?.parent?.raw }.toSet()
-	return ModifierStack.entries(overlay).mapNotNull { entry ->
-		when (entry) {
-			is ModifierStack.Entry.Modifier -> entry.modifier.takeIf { mesh in it.target.keys(puppet) }?.let { entry.id to it }
-			is ModifierStack.Entry.Swing -> entry.swing.takeIf { !it.baked && it.targets.any { t -> t in chain } }?.let { swing ->
-				entry.id to SystemModifier("swing", entry.id, swing.name, "physics", "swing_delete" to buildJsonObject { put("id", swing.id); put("bake", true) },
-					delete = "swing_delete" to buildJsonObject { put("id", swing.id) }, source = swing)
-			}
-			is ModifierStack.Entry.Interior -> entry.effect.takeIf { it.target == mesh }?.let { effect ->
-				entry.id to SystemModifier("interior", entry.id, effect.name, "interior", null, enabled = effect.enabled,
-					toggle = { on -> "interior_put" to buildJsonObject { put("target", effect.target); put("enabled", on) } },
-					delete = "interior_delete" to buildJsonObject { put("target", effect.target) }, source = effect, applyNote = tr("modifiers.system.applyNone"))
-			}
-			is ModifierStack.Entry.Simulation -> entry.simulation.takeIf { mesh in it.targets || it.bake?.vertexCounts?.containsKey(mesh) == true }?.let { sim ->
-				val baked = sim.bake != null && sim.enabled
-				// Modes written as blend shapes have no keyform axes to apply onto.
-				val shapes = baked && io.github.psd2live.core.sim.SimGenerator.usesBlendShapes(puppet, sim)
-				val stale = baked && runCatching { io.github.psd2live.core.sim.SimBake.stale(puppet, sim, overlay) }.getOrDefault(false)
-				entry.id to SystemModifier("simulation", entry.id, sim.name, "simulation",
-					if (baked && !shapes) io.github.psd2live.core.sim.SimApply.OP to buildJsonObject { put("id", sim.id) } else null,
-					note = tr(when { sim.bake == null -> "modifiers.system.unbaked"; stale -> "modifiers.system.stale"; else -> "modifiers.system.baked" }),
-					enabled = sim.enabled,
-					toggle = { on -> "simulation_put" to buildJsonObject { put("id", sim.id); put("enabled", on) } },
-					delete = "simulation_delete" to buildJsonObject { put("id", sim.id) }, source = sim,
-					applyNote = tr(if (shapes) "modifiers.system.applyBlendShapes" else "modifiers.system.applyUnbaked"), warn = sim.enabled && (sim.bake == null || stale))
-			}
-		}
+/** A swing's, simulation's or interior effect's [entry] as its card shows it: what switches, applies and deletes it, and why it cannot be applied. */
+internal fun systemOf(entry: ModifierStack.Entry, overlay: io.github.psd2live.core.RigEditOverlay, puppet: PuppetModel): SystemModifier? = when (entry) {
+	is ModifierStack.Entry.Modifier -> null
+	is ModifierStack.Entry.Swing -> entry.swing.takeIf { !it.baked }?.let { swing ->
+		SystemModifier("swing", entry.id, swing.name, "physics", "swing_delete" to buildJsonObject { put("id", swing.id); put("bake", true) },
+			delete = "swing_delete" to buildJsonObject { put("id", swing.id) }, source = swing)
 	}
-}
-
-/** The skeleton's skin, locked before every other entry: it has nothing to set here and runs first. */
-@Composable
-private fun SkinCard() {
-	val colors = LocalToolColors.current
-	val typography = LocalToolTypography.current
-	Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically,
-		horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-		GridIcon(Modifier.size(11.dp), colors.textMuted) { lockGlyph() }
-		Text(tr("modifiers.system.skin"), style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textPrimary, maxLines = 1,
-			modifier = Modifier.weight(1f))
+	is ModifierStack.Entry.Interior -> entry.effect.let { effect ->
+		SystemModifier("interior", entry.id, effect.name, null, null, enabled = effect.enabled,
+			toggle = { on -> "interior_put" to buildJsonObject { put("target", effect.target); put("enabled", on) } },
+			delete = "interior_delete" to buildJsonObject { put("target", effect.target) }, source = effect, applyNote = tr("modifiers.system.applyNone"))
 	}
-	io.github.psd2live.ui.views.physics.PhysicsRowDivider()
+	is ModifierStack.Entry.Simulation -> entry.simulation.let { sim ->
+		val baked = sim.bake != null && sim.enabled
+		// Modes written as blend shapes have no keyform axes to apply onto.
+		val shapes = baked && io.github.psd2live.core.sim.SimGenerator.usesBlendShapes(puppet, sim)
+		val stale = baked && runCatching { io.github.psd2live.core.sim.SimBake.stale(puppet, sim, overlay) }.getOrDefault(false)
+		SystemModifier("simulation", entry.id, sim.name, null,
+			if (baked && !shapes) io.github.psd2live.core.sim.SimApply.OP to buildJsonObject { put("id", sim.id) } else null,
+			note = tr(when { sim.bake == null -> "modifiers.system.unbaked"; stale -> "modifiers.system.stale"; else -> "modifiers.system.baked" }),
+			enabled = sim.enabled,
+			toggle = { on -> "simulation_put" to buildJsonObject { put("id", sim.id); put("enabled", on) } },
+			delete = "simulation_delete" to buildJsonObject { put("id", sim.id) }, source = sim,
+			applyNote = tr(if (shapes) "modifiers.system.applyBlendShapes" else "modifiers.system.applyUnbaked"), warn = sim.enabled && (sim.bake == null || stale))
+	}
 }
 
 /**
@@ -449,6 +579,12 @@ private fun GeneratorMenu(vm: PSD2LiveViewModel, system: SystemModifier, ids: Li
 	when (val source = system.source) {
 		is io.github.psd2live.core.sim.RigSimEdit -> add(source.enabled, label = tr(if (source.bake == null) "sim.bakeAction" else "sim.rebake")) { vm.bakeSimulation(source.id) }
 		is io.github.psd2live.core.RigSwingEdit -> add(true, label = tr("modifiers.editOnCanvas"), hint = tr("swing.editOnCanvasTip")) { vm.beginSwing(source.targets) }
+		is io.github.psd2live.core.interior.NativeInteriorEffect -> {
+			add(source.enabled, label = tr("modifiers.editOnCanvas"), hint = tr("interior.canvasEditTip")) { editInteriorOnCanvas(vm, vm.state.value) }
+			add(source.enabled, label = tr(if (vm.interior.soloActiveFor(vm.state.value)) "interior.restoreView" else "interior.solo"), hint = tr("interior.soloTip")) {
+				vm.interior.toggleSolo()
+			}
+		}
 	}
 	val apply = system.apply
 	add(apply != null, label = tr("modifiers.applyKeyforms"), hint = if (apply != null) tr("modifiers.system.applyTip") else system.applyNote ?: tr("modifiers.system.applyNone")) {

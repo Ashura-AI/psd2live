@@ -53,6 +53,9 @@ internal class ModifierController(
 	/** The mesh whose stack the save-as-preset dialog names, while it is open. */
 	internal var presetDialog by androidx.compose.runtime.mutableStateOf<String?>(null)
 
+	/** The panel's page: [OBJECT], the selection's stages, or [WORLD], what belongs to the whole model. */
+	internal var page by androidx.compose.runtime.mutableStateOf(OBJECT)
+
 	fun savePreset(name: String, modifiers: List<io.github.psd2live.core.modifier.RigModifier>) {
 		runCatching { store.save(io.github.psd2live.core.modifier.ModifierPreset.of(name, modifiers)) }.onFailure { failed(it.message ?: it.toString()) }
 		presets = store.list()
@@ -144,5 +147,10 @@ internal class ModifierController(
 	override fun close() {
 		editJob?.cancel()
 		dropPreview()
+	}
+
+	companion object {
+		const val OBJECT = 0
+		const val WORLD = 1
 	}
 }
