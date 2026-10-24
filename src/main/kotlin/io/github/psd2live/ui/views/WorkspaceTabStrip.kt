@@ -663,6 +663,7 @@ internal fun moduleTitle(id: String): String = when {
 		"physics" -> "tab.physics"
 		"simulation" -> "tab.simulation"
 		"interior" -> "interior.title"
+		"modifiers" -> "modifiers.title"
 		"atlas" -> "dock.atlas"
 		"texture" -> "dock.texture"
 		"materials" -> "dock.materials"

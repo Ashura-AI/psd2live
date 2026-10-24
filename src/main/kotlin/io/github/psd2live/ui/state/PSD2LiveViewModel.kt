@@ -157,6 +157,27 @@ class PSD2LiveViewModel : AutoCloseable {
 			},
 		)
 	}
+	internal val modifiers by lazy {
+		ModifierController(
+			state = { _state.value },
+			backend = { workspaceBackend },
+			scope = scope,
+			editorFor = ::canvasEditorFor,
+			progress = { busy ->
+				val working = tr("modifiers.busy")
+				updateState {
+					it.copy(
+						canvasEditBusy = busy,
+						statusText = if (busy) working else if (it.statusText == working) tr("status.ready") else it.statusText,
+					)
+				}
+			},
+			failed = { message ->
+				addLog(message, level = LogLevel.WARNING, tag = "Modifier")
+				updateState { it.copy(statusText = message) }
+			},
+		)
+	}
 	internal val structureMesh by lazy {
 		StructureMeshController(
 			backend = { workspaceBackend },
@@ -8547,6 +8568,7 @@ class PSD2LiveViewModel : AutoCloseable {
 	override fun close() {
 		if (!isClosed.compareAndSet(false, true)) return
         interior.close()
+        modifiers.close()
         structureMesh.close()
         meshSplitCheck.cancel()
 		motionJob?.cancel()

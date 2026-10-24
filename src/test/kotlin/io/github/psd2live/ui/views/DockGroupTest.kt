@@ -28,4 +28,12 @@ class DockGroupTest {
 		assertEquals("other", split.second!!.id)
 	}
 
+	@Test fun aSavedLayoutGainsTheModifiersTabBesideInterior() {
+		val saved = DockNode(id = "root", first = DockNode(id = "left", modules = listOf("physics", "interior", "layers")), second = other)
+		assertEquals(listOf("physics", "interior", "modifiers", "layers", "z"), ensureModifiersDockTab(saved).allModules())
+		val without = DockNode(id = "root", first = DockNode(id = "left", modules = listOf("simulation")), second = other)
+		assertEquals(listOf("simulation", "modifiers", "z"), ensureModifiersDockTab(without).allModules())
+		assertEquals(saved.allModules(), ensureModifiersDockTab(ensureModifiersDockTab(saved)).allModules().filter { it != "modifiers" })
+	}
+
 }
