@@ -35,6 +35,9 @@ internal data class ModifierHandle(val role: Role, val index: Int = 0) {
 		RAMP("ramp", listOf("ramp"), false),
 		CORNER("corner", listOf("bounds"), false),
 		CONTROL("control", listOf("offsets"), true),
+		/** A path's control point where it rests, edited apart from where it has moved to ([CONTROL]). */
+		PATH("path", listOf("path"), true),
+		FADE("fade", listOf("radius"), false),
 	}
 
 	val labelKey get() = "modifiers.handle.${role.key}"
@@ -144,7 +147,32 @@ internal object ModifierHandles {
 				for (i in 0 until offsets.size / 2) put(ModifierHandle(ModifierHandle.Role.CONTROL, i), latticeRest(bounds, i) + point(offsets, i * 2))
 			}
 		}
+		ModifierKinds.Path.id -> {
+			val rest = v.getValue("path")
+			val offsets = v.getValue("offsets")
+			val (middle, normal) = pathMiddle(rest)
+			buildMap {
+				for (i in 0 until rest.size / 2) put(ModifierHandle(ModifierHandle.Role.CONTROL, i), point(rest, i * 2) + point(offsets, i * 2))
+				for (i in 0 until rest.size / 2) put(ModifierHandle(ModifierHandle.Role.PATH, i), point(rest, i * 2))
+				put(ModifierHandle(ModifierHandle.Role.FADE), middle + normal * v.getValue("radius")[0])
+			}
+		}
 		else -> emptyMap()
+	}
+
+	/** The cubic Bézier through control points [c] (4 pairs) at [t]. */
+	fun bezier(c: FloatArray, t: Float): ModifierPoint {
+		val u = 1 - t
+		val w = floatArrayOf(u * u * u, 3 * t * u * u, 3 * t * t * u, t * t * t)
+		return ModifierPoint((0 until 4).sumOf { (w[it] * c[it * 2]).toDouble() }.toFloat(), (0 until 4).sumOf { (w[it] * c[it * 2 + 1]).toDouble() }.toFloat())
+	}
+
+	/** The rest curve's middle and its unit normal there (the tangent turned a quarter clockwise); a degenerate curve's normal points left. */
+	private fun pathMiddle(rest: FloatArray): Pair<ModifierPoint, ModifierPoint> {
+		val tangent = bezier(rest, .51f) - bezier(rest, .49f)
+		val l = tangent.length()
+		val normal = if (l < 1e-6f) ModifierPoint(-1f, 0f) else ModifierPoint(-tangent.y / l, tangent.x / l)
+		return bezier(rest, .5f) to normal
 	}
 
 	/** How far a wave's axis is drawn: past its wavelength and ramp, to the direction handle. */
@@ -242,6 +270,18 @@ internal object ModifierHandles {
 				if (i < 2) b[1] = min(b[1] + moved.y, b[3] - MIN_LENGTH) else b[3] = max(b[3] + moved.y, b[1] + MIN_LENGTH)
 				mapOf("bounds" to FloatArray(4) { round1(b[it]) })
 			}
+			ModifierHandle.Role.PATH -> {
+				// The rest point moves and the moved point with it: its offset stays.
+				val path = start.getValue("path").copyOf()
+				val i = handle.index * 2
+				path[i] = round1(path[i] + moved.x); path[i + 1] = round1(path[i + 1] + moved.y)
+				mapOf("path" to path)
+			}
+			ModifierHandle.Role.FADE -> {
+				val (middle, normal) = pathMiddle(current.getValue("path"))
+				val q = p - middle
+				mapOf("radius" to floatArrayOf(round1(clamp("radius", abs(q.x * normal.x + q.y * normal.y)))))
+			}
 			ModifierHandle.Role.CONTROL -> {
 				val offsets = start.getValue("offsets").copyOf()
 				val i = handle.index * 2
@@ -315,6 +355,19 @@ internal object ModifierHandles {
 					ModifierGuide(listOf(at, corner(bounds, i, reach)), dashed = true)
 				}
 		}
+		ModifierKinds.Path.id -> {
+			val rest = v.getValue("path")
+			val offsets = v.getValue("offsets")
+			val moved = FloatArray(rest.size) { rest[it] + offsets[it] }
+			val (middle, normal) = pathMiddle(rest)
+			fun curve(c: FloatArray) = (0..samples).map { bezier(c, it.toFloat() / samples) }
+			listOf(
+				ModifierGuide(curve(rest), dashed = true),
+				ModifierGuide(curve(moved)),
+				ModifierGuide((0 until moved.size / 2).map { point(moved, it * 2) }, dashed = true),
+				ModifierGuide(listOf(middle, middle + normal * v.getValue("radius")[0]), dashed = true),
+			)
+		}
 		else -> emptyList()
 	}
 
@@ -323,6 +376,7 @@ internal object ModifierHandles {
 		fun f(x: Float) = "%.1f".format(java.util.Locale.US, x)
 		return when (handle.role) {
 			ModifierHandle.Role.CONTROL -> v.getValue("offsets").let { "${f(it[handle.index * 2])}, ${f(it[handle.index * 2 + 1])}" }
+			ModifierHandle.Role.PATH -> v.getValue("path").let { "${f(it[handle.index * 2])}, ${f(it[handle.index * 2 + 1])}" }
 			ModifierHandle.Role.ROTATION, ModifierHandle.Role.BEND, ModifierHandle.Role.TWIST, ModifierHandle.Role.DIRECTION ->
 				handle.role.settings.single().let { "${f(v.getValue(it)[0])}°" }
 			else -> handle.role.settings.joinToString("  ") { key -> v.getValue(key).joinToString(", ") { f(it) } }

@@ -140,6 +140,29 @@ class ModifierHandlesTest {
 	}
 
 	@Test
+	fun `path handles move the control points, their rest places and the fade`() {
+		val kind = ModifierKinds.Path
+		val v = values(kind)
+		// Down the middle: control points at a third of the height each.
+		assertNear(ModifierPoint(50f, 200f / 3), at(kind, v, ModifierHandle.Role.CONTROL, 1))
+		assertNear(ModifierPoint(50f, 200f / 3), at(kind, v, ModifierHandle.Role.PATH, 1))
+		assertNear(ModifierPoint(50f, 100f), at(kind, v, ModifierHandle.Role.FADE))
+		val moved = drag(kind, v, ModifierHandle.Role.CONTROL, ModifierPoint(70f, 200f / 3 + 5), index = 1)
+		assertEquals(20f, moved.getValue("offsets")[2], 0.11f); assertEquals(5f, moved.getValue("offsets")[3], 0.11f)
+		assertContentEquals(v.getValue("path"), moved.getValue("path"))
+		// The rest point moves alone; the moved point keeps its offset from it.
+		val rest = drag(kind, moved, ModifierHandle.Role.PATH, ModifierPoint(40f, 200f / 3), index = 1)
+		assertEquals(40f, rest.getValue("path")[2], 0.11f)
+		assertContentEquals(moved.getValue("offsets"), rest.getValue("offsets"))
+		assertNear(ModifierPoint(60f, 200f / 3 + 5), at(kind, rest, ModifierHandle.Role.CONTROL, 1))
+		// The fade is the distance across the rest curve, either side.
+		assertEquals(30f, drag(kind, v, ModifierHandle.Role.FADE, ModifierPoint(80f, 110f)).getValue("radius")[0], 0.11f)
+		// The moved curve drawn is the Bézier through the moved points.
+		val curve = ModifierHandles.guides(kind.id, moved, reach)[1].points
+		assertNear(ModifierHandles.bezier(FloatArray(8) { v.getValue("path")[it] + moved.getValue("offsets")[it] }, .5f), curve[curve.size / 2])
+	}
+
+	@Test
 	fun `every kind has its handles and lines, and each handle names its value`() {
 		for (kind in ModifierKinds.all) {
 			val v = values(kind)
@@ -150,9 +173,13 @@ class ModifierHandlesTest {
 				assertTrue(ModifierHandles.value(h, v).isNotBlank())
 				assertTrue(h.role.settings.all { s -> kind.settings.any { it.key == s } }, "${kind.id} ${h.role}")
 			}
-			// Handles of one kind start apart, so each can be grabbed.
-			val points = handles.values.toList()
-			for (i in points.indices) for (j in i + 1 until points.size) assertTrue(hypot(points[i].x - points[j].x, points[i].y - points[j].y) > 1f, kind.id)
+			// Handles of one kind start apart, so each can be grabbed - but a path's rest point, under its moved one until it moves.
+			val entries = handles.entries.toList()
+			for (i in entries.indices) for (j in i + 1 until entries.size) {
+				val (a, pa) = entries[i]; val (b, pb) = entries[j]
+				if (setOf(a.role, b.role) == setOf(ModifierHandle.Role.CONTROL, ModifierHandle.Role.PATH) && a.index == b.index) continue
+				assertTrue(hypot(pa.x - pb.x, pa.y - pb.y) > 1f, "${kind.id} $a $b")
+			}
 		}
 	}
 

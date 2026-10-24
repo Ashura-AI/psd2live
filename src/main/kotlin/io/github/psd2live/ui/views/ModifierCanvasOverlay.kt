@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import io.github.psd2live.core.CanvasViewport
+import io.github.psd2live.core.modifier.ModifierHandle
 import io.github.psd2live.ui.ModifierCanvasTool
 import io.github.psd2live.ui.theme.ToolColors
 
@@ -32,8 +33,10 @@ internal fun DrawScope.drawModifierHandles(tool: ModifierCanvasTool, viewport: C
 		if (dashed) polyline(points, MeshLook.Structure.copy(alpha = MeshLook.WIRE_ALPHA), MeshLook.WIRE, dash)
 		else polyline(points, colors.accent.copy(alpha = 0.85f), 1.4f)
 	}
-	for ((handle, o) in tool.handles(scene, viewport)) {
-		drawMeshHandle(o, MeshLook.Structure, colors.accent, selected = lit == handle && tool.dragging, hovered = lit == handle,
+	// A path's points where they rest go under the moved ones, fainter.
+	for ((handle, o) in tool.handles(scene, viewport).entries.sortedBy { it.key.role != ModifierHandle.Role.PATH }) {
+		val tone = if (handle.role == ModifierHandle.Role.PATH) MeshLook.Structure.copy(alpha = MeshLook.WIRE_ALPHA) else MeshLook.Structure
+		drawMeshHandle(o, tone, colors.accent, selected = lit == handle && tool.dragging, hovered = lit == handle,
 			shape = if (handle.role.point) HandleShape.ROUND else HandleShape.SQUARE)
 	}
 }

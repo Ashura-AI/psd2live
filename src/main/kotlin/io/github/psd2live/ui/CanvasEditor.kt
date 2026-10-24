@@ -6262,7 +6262,7 @@ internal class CanvasEditor(
         }
         // The modifier tool's handles own their presses; any other press picks an object, so the handles move to it.
         if (tool == CanvasTool.MODIFIER) {
-            if (modifierTool.press(pos, viewport)) {
+            if (modifierTool.press(pos, viewport, alt)) {
                 dragging = modifierTool.dragging
                 return true
             }

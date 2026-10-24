@@ -122,18 +122,28 @@ internal class ModifierCanvasTool(private val editor: CanvasEditor) {
 
 	// ── Hit testing and gestures ───────────────────────────────────────────────
 
-	private fun hit(scene: Scene, pos: Offset, viewport: CanvasViewport): ModifierHandle? =
-		handles(scene, viewport).entries.filter { (it.value - pos).getDistance() <= HANDLE_REACH }.minByOrNull { (it.value - pos).getDistance() }?.key
+	/**
+	 * The handle under [pos]. A path's point where it rests sits under the moved one until it is moved: the moved one
+	 * answers, and [rest] (Alt) takes the rest point instead.
+	 */
+	private fun hit(scene: Scene, pos: Offset, viewport: CanvasViewport, rest: Boolean = false): ModifierHandle? {
+		val near = handles(scene, viewport).entries.filter { (it.value - pos).getDistance() <= HANDLE_REACH }
+		val preferred = near.filter { (it.key.role == ModifierHandle.Role.PATH) == rest }.ifEmpty { near }
+		return preferred.minByOrNull { (it.value - pos).getDistance() }?.key
+	}
 
 	fun hover(pos: Offset, viewport: CanvasViewport) {
 		if (drag != null) return
 		hover = scene()?.let { hit(it, pos, viewport) }
 	}
 
-	/** Takes a press on a handle; false, leaving the press to the editor's object pick, when there is none under it. */
-	fun press(pos: Offset, viewport: CanvasViewport): Boolean {
+	/**
+	 * Takes a press on a handle; false, leaving the press to the editor's object pick, when there is none under it.
+	 * With [alt] a path's point is taken where it rests.
+	 */
+	fun press(pos: Offset, viewport: CanvasViewport, alt: Boolean = false): Boolean {
 		val scene = scene() ?: return false
-		val handle = hit(scene, pos, viewport) ?: return false
+		val handle = hit(scene, pos, viewport, alt) ?: return false
 		if (!editor.editable) return true
 		held = null
 		drag = Drag(handle, scene.modifier, scene.pose, scene.values, canvas(pos, viewport))
@@ -189,7 +199,8 @@ internal class ModifierCanvasTool(private val editor: CanvasEditor) {
 	fun hint(): String {
 		missing()?.let { return it }
 		val scene = scene() ?: return tr("modifiers.canvas.hint", "")
-		val handle = drag?.handle ?: hover ?: return tr("modifiers.canvas.hint", title(scene.modifier))
+		val handle = drag?.handle ?: hover ?: return tr("modifiers.canvas.hint", title(scene.modifier)) +
+			if (scene.modifier.kind == ModifierKinds.Path.id) " · " + tr("modifiers.canvas.pathHint") else ""
 		return "${title(scene.modifier)}   ${tr(handle.labelKey)}  ${ModifierHandles.value(handle, scene.values)}"
 	}
 
