@@ -25,7 +25,8 @@ class CatalogContractsTest {
 			assertEquals(emptySet(), keys - reference, "$name has keys the English bundle lacks")
 			assertEquals(emptyList(), keys.filter { props.getProperty(it).isBlank() }, "$name has blank values")
 		}
-		assertEquals(emptyList(), missingMessages(CanvasTool.entries.map { "editor.tool.${it.name.lowercase()}" } + ShortcutAction.entries.map { it.labelKey }))
+		assertEquals(emptyList(), missingMessages(CanvasTool.entries.map { "editor.tool.${it.name.lowercase()}" } + ShortcutAction.entries.map { it.labelKey } +
+			SettingsTopic.entries.map { it.labelKey } + io.github.psd2live.render.RenderPath.entries.flatMap { listOf(it.labelKey, it.descriptionKey) }))
 	}
 
 	/** The point tool's two faces (the old point tool and knife) each keep a name, a hint and their old key in every preset that had it. */

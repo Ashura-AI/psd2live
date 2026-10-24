@@ -43,9 +43,9 @@ class AtlasFramePerfTool {
 		val out = output("atlas-frame-perf")
 		out.listFiles()?.filter { it.extension == "png" }?.forEach { it.delete() }
 		val report = StringBuilder()
-		val savedSoftware = AppSettings.softwareCanvas
-		AppSettings.softwareCanvas = true
-		try { profile(sample, out, report) } finally { AppSettings.softwareCanvas = savedSoftware }
+		val savedGraphics = AppSettings.graphics
+		AppSettings.graphics = savedGraphics.copy(renderPath = io.github.psd2live.render.RenderPath.SOFTWARE_CANVAS)
+		try { profile(sample, out, report) } finally { AppSettings.graphics = savedGraphics }
 		File(out, "report.txt").writeText(report.toString())
 		println(report)
 	}

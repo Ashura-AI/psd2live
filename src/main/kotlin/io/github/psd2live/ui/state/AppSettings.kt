@@ -89,19 +89,41 @@ object AppSettings {
 			if (value.isFinite()) runCatching { preferences.putFloat("parameter_name_width", value.coerceIn(24f, 240f)) }
 		}
 
-	private val softwareCanvasState = kotlinx.coroutines.flow.MutableStateFlow(
-		runCatching { preferences.getBoolean("software_canvas", false) }.getOrDefault(false),
-	)
+	private val graphicsState = kotlinx.coroutines.flow.MutableStateFlow(runCatching {
+		io.github.psd2live.render.GraphicsOptions.stored(
+			preferences.get("render_path", null), preferences.getBoolean("software_canvas", false), preferences.get("gpu", null),
+			preferences.getInt("antialiasing_samples", io.github.psd2live.render.GraphicsOptions.DEFAULT_SAMPLES), preferences.getBoolean("vsync", true),
+		)
+	}.getOrDefault(io.github.psd2live.render.GraphicsOptions()))
 
-	/** The editing canvas paints in software instead of on its GPU renderer; for troubleshooting a driver. */
+	/** How the window and canvases draw; the render API, card and vsync apply at the next start ([io.github.psd2live.render.GraphicsSettings]). */
+	val graphicsFlow: kotlinx.coroutines.flow.StateFlow<io.github.psd2live.render.GraphicsOptions> get() = graphicsState
+
+	var graphics: io.github.psd2live.render.GraphicsOptions
+		get() = graphicsState.value
+		set(value) {
+			val previous = graphicsState.value
+			graphicsState.value = value
+			softwareCanvasState.value = value.renderPath != io.github.psd2live.render.RenderPath.GPU
+			io.github.psd2live.render.GraphicsSettings.setSamples(value.samples)
+			runCatching {
+				preferences.put("render_path", value.renderPath.name)
+				preferences.put("gpu", value.gpu.code)
+				preferences.putInt("antialiasing_samples", value.samples)
+				preferences.putBoolean("vsync", value.vsync)
+			}
+			// Windows keeps the card per program in its own settings; written now, read when PSD2Live next starts.
+			if (value.gpu != previous.gpu && io.github.psd2live.render.GraphicsSettings.isWindows) {
+				Thread({ io.github.psd2live.render.GraphicsDevices.applyWindowsPreference(value.gpu) }, "psd2live-gpu-preference").apply { isDaemon = true }.start()
+			}
+		}
+
+	private val softwareCanvasState = kotlinx.coroutines.flow.MutableStateFlow(graphicsState.value.renderPath != io.github.psd2live.render.RenderPath.GPU)
+
+	/** The editing canvas paints in software instead of on its GPU renderer ([graphics]' render path). */
 	val softwareCanvasFlow: kotlinx.coroutines.flow.StateFlow<Boolean> get() = softwareCanvasState
 
-	var softwareCanvas: Boolean
-		get() = softwareCanvasState.value
-		set(value) {
-			softwareCanvasState.value = value
-			runCatching { preferences.putBoolean("software_canvas", value) }
-		}
+	val softwareCanvas: Boolean get() = softwareCanvasState.value
 
 	private val previewBackendState = kotlinx.coroutines.flow.MutableStateFlow(
 		runCatching { io.github.psd2live.core.PreviewBackend.valueOf(preferences.get("preview_backend", "CUBISM")) }

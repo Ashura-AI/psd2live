@@ -65,8 +65,8 @@ class GpuCompatibilityTool {
             DirectContext.makeGL().use { context ->
                 val layer = SkiaLayer()
                 try {
-                    val gpu = WindowGpu(layer, Any(), 0L, 0L, ContextHolder(context),
-                        ContextHolder::class.java.getDeclaredField("context").apply { isAccessible = true }, SkiaGpu.Platform.WGL)
+                    val gpu = WindowGpu(layer, Any(), GlBinding.Wgl(0L, 0L), ContextHolder(context),
+                        ContextHolder::class.java.getDeclaredField("context").apply { isAccessible = true })
                     WindowGpu::class.java.getDeclaredField("coreProfile").apply { isAccessible = true }.setBoolean(gpu, core)
                     if (core) checkCubismRejectedBeforeLoading(gpu)
                     else checkCubismDoesNotReuseReplacedContext(gpu)

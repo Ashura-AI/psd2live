@@ -41,6 +41,7 @@ internal enum class SettingsTopic(val labelKey: String) {
 	THEME("dialog.settings.category.theme"),
 	LANGUAGE("dialog.settings.category.language"),
 	CANVAS("settings.canvas.title"),
+	GRAPHICS("dialog.settings.category.graphics"),
 	PROMPTS("dialog.settings.category.prompts"),
 	SHORTCUTS("dialog.settings.category.shortcuts"),
 	FILES("settings.files.title"),

@@ -192,9 +192,11 @@ fun FrameWindowScope.PSD2LiveApp(
     val recovery by viewModel.recoveryOffer.collectAsState()
     LaunchedEffect(recovery) {
         val session = recovery ?: return@LaunchedEffect
-        val choice = JOptionPane.showOptionDialog(window, tr("recovery.message", session.name), tr("recovery.title"),
-            JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, arrayOf(tr("recovery.restore"), tr("recovery.discard")),
-            tr("recovery.restore"))
+        val choice = outsideFrame {
+            JOptionPane.showOptionDialog(window, tr("recovery.message", session.name), tr("recovery.title"),
+                JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null, arrayOf(tr("recovery.restore"), tr("recovery.discard")),
+                tr("recovery.restore"))
+        }
         // Closing the prompt throws nothing away: the marker stays until this session's own unsaved edits replace it.
         when (choice) {
             0 -> viewModel.restoreRecoveredSession(session)
@@ -214,7 +216,10 @@ fun FrameWindowScope.PSD2LiveApp(
 		// Canvases draw on the GPU in this window's Skia context when it draws with OpenGL.
 		window?.let(io.github.psd2live.render.SkiaGpu::capturePrimary)
 		val api = window?.let { runCatching { it.renderApi.name }.getOrNull() } ?: return@LaunchedEffect
-		viewModel.addLog(tr("log.renderer.window", api), level = if (api == "SOFTWARE") LogLevel.WARNING else LogLevel.INFO, tag = "Render")
+		viewModel.addLog(tr("log.renderer.window", api), level = if (api.startsWith("SOFTWARE")) LogLevel.WARNING else LogLevel.INFO, tag = "Render")
+		io.github.psd2live.render.GraphicsSettings.appliedEnvironment.takeIf { it.isNotEmpty() }?.let { environment ->
+			viewModel.addLog(tr("log.renderer.environment", environment.entries.joinToString(" ") { "${it.key}=${it.value}" }), tag = "Render")
+		}
 	}
 	val canvasRenderer by io.github.psd2live.render.SkiaGpu.status.collectAsState()
 	LaunchedEffect(canvasRenderer) {
@@ -944,3 +949,15 @@ private fun copyToClipboard(text: String) {
 	DesktopUtils.copyToClipboard(text)
 }
 
+/**
+ * Runs [prompt] (a modal dialog) as its own event, after the frame this coroutine resumed in. Effects run inside
+ * Skiko's render of a frame, and on Linux it holds the window's drawing-surface lock (the AWT lock) there: a modal
+ * loop entered there leaves the dialog blank and the whole application frozen.
+ */
+private suspend fun <T> outsideFrame(prompt: () -> T): T = kotlinx.coroutines.suspendCancellableCoroutine { continuation ->
+    javax.swing.SwingUtilities.invokeLater {
+        if (!continuation.isActive) return@invokeLater
+        val result = runCatching(prompt)
+        continuation.resumeWith(result)
+    }
+}

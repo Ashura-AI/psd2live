@@ -68,6 +68,8 @@ internal class WindowCompositor(private val gpu: WindowGpu, private val inner: S
 	private var image: Image? = null
 	private var width = 0
 	private var height = 0
+	/** The antialiasing samples [surface] and the layers were made with; a change of setting makes them again. */
+	private var samples = 0
 	private val layers = HashMap<String, Layer>()
 
 	private class Layer(val surface: Surface, val width: Int, val height: Int) {
@@ -102,7 +104,12 @@ internal class WindowCompositor(private val gpu: WindowGpu, private val inner: S
 		if (!hook()) return false
 		frames.incrementAndGet()
 		val sizeChanged = width != this.width || height != this.height
-		if (sizeChanged || surface == null) {
+		val samplesNow = MultisampledWindow.effectiveSamples()
+		if (samplesNow != samples) {
+			layers.values.forEach { it.close() }
+			layers.clear()
+		}
+		if (sizeChanged || surface == null || samplesNow != samples) {
 			image?.close(); image = null
 			// Cleared before the new one is made: a failed allocation must not leave a closed surface to draw into.
 			surface?.close(); surface = null
@@ -114,6 +121,7 @@ internal class WindowCompositor(private val gpu: WindowGpu, private val inner: S
 				?: runCatching { Surface.makeRenderTarget(skia, false, info, 0, props) }.getOrNull() ?: return false
 			this.width = width
 			this.height = height
+			samples = samplesNow
 			invalidated.set(true)
 		}
 		val target = surface ?: return false

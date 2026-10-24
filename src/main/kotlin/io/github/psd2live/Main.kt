@@ -50,10 +50,12 @@ fun main(arguments: Array<String>) {
 	System.setProperty("sun.java2d.uiScale.enabled", "true")
 	// The name macOS shows in the menu bar and Dock instead of the main class; read when AWT starts.
 	System.setProperty("apple.awt.application.name", "PSD2Live")
-	// Canvases draw on the GPU in Skia's own OpenGL context, so Skia must draw the window with OpenGL.
-	io.github.psd2live.render.SkiaGpu.requestOpenGl()
 	configureLanguage(arguments)
 	val command = commandArguments(arguments)
+	// Canvases draw on the GPU in Skia's own OpenGL context, so Skia must draw the window with OpenGL; the editor
+	// starts with the user's graphics settings (render path, card, vsync), before its first window.
+	io.github.psd2live.render.GraphicsSettings.applyAtStartup(
+		if (command.isEmpty()) AppSettings.graphics else io.github.psd2live.render.GraphicsOptions())
 	if (command.isEmpty()) {
 		runGui()
 		return

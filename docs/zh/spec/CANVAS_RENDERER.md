@@ -3,7 +3,7 @@
 状态：现行架构为第 10 节的统一渲染器；窗口不是 OpenGL（macOS、软件渲染）时画布走软件路径。
 范围：编辑画布（物体 / 变形 / 编辑 / 绘画 / 模拟）的贴图与辅助层、纹理工作区的纹理集页面、预览画布的两种后端，以及播放与跟踪会话（第 11 节）。
 
-渲染器不使用 `org.umamo.render` 下的渲染代码，只读取模型数据：`PuppetModel` / `Drawable` / `DrawableMesh` 和 `RigCanvasSupport.evaluate` 给出的形变结果。形变在 CPU 上计算，GPU 只负责贴图三角形、遮罩、着色与辅助线。没有可用 GPU 时由 `SkiaRigPainter` 软件绘制，它在第一次绘制时才转换图集页，GPU 绘制的画布不为它付出转换和内存；设置中的软件渲染开关同时作用于编辑画布与纹理集页面。
+渲染器不使用 `org.umamo.render` 下的渲染代码，只读取模型数据：`PuppetModel` / `Drawable` / `DrawableMesh` 和 `RigCanvasSupport.evaluate` 给出的形变结果。形变在 CPU 上计算，GPU 只负责贴图三角形、遮罩、着色与辅助线。没有可用 GPU 时由 `SkiaRigPainter` 软件绘制，它在第一次绘制时才转换图集页，GPU 绘制的画布不为它付出转换和内存；设置“图形”中的渲染路径“GPU 窗口，软件画布”同时作用于编辑画布与纹理集页面。
 
 ## 1–9. 早期方案（已取代）
 
@@ -19,9 +19,10 @@
 
 ### 10.1 上下文与轮次
 
-- Windows 上 `SkiaGpu.requestOpenGl()` 在创建窗口前让 Skiko 使用 OpenGL（默认是 Direct3D）；用户显式设置的 `skiko.renderApi` / `SKIKO_RENDER_API` 保持不变。Linux 上 Skiko 本来就用 OpenGL。窗口不是 OpenGL（macOS、软件渲染）时画布走软件路径，预览报告原因。
+- 图形设置（`render/GraphicsSettings.kt`，`AppSettings.graphics` 持久化）在 `main` 创建窗口前由 `GraphicsSettings.applyAtStartup` 应用：Windows 上让 Skiko 使用 OpenGL（默认是 Direct3D），渲染路径“软件”时设为 `SOFTWARE`；Linux 上 Skiko 本来就用 OpenGL；关闭垂直同步时设 `skiko.vsync.enabled=false`。显卡选择：Linux 在加载 OpenGL 库之前用 libc `setenv`（JNA）设置 PRIME 分流变量（NVIDIA 专有驱动用 `__NV_PRIME_RENDER_OFFLOAD` / `__GLX_VENDOR_LIBRARY_NAME`，其余用 Mesa 的 `DRI_PRIME=pci-…`，启动前已设的变量不覆盖；显卡读自 `/sys/class/drm`，名称取 `lspci -mm`）；Windows 由安装版启动器写入系统的每程序图形首选项（`HKCU\Software\Microsoft\DirectX\UserGpuPreferences`，与“设置 > 显示 > 图形”相同）；macOS 设 `skiko.metal.gpu.priority`。用户显式设置的 `skiko.renderApi` / `SKIKO_RENDER_API`、`skiko.vsync.enabled`、`psd2live.msaa` 保持优先。渲染 API、显卡与垂直同步只在启动时生效，设置页在与启动时不同时提示。窗口不是 OpenGL（macOS、软件渲染）时画布走软件路径，预览报告原因。Skiko 拒绝 `llvmpipe` 与 `virgl` 的 OpenGL（例如未直通 GPU 的 WSL 与虚拟机），此时窗口回退到软件渲染。
 - `SkiaGpu.of(window)` 从窗口的 `SkiaLayer` 读出 Skiko OpenGL 重绘器的上下文句柄与绘制它的 `DirectContext`（反射，Skiko 未公开），得到 `WindowGpu`。每个窗口（主窗口、浮动停靠窗口）各有一个，资源互不共享。
 - `SkiaLayer.PropertyKind.Renderer` 变化后刷新主窗口 GPU、状态与所有画布的上下文查询；软件回退和重新建立 OpenGL 都会生效，浮动窗口同样受监听。旧 `WindowGpu` 不再执行 GL 工作，等待旧帧的协程被唤醒，由画布取消或换用新窗口状态。
+- **当前上下文**（`GlBinding`）：WGL 下 Skiko 重绘器的 `context` 字段就是 `HGLRC`；GLX 下它是 Skiko 原生代码里存放 `GLXContext` 的变量的地址，须读出其值才能与 `glXGetCurrentContext` 比对（只比对字段值时 Linux 上轮次每帧静默跳过，画布只剩背景与 Compose 画的选中轮廓）。Skiko 每帧先让 Compose 录制（画布在这里绘制），再把窗口上下文设为当前并回放；录制时当前的是上一个绘制的窗口的上下文，有浮动窗口时未必是本窗口，所以窗口渲染委托在 Compose 渲染前先把本窗口的上下文设为当前（WGL 用窗口 `HDC`，GLX 经 Skiko 的绘图表面锁取得 X 显示与可绘制对象，该锁可重入）。委托包装在主窗口捕获时、以及轮次检查当前上下文之前安装。
 - **轮次**（`WindowGpu.turn`）：只在该上下文正当前时执行（`wglGetCurrentContext` / `glXGetCurrentContext` 比对），开始和结束都把 Skia 留下而绘制方不会自己复位的状态恢复为 GL 默认值（模板裁剪测试、采样器对象、像素缓冲、行长度、默认顶点数组上的缓冲与属性等），结束时 `DirectContext.resetGLAll()` 让 Skia 重新设置自己的状态。
 - 轮次出现在两处：画布绘制时（`CanvasGpu.draw`、预览画布的 `drain`），以及包在窗口渲染委托外层、每帧 Compose 绘制之前执行的投递任务（`WindowGpu.post`，用于加载、释放和不由画布触发的工作）。
 - 默认 VAO 的索引缓冲、属性和 divisor 只在兼容配置下清理；核心配置只解绑 VAO 与数组缓冲，由绘制器绑定自己的 VAO，避免修改 VAO 0 产生 `GL_INVALID_OPERATION`。
@@ -55,7 +56,7 @@
 
 预览的帧泵在每个显示刷新（`withFrameNanos`）请求一帧；帧率上限是应用设置（跟随显示器 / 30 / 60 / 120，默认跟随显示器），与工程的物理帧率无关，物理在其固定步长之间插值。多个预览同时可见时不再限制为每个 30 FPS。
 
-高刷新率下一帧的时间几乎全在 CPU 上（`PreviewFpsTool`，240 Hz，编辑工作区）：Skia 把整个窗口的录制翻译成 GPU 工作约 2 ms、提交约 1.8 ms，GPU 执行只要约 0.5 ms；预览运行时与 Cubism 的求值不到界面线程的 2%。翻译中很大一部分是为抗锯齿的路径、圆角与椭圆在 CPU 上计算覆盖率，改由 GPU 多重采样即可省掉。Skiko 的窗口表面是单采样的，所以 `MultisampledWindow` 把 Compose 每帧录制的画面回放到窗口大小的 4× MSAA 纹理，窗口只画这一张纹理（`psd2live.msaa` 设采样数，0 关闭）。必须先录制再回放：直接把 Compose 画进该纹理时，其图层（Skiko 渲染节点）的提交反而慢数倍。8× 比 4× 慢。实测编辑工作区（不等垂直同步）每帧从约 7.5 ms 降到约 6.1 ms。
+高刷新率下一帧的时间几乎全在 CPU 上（`PreviewFpsTool`，240 Hz，编辑工作区）：Skia 把整个窗口的录制翻译成 GPU 工作约 2 ms、提交约 1.8 ms，GPU 执行只要约 0.5 ms；预览运行时与 Cubism 的求值不到界面线程的 2%。翻译中很大一部分是为抗锯齿的路径、圆角与椭圆在 CPU 上计算覆盖率，改由 GPU 多重采样即可省掉。Skiko 的窗口表面是单采样的，所以 `MultisampledWindow` 把 Compose 每帧录制的画面回放到窗口大小的 MSAA 纹理（默认 4×，采样数取自设置“图形 → 抗锯齿”，改动从下一帧生效；`psd2live.msaa` 覆盖设置，0 关闭），窗口只画这一张纹理。某个采样数建不出目标时，它及更高的采样数不再尝试。必须先录制再回放：直接把 Compose 画进该纹理时，其图层（Skiko 渲染节点）的提交反而慢数倍。8× 比 4× 慢。实测编辑工作区（不等垂直同步）每帧从约 7.5 ms 降到约 6.1 ms。
 
 高刷新率下的预算（`PreviewFpsTool`，RTX 4080 笔记本、240 Hz）：Windows 上 Skiko 每帧在界面线程上依次做 Compose（重组、布局、录制绘制）、Skia 把窗口的录制回放到 GPU、交换缓冲与 `glFinish`，再以 `DwmFlush` 等下一次刷新。一帧超过 4.17 ms 就要等两次刷新，落到 120 FPS。Compose Desktop 对任何变化都重画整个窗口，面板没变也要回放其全部绘制：编辑工作区仅此一项每帧约 5–6 ms。因此预览帧不经过 Compose，由窗口合成：
 

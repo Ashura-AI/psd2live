@@ -38,8 +38,6 @@ object SkiaGpu {
 	/** Whether the main window renders with OpenGL, so the GPU renderer can draw in it. */
 	val status: StateFlow<Status> = _status.asStateFlow()
 
-	private val isWindows = System.getProperty("os.name").orEmpty().contains("windows", ignoreCase = true)
-	private val isLinux = System.getProperty("os.name").orEmpty().contains("linux", ignoreCase = true)
 	private val windows = WeakHashMap<Window, WindowGpu?>()
 	private val observedLayers = WeakHashMap<SkiaLayer, Boolean>()
 	private var primaryWindow = WeakReference<Window>(null)
@@ -53,13 +51,11 @@ object SkiaGpu {
 	val primary: WindowGpu? get() = _primary.value
 
 	/**
-	 * Asks Skiko for OpenGL on Windows, where it would pick Direct3D. An explicit `skiko.renderApi` or
-	 * `SKIKO_RENDER_API` is kept. Must run before the first window is created.
+	 * Asks Skiko for OpenGL on Windows, where it would pick Direct3D, with the default graphics settings unless the
+	 * app applied its own ([GraphicsSettings.applyAtStartup]). Must run before the first window is created.
 	 */
 	fun requestOpenGl() {
-		if (!isWindows) return
-		if (System.getProperty("skiko.renderApi") != null || System.getenv("SKIKO_RENDER_API") != null) return
-		System.setProperty("skiko.renderApi", "OPENGL")
+		if (GraphicsSettings.startup == null) GraphicsSettings.applyAtStartup(GraphicsOptions())
 	}
 
 	internal fun refreshStatus(gpu: WindowGpu) {
@@ -81,6 +77,7 @@ object SkiaGpu {
 		fun attempt(remaining: Int) {
 			val gpu = of(window)
 			if (gpu != null) {
+				gpu.install()
 				_primary.value = gpu
 				_status.value = Status.Ready(gpu.description)
 				while (true) { val next = primaryWaiters.poll() ?: break; next(gpu) }
@@ -127,15 +124,10 @@ object SkiaGpu {
 		val layer = findLayer(window) ?: return null
 		observeRenderer(window, layer)
 		val redrawer = redrawerGetter?.invoke(layer) ?: return null
-		val type = redrawer.javaClass
-		if (type.simpleName != "WindowsOpenGLRedrawer" && type.simpleName != "LinuxOpenGLRedrawer") return null
-		val context = type.getDeclaredField("context").apply { isAccessible = true }.getLong(redrawer)
-		if (context == 0L) return null
-		val handler = type.getDeclaredField("contextHandler").apply { isAccessible = true }.get(redrawer) ?: return null
+		val binding = GlBinding.of(layer, redrawer) ?: return null
+		val handler = redrawer.javaClass.getDeclaredField("contextHandler").apply { isAccessible = true }.get(redrawer) ?: return null
 		val field = contextField ?: return null
-		// The window's HDC, to make its context current outside Skiko's own draw (Windows only).
-		val device = if (isLinux) 0L else runCatching { type.getDeclaredField("device").apply { isAccessible = true }.getLong(redrawer) }.getOrDefault(0L)
-		return WindowGpu(layer, redrawer, context, device, handler, field, if (isLinux) Platform.GLX else Platform.WGL)
+		return WindowGpu(layer, redrawer, binding, handler, field)
 	}
 
 	private fun observeRenderer(window: Window, layer: SkiaLayer) {
@@ -163,8 +155,6 @@ object SkiaGpu {
 		return null
 	}
 
-	internal enum class Platform { WGL, GLX }
-
 	/** Whether the redrawer [layer] uses is still [redrawer]: Skiko replaces it when it falls back to another API. */
 	internal fun sameRedrawer(layer: SkiaLayer, redrawer: Any): Boolean = runCatching { redrawerGetter?.invoke(layer) === redrawer }.getOrDefault(false)
 }
@@ -179,14 +169,13 @@ object SkiaGpu {
 class WindowGpu internal constructor(
 	private val layer: SkiaLayer,
 	private val redrawer: Any,
-	/** The `HGLRC` or `GLXContext` Skia draws with. */
-	internal val glContext: Long,
-	/** The window's `HDC` on Windows, else 0. */
-	private val device: Long,
+	private val binding: GlBinding,
 	private val handler: Any,
 	private val contextField: Field,
-	private val platform: SkiaGpu.Platform,
 ) {
+	/** The `HGLRC` or `GLXContext` Skia draws with. */
+	internal val glContext: Long get() = binding.context
+
 	private val tasks = ConcurrentLinkedQueue<(GpuResources) -> Unit>()
 	private var installed: SkikoRenderDelegate? = null
 	private var compositor: WindowCompositor? = null
@@ -232,18 +221,17 @@ class WindowGpu internal constructor(
 	internal val pixelGeometry: org.jetbrains.skia.PixelGeometry? get() = runCatching { layer.pixelGeometry }.getOrNull()
 
 	/** Whether this context is current on the calling thread, which is what lets GL calls reach it. */
-	private fun isCurrent(): Boolean = when (platform) {
-		SkiaGpu.Platform.WGL -> org.lwjgl.opengl.WGL.wglGetCurrentContext(null) == glContext
-		SkiaGpu.Platform.GLX -> org.lwjgl.opengl.GLX.glXGetCurrentContext() == glContext
-	}
+	private fun isCurrent(): Boolean = binding.isCurrent()
 
 	/**
 	 * Runs [block] with the context current and hands Skia back a context whose state it must assume changed;
 	 * null when the calling thread is not rendering this window (the block does not run).
 	 */
 	fun <T> turn(block: (GpuResources) -> T): T? {
-		if (!valid() || !isCurrent()) return null
+		if (!valid()) return null
+		// Installed before the context check: the installed delegate is what makes the context current (Linux).
 		if (javax.swing.SwingUtilities.isEventDispatchThread()) ensureInstalled()
+		if (!isCurrent()) return null
 		val skia = directContext() ?: return null
 		if (capabilities == null) {
 			capabilities = GL.createCapabilities()
@@ -296,6 +284,9 @@ class WindowGpu internal constructor(
 		}
 	}
 
+	/** Wraps the window's render delegate now, so its next frame runs with the context current; on the EDT. */
+	internal fun install() = ensureInstalled()
+
 	/** Shows [view] under the window's picture until [hideView]; see [CompositedView]. */
 	fun showView(viewId: String, view: CompositedView) { compositor?.show(viewId, view) }
 
@@ -322,12 +313,7 @@ class WindowGpu internal constructor(
 	}
 
 	/** Makes the window's context current for work before Skiko's own draw does; true when it is. */
-	private fun makeCurrent(): Boolean {
-		if (isCurrent()) return true
-		if (platform != SkiaGpu.Platform.WGL || device == 0L) return false
-		runCatching { wglMakeCurrent?.invoke(null, device, glContext) }
-		return isCurrent()
-	}
+	private fun makeCurrent(): Boolean = runCatching { binding.makeCurrent() }.getOrDefault(false)
 
 	/** Runs posted tasks at the start of every frame the window renders, then draws it through the compositor. */
 	private fun ensureInstalled() {
@@ -345,9 +331,12 @@ class WindowGpu internal constructor(
 				if (compositor !== composer) return inner.onRender(canvas, width, height, nanoTime)
 				pacing.frame(System.nanoTime())
 				resumeFrameWaiters(nanoTime)
+				// Compose records before Skiko makes the context current (on Linux another window's may be): the
+				// canvases drawing in this render need the window's own.
+				val current = makeCurrent()
 				drain()
 				if (compositor !== composer) return inner.onRender(canvas, width, height, nanoTime)
-				val skia = if (COMPOSITING && makeCurrent()) directContext() else null
+				val skia = if (GraphicsSettings.compositing && current) directContext() else null
 				val composited = skia != null && runCatching { composer.render(canvas, width, height, nanoTime, skia) }
 					.onFailure { System.err.println("Window compositor failed: $it") }.getOrDefault(false)
 				if (!composited && !multisampled.render(canvas, width, height) { inner.onRender(it, width, height, nanoTime) })
@@ -369,19 +358,6 @@ class WindowGpu internal constructor(
 	private val pacing = AdaptiveVsync(layer, redrawer)
 	private val multisampled = MultisampledWindow(this)
 
-	private companion object {
-		/** `-Dpsd2live.compositor=false` draws windows as Compose does, for comparison and in case of trouble. */
-		val COMPOSITING = System.getProperty("psd2live.compositor") != "false"
-
-		/** Skiko's `makeCurrent(HDC, HGLRC)`. */
-		val wglMakeCurrent: java.lang.reflect.Method? by lazy {
-			runCatching {
-				Class.forName("org.jetbrains.skiko.redrawer.WindowsOpenGLRedrawerKt")
-					.getDeclaredMethod("access\$makeCurrent", Long::class.javaPrimitiveType, Long::class.javaPrimitiveType)
-					.apply { isAccessible = true }
-			}.getOrNull()
-		}
-	}
 }
 
 
@@ -393,25 +369,30 @@ class WindowGpu internal constructor(
  * one image instead of the whole window. Drawing Compose straight into the texture instead of recording first is
  * far slower: its layers are Skiko render nodes, which flush poorly into a GPU canvas.
  *
- * Samples from `psd2live.msaa` (default 4; 0 or 1 keeps Skiko's own path).
+ * Samples from the antialiasing setting ([GraphicsSettings.samples]; 0 or 1 keeps Skiko's own path), followed
+ * from the next frame when it changes.
  */
 internal class MultisampledWindow(private val gpu: WindowGpu) {
-	private val samples = SAMPLES
 	private var surface: org.jetbrains.skia.Surface? = null
-	private var failed = false
+	private var surfaceSamples = 0
 
 	/** Records [draw] and draws it into [canvas] through the multisampled target; false when it did not. */
 	fun render(canvas: org.jetbrains.skia.Canvas, width: Int, height: Int, draw: (org.jetbrains.skia.Canvas) -> Unit): Boolean {
-		if (samples <= 1 || failed || !supported || width <= 0 || height <= 0) return false
+		val samples = effectiveSamples()
+		if (samples <= 1 || width <= 0 || height <= 0) {
+			surface?.close(); surface = null
+			return false
+		}
 		if (!gpu.isCurrentContext()) return false
 		val context = gpu.directContext() ?: return false
 		var surface = surface
-		if (surface == null || surface.width != width || surface.height != height) {
+		if (surface == null || surface.width != width || surface.height != height || surfaceSamples != samples) {
 			surface?.close()
 			surface = target(context, org.jetbrains.skia.ImageInfo.makeN32Premul(width, height),
 				org.jetbrains.skia.SurfaceProps(pixelGeometry = gpu.pixelGeometry ?: org.jetbrains.skia.PixelGeometry.UNKNOWN))
 			this.surface = surface
-			if (surface == null) { failed = true; return false }
+			surfaceSamples = samples
+			if (surface == null) return false
 		}
 		val picture = org.jetbrains.skia.PictureRecorder().use { recorder ->
 			draw(recorder.beginRecording(org.jetbrains.skia.Rect.makeWH(width.toFloat(), height.toFloat())))
@@ -427,25 +408,25 @@ internal class MultisampledWindow(private val gpu: WindowGpu) {
 	}
 
 	companion object {
-		/** The window's samples, also those of the compositor's cached picture ([WindowCompositor]). */
-		val SAMPLES = System.getProperty("psd2live.msaa")?.toIntOrNull() ?: 4
-
 		/**
-		 * False once a multisampled target could not be made. Some drivers (Intel UHD on Windows) report no sample
+		 * The fewest samples a target could not be made with. Some drivers (Intel UHD on Windows) report no sample
 		 * counts for any format, and Skiko throws rather than returning null then: uncaught on the frame, that ends
-		 * Skiko's frame loop and the window stops drawing.
+		 * Skiko's frame loop and the window stops drawing. Counts from here up are not tried again.
 		 */
-		@Volatile var supported = true
-			private set
+		@Volatile private var refusedFrom = Int.MAX_VALUE
 
-		/** A [SAMPLES]-sampled target, or null when MSAA is off or the GPU cannot make one. */
+		/** The window's samples now, also those of the compositor's cached picture ([WindowCompositor]); 0 without MSAA. */
+		fun effectiveSamples(): Int = GraphicsSettings.samples.takeIf { it in 2 until refusedFrom } ?: 0
+
+		/** A target with [effectiveSamples], or null when MSAA is off or the GPU cannot make one. */
 		fun target(context: org.jetbrains.skia.DirectContext, info: org.jetbrains.skia.ImageInfo, props: org.jetbrains.skia.SurfaceProps): org.jetbrains.skia.Surface? {
-			if (SAMPLES <= 1 || !supported) return null
+			val samples = effectiveSamples()
+			if (samples <= 1) return null
 			return try {
-				org.jetbrains.skia.Surface.makeRenderTarget(context, false, info, SAMPLES, org.jetbrains.skia.SurfaceOrigin.TOP_LEFT, props, false)
+				org.jetbrains.skia.Surface.makeRenderTarget(context, false, info, samples, org.jetbrains.skia.SurfaceOrigin.TOP_LEFT, props, false)
 			} catch (failure: Exception) {
-				supported = false
-				System.err.println("Multisampled window target unavailable, drawing without MSAA: $failure")
+				refusedFrom = minOf(refusedFrom, samples)
+				System.err.println("Multisampled window target unavailable at $samples samples, drawing without it: $failure")
 				null
 			}
 		}

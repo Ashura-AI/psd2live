@@ -115,6 +115,7 @@ internal fun SettingsPanel(topic: SettingsTopic, state: PSD2LiveState, viewModel
 				onLanguageChange = viewModel::setLanguage,
 			)
 			SettingsTopic.CANVAS -> SettingsCanvasSection()
+			SettingsTopic.GRAPHICS -> SettingsGraphicsSection()
 			SettingsTopic.PROMPTS -> SettingsPromptsSection(
 				mutedPrompts = state.mutedPrompts,
 				onPromptEnabledChange = viewModel::setPromptEnabled,
@@ -312,49 +313,6 @@ private fun SettingsCanvasSection() {
 	val typography = LocalToolTypography.current
 
 	SettingsSectionDescription(tr("dialog.settings.canvas.desc"))
-
-	Column(
-		modifier = Modifier
-			.fillMaxWidth()
-			.background(colors.panelElevated, RoundedCornerShape(4.dp))
-			.border(BorderStroke(1.dp, colors.border), RoundedCornerShape(4.dp))
-			.padding(10.dp),
-		verticalArrangement = Arrangement.spacedBy(6.dp),
-	) {
-		val softwareCanvas by AppSettings.softwareCanvasFlow.collectAsState()
-		val gpuStatus by io.github.psd2live.render.SkiaGpu.status.collectAsState()
-		Row(
-			modifier = Modifier
-				.fillMaxWidth()
-				.handCursor()
-				.clickable { AppSettings.softwareCanvas = !softwareCanvas }
-				.padding(vertical = 2.dp),
-			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
-		) {
-			Text(
-				text = if (softwareCanvas) "✓" else " ",
-				style = typography.body.copy(fontWeight = FontWeight.Bold),
-				color = if (softwareCanvas) colors.accent else Color.Transparent,
-				modifier = Modifier.width(16.dp),
-			)
-			Text(
-				text = tr("dialog.settings.canvas.softwareRendering"),
-				style = typography.body.copy(fontSize = 11.5.sp),
-				color = colors.textPrimary,
-			)
-		}
-		Text(
-			text = if (softwareCanvas) tr("dialog.settings.canvas.rendererSoftware") else when (val status = gpuStatus) {
-				is io.github.psd2live.render.SkiaGpu.Status.Ready -> tr("dialog.settings.canvas.rendererGpu", status.description)
-				is io.github.psd2live.render.SkiaGpu.Status.Unavailable -> tr("dialog.settings.canvas.rendererUnavailable", status.reason)
-				io.github.psd2live.render.SkiaGpu.Status.Starting -> tr("dialog.settings.canvas.rendererStarting")
-			},
-			style = typography.caption.copy(fontSize = 10.5.sp),
-			color = colors.textMuted,
-			modifier = Modifier.padding(start = 24.dp),
-		)
-	}
 
 	// How the main window sits on its screen; it changes as soon as a mode is picked.
 	val windowMode by AppSettings.windowModeFlow.collectAsState()

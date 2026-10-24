@@ -43,7 +43,7 @@ class CanvasPerfTool {
 		SkiaGpu.requestOpenGl()
 		val sample = Sample.fromEnvironment()
 		val out = output("canvas-perf")
-		val savedSoftware = AppSettings.softwareCanvas
+		val savedGraphics = AppSettings.graphics
 		val viewModel = PSD2LiveViewModel()
 		// As the app starts it: the history workspace is what makes the canvas editable.
 		val workspace = io.github.psd2live.ui.state.DesktopWorkspace(viewModel, out.resolve("workspace").toPath())
@@ -140,7 +140,7 @@ class CanvasPerfTool {
 				}
 			}
 			for (software in listOf(false, true)) {
-				AppSettings.softwareCanvas = software
+				AppSettings.graphics = savedGraphics.copy(renderPath = if (software) io.github.psd2live.render.RenderPath.SOFTWARE_CANVAS else io.github.psd2live.render.RenderPath.GPU)
 				Thread.sleep(1500)
 				val mode = if (software) "software" else "gpu"
 				val ghost = arrayOfNulls<Any>(1)
@@ -247,7 +247,7 @@ class CanvasPerfTool {
 				}
 			}
 		} finally {
-			AppSettings.softwareCanvas = savedSoftware
+			AppSettings.graphics = savedGraphics
 			File(out, "report.txt").writeText(report.toString())
 			println(report)
 			runCatching { SwingUtilities.invokeAndWait { window.get()?.dispose() } }
