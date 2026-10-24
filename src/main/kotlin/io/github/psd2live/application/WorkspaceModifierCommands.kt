@@ -20,14 +20,17 @@ internal object WorkspaceModifierSchemas {
 
 	private val number = buildJsonObject { put("type", "number") }
 
+	/** The most components a setting has (a lattice's control point offsets). */
+	private val MAX_COMPONENTS = ModifierKinds.all.maxOf { k -> k.settings.maxOf { it.size } }
+
 	/** A constant (a number, or an array of the setting's components) or values keyed on parameters. */
 	val value = buildJsonObject {
 		put("oneOf", JsonArray(listOf(
 			number,
-			s.array(number, 1, 4),
+			s.array(number, 1, MAX_COMPONENTS),
 			s.obj(mapOf(
 				"axes" to s.array(s.obj(mapOf("parameter" to s.handle(), "keys" to s.array(number, 1, ModifierSampling.MAX_KEYS))), 1, 4),
-				"values" to s.array(s.array(number, 1, 4), 1, 4096),
+				"values" to s.array(s.array(number, 1, MAX_COMPONENTS), 1, 4096),
 			)),
 		)))
 		put("description", "A constant, or {axes:[{parameter, keys}], values:[...]}: one value per key combination, the first axis varying fastest; multilinear between keys and held past the ends.")
@@ -40,7 +43,7 @@ internal object WorkspaceModifierSchemas {
 	private val key = s.obj(mapOf(
 		"setting" to describe(s.choices(*settingKeys), "The setting to key."),
 		"at" to describe(s.dictionary(number), "Parameter values of the key; the setting gains an axis for each parameter it was not keyed on."),
-		"value" to describe(JsonObject(mapOf("oneOf" to JsonArray(listOf(number, s.array(number, 1, 4))))), "The value at the key."),
+		"value" to describe(JsonObject(mapOf("oneOf" to JsonArray(listOf(number, s.array(number, 1, MAX_COMPONENTS))))), "The value at the key."),
 		"delete" to describe(s.boolean(), "Remove the key at `at` instead; with all=true remove every key, keeping the value at `at`."),
 		"all" to s.boolean(),
 	), setOf("setting", "at"))

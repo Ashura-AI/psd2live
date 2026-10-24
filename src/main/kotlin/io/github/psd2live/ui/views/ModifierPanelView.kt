@@ -30,7 +30,9 @@ import org.umamo.runtime.model.ParameterKind
 import org.umamo.runtime.model.PuppetModel
 
 /** How a setting's fields step and show: step, decimals. */
-private val MODIFIER_FIELDS = mapOf("offset" to (1.0 to 1), "rotation" to (1.0 to 1), "scale" to (0.05 to 2), "pivot" to (1.0 to 1))
+private val MODIFIER_FIELDS = mapOf("offset" to (1.0 to 1), "rotation" to (1.0 to 1), "scale" to (0.05 to 2), "pivot" to (1.0 to 1),
+	"angle" to (1.0 to 1), "origin" to (1.0 to 1), "direction" to (1.0 to 1), "length" to (1.0 to 1), "center" to (1.0 to 1), "radius" to (1.0 to 1),
+	"amplitude" to (1.0 to 1), "wavelength" to (1.0 to 1), "phase" to (5.0 to 1), "ramp" to (1.0 to 1), "bounds" to (1.0 to 1))
 
 /** The selected mesh's modifier stack: one card per modifier in stack order, its settings keyed on parameters by the key button. */
 @Composable
@@ -119,7 +121,7 @@ private fun ModifierCard(
 		for (issue in issues) Text(tr("modifiers.issue.${issue.kind.code}", issue.detail.ifEmpty { issue.error?.let { "%.1f".format(it) } ?: "" }),
 			style = typography.caption.copy(fontSize = 10.sp), color = colors.warning)
 		val pose: (String) -> Float = { p -> state.parameterValues[ParameterId(p)] ?: puppet.parameters.firstOrNull { it.id.raw == p }?.default ?: 0f }
-		for (setting in modifier.definition.settings) ModifierField(vm, state, puppet, modifier, setting, pose)
+		for (setting in modifier.definition.settings.filter { it.field }) ModifierField(vm, state, puppet, modifier, setting, pose)
 	}
 }
 
