@@ -243,14 +243,14 @@ class WindowGpu internal constructor(
 		} else {
 			GL.setCapabilities(capabilities)
 		}
-		// Errors Skia or a driver left behind are not this turn's.
-		repeat(8) { if (GL11.glGetError() == GL11.GL_NO_ERROR) return@repeat }
+		// No glGetError here: it waits for the driver's thread where the driver has one (NVIDIA's threaded optimization,
+		// Mesa's glthread) or for the host (WSL, virtual machines). Code that checks errors clears them just before.
 		try {
 			resources.restoreDefaults()
 			runTasks()
 			return block(resources)
 		} finally {
-			resources.restoreDefaults()
+			// Skia sets again whatever it uses; the next turn starts from restoreDefaults.
 			skia.resetGLAll()
 		}
 	}
@@ -297,11 +297,42 @@ class WindowGpu internal constructor(
 	 * pump waits here rather than on Compose's frame clock: a waiter there makes Compose draw the whole window
 	 * every frame. Resumed at the start of the frame, before its GPU tasks run, so a caller on an immediate EDT
 	 * dispatcher requests its preview frame in time for this one.
+	 *
+	 * Under a frame rate limit ([GraphicsSettings.frameRateCap], lower while the window is not active) the frame is
+	 * asked for only once the limit allows it: previews are what keep a window drawing continuously.
 	 */
-	suspend fun awaitFrame(): Long = kotlinx.coroutines.suspendCancellableCoroutine { waiter ->
-		synchronized(frameWaiters) { frameWaiters += waiter }
-		waiter.invokeOnCancellation { synchronized(frameWaiters) { frameWaiters -= waiter } }
-		javax.swing.SwingUtilities.invokeLater { ensureInstalled(); requestRedraw() }
+	suspend fun awaitFrame(): Long {
+		val cap = GraphicsSettings.frameRateCap(active = windowActive())
+		if (cap > 0) {
+			// Asked for half a refresh early: the frame then starts at the refresh nearest the time due, rather than
+			// the one after it, which would bring 30 FPS down to 24 on a 60 Hz display.
+			val wait = lastWaitedFrame + 1_000_000_000L / cap - refreshNanos() / 2 - System.nanoTime()
+			if (wait > 1_000_000L) kotlinx.coroutines.delay(wait / 1_000_000L)
+		}
+		return kotlinx.coroutines.suspendCancellableCoroutine { waiter ->
+			synchronized(frameWaiters) { frameWaiters += waiter }
+			waiter.invokeOnCancellation { synchronized(frameWaiters) { frameWaiters -= waiter } }
+			javax.swing.SwingUtilities.invokeLater { ensureInstalled(); requestRedraw() }
+		}
+	}
+
+	/** When the last frame a preview waited for started ([System.nanoTime]). */
+	@Volatile private var lastWaitedFrame = 0L
+
+	private fun windowActive(): Boolean = runCatching { javax.swing.SwingUtilities.getWindowAncestor(layer)?.isActive }.getOrNull() ?: true
+
+	private var refreshPeriod = 0L
+	private var refreshCheckedAt = 0L
+
+	/** The display's refresh period, read at most once a second; 0 when the display does not say. */
+	private fun refreshNanos(): Long {
+		val now = System.nanoTime()
+		if (now - refreshCheckedAt > 1_000_000_000L) {
+			refreshCheckedAt = now
+			val rate = runCatching { layer.graphicsConfiguration?.device?.displayMode?.refreshRate ?: 0 }.getOrDefault(0)
+			refreshPeriod = if (rate > 0) 1_000_000_000L / rate else 0L
+		}
+		return refreshPeriod
 	}
 
 	private fun resumeFrameWaiters(nanoTime: Long) {
@@ -309,6 +340,7 @@ class WindowGpu internal constructor(
 			if (frameWaiters.isEmpty()) return
 			ArrayList(frameWaiters).also { frameWaiters.clear() }
 		}
+		lastWaitedFrame = System.nanoTime()
 		for (waiter in ready) if (waiter.isActive) runCatching { waiter.resume(nanoTime) }
 	}
 
@@ -336,6 +368,7 @@ class WindowGpu internal constructor(
 				val current = makeCurrent()
 				drain()
 				if (compositor !== composer) return inner.onRender(canvas, width, height, nanoTime)
+				if (current) directContext()?.let(cacheBudget::apply)
 				val skia = if (GraphicsSettings.compositing && current) directContext() else null
 				val composited = skia != null && runCatching { composer.render(canvas, width, height, nanoTime, skia) }
 					.onFailure { System.err.println("Window compositor failed: $it") }.getOrDefault(false)
@@ -357,7 +390,27 @@ class WindowGpu internal constructor(
 
 	private val pacing = AdaptiveVsync(layer, redrawer)
 	private val multisampled = MultisampledWindow(this)
+	private val cacheBudget = CacheBudget()
+}
 
+/**
+ * Keeps Skia's GPU resource cache at the size the settings ask for ([GpuCacheSize]); [GpuCacheSize.AUTO] puts back
+ * the budget the context started with.
+ */
+internal class CacheBudget {
+	private var initial = -1L
+	private var applied = -1L
+
+	fun apply(skia: DirectContext) {
+		if (initial < 0) initial = runCatching { skia.resourceCacheLimit }.getOrDefault(-1L).also { applied = it }
+		if (initial < 0) return
+		val megabytes = GraphicsSettings.current.gpuCache.megabytes
+		val wanted = if (megabytes == 0) initial else megabytes * 1024L * 1024L
+		if (wanted != applied) {
+			runCatching { skia.resourceCacheLimit = wanted }
+			applied = wanted
+		}
+	}
 }
 
 
@@ -439,6 +492,9 @@ internal class MultisampledWindow(private val gpu: WindowGpu) {
  * 120 FPS. While frames keep missing the refresh, this turns that wait off, so each frame is presented as soon as
  * it is drawn and the desktop shows the latest at every refresh (no tearing: the window is composed); once frames
  * fit a refresh again, the wait comes back and paces them to the display.
+ *
+ * Only on Windows ([VsyncMode.ADAPTIVE]): Skiko's Linux redrawer fixes its swap interval when it is made, so the
+ * switch there would add a timer to the wait instead of removing it. Followed from the next frame.
  */
 internal class AdaptiveVsync(private val layer: SkiaLayer, redrawer: Any) {
 	private val properties: Any? = runCatching {
@@ -447,8 +503,8 @@ internal class AdaptiveVsync(private val layer: SkiaLayer, redrawer: Any) {
 	private val vsync: Field? = properties?.let {
 		runCatching { it.javaClass.getDeclaredField("isVsyncEnabled").apply { isAccessible = true } }.getOrNull()
 	}
-	private val enabled = vsync != null && vsync.getBoolean(properties) &&
-		System.getProperty("psd2live.adaptiveVsync") == "true"
+	/** Whether the window started with vsync, which this can then lift and put back. */
+	private val available = vsync != null && vsync.getBoolean(properties)
 	private var period = 0L
 	private var periodCheckedAt = 0L
 	private var last = 0L
@@ -459,7 +515,11 @@ internal class AdaptiveVsync(private val layer: SkiaLayer, redrawer: Any) {
 		private set
 
 	fun frame(now: Long) {
-		if (!enabled) return
+		if (!available) return
+		if (!GraphicsSettings.adaptiveVsync) {
+			if (free) set(false)
+			return
+		}
 		if (now - periodCheckedAt > 1_000_000_000L) {
 			periodCheckedAt = now
 			val rate = runCatching { layer.graphicsConfiguration?.device?.displayMode?.refreshRate ?: 0 }.getOrDefault(0)

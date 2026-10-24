@@ -41,6 +41,11 @@ void main() {
         return;
     }
     vec4 c = texture(u_texture, v_uv);
+    if (u_solid.a < -2.5) {
+        if (c.a <= 0.0) discard;
+        o_color = vec4(0.0, 0.0, 0.0, c.a);
+        return;
+    }
     if (u_solid.a < -1.5) {
         if (c.a < 0.5) discard;
         o_color = vec4(0.0);

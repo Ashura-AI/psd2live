@@ -90,13 +90,10 @@ object AppSettings {
 		}
 
 	private val graphicsState = kotlinx.coroutines.flow.MutableStateFlow(runCatching {
-		io.github.psd2live.render.GraphicsOptions.stored(
-			preferences.get("render_path", null), preferences.getBoolean("software_canvas", false), preferences.get("gpu", null),
-			preferences.getInt("antialiasing_samples", io.github.psd2live.render.GraphicsOptions.DEFAULT_SAMPLES), preferences.getBoolean("vsync", true),
-		)
+		io.github.psd2live.render.GraphicsOptions.stored { key -> preferences.get(key, null) }
 	}.getOrDefault(io.github.psd2live.render.GraphicsOptions()))
 
-	/** How the window and canvases draw; the render API, card and vsync apply at the next start ([io.github.psd2live.render.GraphicsSettings]). */
+	/** How the window and canvases draw; what waits for the next start is said in [io.github.psd2live.render.GraphicsOptions]. */
 	val graphicsFlow: kotlinx.coroutines.flow.StateFlow<io.github.psd2live.render.GraphicsOptions> get() = graphicsState
 
 	var graphics: io.github.psd2live.render.GraphicsOptions
@@ -105,13 +102,9 @@ object AppSettings {
 			val previous = graphicsState.value
 			graphicsState.value = value
 			softwareCanvasState.value = value.renderPath != io.github.psd2live.render.RenderPath.GPU
-			io.github.psd2live.render.GraphicsSettings.setSamples(value.samples)
-			runCatching {
-				preferences.put("render_path", value.renderPath.name)
-				preferences.put("gpu", value.gpu.code)
-				preferences.putInt("antialiasing_samples", value.samples)
-				preferences.putBoolean("vsync", value.vsync)
-			}
+			previewFrameRateState.value = value.frameRateLimit.fps
+			io.github.psd2live.render.GraphicsSettings.update(value)
+			runCatching { for ((key, stored) in value.toStored()) preferences.put(key, stored) }
 			// Windows keeps the card per program in its own settings; written now, read when PSD2Live next starts.
 			if (value.gpu != previous.gpu && io.github.psd2live.render.GraphicsSettings.isWindows) {
 				Thread({ io.github.psd2live.render.GraphicsDevices.applyWindowsPreference(value.gpu) }, "psd2live-gpu-preference").apply { isDaemon = true }.start()
@@ -167,21 +160,17 @@ object AppSettings {
 		}
 
 	/** The preview frame rates offered; 0 follows the display. */
-	val previewFrameRates = listOf(0, 30, 60, 120)
+	val previewFrameRates = io.github.psd2live.render.FrameRateLimit.entries.map { it.fps }
 
-	private val previewFrameRateState = kotlinx.coroutines.flow.MutableStateFlow(
-		runCatching { preferences.getInt("preview_frame_rate", 0) }.getOrDefault(0).let { if (it < 0) 0 else it },
-	)
+	private val previewFrameRateState = kotlinx.coroutines.flow.MutableStateFlow(graphicsState.value.frameRateLimit.fps)
 
-	/** The preview's frame rate cap; 0 (the default) renders on every display refresh. */
+	/** The preview's frame rate cap; 0 (the default) renders on every display refresh. Part of [graphics]. */
 	val previewFrameRateFlow: kotlinx.coroutines.flow.StateFlow<Int> get() = previewFrameRateState
 
 	var previewFrameRate: Int
 		get() = previewFrameRateState.value
 		set(value) {
-			val rate = value.coerceAtLeast(0)
-			previewFrameRateState.value = rate
-			runCatching { preferences.putInt("preview_frame_rate", rate) }
+			graphics = graphics.copy(frameRateLimit = io.github.psd2live.render.FrameRateLimit.ofFps(value))
 		}
 
 	/** Whether edits in the simulation panel bake again as they commit; off by default, as a bake takes seconds. */

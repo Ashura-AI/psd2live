@@ -16,6 +16,14 @@ import kotlin.test.assertTrue
  * no keymap preset binds one input twice, and the command line accepts every option its help lists.
  */
 class CatalogContractsTest {
+	/** Every value the graphics settings page names. */
+	private val graphicsChoices: List<io.github.psd2live.render.GraphicsChoice> =
+		listOf(io.github.psd2live.render.RenderPath.entries, io.github.psd2live.render.VsyncMode.entries,
+			io.github.psd2live.render.FrameRateLimit.entries, io.github.psd2live.render.BackgroundFrameRate.entries,
+			io.github.psd2live.render.WindowAntialiasing.entries, io.github.psd2live.render.CanvasAntialiasing.entries,
+			io.github.psd2live.render.TextureFiltering.entries, io.github.psd2live.render.GpuCacheSize.entries,
+			io.github.psd2live.render.ThreadedGl.entries, io.github.psd2live.render.QualityPreset.entries).flatten()
+
 	@Test fun everyLanguageHasEveryMessageAndEveryToolAndShortcutIsNamed() {
 		val bundles = MESSAGE_BUNDLES.associateWith(::messageBundle)
 		val reference = bundles.getValue("Messages").stringPropertyNames()
@@ -26,7 +34,7 @@ class CatalogContractsTest {
 			assertEquals(emptyList(), keys.filter { props.getProperty(it).isBlank() }, "$name has blank values")
 		}
 		assertEquals(emptyList(), missingMessages(CanvasTool.entries.map { "editor.tool.${it.name.lowercase()}" } + ShortcutAction.entries.map { it.labelKey } +
-			SettingsTopic.entries.map { it.labelKey } + io.github.psd2live.render.RenderPath.entries.flatMap { listOf(it.labelKey, it.descriptionKey) }))
+			SettingsTopic.entries.map { it.labelKey } + graphicsChoices.flatMap { listOfNotNull(it.labelKey, it.descriptionKey) }))
 	}
 
 	/** The point tool's two faces (the old point tool and knife) each keep a name, a hint and their old key in every preset that had it. */

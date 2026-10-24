@@ -21,7 +21,6 @@ import org.umamo.render.puppet.packedColorModeOf
 import org.umamo.runtime.model.BlendMode
 import org.umamo.runtime.model.DrawableId
 import java.awt.image.BufferedImage
-import java.awt.image.DataBufferInt
 import java.util.IdentityHashMap
 
 /**
@@ -39,8 +38,9 @@ import java.util.IdentityHashMap
 internal class GlCanvasRenderer(
 	/**
 	 * Mipmapped atlas pages: a zoomed-out canvas samples a smaller level instead of skipping texels of the full
-	 * page, which keeps edges from shimmering and the GPU's texture cache from thrashing. Off only to compare
-	 * pixel for pixel with the Skia painter, which samples the full page.
+	 * page, which keeps edges from shimmering and the GPU's texture cache from thrashing; how they are sampled
+	 * follows [GraphicsSettings] ([TextureFiltering]). Off only to compare pixel for pixel with the Skia painter,
+	 * which samples the full page.
 	 */
 	private val mipmaps: Boolean = true,
 ) : AutoCloseable {
@@ -152,6 +152,10 @@ internal class GlCanvasRenderer(
 	private val tilePositions: Int = GL15.glGenBuffers()
 	private val tileUvs: Int = GL15.glGenBuffers()
 	private val worldUniform = FloatArray(4)
+	/** The target of the scene being drawn. */
+	private var target = DrawTarget(0, 1, 0)
+	/** How the page and raster textures sample, following the settings. */
+	private val filtering = FilteringFollower(mipmaps)
 
 	init {
 		fun quad(corners: FloatArray, instanceComponents: Int): Pair<Int, Int> {
@@ -195,14 +199,16 @@ internal class GlCanvasRenderer(
 	}
 
 	/**
-	 * Draws [scene] for [viewId] into the bound framebuffer, whose first row is the frame's top: in the app a
-	 * [GpuTarget] in Skia's context, which Skia then samples as it is.
+	 * Draws [scene] for [viewId] into [target], whose first row is the frame's top: in the app a [GpuTarget] in
+	 * Skia's context, which Skia then samples as it is.
 	 */
-	fun draw(viewId: String, scene: GpuScene) {
+	fun draw(viewId: String, scene: GpuScene, target: DrawTarget) {
 		val width = scene.width.coerceAtLeast(1)
 		val height = scene.height.coerceAtLeast(1)
 		val view = views.getOrPut(viewId) { View() }
-		GL11.glViewport(0, 0, width, height)
+		this.target = target
+		filtering.follow { textures.values.asSequence() + views.values.asSequence().flatMap { it.rasters.values } }
+		GL11.glViewport(0, 0, width * target.scale, height * target.scale)
 		GL11.glDisable(GL11.GL_DEPTH_TEST)
 		GL11.glDisable(GL11.GL_CULL_FACE)
 		GL11.glDisable(GL11.GL_SCISSOR_TEST)
@@ -249,7 +255,7 @@ internal class GlCanvasRenderer(
 		val view = views.getOrPut(viewId) { View() }
 		ensureTarget(view, width, height)
 		GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, view.framebuffer)
-		draw(viewId, scene)
+		draw(viewId, scene, DrawTarget(view.framebuffer, 1, 0))
 		GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, view.framebuffer)
 		// Straight into the bitmap's own memory: no direct buffer, no heap array, no second copy into Skia.
 		val bitmap = Bitmap()
@@ -361,8 +367,11 @@ internal class GlCanvasRenderer(
 			used += id
 			return syncMesh(view, id, world, mesh.uvs, mesh.indices)
 		}
-		/** The part, its masks and its hover wash into the bound framebuffer, whose stencil holds nothing below [ref]. */
-		fun drawPart(draw: ArtworkDraw, buffers: MeshBuffers, page: BufferedImage, ref: Int) {
+		/**
+		 * The part, its masks and its hover wash into the bound framebuffer, whose stencil holds nothing below [ref];
+		 * [multisampled] when that is the frame's own multisampled target, not a blend layer.
+		 */
+		fun drawPart(draw: ArtworkDraw, buffers: MeshBuffers, page: BufferedImage, ref: Int, multisampled: Boolean) {
 			val masked = draw.maskIds.isNotEmpty()
 			if (masked) {
 				// Mask texels at least half opaque write the reference without colour, as the preview's do; the part then
@@ -371,13 +380,18 @@ internal class GlCanvasRenderer(
 				GL11.glColorMask(false, false, false, false)
 				GL11.glStencilFunc(GL11.GL_ALWAYS, ref, 0xff)
 				GL11.glStencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_REPLACE)
-				GL20.glUniform4f(solid, 0f, 0f, 0f, MASK_WRITE)
+				// Multisampled, a mask texel covers as many of a pixel's samples as it is opaque (alpha to coverage):
+				// the mask's edge antialiases instead of cutting at half.
+				val coverage = multisampled
+				if (coverage) GL11.glEnable(GL13.GL_SAMPLE_ALPHA_TO_COVERAGE)
+				GL20.glUniform4f(solid, 0f, 0f, 0f, if (coverage) MASK_COVERAGE else MASK_WRITE)
 				draw.maskIds.forEachIndexed { index, maskId ->
 					val mask = meshFor(maskId) ?: return@forEachIndexed
 					val maskPage = pages.getOrNull(draw.maskPages.getOrElse(index) { draw.page }) ?: return@forEachIndexed
 					GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture(maskPage.image))
 					drawMesh(mask)
 				}
+				if (coverage) GL11.glDisable(GL13.GL_SAMPLE_ALPHA_TO_COVERAGE)
 				GL11.glColorMask(true, true, true, true)
 				GL11.glStencilFunc(if (draw.invertMask) GL11.GL_NOTEQUAL else GL11.GL_EQUAL, ref, 0xff)
 				GL11.glStencilOp(GL11.GL_KEEP, GL11.GL_KEEP, GL11.GL_KEEP)
@@ -417,19 +431,20 @@ internal class GlCanvasRenderer(
 					}
 					ref = ++view.stencilRef
 				}
-				drawPart(draw, buffers, page.image, ref)
+				drawPart(draw, buffers, page.image, ref, target.samples > 1)
 			} else {
 				// The other modes read what is under the part: it draws alone into a layer, which then composites onto
 				// a copy of the frame by the preview's own composite program.
 				val world = scene.geometry.worldPositions[draw.drawableId] ?: continue
-				val region = screenRegion(world, scene.width, scene.height) ?: continue
-				val target = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)
-				val layers = ensureLayers(scene.width, scene.height)
+				val scale = this.target.scale
+				val region = screenRegion(world, scene.width * scale, scene.height * scale) ?: continue
+				val target = this.target.framebuffer
+				val layers = ensureLayers(scene.width * scale, scene.height * scale)
 				GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, layers.layerFramebuffer)
 				GL11.glEnable(GL11.GL_SCISSOR_TEST)
 				GL11.glScissor(region[0], region[1], region[2], region[3])
 				GL11.glClear(GL11.GL_COLOR_BUFFER_BIT or GL11.GL_STENCIL_BUFFER_BIT)
-				drawPart(draw, buffers, page.image, 1)
+				drawPart(draw, buffers, page.image, 1, multisampled = false)
 				GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, target)
 				GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, layers.snapshotFramebuffer)
 				val x1 = region[0] + region[2]; val y1 = region[1] + region[3]
@@ -682,7 +697,7 @@ internal class GlCanvasRenderer(
 				GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, width, height, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels)
 				if (mipmaps) GL30.glGenerateMipmap(GL11.GL_TEXTURE_2D)
 				checkTextureUpload(texture, width, height)
-				GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, if (mipmaps) GL11.GL_LINEAR_MIPMAP_LINEAR else GL11.GL_LINEAR)
+				PageTextures.applyFiltering(filtering.current, mipmaps)
 				GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR)
 				GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE)
 				GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE)
@@ -834,45 +849,8 @@ internal class GlCanvasRenderer(
 		GL15.glDeleteBuffers(buffers.indices)
 	}
 
-	/** [image] as a premultiplied RGBA texture with linear filtering, uploaded once per page instance. */
-	private fun texture(image: BufferedImage): Int = textures.getOrPut(image) {
-		val width = image.width
-		val height = image.height
-		val raster = (image.raster.dataBuffer as? DataBufferInt)?.data?.takeIf { it.size == width * height }
-		val premultipliedInput = raster != null && image.type == BufferedImage.TYPE_INT_ARGB_PRE
-		val source = if (raster != null && (premultipliedInput || image.type == BufferedImage.TYPE_INT_ARGB)) raster
-			else image.getRGB(0, 0, width, height, null, 0, width)
-		val pixels = MemoryUtil.memAlloc(width * height * 4)
-		try {
-			for (i in 0 until width * height) {
-				val c = source[i]
-				val a = c ushr 24
-				if (premultipliedInput || a == 255) {
-					pixels.put((c ushr 16 and 0xff).toByte()).put((c ushr 8 and 0xff).toByte()).put((c and 0xff).toByte()).put(a.toByte())
-				} else {
-					// Rounded like Skia's own premultiply, so the two painters sample the same texels.
-					pixels.put((((c ushr 16 and 0xff) * a + 127) / 255).toByte()).put((((c ushr 8 and 0xff) * a + 127) / 255).toByte())
-						.put((((c and 0xff) * a + 127) / 255).toByte()).put(a.toByte())
-				}
-			}
-			pixels.flip()
-			val texture = GL11.glGenTextures()
-			GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture)
-			GL11.glPixelStorei(GL11.GL_UNPACK_ALIGNMENT, 4)
-			clearGlErrors()
-			GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, width, height, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels)
-			if (mipmaps) GL30.glGenerateMipmap(GL11.GL_TEXTURE_2D)
-			checkTextureUpload(texture, width, height)
-			GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER,
-				if (mipmaps) GL11.GL_LINEAR_MIPMAP_LINEAR else GL11.GL_LINEAR)
-			GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR)
-			GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE)
-			GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE)
-			texture
-		} finally {
-			MemoryUtil.memFree(pixels)
-		}
-	}
+	/** [image] as a premultiplied texture ([PageTextures.upload]), uploaded once per page instance. */
+	private fun texture(image: BufferedImage): Int = textures.getOrPut(image) { PageTextures.upload(image, mipmaps, filtering.current) }
 
 	private fun ensureTarget(view: View, width: Int, height: Int) {
 		if (view.framebuffer != 0 && width <= view.capacityWidth && height <= view.capacityHeight) return
@@ -923,5 +901,7 @@ internal class GlCanvasRenderer(
 	private companion object {
 		/** `u_solid.a` that makes the artwork program write a mask: texels at least half opaque, no colour. */
 		const val MASK_WRITE = -2f
+		/** As [MASK_WRITE], with alpha to coverage: every texel not transparent, its alpha choosing the samples. */
+		const val MASK_COVERAGE = -3f
 	}
 }

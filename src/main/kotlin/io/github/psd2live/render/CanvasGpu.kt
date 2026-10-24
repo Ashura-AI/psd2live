@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * redraw costs no GPU work.
  */
 internal object CanvasGpu {
-	private class Drawn(val key: List<Any?>, val window: WindowGpu)
+	private class Drawn(val key: List<Any?>, val window: WindowGpu, val quality: TargetQuality, val filtering: TextureFiltering)
 
 	private val drawn = ConcurrentHashMap<String, Drawn>()
 	/** Frames rendered per view since start, for the development tools. */
@@ -38,15 +38,19 @@ internal object CanvasGpu {
 		if (_failed.value) return null
 		val gpu = SkiaGpu.of(window) ?: return null
 		val last = drawn[viewId]
-		if (last != null && last.window === gpu && last.key == key) gpu.resources.frame(viewId)?.let { return it }
+		// A change of antialiasing or texture filtering draws the scene again, as a change of the scene does.
+		val quality = TargetQuality.of(GraphicsSettings.current.canvasAntialiasing)
+		val filtering = GraphicsSettings.current.textureFiltering
+		if (last != null && last.window === gpu && last.key == key && last.quality == quality && last.filtering == filtering)
+			gpu.resources.frame(viewId)?.let { return it }
 		// Thrown out of the window's draw, a failure would end Skiko's frame loop and the window would stop drawing.
 		return try {
 			gpu.turn { resources ->
 				val built = scene()
-				resources.render(viewId, built.width, built.height, bottomUp = false) {
-					resources.canvasRenderer.draw(viewId, built)
+				resources.render(viewId, built.width, built.height, bottomUp = false, quality) { target ->
+					resources.canvasRenderer.draw(viewId, built, target)
 				}?.also {
-					drawn[viewId] = Drawn(key, gpu)
+					drawn[viewId] = Drawn(key, gpu, quality, filtering)
 					framesDrawn.getOrPut(viewId) { AtomicInteger() }.incrementAndGet()
 				}
 			} ?: gpu.resources.frame(viewId)

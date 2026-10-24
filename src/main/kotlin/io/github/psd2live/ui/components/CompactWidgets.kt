@@ -861,6 +861,70 @@ fun CompactButton(
 	}
 }
 
+/**
+ * A field showing the chosen one of [options] by [label], which opens them as a menu: for choices with more values
+ * than a row of radio buttons holds (the graphics settings). Disabled [options] by [optionEnabled] show but cannot
+ * be picked.
+ */
+@Composable
+fun <T> CompactSelect(
+	options: List<T>,
+	selected: T,
+	label: (T) -> String,
+	onSelect: (T) -> Unit,
+	modifier: Modifier = Modifier,
+	enabled: Boolean = true,
+	optionEnabled: (T) -> Boolean = { true },
+	height: Dp = 24.dp,
+) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	var open by remember { mutableStateOf(false) }
+	val interactionSource = remember { MutableInteractionSource() }
+	val isHovered by interactionSource.collectIsHoveredAsState()
+	Box(modifier) {
+		Row(
+			modifier = Modifier
+				.fillMaxWidth()
+				.height(height)
+				.background(when {
+					!enabled -> colors.controlBackground.copy(alpha = 0.4f)
+					open -> colors.controlActive
+					isHovered -> colors.controlHover
+					else -> colors.controlBackground
+				}, RoundedCornerShape(Corners.Control))
+				.border(BorderStroke(1.dp, when {
+					!enabled -> colors.border.copy(alpha = 0.3f)
+					open || isHovered -> colors.borderHover
+					else -> colors.border
+				}), RoundedCornerShape(Corners.Control))
+				.hoverable(interactionSource)
+				.clickable(enabled = enabled, interactionSource = interactionSource, indication = null) { open = true }
+				.handCursor(enabled)
+				.padding(start = 8.dp, end = 4.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Text(
+				text = label(selected),
+				style = typography.body.copy(fontSize = 11.sp),
+				color = if (enabled) colors.textPrimary else colors.textDisabled,
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
+				modifier = Modifier.weight(1f),
+			)
+			IconChevron(expanded = true, tint = if (enabled) colors.textMuted else colors.textDisabled)
+		}
+		AppDropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+			for (option in options) {
+				AppMenuItem(text = label(option), isChecked = option == selected, enabled = optionEnabled(option), onClick = {
+					open = false
+					if (option != selected) onSelect(option)
+				})
+			}
+		}
+	}
+}
+
 /** Practical Compact Icon Button */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

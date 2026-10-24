@@ -53,7 +53,7 @@ fun main(arguments: Array<String>) {
 	configureLanguage(arguments)
 	val command = commandArguments(arguments)
 	// Canvases draw on the GPU in Skia's own OpenGL context, so Skia must draw the window with OpenGL; the editor
-	// starts with the user's graphics settings (render path, card, vsync), before its first window.
+	// starts with the user's graphics settings (render path, card, vsync, driver threading), before its first window.
 	io.github.psd2live.render.GraphicsSettings.applyAtStartup(
 		if (command.isEmpty()) AppSettings.graphics else io.github.psd2live.render.GraphicsOptions())
 	if (command.isEmpty()) {

@@ -1022,6 +1022,8 @@ private fun RotationDeformerInspector(
 internal fun InspectorFormRow(
     label: String,
     modifier: Modifier = Modifier,
+    /** Pages of longer labels (the settings) widen the column; inspectors keep the default. */
+    labelWidth: androidx.compose.ui.unit.Dp = 88.dp,
     content: @Composable () -> Unit,
 ) {
     val colors = LocalToolColors.current
@@ -1036,7 +1038,7 @@ internal fun InspectorFormRow(
             style = typography.caption.copy(fontSize = 11.sp),
             color = colors.textPrimary,
             textAlign = TextAlign.End,
-            modifier = Modifier.width(88.dp).padding(end = 8.dp),
+            modifier = Modifier.width(labelWidth).padding(end = 8.dp),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )

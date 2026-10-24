@@ -28,7 +28,8 @@ import kotlin.test.Test
  * Frame pacing of the real editor window on the edit canvas, GPU renderer against the software painter.
  *
  * PSD2LIVE_TOOLS=1 xvfb-run -a -s "-screen 0 1920x1080x24" ./gradlew test --tests '*CanvasPerfTool'
- * PSD2LIVE_SAMPLE picks the PSD (tml by default). Writes build/tools/canvas-perf/report.txt and a screenshot
+ * PSD2LIVE_SAMPLE picks the PSD (tml by default), PSD2LIVE_CANVAS_AA the canvas antialiasing (a CanvasAntialiasing
+ * name; the user's setting by default). Writes build/tools/canvas-perf/report.txt and a screenshot
  * after each phase. Under Xvfb the GPU is Mesa's llvmpipe, a CPU rasterizer, so absolute GPU numbers there
  * say little; the UI thread's share is what this measures.
  */
@@ -140,7 +141,9 @@ class CanvasPerfTool {
 				}
 			}
 			for (software in listOf(false, true)) {
-				AppSettings.graphics = savedGraphics.copy(renderPath = if (software) io.github.psd2live.render.RenderPath.SOFTWARE_CANVAS else io.github.psd2live.render.RenderPath.GPU)
+				AppSettings.graphics = savedGraphics.copy(
+					renderPath = if (software) io.github.psd2live.render.RenderPath.SOFTWARE_CANVAS else io.github.psd2live.render.RenderPath.GPU,
+					canvasAntialiasing = io.github.psd2live.render.CanvasAntialiasing.valueOf(setting("PSD2LIVE_CANVAS_AA", savedGraphics.canvasAntialiasing.name)))
 				Thread.sleep(1500)
 				val mode = if (software) "software" else "gpu"
 				val ghost = arrayOfNulls<Any>(1)

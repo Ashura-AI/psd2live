@@ -254,9 +254,12 @@ class P2lrtPreviewSession(
 		val pixelsPerCanvas = request.scale * minOf(request.width, request.height) / canvasHeight.coerceAtLeast(1f)
 		val centerX = request.width * 0.5f * (1f + request.offsetX)
 		val centerY = request.height * 0.5f * (1f - request.offsetY)
-		resources.render(request.viewId, request.width, request.height, bottomUp = false) {
-			context.renderer.draw(rig, request.width, request.height, pixelsPerCanvas,
-				centerX - canvasWidth * 0.5f * pixelsPerCanvas, centerY - canvasHeight * 0.5f * pixelsPerCanvas)
+		val quality = io.github.psd2live.render.TargetQuality.of(io.github.psd2live.render.GraphicsSettings.current.canvasAntialiasing)
+		resources.render(request.viewId, request.width, request.height, bottomUp = false, quality) { target ->
+			// Supersampled, the whole frame is in the larger target's pixels.
+			val s = target.scale
+			context.renderer.draw(rig, target.framebuffer, request.width * s, request.height * s, pixelsPerCanvas * s,
+				(centerX - canvasWidth * 0.5f * pixelsPerCanvas) * s, (centerY - canvasHeight * 0.5f * pixelsPerCanvas) * s)
 		} ?: return
 		val currentValues = rig.current
 		val parameters = HashMap<ParameterId, Float>(currentValues.size)

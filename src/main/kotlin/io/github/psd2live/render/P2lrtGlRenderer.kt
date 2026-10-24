@@ -8,10 +8,8 @@ import org.lwjgl.opengl.GL14
 import org.lwjgl.opengl.GL15
 import org.lwjgl.opengl.GL20
 import org.lwjgl.opengl.GL30
-import org.lwjgl.system.MemoryUtil
 import org.umamo.render.glsl.desktopCompositeShaderSources
 import java.awt.image.BufferedImage
-import java.awt.image.DataBufferInt
 import java.util.IdentityHashMap
 
 /**
@@ -62,6 +60,8 @@ internal class P2lrtGlRenderer : AutoCloseable {
 	/** Page textures by the atlas page image they were made from, so a reload with unchanged pages uploads nothing. */
 	private val textures = IdentityHashMap<BufferedImage, Int>()
 	private var pageTextures: List<Int> = emptyList()
+	/** How the page textures sample, following the settings. */
+	private val filtering = FilteringFollower(mipmaps = true)
 	private val multiplyColor = FloatArray(3)
 	private val screenColor = FloatArray(3)
 	/** One layer per nesting depth, the destination snapshot a composite reads and the mask coverage; grow-only. */
@@ -136,18 +136,19 @@ internal class P2lrtGlRenderer : AutoCloseable {
 			val (image, texture) = iterator.next()
 			if (image !in kept) { GL11.glDeleteTextures(texture); iterator.remove() }
 		}
-		pageTextures = pages.map { page -> textures.getOrPut(page) { upload(page) } }
+		pageTextures = pages.map { page -> textures.getOrPut(page) { PageTextures.upload(page, mipmaps = true, filtering.current) } }
 	}
 
 	/**
-	 * Draws [rig] as its last evaluation left it into the bound framebuffer of [width] × [height] pixels.
+	 * Draws [rig] as its last evaluation left it into [framebuffer] (bound) of [width] × [height] pixels.
 	 * Canvas pixel (x, y) lands at view pixel `x * scale + offsetX`, `y * scale + offsetY`, y down.
 	 */
-	fun draw(rig: P2lRuntime.Rig, width: Int, height: Int, scale: Float, offsetX: Float, offsetY: Float) {
+	fun draw(rig: P2lRuntime.Rig, framebuffer: Int, width: Int, height: Int, scale: Float, offsetX: Float, offsetY: Float) {
 		if (meshes.isEmpty()) return
+		filtering.follow { textures.values.asSequence() }
 		frameWidth = width
 		frameHeight = height
-		val target = Surface(GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING))
+		val target = Surface(framebuffer)
 		GL20.glUseProgram(program)
 		// The frame's top row goes to clip y = -1, the texture's first row, which Skia samples as the top.
 		val sx = 2f * scale / width
@@ -444,44 +445,6 @@ internal class P2lrtGlRenderer : AutoCloseable {
 		coverage = null
 		capacityWidth = 0
 		capacityHeight = 0
-	}
-
-	/** Uploads [image] premultiplied, with mipmaps so a zoomed-out preview does not shimmer. */
-	private fun upload(image: BufferedImage): Int {
-		val width = image.width
-		val height = image.height
-		val raster = (image.raster.dataBuffer as? DataBufferInt)?.data?.takeIf { it.size == width * height }
-		val premultipliedInput = raster != null && image.type == BufferedImage.TYPE_INT_ARGB_PRE
-		val source = if (raster != null && (premultipliedInput || image.type == BufferedImage.TYPE_INT_ARGB)) raster
-			else image.getRGB(0, 0, width, height, null, 0, width)
-		val pixels = MemoryUtil.memAlloc(width * height * 4)
-		try {
-			for (i in 0 until width * height) {
-				val c = source[i]
-				val a = c ushr 24
-				if (premultipliedInput || a == 255) {
-					pixels.put((c ushr 16 and 0xff).toByte()).put((c ushr 8 and 0xff).toByte()).put((c and 0xff).toByte()).put(a.toByte())
-				} else {
-					pixels.put((((c ushr 16 and 0xff) * a + 127) / 255).toByte()).put((((c ushr 8 and 0xff) * a + 127) / 255).toByte())
-						.put((((c and 0xff) * a + 127) / 255).toByte()).put(a.toByte())
-				}
-			}
-			pixels.flip()
-			val texture = GL11.glGenTextures()
-			GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture)
-			GL11.glPixelStorei(GL11.GL_UNPACK_ALIGNMENT, 4)
-			clearGlErrors()
-			GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA8, width, height, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels)
-			GL30.glGenerateMipmap(GL11.GL_TEXTURE_2D)
-			checkTextureUpload(texture, width, height)
-			GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR_MIPMAP_LINEAR)
-			GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR)
-			GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_S, GL12.GL_CLAMP_TO_EDGE)
-			GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_WRAP_T, GL12.GL_CLAMP_TO_EDGE)
-			return texture
-		} finally {
-			MemoryUtil.memFree(pixels)
-		}
 	}
 
 	private fun releaseMeshes() {

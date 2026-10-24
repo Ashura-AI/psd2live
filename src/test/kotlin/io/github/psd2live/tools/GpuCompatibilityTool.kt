@@ -71,6 +71,7 @@ class GpuCompatibilityTool {
                     if (core) checkCubismRejectedBeforeLoading(gpu)
                     else checkCubismDoesNotReuseReplacedContext(gpu)
                     checkLayerCache(gpu, context, report)
+                    checkCanvasAntialiasing(gpu, report)
                 } finally { SwingUtilities.invokeAndWait { layer.dispose() } }
             }
         } finally {
@@ -96,11 +97,10 @@ class GpuCompatibilityTool {
     }
 
     private fun checkLayerCache(gpu: WindowGpu, context: DirectContext, report: StringBuilder) {
-        val supported = MultisampledWindow::class.java.getDeclaredField("supported").apply { isAccessible = true }
-        val original = supported.getBoolean(null)
+        val original = GraphicsSettings.current
         try {
             for (msaa in listOf(true, false)) {
-                supported.setBoolean(null, msaa)
+                GraphicsSettings.update(original.copy(windowAntialiasing = if (msaa) WindowAntialiasing.MSAA_4 else WindowAntialiasing.COVERAGE))
                 val compositor = WindowCompositor(gpu, object : SkikoRenderDelegate {
                     override fun onRender(canvas: org.jetbrains.skia.Canvas, width: Int, height: Int, nanoTime: Long) {}
                 })
@@ -132,7 +132,33 @@ class GpuCompatibilityTool {
                     recorder.close()
                 }
             }
-        } finally { supported.setBoolean(null, original) }
+        } finally { GraphicsSettings.update(original) }
+    }
+
+    /**
+     * Every canvas antialiasing setting through the view's target: a white triangle whose edges cross pixels at slants
+     * comes out all or nothing per pixel only with antialiasing off. Not at 45°: two samples sit on a pixel's
+     * diagonal, and an edge along it leaves both on one side.
+     */
+    private fun checkCanvasAntialiasing(gpu: WindowGpu, report: StringBuilder) {
+        val viewport = io.github.psd2live.core.CanvasViewport(1.0, 0.0, 32.0, 32f, 32f)
+        val scene = AtlasScene(32, 32, viewport, OverlayScene(listOf(FillBatch(0xffffffff.toInt(), listOf(floatArrayOf(2f, 28f, 30f, 22f, 4f, 2f))))))
+        try {
+            for (antialiasing in CanvasAntialiasing.entries) {
+                // As a window's turn starts: Skia's draws above leave GL_MULTISAMPLE off.
+                gpu.resources.restoreDefaults()
+                assertNotNull(gpu.resources.render("aa", 32, 32, bottomUp = false, TargetQuality.of(antialiasing)) { target ->
+                    gpu.resources.canvasRenderer.draw("aa", scene, target)
+                })
+                val (_, _, rgba) = assertNotNull(gpu.resources.pixels("aa"))
+                val alphas = (3 until rgba.size step 4).map { rgba[it].toInt() and 0xff }
+                val partial = alphas.count { it in 1..254 }
+                assertTrue(alphas.count { it == 255 } > 300, "$antialiasing: the triangle's inside must be opaque")
+                if (antialiasing == CanvasAntialiasing.OFF) assertEquals(0, partial, "Without antialiasing every pixel is in or out")
+                else assertTrue(partial >= 20, "$antialiasing must blend the slanted edges, found $partial partly covered pixels")
+                report.appendLine("canvas antialiasing $antialiasing: $partial partly covered edge pixels")
+            }
+        } finally { gpu.resources.release("aa") }
     }
 
     private fun checkCubismDoesNotReuseReplacedContext(gpu: WindowGpu) {
