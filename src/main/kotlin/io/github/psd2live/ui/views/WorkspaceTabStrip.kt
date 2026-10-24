@@ -26,7 +26,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.DropdownMenu
 import androidx.compose.material.Text
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -34,6 +39,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -85,6 +91,7 @@ import io.github.psd2live.ui.theme.Motion
 import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.theme.handCursor
 import io.github.psd2live.ui.theme.selectOrOpen
+import kotlinx.coroutines.launch
 
 /** Dock modules the window menu can show or hide, in menu order. */
 internal val WINDOW_MODULES = listOf(
@@ -125,32 +132,77 @@ fun WorkspaceStrip(
 	val activePage = viewModel.activePage
 	val chipSpacing = 2.dp
 	val chipSpacingPx = with(LocalDensity.current) { chipSpacing.toPx() }
-	// Left edge and width of each chip in the strip, for dragging past its neighbours.
+	// Laid-out left edge and width of each chip in the strip, for dragging past its neighbours.
 	val chipBounds = remember { mutableStateMapOf<String, Pair<Float, Float>>() }
+	// How far each chip is drawn from its slot while it slides into it after a swap or a drop.
+	val chipSlides = remember { mutableMapOf<String, Animatable<Float, AnimationVector1D>>() }
+	val slideScope = rememberCoroutineScope()
 	var draggingId by remember { mutableStateOf<String?>(null) }
-	var dragOffset by remember { mutableFloatStateOf(0f) }
+	var settlingId by remember { mutableStateOf<String?>(null) }
+	// Where the pointer has taken the dragged chip's left edge, and that edge kept within the workspaces' span.
+	// Both are in the strip's coordinates, not the chip's slot, so the chip stays under the pointer while the
+	// slots move for other reasons: the start page's tab folding away as the press leaves it, a page closing.
+	var dragPointerLeft by remember { mutableFloatStateOf(0f) }
+	var dragLeft by remember { mutableFloatStateOf(0f) }
 
-	// The dragged chip follows the pointer; once its centre passes a neighbour's centre the two
-	// swap, and the offset drops by the neighbour's width so the chip stays under the pointer.
+	fun slide(id: String) = chipSlides.getOrPut(id) { Animatable(0f) }
+
+	// Draws [id] where it was before its slot moved by [shift], then slides it into the slot.
+	fun slideFrom(id: String, shift: Float) {
+		val offset = slide(id)
+		slideScope.launch {
+			offset.snapTo(offset.value - shift)
+			offset.animateTo(0f, tween(Motion.Fold, easing = FastOutSlowInEasing))
+		}
+	}
+
+	// The dragged chip follows the pointer; each neighbour its centre passes swaps with it and slides into
+	// the slot it left.
 	fun dragChip(id: String, amount: Float) {
-		dragOffset += amount
 		// Read the live order: several drag events can land before the strip recomposes.
 		val workspaces = viewModel.state.value.workspaces
-		val index = workspaces.indexOfFirst { it.id == id }
-		val (left, width) = chipBounds[id] ?: return
-		val center = left + dragOffset + width / 2
-		val forward = dragOffset > 0
-		val neighbour = workspaces.getOrNull(if (forward) index + 1 else index - 1) ?: return
-		val (otherLeft, otherWidth) = chipBounds[neighbour.id] ?: return
-		val passed = if (forward) center > otherLeft + otherWidth / 2 else center < otherLeft + otherWidth / 2
-		if (!passed) return
-		viewModel.moveWorkspace(id, if (forward) index + 1 else index - 1)
-		val shift = otherWidth + chipSpacingPx
-		val back = width + chipSpacingPx
-		dragOffset += if (forward) -shift else shift
-		// The layout catches up next frame; move the cached edges now so a fast drag keeps swapping.
-		chipBounds[id] = (if (forward) left + shift else left - shift) to width
-		chipBounds[neighbour.id] = (if (forward) otherLeft - back else otherLeft + back) to otherWidth
+		val spans = workspaces.mapNotNull { chipBounds[it.id] }
+		val width = chipBounds[id]?.second ?: return
+		dragPointerLeft += amount
+		dragLeft = dragPointerLeft.coerceIn(spans.minOf { it.first }, (spans.maxOf { it.first + it.second } - width).coerceAtLeast(spans.minOf { it.first }))
+		var index = workspaces.indexOfFirst { it.id == id }
+		val order = workspaces.toMutableList()
+		while (true) {
+			val center = dragLeft + width / 2
+			val (left, _) = chipBounds[id] ?: return
+			val forward = order.getOrNull(index + 1)?.takeIf { next ->
+				chipBounds[next.id]?.let { (l, w) -> center > l + w / 2 } == true
+			}
+			val neighbour = forward ?: order.getOrNull(index - 1)?.takeIf { previous ->
+				chipBounds[previous.id]?.let { (l, w) -> center < l + w / 2 } == true
+			} ?: return
+			val (otherLeft, otherWidth) = chipBounds.getValue(neighbour.id)
+			val to = if (forward != null) index + 1 else index - 1
+			viewModel.moveWorkspace(id, to)
+			order.add(to, order.removeAt(index))
+			index = to
+			// The layout catches up before the next frame draws; move the edges now so one fast drag passes
+			// several chips, and the dragged chip's offset from its slot holds.
+			val ownLeft = if (forward != null) left + otherWidth + chipSpacingPx else otherLeft
+			val otherNewLeft = if (forward != null) left else otherLeft + width + chipSpacingPx
+			chipBounds[id] = ownLeft to width
+			chipBounds[neighbour.id] = otherNewLeft to otherWidth
+			slideFrom(neighbour.id, otherNewLeft - otherLeft)
+		}
+	}
+
+	fun endDrag(id: String) {
+		if (draggingId != id) return
+		draggingId = null
+		val slot = chipBounds[id]?.first ?: return
+		// Let go between slots, the chip glides into its own instead of jumping there.
+		settlingId = id
+		val offset = slide(id)
+		slideScope.launch {
+			offset.snapTo(dragLeft - slot)
+			offset.animateTo(0f, tween(Motion.Fold, easing = FastOutSlowInEasing))
+			if (settlingId == id) settlingId = null
+		}
 	}
 
 	Row(
@@ -185,7 +237,14 @@ fun WorkspaceStrip(
 				}
 			}
 			// Keeps the pages apart from the workspaces, which can be reordered among themselves.
-			if (viewModel.openPages.isNotEmpty()) {
+			// It folds with the last page's tab, so the workspaces glide over together instead of jumping at the end.
+			androidx.compose.animation.AnimatedVisibility(
+				visible = viewModel.openPages.isNotEmpty(),
+				enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Motion.Fade, delayMillis = Motion.Instant)) +
+					androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(Motion.Expand), expandFrom = Alignment.Start),
+				exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(Motion.Instant)) +
+					androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(Motion.Expand), shrinkTowards = Alignment.Start),
+			) {
 				Box(Modifier.padding(horizontal = 2.dp).width(1.dp).height(14.dp).background(LocalToolColors.current.divider))
 			}
 			val pageShown = activePage != null
@@ -206,19 +265,28 @@ fun WorkspaceStrip(
 						onRename = { viewModel.renameWorkspace(item.id, it) },
 						onDuplicate = { viewModel.duplicateWorkspace(item.id) },
 						onDragStart = {
+							val slot = chipBounds[item.id]?.first ?: 0f
+							// Picked up mid-slide, the chip starts from where it is drawn.
+							dragPointerLeft = slot + slide(item.id).value
+							dragLeft = dragPointerLeft
+							settlingId = null
 							draggingId = item.id
-							dragOffset = 0f
 						},
 						onDrag = { dragChip(item.id, it) },
-						onDragEnd = {
-							draggingId = null
-							dragOffset = 0f
-						},
+						onDragEnd = { endDrag(item.id) },
 						modifier = Modifier
 							.onGloballyPositioned { chipBounds[item.id] = it.positionInParent().x to it.size.width.toFloat() }
-							.zIndex(if (dragging) 1f else 0f)
-							.graphicsLayer { translationX = if (dragging) dragOffset else 0f },
+							.zIndex(if (dragging || settlingId == item.id) 1f else 0f)
+							.graphicsLayer {
+								translationX = if (dragging) dragLeft - (chipBounds[item.id]?.first ?: dragLeft) else slide(item.id).value
+							},
 					)
+					DisposableEffect(Unit) {
+						onDispose {
+							chipBounds.remove(item.id)
+							chipSlides.remove(item.id)
+						}
+					}
 				}
 			}
 			NewWorkspaceButton(onCreate = { viewModel.addWorkspace(it) })
