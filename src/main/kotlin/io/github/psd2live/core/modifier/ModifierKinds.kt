@@ -82,8 +82,8 @@ interface ModifierKind {
 	/** Values for a new modifier on targets whose rest canvas bounds are [bounds] (min x, min y, max x, max y). */
 	fun defaults(bounds: FloatArray): Map<String, FloatArray> = emptyMap()
 
-	/** The parameters it is sampled on besides those its settings are keyed on. */
-	fun drivers(options: Map<String, String>): List<String> = emptyList()
+	/** The parameters it is sampled on besides those its settings are keyed on; some depend on [model] (another target's axes). */
+	fun drivers(options: Map<String, String>, model: PuppetModel?): List<String> = emptyList()
 
 	/** Keys to sample [parameter] at besides its own and the target's: where its result changes over [own], the target's keys on it. */
 	fun keys(options: Map<String, String>, parameter: Parameter, own: FloatArray): List<Float> = emptyList()
@@ -91,13 +91,16 @@ interface ModifierKind {
 	/** The layer roles this kind is offered first for, in the add menu. */
 	val suits: Set<SemanticTag> get() = emptySet()
 
-	/** Values for options a new modifier is not given: [parameters] are the document's, [keyed] those its targets are keyed on. */
-	fun defaultOptions(parameters: List<Parameter>, keyed: Set<String>): Map<String, String> = emptyMap()
+	/**
+	 * Values for options a new modifier on [targets] is not given: [parameters] are the document's, [keyed] those its
+	 * targets are keyed on, [model] the rig they are in.
+	 */
+	fun defaultOptions(model: PuppetModel, targets: List<String>, parameters: List<Parameter>, keyed: Set<String>): Map<String, String> = emptyMap()
 }
 
 /** The registry of modifier kinds. */
 object ModifierKinds {
-	private val builtIn: List<ModifierKind> = listOf(Mirror)
+	private val builtIn: List<ModifierKind> = listOf(Mirror, Follow, Corner, Turn3d)
 	private val registered = java.util.concurrent.ConcurrentHashMap<String, ModifierKind>()
 
 	fun of(id: String): ModifierKind? = builtIn.firstOrNull { it.id == id } ?: registered[id]
@@ -139,14 +142,14 @@ object ModifierKinds {
 		override fun defaults(bounds: FloatArray) = mapOf("axis" to floatArrayOf((bounds[0] + bounds[2]) / 2))
 
 		/** The first two-sided parameter the targets are keyed on, Angle X before any other; else any. */
-		override fun defaultOptions(parameters: List<Parameter>, keyed: Set<String>): Map<String, String> {
+		override fun defaultOptions(model: PuppetModel, targets: List<String>, parameters: List<Parameter>, keyed: Set<String>): Map<String, String> {
 			val sided = parameters.filter { it.min < it.default && it.default < it.max }
 			fun pick(from: List<Parameter>) = from.firstOrNull { it.id.raw == "ParamAngleX" } ?: from.firstOrNull()
 			return (pick(sided.filter { it.id.raw in keyed }) ?: pick(sided))?.let { mapOf("parameter" to it.id.raw) }.orEmpty()
 		}
 
 
-		override fun drivers(options: Map<String, String>) = listOfNotNull(options["parameter"])
+		override fun drivers(options: Map<String, String>, model: PuppetModel?) = listOfNotNull(options["parameter"])
 
 		override fun keys(options: Map<String, String>, parameter: Parameter, own: FloatArray): List<Float> {
 			if (options["source"] != null || parameter.id.raw != options["parameter"]) return emptyList()
@@ -191,6 +194,172 @@ object ModifierKinds {
 				out[i * 2 + 1] = base[i * 2 + 1] + d[1]
 			}
 			return out
+		}
+	}
+}
+
+/** The first of [ids] that [parameters] has and [keyed] keys, else the first it has. */
+private fun preferred(parameters: List<Parameter>, keyed: Set<String>, vararg ids: String): String? =
+	ids.firstOrNull { id -> id in keyed && parameters.any { it.id.raw == id } } ?: ids.firstOrNull { id -> parameters.any { it.id.raw == id } }
+
+/**
+ * Follows another mesh or warp (the host) as it moves: each point is bound at rest to where it sits on the host's
+ * triangles, and takes the host's displacement there at every pose, so line art, shading and accessories go with the
+ * shape they are drawn over without being keyed again. It reads the host as its own keyforms pose it.
+ */
+object Follow : ModifierKind {
+	override val id = "follow"
+	override val category = ModifierCategory.SYMMETRY
+	override val settings = listOf(ModifierSetting("amount", 1, floatArrayOf(1f), 0f, 1f, "How much of the host's movement it takes, 0-1."))
+	override val options = listOf(ModifierOption("host", ModifierOption.Type.TARGET, "The mesh or warp:<id> it follows.", required = true))
+	override val suits = setOf(SemanticTag.FACE_DETAIL, SemanticTag.EYEWEAR, SemanticTag.HEADWEAR, SemanticTag.NECKWEAR, SemanticTag.OBJECTS)
+
+	override fun drivers(options: Map<String, String>, model: PuppetModel?): List<String> {
+		val host = options["host"] ?: return emptyList()
+		model ?: return emptyList()
+		return if (host.startsWith(ModifierTarget.WARP)) (model.deformers.firstOrNull { it.id.raw == host.removePrefix(ModifierTarget.WARP) } as? org.umamo.runtime.model.Deformer.Warp)
+			?.geometryGrid?.axes.orEmpty().map { it.parameterId.raw }
+		else model.drawables.firstOrNull { it.id.raw == host }?.geometryGrid?.axes.orEmpty().map { it.parameterId.raw }
+	}
+
+	/** The smallest other mesh whose rest bounds hold the targets' centre: what they are drawn over. */
+	override fun defaultOptions(model: PuppetModel, targets: List<String>, parameters: List<Parameter>, keyed: Set<String>): Map<String, String> {
+		val own = targets.mapNotNull { ModifierSampler.restCanvas(model, it) }.reduceOrNull { a, b -> a + b } ?: return emptyMap()
+		val cx = (0 until own.size / 2).map { own[it * 2] }.average().toFloat()
+		val cy = (0 until own.size / 2).map { own[it * 2 + 1] }.average().toFloat()
+		val host = model.drawables.filter { it.mesh != null && it.id.raw !in targets }.mapNotNull { d ->
+			val r = ModifierSampler.restCanvas(model, d.id.raw) ?: return@mapNotNull null
+			val xs = (0 until r.size / 2).map { r[it * 2] }; val ys = (0 until r.size / 2).map { r[it * 2 + 1] }
+			if (cx !in xs.min()..xs.max() || cy !in ys.min()..ys.max()) null else d.id.raw to (xs.max() - xs.min()) * (ys.max() - ys.min())
+		}.minByOrNull { it.second }?.first
+		return host?.let { mapOf("host" to it) }.orEmpty()
+	}
+
+	override fun deform(context: ModifierContext, values: Map<String, FloatArray>, options: Map<String, String>): FloatArray {
+		val before = context.before()
+		val host = options["host"] ?: return before
+		val amount = values.getValue("amount")[0]
+		val rest = context.model.parameters.associate { it.id.raw to it.default }
+		val hostRest = context.shapeOf(host, rest) ?: return before
+		val hostNow = context.shapeOf(host) ?: return before
+		val reader = PointField(hostRest, context.trianglesOf(host) ?: IntArray(0))
+		val field = FloatArray(hostRest.size) { hostNow[it] - hostRest[it] }
+		val at = context.before(rest)
+		val d = FloatArray(2)
+		return FloatArray(before.size).also { out ->
+			for (i in 0 until before.size / 2) {
+				reader.sample(field, at[i * 2], at[i * 2 + 1], d)
+				out[i * 2] = before[i * 2] + amount * d[0]; out[i * 2 + 1] = before[i * 2 + 1] + amount * d[1]
+			}
+		}
+	}
+}
+
+/**
+ * Corrects the corner poses of two parameters keyed one at a time: where both are off their defaults, the shape becomes
+ * what the two make on their own added together - `S(x, 0) + S(0, y) − S(0, 0)` - instead of what the corner cells
+ * held, scaled by `amount` (1 exactly the sum, more pushes past it). On either axis alone it changes nothing.
+ */
+object Corner : ModifierKind {
+	override val id = "corner"
+	override val category = ModifierCategory.CORRECTION
+	override val settings = listOf(ModifierSetting("amount", 1, floatArrayOf(1f), 0f, 2f, "How far the corners go toward the two axes' sum: 0 none, 1 exactly."))
+	override val options = listOf(
+		ModifierOption("x", ModifierOption.Type.PARAMETER, "The first parameter.", required = true),
+		ModifierOption("y", ModifierOption.Type.PARAMETER, "The second parameter.", required = true),
+	)
+	override val suits = setOf(SemanticTag.FACE, SemanticTag.FRONT_HAIR, SemanticTag.BACK_HAIR, SemanticTag.HEADWEAR)
+
+	override fun drivers(options: Map<String, String>, model: PuppetModel?) = listOfNotNull(options["x"], options["y"])
+
+	override fun defaultOptions(model: PuppetModel, targets: List<String>, parameters: List<Parameter>, keyed: Set<String>): Map<String, String> {
+		val x = preferred(parameters, keyed, "ParamAngleX", "ParamBodyAngleX") ?: return emptyMap()
+		val y = preferred(parameters, keyed, "ParamAngleY", "ParamBodyAngleY") ?: return emptyMap()
+		return mapOf("x" to x, "y" to y)
+	}
+
+	override fun deform(context: ModifierContext, values: Map<String, FloatArray>, options: Map<String, String>): FloatArray {
+		val now = context.before()
+		val px = options["x"]?.let(context::parameter) ?: return now
+		val py = options["y"]?.let(context::parameter) ?: return now
+		val x = context.pose[px.id.raw] ?: px.default
+		val y = context.pose[py.id.raw] ?: py.default
+		if (kotlin.math.abs(x - px.default) <= ModifierValue.EPS || kotlin.math.abs(y - py.default) <= ModifierValue.EPS) return now
+		val amount = values.getValue("amount")[0]
+		val onX = context.before(context.pose + (py.id.raw to py.default))
+		val onY = context.before(context.pose + (px.id.raw to px.default))
+		val neither = context.before(context.pose + (px.id.raw to px.default) + (py.id.raw to py.default))
+		return FloatArray(now.size) { now[it] + amount * (onX[it] + onY[it] - neither[it] - now[it]) }
+	}
+}
+
+/**
+ * Turns its targets as a solid in depth: each point at (x − cx, y − cy, z), z the depth plus a dome of `curvature`,
+ * is turned about the vertical axis by the first parameter (Angle X by default) and about the horizontal one by the
+ * second, then seen in perspective from `distance` pixels; the difference from how it is seen unturned is the
+ * displacement. Things in front move further and the far side narrows, as a turned head, hat or held object does.
+ */
+object Turn3d : ModifierKind {
+	override val id = "turn3d"
+	override val category = ModifierCategory.CORRECTION
+	override val settings = listOf(
+		ModifierSetting("center", 2, floatArrayOf(0f, 0f), description = "The turn's centre [x, y] on the canvas; a new modifier takes its targets' rest centre."),
+		ModifierSetting("depth", 1, floatArrayOf(0f), -10_000f, 10_000f, "How far in front of the centre the targets sit, canvas pixels."),
+		ModifierSetting("curvature", 1, floatArrayOf(0f), 0f, 1f, "How much the targets bulge toward the viewer at their middle, as part of their radius."),
+		ModifierSetting("angle", 1, floatArrayOf(30f), -90f, 90f, "Degrees turned at the parameters' ends."),
+		ModifierSetting("distance", 1, floatArrayOf(3000f), 100f, 100_000f, "How far the viewer is, canvas pixels: nearer draws more perspective."),
+		ModifierSetting("radius", 1, floatArrayOf(100f), 1f, 100_000f, "The radius the curvature is measured on; a new modifier takes its targets'."),
+	)
+	override val options = listOf(
+		ModifierOption("x", ModifierOption.Type.PARAMETER, "The parameter turning about the vertical axis.", required = true),
+		ModifierOption("y", ModifierOption.Type.PARAMETER, "The parameter turning about the horizontal axis (up and down)."),
+	)
+	override val suits = setOf(SemanticTag.HEADWEAR, SemanticTag.EARWEAR, SemanticTag.EYEWEAR, SemanticTag.OBJECTS, SemanticTag.EARS)
+
+	override fun defaults(bounds: FloatArray) = mapOf(
+		"center" to floatArrayOf((bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2),
+		"radius" to floatArrayOf(maxOf(1f, maxOf(bounds[2] - bounds[0], bounds[3] - bounds[1]) / 2)),
+	)
+
+	override fun drivers(options: Map<String, String>, model: PuppetModel?) = listOfNotNull(options["x"], options["y"])
+
+	override fun defaultOptions(model: PuppetModel, targets: List<String>, parameters: List<Parameter>, keyed: Set<String>): Map<String, String> =
+		listOfNotNull(preferred(parameters, keyed, "ParamAngleX")?.let { "x" to it }, preferred(parameters, keyed, "ParamAngleY")?.let { "y" to it }).toMap()
+
+	override fun deform(context: ModifierContext, values: Map<String, FloatArray>, options: Map<String, String>): FloatArray {
+		val before = context.before()
+		val center = values.getValue("center")
+		val depth = values.getValue("depth")[0]
+		val curvature = values.getValue("curvature")[0]
+		val angle = values.getValue("angle")[0]
+		val distance = values.getValue("distance")[0].toDouble()
+		val radius = values.getValue("radius")[0].toDouble()
+		fun turn(id: String?): Double {
+			val p = id?.let(context::parameter) ?: return 0.0
+			val v = context.pose[p.id.raw] ?: p.default
+			val t = if (v >= p.default) (v - p.default) / (p.max - p.default).coerceAtLeast(1e-6f) else (v - p.default) / (p.default - p.min).coerceAtLeast(1e-6f)
+			return Math.toRadians((t * angle).toDouble())
+		}
+		val yaw = turn(options["x"])
+		val pitch = -turn(options["y"])
+		if (yaw == 0.0 && pitch == 0.0) return before
+		val cy = kotlin.math.cos(yaw); val sy = kotlin.math.sin(yaw); val cp = kotlin.math.cos(pitch); val sp = kotlin.math.sin(pitch)
+		return FloatArray(before.size).also { out ->
+			for (i in 0 until before.size / 2) {
+				val x = (before[i * 2] - center[0]).toDouble()
+				val y = (before[i * 2 + 1] - center[1]).toDouble()
+				val r2 = (x * x + y * y) / (radius * radius)
+				val z = depth + curvature * radius * (1 - r2).coerceAtLeast(0.0)
+				// The point is drawn where its unturned view puts it; the turn moves it by the ratio of the two views.
+				val seen = distance / (distance - z)
+				val x1 = x * cy + z * sy
+				val z1 = -x * sy + z * cy
+				val y2 = y * cp - z1 * sp
+				val z2 = y * sp + z1 * cp
+				val scale = distance / (distance - z2)
+				out[i * 2] = (center[0] + x1 * scale / seen).toFloat()
+				out[i * 2 + 1] = (center[1] + y2 * scale / seen).toFloat()
+			}
 		}
 	}
 }

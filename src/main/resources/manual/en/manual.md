@@ -1091,6 +1091,11 @@ The **Modifiers** panel shows the selected object in the order Live2D actually c
 - The displacement field is mirrored, not the vertices: asymmetric meshes, and eyes with different vertices, work too.
 - **Output**: **Into the mesh's keyforms**, or **A warp of their own** (a warp between the mesh and its parent keyed on the modifiers' parameters only, so the mesh's keyforms are not multiplied); **Automatic** uses the warp when the keyforms would multiply.
 
+## Follow surface, corner correction, turn in depth
+- **Follow surface**: line art, shading, highlights and accessories move with the mesh they are drawn over (the **Host**, by default the closest layer under them): whatever keyforms the host has, they follow without being keyed again. **Amount** 1 follows fully.
+- **Corner correction**: when shapes were made on X and Y one at a time, the corner poses (both at once) often collapse. It makes a corner the sum of what each axis does alone; an **Amount** above 1 pushes further.
+- **Turn in depth**: treats the targets as a solid at a **Depth** in front of the centre, turned by the parameters (Angle X / Y by default) and seen in perspective: what is in front moves further and the far side narrows. **Bulge** rounds the middle forward, **Angle** is the turn at the parameters' ends, and a nearer **View distance** gives more perspective.
+
 ## Role components
 The generated head turn, eyes, brows, mouth, body pose, breath and hair are each a role component. With a mesh selected, the components that generated something in its stages are listed as cards before the stages; the **Role components** section of the **World** page lists all of the model's components.
 - The switch on a card's title turns the component off: its parameters no longer drive anything it generated, while the deformers and existing edits stay. With Head turn off, the eyes and others also stop reacting to Angle X.

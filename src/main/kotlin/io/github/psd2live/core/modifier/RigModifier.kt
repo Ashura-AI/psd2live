@@ -293,8 +293,11 @@ class RigModifier(
 
 	val definition: ModifierKind get() = ModifierKinds.of(kind)!!
 
-	/** The parameters it is sampled on: those its settings are keyed on, in first-use order, then those its kind reads. */
-	val drivers: List<String> get() = (settings.values.flatMap { it.parameters } + definition.drivers(options)).distinct()
+	/** The parameters it is sampled on without a model to look at: those its settings are keyed on, then those its kind names. */
+	val drivers: List<String> get() = drivers(null)
+
+	/** The parameters it is sampled on in [model]: those its settings are keyed on, in first-use order, then those its kind reads. */
+	fun drivers(model: PuppetModel?): List<String> = (settings.values.flatMap { it.parameters } + definition.drivers(options, model)).distinct()
 
 	/** Setting [key] as stored, or the kind's default. */
 	fun value(key: String): ModifierValue = settings[key] ?: ModifierValue.Constant(definition.settings.first { it.key == key }.default.copyOf())

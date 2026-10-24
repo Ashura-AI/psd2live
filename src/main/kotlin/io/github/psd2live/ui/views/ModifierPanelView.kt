@@ -37,7 +37,8 @@ import org.umamo.runtime.model.ParameterKind
 import org.umamo.runtime.model.PuppetModel
 
 /** How a setting's fields step and show: step, decimals. */
-private val MODIFIER_FIELDS = mapOf("axis" to (1.0 to 1))
+private val MODIFIER_FIELDS = mapOf("axis" to (1.0 to 1), "amount" to (0.05 to 2), "center" to (1.0 to 1), "depth" to (5.0 to 0),
+	"curvature" to (0.05 to 2), "angle" to (1.0 to 1), "distance" to (100.0 to 0), "radius" to (1.0 to 0))
 
 /**
  * The modifiers panel, in two pages. The object page shows the selection as Live2D computes it: its own keyforms, then
@@ -390,7 +391,7 @@ private fun ModifierField(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: P
 				keyed != null -> vm.modifiers.put(request(value))
 				else -> {
 					// A first key goes on the parameters the modifier is keyed on, else on those moved off their defaults.
-					val parameters = modifier.drivers.ifEmpty {
+					val parameters = modifier.drivers(puppet).ifEmpty {
 						puppet.parameters.filter { p -> p.kind == ParameterKind.NORMAL && kotlin.math.abs(pose(p.id.raw) - p.default) > ModifierValue.EPS }.map { it.id.raw }
 					}
 					if (parameters.isEmpty()) vm.setStatusText(tr("modifiers.key.noParameter"))
@@ -418,15 +419,15 @@ private fun ModifierMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: Pu
 	val stacks = ModifierSampler.stacks(state.rigEdits.modifiers, puppet)
 	val meshes = modifier.target.keys(puppet)
 	val alone = meshes.all { stacks[it].orEmpty().firstOrNull()?.id == modifier.id }
-	val pose = modifier.drivers.associateWith { p -> state.parameterValues[ParameterId(p)] ?: puppet.parameters.firstOrNull { it.id.raw == p }?.default ?: 0f }
-	add(alone && modifier.drivers.isNotEmpty(), label = tr("modifiers.applyKeyforms"), hint = tr(if (alone) "modifiers.applyKeyformsTip" else "modifiers.applyAlone")) {
+	val pose = modifier.drivers(puppet).associateWith { p -> state.parameterValues[ParameterId(p)] ?: puppet.parameters.firstOrNull { it.id.raw == p }?.default ?: 0f }
+	add(alone && modifier.drivers(puppet).isNotEmpty(), label = tr("modifiers.applyKeyforms"), hint = tr(if (alone) "modifiers.applyKeyformsTip" else "modifiers.applyAlone")) {
 		vm.modifiers.apply(modifier.id, "keyforms")
 	}
 	add(true, label = tr("modifiers.applyRest"), hint = tr("modifiers.applyRestTip")) { vm.modifiers.apply(modifier.id, "rest", pose) }
 	if (meshes.size > 1) {
 		val here = stacks[mesh].orEmpty().firstOrNull()?.id == modifier.id
 		add(true, label = tr("modifiers.applyMesh"), hint = tr("modifiers.applyMeshTip")) {
-			vm.modifiers.applyTo(modifier.id, mesh, if (here && modifier.drivers.isNotEmpty()) "keyforms" else "rest", pose)
+			vm.modifiers.applyTo(modifier.id, mesh, if (here && modifier.drivers(puppet).isNotEmpty()) "keyforms" else "rest", pose)
 		}
 		add(true, label = tr("modifiers.split"), hint = tr("modifiers.splitTip")) { vm.modifiers.split(modifier.id, mesh) }
 	}

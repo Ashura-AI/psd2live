@@ -127,8 +127,8 @@ internal object ModifierAuthoring {
 			val keyed = keys.flatMap { key ->
 				if (key.startsWith(ModifierTarget.WARP)) (authored.deformers.firstOrNull { it.id.raw == key.removePrefix(ModifierTarget.WARP) } as? org.umamo.runtime.model.Deformer.Warp)?.geometryGrid?.axes.orEmpty()
 				else authored.drawables.firstOrNull { it.id.raw == key }?.geometryGrid?.axes.orEmpty()
-			}.map { it.parameterId.raw } + overlay.modifiers.filter { m -> m.target.keys(authored).any { it in keys } }.flatMap { it.drivers }
-			definition.defaultOptions((authored.parameters + overlay.modifiers.flatMap { it.created } + created).distinctBy { it.id }, keyed.toSet())
+			}.map { it.parameterId.raw } + overlay.modifiers.filter { m -> m.target.keys(authored).any { it in keys } }.flatMap { it.drivers(authored) }
+			definition.defaultOptions(authored, target.keys(authored), (authored.parameters + overlay.modifiers.flatMap { it.created } + created).distinctBy { it.id }, keyed.toSet())
 		}
 		request["options"]?.jsonObject?.forEach { (key, value) ->
 			requireNotNull(definition.options.firstOrNull { it.key == key }) { "$kind has no option $key" }
@@ -286,7 +286,7 @@ internal object ModifierAuthoring {
 		// The rig the modifier acts on: the journal and every generator before the modifiers.
 		val before = ModifierSampler.withCreated(DocumentGenerators.generate(authored, overlay.copy(modifiers = emptyList())), listOf(modifier))
 		val commands = ArrayList<JsonObject>()
-		val keyed = mode == "keyforms" && modifier.drivers.isNotEmpty()
+		val keyed = mode == "keyforms" && modifier.drivers(authored).isNotEmpty()
 		if (keyed) {
 			// The ones after it read the mesh as its keyforms pose it, so they see the applied keyforms as they saw it.
 			for (mesh in meshes) require(stacks[mesh].orEmpty().firstOrNull()?.id == id) {

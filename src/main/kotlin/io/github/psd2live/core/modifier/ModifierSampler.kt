@@ -68,7 +68,7 @@ object ModifierSampler {
 		modifiers.flatMap { m -> m.created.map { "parameter:${it.id.raw}" } } +
 			stacks(modifiers, model).flatMap { (key, stack) ->
 				val (kind, id) = if (key.startsWith(ModifierTarget.WARP)) "warp" to key.removePrefix(ModifierTarget.WARP) else "mesh" to key
-				stack.flatMap { it.drivers }.distinct().flatMap { p ->
+				stack.flatMap { it.drivers(model) }.distinct().flatMap { p ->
 					// A mesh's stack written as a stage keys the warp it gets instead ([ModifierStage]).
 					listOfNotNull(DocumentGenerators.keyform(kind, id, p), if (kind == "mesh") DocumentGenerators.keyform("warp", ModifierStage.id(id), p) else null)
 				}
@@ -151,7 +151,7 @@ object ModifierSampler {
 		val parameters = model.parameters.associateBy { it.id.raw }
 		val weights = HashMap<String, FloatArray?>()
 		val kept = modifiers.filter { modifier ->
-			val missing = modifier.drivers.filter { it !in parameters }
+			val missing = modifier.drivers(model).filter { it !in parameters }
 			if (missing.isNotEmpty()) { issues += Issue(IssueKind.PARAMETER_MISSING, modifier.id, mesh, missing.joinToString()); return@filter false }
 			val w = modifier.weights ?: return@filter true.also { weights[modifier.id] = null }
 			val group = model.vertexGroups.firstOrNull { it.drawableId == drawable.id && it.name == w.group && it.weights.size == geometry.vertexCount }
@@ -256,7 +256,7 @@ object ModifierSampler {
 		if (warp?.geometryGrid == null) { modifiers.forEach { issues += Issue(IssueKind.TARGET_MISSING, it.id, key) }; return null }
 		val parameters = model.parameters.associateBy { it.id.raw }
 		val kept = modifiers.filter { m ->
-			val missing = m.drivers.filter { it !in parameters }
+			val missing = m.drivers(model).filter { it !in parameters }
 			when {
 				missing.isNotEmpty() -> { issues += Issue(IssueKind.PARAMETER_MISSING, m.id, key, missing.joinToString()); false }
 				m.weights != null -> { issues += Issue(IssueKind.VERTEX_GROUP_MISSING, m.id, key, m.weights.group); false }
@@ -279,7 +279,7 @@ object ModifierSampler {
 						localAt: (Map<String, Float>) -> FloatArray): Pair<Pair<List<ModifierValue.Keyed.Axis>, ModifierValue>?, List<Issue>> {
 		val issues = ArrayList<Issue>()
 		val shape: (Map<String, Float>) -> FloatArray = stack::canvasAt
-		val drivers = stack.modifiers.flatMap { it.drivers }.distinct()
+		val drivers = stack.modifiers.flatMap { it.drivers(model) }.distinct()
 		val parameters = drivers.map { id -> model.parameters.first { it.id.raw == id } }
 		val tolerance = stack.modifiers.minOf { it.sampling.tolerance }
 		val maxKeys = stack.modifiers.minOf { it.sampling.maxKeys }
@@ -352,7 +352,7 @@ object ModifierSampler {
 				}
 				continue
 			}
-			val drivers = stack.flatMap { it.drivers }.toSet()
+			val drivers = stack.flatMap { it.drivers(current) }.toSet()
 			val output = stack.map { it.output }.let { o -> when { ModifierOutput.STAGE in o -> ModifierOutput.STAGE; ModifierOutput.MERGE in o -> ModifierOutput.MERGE; else -> ModifierOutput.AUTO } }
 			if (output == ModifierOutput.STAGE || (output == ModifierOutput.AUTO && ModifierStage.preferred(current, mesh, axes, drivers))) {
 				when (val staged = ModifierStage.insert(current, mesh, axes, table, drivers, stack.minOf { it.sampling.tolerance })) {
