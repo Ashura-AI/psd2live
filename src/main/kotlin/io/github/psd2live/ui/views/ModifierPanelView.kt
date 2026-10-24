@@ -148,13 +148,7 @@ private fun ModifierField(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: P
 	val value = draft ?: shown
 	val keyed = stored as? ModifierValue.Keyed
 	val at = keyed?.axes?.associate { it.parameter to pose(it.parameter) }.orEmpty()
-	fun request(next: FloatArray) = buildJsonObject {
-		put("id", modifier.id)
-		if (keyed == null) putJsonObject("settings") { put(setting.key, JsonArray(next.map(::JsonPrimitive))) }
-		else putJsonArray("keys") { addJsonObject {
-			put("setting", setting.key); putJsonObject("at") { at.forEach { (k, v) -> put(k, v) } }; put("value", JsonArray(next.map(::JsonPrimitive)))
-		} }
-	}
+	fun request(next: FloatArray) = ModifierEdits.request(modifier, mapOf(setting.key to next), pose)
 	val onKey = keyed != null && keyed.axes.all { a -> a.keys.any { kotlin.math.abs(it - pose(a.parameter)) <= ModifierValue.EPS } }
 	val (step, decimals) = MODIFIER_FIELDS[setting.key] ?: (0.1 to 2)
 	Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -222,6 +216,16 @@ private fun ModifierMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: Pu
 	fun add(enabled: Boolean, danger: Boolean = false, label: String, hint: String? = null, action: () -> Unit) {
 		rows += Triple(enabled, danger, @Composable { FloatingMenuRow(label, { close(); action() }, enabled = enabled, hint = hint, danger = danger) })
 	}
+	// Its handles on the canvas, in object mode, with the keyboard back on the canvas.
+	rows += Triple(true, false, @Composable {
+		FloatingMenuRow(tr("modifiers.editOnCanvas"), {
+			close()
+			val canvas = state.activeCanvas.id
+			if (state.activeCanvas.mode != CanvasMode.EDIT) vm.setCanvasMode(canvas, CanvasMode.EDIT)
+			vm.canvasEditorFor(canvas).let { it.modifierTool.choose(modifier.id); it.activateTool(io.github.psd2live.ui.CanvasTool.MODIFIER) }
+			vm.requestCanvasFocus(canvas)
+		}, hint = tr("modifiers.editOnCanvasTip"), trailing = state.keymap.labelFor(ShortcutAction.TOOL_MODIFIER))
+	})
 	val stacks = ModifierSampler.stacks(state.rigEdits.modifiers, puppet)
 	val meshes = modifier.target.resolve(puppet)
 	val alone = meshes.all { stacks[it].orEmpty().firstOrNull()?.id == modifier.id }

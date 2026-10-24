@@ -196,6 +196,10 @@ internal fun toolOptions(editor: CanvasEditor): List<ToolOption> = buildList {
             addInterior(editor)
             return@buildList
         }
+        CanvasTool.MODIFIER -> {
+            addModifier(editor)
+            return@buildList
+        }
         else -> Unit
     }
     when (editor.hierarchyMode) {
@@ -740,6 +744,18 @@ private fun MutableList<ToolOption>.addPaint(editor: CanvasEditor) {
         danger = true, place = OptionPlace.MENU))
     // A mesh rebuilt from the pixels just painted, or the material they reach.
     addLayerActions(editor, editor.paintSession?.layerId?.takeUnless { it.startsWith(io.github.psd2live.application.WorkspacePaintSession.MATERIAL_PREFIX) })
+}
+
+// ─── Modifier ───────────────────────────────────────────────────────────────
+
+/** The modifier tool: what is missing to edit, and which of the mesh's modifiers the handles are for. */
+private fun MutableList<ToolOption>.addModifier(editor: CanvasEditor) {
+    val tool = editor.modifierTool
+    add(NoteOption("modifier.missing", { tool.missing() }, warning = { true }, place = OptionPlace.BAR))
+    val stack = tool.scene()?.stack.orEmpty()
+    if (stack.size > 1) add(ChoiceOption("modifier.which", "modifiers.canvas.which", { stack.map { it.id } },
+        { _, id -> stack.firstOrNull { it.id == id }?.let(tool::title) ?: id }, { tool.scene()?.modifier?.id ?: stack.first().id },
+        { _, id -> tool.choose(id) }, inline = false))
 }
 
 // ─── Interior ───────────────────────────────────────────────────────────────
