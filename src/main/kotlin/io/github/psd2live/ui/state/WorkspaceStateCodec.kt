@@ -452,6 +452,7 @@ internal object WorkspaceStateCodec {
         put("headStrength", state.headStrength)
         put("bodyStrength", state.bodyStrength)
         put("rigTuning", encodeRigTuning(state.rigTuning))
+        if (state.disabledComponents.isNotEmpty()) putJsonArray("disabledComponents") { state.disabledComponents.sorted().forEach { add(it) } }
         put("meshOnly", state.meshOnly)
         put("generateDeformers", state.generateDeformers)
         put("featureDisplacementEnabled", state.featureDisplacementEnabled)
@@ -594,6 +595,7 @@ internal object WorkspaceStateCodec {
         headStrength = value["headStrength"]?.jsonPrimitive?.float ?: base.headStrength,
         bodyStrength = value["bodyStrength"]?.jsonPrimitive?.float ?: base.bodyStrength,
         rigTuning = decodeRigTuning(value["rigTuning"] ?: value["bodyTuning"], base.rigTuning),
+        disabledComponents = value["disabledComponents"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toSet() ?: base.disabledComponents,
         meshOnly = value["meshOnly"]?.jsonPrimitive?.boolean ?: base.meshOnly,
         generateDeformers = value["generateDeformers"]?.jsonPrimitive?.boolean ?: base.generateDeformers,
         mouthOutlineEnabled = value["mouthOutlineEnabled"]?.jsonPrimitive?.boolean ?: base.mouthOutlineEnabled,

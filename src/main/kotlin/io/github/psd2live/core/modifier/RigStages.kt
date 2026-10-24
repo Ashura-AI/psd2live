@@ -2,7 +2,6 @@ package io.github.psd2live.core.modifier
 
 import io.github.psd2live.core.DocumentGenerators
 import io.github.psd2live.core.RigEditOverlay
-import io.github.psd2live.core.StandardParameters
 import org.umamo.runtime.model.Deformer
 import org.umamo.runtime.model.PuppetModel
 
@@ -17,9 +16,6 @@ internal object RigStages {
 	data class Owner(val kind: Kind, val id: String) {
 		enum class Kind { COMPONENT, SWING, SIMULATION, INTERIOR, MODIFIERS, SKIN, MANUAL }
 	}
-
-	/** The base rig's generators, as they will become role components; [id] names their messages. */
-	enum class Component(val id: String) { HEAD("head"), EYES("eyes"), BROWS("brows"), MOUTH("mouth"), BODY("body"), BREATH("breath"), HAIR("hair"), SKELETON("skeleton") }
 
 	/** One parameter axis of a stage's keyforms, and who made it. */
 	data class Axis(val parameter: String, val owner: Owner)
@@ -36,32 +32,11 @@ internal object RigStages {
 
 	const val ROTATION = "rotation:"
 
-	/** The deformers the base rig makes, by the start of their IDs, and the generator that makes each. */
-	private val DEFORMERS = listOf(
-		"DeformHead" to Component.HEAD, "DeformFace" to Component.HEAD, "DeformFeatureDisplacement" to Component.HEAD, "DeformEars" to Component.HEAD,
-		"DeformEye" to Component.EYES, "DeformBrows" to Component.BROWS, "DeformMouth" to Component.MOUTH,
-		"DeformBodyZBreath" to Component.BREATH, "DeformSkel" to Component.SKELETON,
-		"DeformBody" to Component.BODY, "DeformLegs" to Component.BODY, "DeformArm" to Component.BODY, "DeformHair" to Component.HAIR,
-	)
-
-	/** The parameters the base rig makes, and the generator that keys them. */
-	private val PARAMETERS: Map<String, Component> = buildMap {
-		with(StandardParameters) {
-			for (p in listOf(ANGLE_X, ANGLE_Y, ANGLE_Z)) put(p.raw, Component.HEAD)
-			for (p in listOf(EYE_L_OPEN, EYE_R_OPEN, EYE_BALL_X, EYE_BALL_Y, EYE_BALL_FORM)) put(p.raw, Component.EYES)
-			for (p in listOf(BROW_L_Y, BROW_R_Y)) put(p.raw, Component.BROWS)
-			for (p in listOf(MOUTH_FORM, MOUTH_OPEN)) put(p.raw, Component.MOUTH)
-			for (p in listOf(BODY_X, BODY_Y, BODY_Z, BODY_LEAN, PROPORTION)) put(p.raw, Component.BODY)
-			put(BREATH.raw, Component.BREATH)
-			for (p in listOf(HAIR_FRONT, HAIR_BACK)) put(p.raw, Component.HAIR)
-		}
-	}
-
 	/** Who made deformer [id]: a swing wrapping its targets, a generator of the base rig, else the user. */
 	fun deformerOwner(overlay: RigEditOverlay, id: String): Owner =
 		overlay.swingEdits.firstOrNull { !it.baked && id in it.targets }?.let { Owner(Owner.Kind.SWING, it.id) }
 			?: Owner(Owner.Kind.MODIFIERS, "").takeIf { id.startsWith(ModifierStage.PREFIX) }
-			?: DEFORMERS.firstOrNull { id.startsWith(it.first) }?.let { Owner(Owner.Kind.COMPONENT, it.second.id) }
+			?: io.github.psd2live.core.RigComponents.ofDeformer(id)?.let { Owner(Owner.Kind.COMPONENT, it.id) }
 			?: Owner(Owner.Kind.MANUAL, "")
 
 	/**
@@ -76,13 +51,13 @@ internal object RigStages {
 		fun owner(kind: String, target: String, parameter: String): Owner {
 			val node = DocumentGenerators.owner(graph, DocumentGenerators.keyform(kind, target, parameter))?.id
 			return when {
-				node == null -> PARAMETERS[parameter]?.let { Owner(Owner.Kind.COMPONENT, it.id) } ?: Owner(Owner.Kind.MANUAL, "")
+				node == null -> io.github.psd2live.core.RigComponents.ofParameter(parameter)?.let { Owner(Owner.Kind.COMPONENT, it.id) } ?: Owner(Owner.Kind.MANUAL, "")
 				node == ModifierSampler.NODE -> Owner(Owner.Kind.MODIFIERS, "")
 				node == DocumentGenerators.SKIN -> Owner(Owner.Kind.SKIN, "")
 				node.startsWith("swing:") -> Owner(Owner.Kind.SWING, node.removePrefix("swing:"))
 				node.startsWith("simulation:") -> Owner(Owner.Kind.SIMULATION, node.removePrefix("simulation:"))
 				node.startsWith("interiorEffect:") -> Owner(Owner.Kind.INTERIOR, node.removePrefix("interiorEffect:"))
-				else -> PARAMETERS[parameter]?.let { Owner(Owner.Kind.COMPONENT, it.id) } ?: Owner(Owner.Kind.MANUAL, "")
+				else -> io.github.psd2live.core.RigComponents.ofParameter(parameter)?.let { Owner(Owner.Kind.COMPONENT, it.id) } ?: Owner(Owner.Kind.MANUAL, "")
 			}
 		}
 		fun acting(stageKey: String, mesh: Boolean) = entries.filter { entry ->

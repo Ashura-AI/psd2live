@@ -510,6 +510,8 @@ data class PSD2LiveState(
 	val headStrength: Float = 1.0f,
 	val bodyStrength: Float = 1.0f,
 	val rigTuning: io.github.psd2live.core.RigTuning = io.github.psd2live.core.RigTuning(),
+	/** Role components switched off ([io.github.psd2live.core.RigComponents]). */
+	val disabledComponents: Set<String> = emptySet(),
 	val meshOnly: Boolean = false,
 	val generateDeformers: Boolean = true,
 	val featureDisplacementEnabled: Boolean = false,
@@ -763,6 +765,7 @@ data class PSD2LiveState(
 			headTurnStrength = headStrength,
 			bodyStrength = bodyStrength,
 			rigTuning = rigTuning,
+			disabledComponents = disabledComponents,
 			meshOnly = meshOnly,
 			generateDeformers = generateDeformers,
 			featureDisplacementEnabled = featureDisplacementEnabled,

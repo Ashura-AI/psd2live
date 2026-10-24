@@ -3736,6 +3736,26 @@ class PSD2LiveViewModel : AutoCloseable {
         put("rigTuning", io.github.psd2live.project.WorkspaceSettingsCodec.encodeRigTuning(_state.value.rigTuning.with(id, value)))
     })
 
+    /** [side]'s own value of a rig value that takes one per side, or null to give the side the shared value again. */
+    fun setRigTuningSide(side: String, id: String, value: Float?) = editPresetSettings(buildJsonObject {
+        putJsonObject("rigTuning") { putJsonObject(side) { put(id, value?.let(::JsonPrimitive) ?: kotlinx.serialization.json.JsonNull) } }
+    })
+
+    /** Gives the left and right sides of [ids] their own values (both the shared one), or the shared value again. */
+    fun setRigTuningSplit(ids: Collection<String>, split: Boolean) = editPresetSettings(buildJsonObject {
+        putJsonObject("rigTuning") {
+            for (side in listOf("left", "right")) putJsonObject(side) {
+                for (id in ids) put(id, if (split) JsonPrimitive(io.github.psd2live.core.RigTuning.fieldById.getValue(id).get(_state.value.rigTuning)) else kotlinx.serialization.json.JsonNull)
+            }
+        }
+    })
+
+    /** Switches role component [id] on or off ([io.github.psd2live.core.RigComponents.gate]). */
+    fun setComponentEnabled(id: String, enabled: Boolean) = editPresetSettings(buildJsonObject {
+        val next = if (enabled) _state.value.disabledComponents - id else _state.value.disabledComponents + id
+        putJsonArray("disabledComponents") { next.sorted().forEach { add(JsonPrimitive(it)) } }
+    })
+
     fun resetRigTuning() = editPresetSettings(buildJsonObject {
         put("rigTuning", io.github.psd2live.project.WorkspaceSettingsCodec.encodeRigTuning(io.github.psd2live.core.RigTuning()))
     })

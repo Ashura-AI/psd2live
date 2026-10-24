@@ -12,6 +12,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.psd2live.core.DocumentGenerators
+import io.github.psd2live.core.RigComponents
 import io.github.psd2live.core.modifier.*
 import io.github.psd2live.i18n.tr
 import io.github.psd2live.ui.components.*
@@ -120,6 +121,10 @@ private fun ObjectPage(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	}
 	val issues = rememberModifierIssues(state)
 	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+		// The role components that made what the selection is computed through, before its stages.
+		for (component in componentsActingOn(stages)) ComponentCard(vm, state, puppet, component, "component:${component.id}" !in closed) {
+			closed = if ("component:${component.id}" in closed) closed - "component:${component.id}" else closed + "component:${component.id}"
+		}
 		for (stage in stages) {
 			if (contributedOnly && !stage.contributed && stage.key != key) continue
 			StageSection(vm, state, puppet, stage, stage.key in openStages, { openStages = if (stage.key in openStages) openStages - stage.key else openStages + stage.key },
@@ -199,7 +204,8 @@ private fun StageSection(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: Pu
 private fun WorldPage(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	val colors = LocalToolColors.current
 	val caption = LocalToolTypography.current.caption.copy(fontSize = 10.sp)
-	var open by remember { mutableStateOf(setOf("simulations", "issues", "generate")) }
+	var open by remember { mutableStateOf(setOf("components", "simulations", "issues", "generate")) }
+	var closedComponents by remember { mutableStateOf(emptySet<String>()) }
 	fun toggle(key: String) { open = if (key in open) open - key else open + key }
 	val issues = rememberModifierIssues(state)
 	val preview = state.previewModel
@@ -207,6 +213,14 @@ private fun WorldPage(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 		if (preview == null) emptyList() else state.rigEdits.interiorEffects.filter { it.enabled }.mapNotNull { e -> e.issue(preview.authored.rig.puppet)?.let { e to it } }
 	}
 	Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+		// Every role component the model has, each a card as on the object page.
+		val puppet = preview?.rig?.puppet
+		val components = remember(puppet) { puppet?.let { RigComponents.present(it).filter { c -> c.parameters.isNotEmpty() } }.orEmpty() }
+		PanelSectionRow(tr("modifiers.world.components"), "components" in open, { toggle("components") }, count = components.size, icon = null)
+		io.github.psd2live.ui.views.physics.PhysicsRowDivider()
+		if ("components" in open && puppet != null) for (component in components) ComponentCard(vm, state, puppet, component, component.id !in closedComponents) {
+			closedComponents = if (component.id in closedComponents) closedComponents - component.id else closedComponents + component.id
+		}
 		Column(Modifier.tutorialTarget(TutorialTargetId.SIMULATION_DOCK)) {
 			PanelSectionRow(tr("modifiers.world.simulations"), "simulations" in open, { toggle("simulations") }, count = state.rigEdits.simEdits.size, icon = null)
 			io.github.psd2live.ui.views.physics.PhysicsRowDivider()

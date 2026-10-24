@@ -210,6 +210,18 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
             put(f.id, buildJsonObject { put("type", "number"); put("minimum", f.range.start); put("maximum", f.range.endInclusive)
                 put("description", "${f.group.name.lowercase()} group${if (f.advanced) " (advanced)" else ""}, in ${f.unit.name.lowercase().replace('_', ' ')}, default ${f.default}") })
         }
+        // A side's own values for what the eye and brow layers read one at a time; null clears one.
+        for (side in listOf("left", "right")) put(side, buildJsonObject {
+            put("type", "object"); put("additionalProperties", false)
+            put("description", "Values the $side side's eye and brow layers take instead of the shared ones; null returns one to the shared value.")
+            putJsonObject("properties") {
+                for (id in io.github.psd2live.core.RigTuning.SIDED) {
+                    val f = io.github.psd2live.core.RigTuning.fieldById.getValue(id)
+                    put(id, buildJsonObject { put("oneOf", JsonArray(listOf(buildJsonObject { put("type", "number"); put("minimum", f.range.start); put("maximum", f.range.endInclusive) },
+                        buildJsonObject { put("type", "null") }))) })
+                }
+            }
+        })
     })
     val projectSettingFields = objectSchema(buildJsonObject {
         listOf("atlasSize", "meshSpacing", "texturePadding", "alphaThreshold").forEach { put(it, integer(0)) }
@@ -223,6 +235,11 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
             "exportCmo3", "exportMoc3", "exportJson", "exportCan3", "exportHiddenParts", "exportHiddenDrawables",
             "exportGuideImageParts", "exportIncludePhysics", "exportIncludeUserData", "exportIncludeDisplayInfo").forEach { put(it, boolean()) }
         put("mouthShape", choices("flat", "smile", "w", "custom"))
+        put("disabledComponents", buildJsonObject {
+            put("type", "array"); put("uniqueItems", true)
+            put("items", choices(*io.github.psd2live.core.RigComponents.switchable.map { it.id }.toTypedArray()))
+            put("description", "Role components switched off: their parameters move nothing the base rig made; the deformers and edits stay.")
+        })
         put("mouthColor", oneOf(listOf(integer(0, 0xFFFFFF), buildJsonObject { put("type", "null") })))
         put("mouthCurve", arraySchema(objectSchema(buildJsonObject {
             put("x", buildJsonObject { put("type", "number"); put("minimum", 0); put("maximum", 1) })

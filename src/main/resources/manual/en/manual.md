@@ -106,7 +106,7 @@ PSD2Live mostly uses Live2D's common terms; a few are named differently in the i
 ## Concepts that come with automatic generation
 | Term | Meaning |
 |---|---|
-| Model presets | Control the deformation amounts, mouth shapes, motions, physics and simulation that are generated (see [[model-presets]]) |
+| Model presets | Control the motions, physics and simulation that are generated; deformation amounts and mouth shapes are on the role component cards (see [[model-presets]], [[modifiers]]) |
 | Tags | A layer's part, side and so on; the generator uses them to recognize parts |
 | Variants | None, Toggle Variant (one parameter shows or hides a layer), Switch Variant (one parameter picks one of several) (see [[variants]]) |
 | Generated rig | The model generated automatically from the source images and presets; your edits are replayed on top of it |
@@ -735,15 +735,13 @@ A single layer can also be replaced in the **Texture** panel with **Replace imag
 When you want to start over completely from a modified PSD, use **Model → Reanalyze PSD** ({key:REANALYZE}): it re-reads the current PSD and generates a new project with the current preset. Edits in the original project are not carried over; if there are unsaved changes it asks first whether to save.
 
 @@ model-presets | Model presets
-**Model presets** is the section on the **World** page of the Modifiers panel. It decides in one place what is generated automatically and how large the motion amounts are: deformation and mouth shapes, Rig values, motions, physics and simulation. After a change the model is regenerated with the new settings and your existing edits are replayed as usual, so feel free to try repeatedly.
+**Model presets** is the section on the **World** page of the Modifiers panel. It decides in one place which motions, physics and simulation are generated automatically. Deformation amounts, mouth shapes and the Rig values of each part are adjusted on the role component cards (see [[modifiers]]). After a change the model is regenerated with the new settings and your existing edits are replayed as usual, so feel free to try repeatedly.
 ## Where to set them
 - Before import: the details panel of **Generate from PSD** on the Start page; first choose **Minimal** / **Default** / **Complete**, then adjust item by item; the generate button's menu can switch presets or **Apply to Current Model**.
 - After import: the **Model presets** section on the **World** page of the Modifiers panel (reopen the panel from the **Windows** menu if it was closed). The section's toolbar can expand or collapse everything, and **Reset Defaults** restores all presets.
 ## Contents of each group
 | Group | Contents |
 |---|---|
-| Deformation and mouth shapes | Facial-feature offset deformer switches, head and body amounts (0–4×), upper and lower lip strokes with their line width and color, mouth shape settings, brows and eyes through the bangs with their opacity |
-| Rig values | Body X (turning left and right), body Y, body lean forward and back, size change (head-to-body ratio), body Z and breathing, depth and perspective; **Advanced** holds head turning, eyes, eyebrows and mouth |
 | Motions | Two groups, **Basic motions** and **Skeleton motions**; when turned off, that group's motions are removed from the Animation panel, preview and export |
 | Physics and simulation | Front hair and back hair each choose **Simulation** / **Classic sway** / **Off**; **Clothing** simulation (acts only on loose parts); jelly eyes; auto Pin physics weights |
 With **Selected only** ticked, the physics and simulation presets act only on the selected layers.
@@ -1093,7 +1091,16 @@ The **Modifiers** panel shows the selected object in the order Live2D actually c
 - The displacement field is mirrored, not the vertices: asymmetric meshes, and eyes with different vertices, work too.
 - **Output**: **Into the mesh's keyforms**, or **A warp of their own** (a warp between the mesh and its parent keyed on the modifiers' parameters only, so the mesh's keyforms are not multiplied); **Automatic** uses the warp when the keyforms would multiply.
 
+## Role components
+The generated head turn, eyes, brows, mouth, body pose, breath and hair are each a role component. With a mesh selected, the components that generated something in its stages are listed as cards before the stages; the **Role components** section of the **World** page lists all of the model's components.
+- The switch on a card's title turns the component off: its parameters no longer drive anything it generated, while the deformers and existing edits stay. With Head turn off, the eyes and others also stop reacting to Angle X.
+- **Values**: the items of the former "Rig Values" that belong to the component, common ones first, the rest under **Advanced**. The eyes and brows can tick **Left and right apart**, which gives **Blink sag**, **Blink corners**, **Closed lash thickness** and the brow lift a value per side.
+- The component's own settings: for the head, **Head range** and the **Facial Feature Displacement Deformer**; for the body, **Body range**; for the mouth, the lip outlines, mouth shape, line width and color; for the eyes, the idle blink motion, see-through over the bangs and jelly eyes; for the brows, see-through over the bangs; for the hair, the pendulums.
+- **Members**: the layers the component recognised, with their role and side; changing a role changes that layer's semantic tag. Click a name to select the layer.
+- **Parameters**: the parameters the component generated.
+
 ## World page
+- **Role components**: the cards of all the model's components.
 - **Simulations**: all physics bodies and their bake state, with **Bake all** and **Bake automatically**; click a row to select its mesh and switch to the Object page.
 - **Problems**: the problems of all cards (missing parameters, too many keyforms, out of tolerance, an interior shape that needs regenerating); click a row to jump to the object.
 - **Model presets**: see [[model-presets]].
@@ -1204,7 +1211,7 @@ When a PSD is imported, PSD2Live generates the whole set of deformers, parameter
 - Skeleton (when enabled): torso bend and limb rotation deformers; see [[skeleton]].
 The exact objects vary with the model presets; the Hierarchy is authoritative.
 ## Adjust the result
-1. In the **Model presets** section on the **World** page of the Modifiers panel, adjust the deformation range, Rig Values and so on; the model regenerates accordingly.
+1. In the **Role components** section on the **World** page of the Modifiers panel, adjust each component's range and values, or in the **Model presets** section adjust motions and physics; the model regenerates accordingly.
 2. The edits you made on the generated result are merged onto the new result and kept.
 3. To benefit from improvements in a newer generator, use **Model → Update Generated Rig**; see [[update-generated-rig]].
 *> When you create a warp deformer by hand, **Create from selection** and the size strategy in the placement panel also size it automatically from the selected objects.
@@ -1373,7 +1380,7 @@ When Angle X turns the head, the head deformer handles the turn of the whole hea
 - Mirror keyform handles only the object's own deformation, using the parent in the default pose as the coordinate system; the parent's keyforms must be mirrored separately.
 
 @@ keyform-xydirection | Keyforms (Make X, Y Movements)
-When an object is bound to two parameters at once (such as Angle X and Angle Y), the keyforms are arranged in a grid: each combination of an X key and a Y key has its own shape, and diagonal poses are interpolated from the surrounding keys. The generated head already has nine poses made from combinations of the end and middle points of Angle X / Y, with extra correction for the diagonals; the strength is tuned under **Rig Values** in the model presets.
+When an object is bound to two parameters at once (such as Angle X and Angle Y), the keyforms are arranged in a grid: each combination of an X key and a Y key has its own shape, and diagonal poses are interpolated from the surrounding keys. The generated head already has nine poses made from combinations of the end and middle points of Angle X / Y, with extra correction for the diagonals; the strength is tuned in the **Values** of the **Head turn** component card.
 ## Make a set of XY shapes yourself
 1. In the Parameters panel, link the two parameters into a 2D controller with the link button on the row, and right-click on the pad to snap to the intersection of both parameters' keys.
 2. In Deform mode, make shapes at each intersection in turn: first the end and middle points, then the four diagonals.
@@ -1430,8 +1437,8 @@ Head turns, blinks, eyeballs, eyebrows, mouth shapes and lip sync are all genera
 - Brows through the bangs: each brow the front hair covers gets a copy drawn just above the bangs at partial opacity and clipped to them, so it shows through the hair as in anime. The copy follows its brow through every deformer, form and edit; edit the brow, not the copy. Eyes through the bangs: the bangs fade over every part of the eyes - whites, irides and highlights, lashes - so the whole eye shows through the hair; closed-eye lines are copied over the bangs like the brows. New models have both on; models made before keep what they had (eyes off) until you turn them on.
 - Front and back hair are separated from strong face deformation and each outputs its own sway parameter.
 ## Adjust the range
-1. Open the **Rigging & Facial** group in the **Model presets** section on the **World** page of the Modifiers panel and adjust the **Facial Feature Displacement Deformer** switch and **Head range** and **Body range**.
-2. In the **Rig Values** group, fine-tune head turn, eyes, brows, mouth, nose and ears, and hair; less common items are under **Advanced**.
+1. In the **Role components** section on the **World** page of the Modifiers panel, open the **Head turn** card and adjust the **Facial Feature Displacement Deformer** switch and **Head range**; the **Body pose** card holds **Body range**.
+2. In the **Values** of each component card, fine-tune head turn, eyes, brows, mouth and hair (nose and ears are in Head turn); less common items are under **Advanced**.
 3. After a change the model regenerates, and the manual edits you already made are merged and kept.
 ## Correct by hand
 The generated facial keyforms can be edited further directly in Deform mode; for the method see [[how-to-edit]].
