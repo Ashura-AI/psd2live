@@ -5,6 +5,8 @@ import io.github.psd2live.core.*
 import io.github.psd2live.core.modifier.ModifierAuthoring
 import io.github.psd2live.project.MutationAuthor
 import io.github.psd2live.ui.CanvasEditor
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.*
 import org.umamo.runtime.model.PuppetModel
@@ -33,10 +35,45 @@ internal class ModifierController(
 		if (pose.isNotEmpty()) putJsonObject("pose") { pose.forEach { (k, v) -> put(k, v) } }
 	})
 
+	/** Adds a modifier of [kind] on [meshes], with the kind's defaults for where they rest. */
+	fun add(kind: String, meshes: List<String>) = put(buildJsonObject { put("kind", kind); putJsonArray("targets") { meshes.forEach { add(it) } } })
+	fun split(id: String, mesh: String) = edit(ModifierAuthoring.SPLIT, buildJsonObject { put("id", id); put("mesh", mesh) })
+	fun copy(id: String, meshes: List<String>) = edit(ModifierAuthoring.COPY, buildJsonObject { put("id", id); putJsonArray("targets") { meshes.forEach { add(it) } } })
+	fun applyTo(id: String, mesh: String, mode: String, pose: Map<String, Float> = emptyMap()) = edit(ModifierAuthoring.APPLY, buildJsonObject {
+		put("id", id); put("mode", mode); put("mesh", mesh)
+		if (pose.isNotEmpty()) putJsonObject("pose") { pose.forEach { (k, v) -> put(k, v) } }
+	})
+
+	/** Several `modifier_*` edits as one step of history, each acting on what the ones before it left. */
+	fun batch(operations: List<Pair<String, JsonObject>>) = edits(operations)
+
+	private val store = ModifierPresetStore()
+	internal var presets by androidx.compose.runtime.mutableStateOf(store.list())
+		private set
+	/** The mesh whose stack the save-as-preset dialog names, while it is open. */
+	internal var presetDialog by androidx.compose.runtime.mutableStateOf<String?>(null)
+
+	fun savePreset(name: String, modifiers: List<io.github.psd2live.core.modifier.RigModifier>) {
+		runCatching { store.save(io.github.psd2live.core.modifier.ModifierPreset.of(name, modifiers)) }.onFailure { failed(it.message ?: it.toString()) }
+		presets = store.list()
+	}
+
+	fun deletePreset(name: String) {
+		runCatching { store.delete(name) }.onFailure { failed(it.message ?: it.toString()) }
+		presets = store.list()
+	}
+
+	/** Puts [preset]'s stack on [meshes] in one step; parameters it made that [parameters] already has are reused. */
+	fun applyPreset(preset: io.github.psd2live.core.modifier.ModifierPreset, meshes: List<String>, parameters: Set<String>) =
+		batch(preset.requests(meshes, parameters).map { ModifierAuthoring.PUT to it })
+
 	private var editJob: Job? = null
 	private var pending = 0
 
-	private fun edit(operation: String, request: JsonObject) {
+	private fun edit(operation: String, request: JsonObject) = edits(listOf(operation to request))
+
+	private fun edits(operations: List<Pair<String, JsonObject>>) {
+		if (operations.isEmpty()) return
 		val workspace = backend() ?: return
 		val previous = editJob
 		pending++
@@ -47,7 +84,8 @@ internal class ModifierController(
 				previous?.join()
 				val expected = workspace.snapshot()
 				withContext(Dispatchers.Default + WorkspaceExecution(expected.projectId, expected.state, MutationAuthor.USER)) {
-					workspace.applyDocumentEdits(expected.state, "Modifier", listOf(WorkspaceDocumentOperation(operation, request)), MutationAuthor.USER)
+					workspace.applyDocumentEdits(expected.state, "Modifier", operations.map { (operation, request) -> WorkspaceDocumentOperation(operation, request) },
+						MutationAuthor.USER)
 				}
 			} catch (e: CancellationException) {
 				throw e

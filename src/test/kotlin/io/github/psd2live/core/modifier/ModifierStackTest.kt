@@ -208,4 +208,40 @@ class ModifierStackTest {
 		assertEquals(copied.modifiers[0], RigModifier.fromJson(copied.modifiers[0].toJson()))
 		assertEquals(overlay.modifiers.single(), RigModifier.fromJson(overlay.modifiers.single().toJson()))
 	}
+
+	@Test
+	fun `a preset puts the same stack on another mesh and reuses parameters that exist`() {
+		val authored = pair.authored.rig.puppet
+		val meshes = authored.drawables.filter { it.mesh != null }.map { it.id.raw }
+		var overlay = ModifierAuthoring.put(pair, RigEditOverlay(), buildJsonObject {
+			put("kind", "wave"); putJsonArray("targets") { add(meshes[0]) }; putJsonArray("parameters") { add(driver) }
+			putJsonArray("keys") { addJsonObject { put("setting", "amplitude"); putJsonObject("at") { put("ParamModTurn", 10) }; put("value", 6) } }
+		})
+		val preset = ModifierPreset.fromJson(ModifierPreset.of("hair", overlay.modifiers).toJson())
+		val requests = preset.requests(listOf(meshes[1]), authored.parameters.map { it.id.raw }.toSet() + "ParamModTurn")
+		assertFalse("parameters" in requests.single(), "a parameter that exists is not made again")
+		for (r in requests) overlay = ModifierAuthoring.put(pair, overlay, r)
+		val (first, second) = overlay.modifiers
+		assertEquals(first.settings, second.settings)
+		assertEquals(listOf(meshes[1]), second.target.meshes)
+		assertTrue("parameters" in preset.requests(listOf(meshes[1]), emptySet()).single(), "where it is missing the preset makes it")
+	}
+
+	@Test
+	fun `a stack reads the mesh as its keyforms pose it, so applying the first keeps the rest`() {
+		var overlay = ModifierAuthoring.put(preview, RigEditOverlay(), JsonObject(turn("Turn", 60f) + ("parameters" to JsonArray(listOf(driver)))))
+		overlay = ModifierAuthoring.put(preview, overlay, buildJsonObject {
+			put("id", "Shift"); put("kind", "transform"); putJsonArray("targets") { add(target) }
+			putJsonArray("keys") { addJsonObject { put("setting", "offset"); putJsonObject("at") { put("ParamModTurn", 10) }; putJsonArray("value") { add(25); add(5) } } }
+		})
+		val shown = overlay.applyTo(preview.baseRig.puppet)
+		val applied = ModifierAuthoring.apply(preview, overlay, buildJsonObject { put("id", "Turn") })
+		assertEquals(listOf("Shift"), applied.modifiers.map { it.id })
+		val replayed = applied.applyTo(preview.baseRig.puppet)
+		for (v in listOf(-10f, -4f, 0f, 3.3f, 10f))
+			assertTrue(distance(canvas(shown, mapOf("ParamModTurn" to v)), canvas(replayed, mapOf("ParamModTurn" to v))) < 0.05f, "at $v")
+		assertFailsWith<IllegalArgumentException>("a modifier after another applies only after it") {
+			ModifierAuthoring.apply(preview, overlay, buildJsonObject { put("id", "Shift") })
+		}
+	}
 }

@@ -243,17 +243,21 @@ internal object ModifierAuthoring {
 		val commands = ArrayList<JsonObject>()
 		val keyed = mode == "keyforms" && modifier.drivers.isNotEmpty()
 		if (keyed) {
-			for (mesh in meshes) require(stacks[mesh].orEmpty().singleOrNull()?.id == id) {
-				"$mesh has other modifiers: apply to the rest shape, or apply the others first"
+			// The ones after it read the mesh as its keyforms pose it, so they see the applied keyforms as they saw it.
+			for (mesh in meshes) require(stacks[mesh].orEmpty().firstOrNull()?.id == id) {
+				"$mesh has modifiers before ${modifier.id}: apply those first, or apply to the rest shape"
 			}
 			val known = authored.parameters.mapTo(HashSet()) { it.id }
 			modifier.created.filter { it.id !in known }.takeIf { it.isNotEmpty() }?.let { commands += creation(it) }
 			for (mesh in meshes) {
-				val (axes, table) = ModifierSampler.offsets(before, mesh, listOf(modifier)) ?: continue
+				val (sampled, offsets) = ModifierSampler.offsets(before, mesh, listOf(modifier)) ?: continue
 				val drawable = authored.drawables.first { it.id.raw == mesh }
+				// The axes other generators add are not the journal's: the offsets are taken at their defaults.
+				val keep = drawable.geometryGrid?.axes.orEmpty().map { it.parameterId.raw }.toSet() + modifier.drivers
+				val (axes, table) = ModifierSampler.reduced(sampled, offsets, keep, before.parameters.associate { it.id.raw to it.default })
 				val grid = ModifierSampler.withOffsets(drawable.geometryGrid, drawable.mesh!!.positions.size, axes, table)
 					?: error("$mesh keyforms cannot take the modifier's keys")
-				commands += keys(mesh, grid, axes.map { it.parameter }.toSet())
+				commands += keys(mesh, grid, axes.map { it.parameter }.filter { it in modifier.drivers }.toSet())
 				// An edit of one of the modifier's cells keeps what the user changed there, on the applied value.
 				for (entry in overlay.authoringJournal) {
 					if (!GeneratedOverrides.isOverride(entry) || entry["generator"]?.jsonPrimitive?.contentOrNull != ModifierSampler.NODE) continue

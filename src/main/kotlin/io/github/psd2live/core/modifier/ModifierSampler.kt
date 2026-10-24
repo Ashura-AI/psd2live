@@ -4,6 +4,7 @@ import io.github.psd2live.core.DocumentGenerators
 import org.umamo.edit.withParameterCreated
 import org.umamo.edit.withParameterKeys
 import org.umamo.render.eval.DrawableSpaceMapping
+import org.umamo.render.eval.drawableLocalPosed
 import org.umamo.render.eval.drawableSpaceMapping
 import org.umamo.runtime.eval.meshGridDefaultDeltas
 import org.umamo.runtime.keyform.MeshDeltaInterpolator
@@ -18,12 +19,13 @@ import kotlin.math.max
  * Samples the document's modifiers into ordinary mesh keyforms, after the journal and the other generators.
  *
  * Each mesh's stack is the enabled modifiers naming it, in document order; each modifier takes the shape the ones
- * before it made, starting from the mesh's rest shape on the canvas (the default pose). The stack's effect is
- * sampled on the parameters its settings are keyed on: their keys, plus keys added between them until linear
- * interpolation is within the stack's tolerance of the modifiers, over the product of those parameters. Each sample
- * is taken back into the mesh's parent space at the default pose and added to every keyform of the mesh at that
- * pose: the mesh's own keyforms and other generators' stay as they are, and the modifier rides on its parents.
- * Settings that are not keyed anywhere move the rest shape itself.
+ * before it made, starting - as Blender's modifiers start after the shape keys - from the mesh as its own keyforms
+ * pose it, on the canvas through its parents at the default pose. The stack is sampled on the parameters its
+ * settings are keyed on (their keys, plus keys added between them until linear interpolation is within the stack's
+ * tolerance of the modifiers) together with the mesh's own keyform axes, over the product of all of them. Each
+ * sample is taken back into the mesh's parent space at the default pose and added to the mesh's keyform at that
+ * pose, so the modifier rides on its parents and on what the keyforms do. Settings that are not keyed anywhere act
+ * on every keyform alike; on an unkeyed mesh they move its rest shape.
  *
  * A stack that cannot be sampled - a mesh or parameter gone, a vertex group missing, a parent that cannot be inverted,
  * too many keyforms - is left out for that mesh and reported ([Issue]), never failing the build.
@@ -91,9 +93,12 @@ object ModifierSampler {
 		/** The rest shape on the canvas (interleaved x, y, y down). */
 		val restCanvas: FloatArray get() = rest.copyOf()
 
-		/** The stack's canvas positions at [pose] (parameter values; the rest at their defaults). */
-		fun canvasAt(pose: Map<String, Float>): FloatArray {
-			var positions = rest
+		/** The stack's canvas positions at [pose] (parameter values; the rest at their defaults), from the rest shape. */
+		fun canvasAt(pose: Map<String, Float>): FloatArray = canvasFrom(rest, pose)
+
+		/** The stack's canvas positions at [pose] from [start], the canvas shape the first modifier takes. */
+		fun canvasFrom(start: FloatArray, pose: Map<String, Float>): FloatArray {
+			var positions = start
 			for (modifier in modifiers) {
 				val values = modifier.definition.settings.associate { s -> s.key to modifier.value(s.key).at { pose[it] ?: defaults[it] ?: 0f } }
 				val out = modifier.definition.deform(positions, values)
@@ -155,33 +160,65 @@ object ModifierSampler {
 	fun offsets(model: PuppetModel, mesh: String, modifiers: List<RigModifier>, issues: MutableList<Issue> = ArrayList()):
 		Pair<List<ModifierValue.Keyed.Axis>, ModifierValue>? {
 		val (stack, mapping) = stack(model, mesh, modifiers, issues) ?: return null
+		val drawable = model.drawables.first { it.id.raw == mesh }
+		val local = local(model, drawable)
+		val own = drawable.geometryGrid?.axes.orEmpty()
+		// The mesh as its keyforms pose it, in its parent space and on the canvas at the default pose.
+		fun localAt(pose: Map<String, Float>): FloatArray =
+			if (own.isEmpty()) local else drawableLocalPosed(model, pose.mapKeys { ParameterId(it.key) }, drawable.id) ?: local
+		fun canvasOf(l: FloatArray) = mapping.localToWorld(l).let { w -> FloatArray(w.size) { if (it % 2 == 0) w[it] else -w[it] } }
+		val shape: (Map<String, Float>) -> FloatArray = { pose -> stack.canvasFrom(canvasOf(localAt(pose)), pose) }
 		val drivers = stack.modifiers.flatMap { it.drivers }.distinct()
 		val parameters = drivers.map { id -> model.parameters.first { it.id.raw == id } }
 		val tolerance = stack.modifiers.minOf { it.sampling.tolerance }
 		val maxKeys = stack.modifiers.minOf { it.sampling.maxKeys }
-		val keys = parameters.map { p -> keys(stack, p, stack.modifiers, tolerance, maxKeys) }
+		val keys = parameters.map { p -> keys(p, stack.modifiers, tolerance, maxKeys, shape) }
 		val worst = keys.maxOfOrNull { it.second } ?: 0f
 		if (worst > tolerance) stack.modifiers.forEach { issues += Issue(IssueKind.TOLERANCE_EXCEEDED, it.id, mesh, error = worst) }
-		val drawable = model.drawables.first { it.id.raw == mesh }
-		val combinations = keys.fold(1L) { n, k -> n * k.first.size }
-		val own = drawable.geometryGrid?.axes?.filter { it.parameterId.raw !in drivers }?.fold(1L) { n, a -> n * a.keys.size } ?: 1L
-		if (combinations * own > MAX_CELLS) {
-			stack.modifiers.forEach { issues += Issue(IssueKind.TOO_MANY_KEYFORMS, it.id, mesh, "${combinations * own}") }
+		// The driving parameters with their sampled keys, then the mesh's own axes; a parameter that is both takes both's keys.
+		val axes = parameters.mapIndexed { i, p ->
+			val keyed = own.firstOrNull { it.parameterId == p.id }?.keys?.toList().orEmpty()
+			ModifierValue.Keyed.Axis(p.id.raw, merged(keys[i].first.toList() + keyed))
+		} + own.filter { a -> a.parameterId.raw !in drivers }.map { ModifierValue.Keyed.Axis(it.parameterId.raw, it.keys.copyOf()) }
+		val combinations = axes.fold(1L) { n, a -> n * a.keys.size }
+		if (combinations > MAX_CELLS) {
+			stack.modifiers.forEach { issues += Issue(IssueKind.TOO_MANY_KEYFORMS, it.id, mesh, "$combinations") }
 			return null
 		}
-		val local = local(model, drawable)
-		val axes = parameters.mapIndexed { i, p -> ModifierValue.Keyed.Axis(p.id.raw, keys[i].first) }
 		val offsets = ArrayList<FloatArray>(combinations.toInt())
 		val all = (0 until local.size / 2).toSet()
 		for (index in 0 until combinations.toInt()) {
 			var rest = index
 			val pose = axes.associate { a -> a.parameter to a.keys[rest % a.keys.size].also { rest /= a.keys.size } }
-			val canvas = stack.canvasAt(pose)
+			val base = localAt(pose)
+			val canvas = stack.canvasFrom(canvasOf(base), pose)
 			val world = FloatArray(canvas.size) { if (it % 2 == 0) canvas[it] else -canvas[it] }
-			val solved = mapping.worldToLocal(world, local, all)
-			offsets += FloatArray(local.size) { solved[it] - local[it] }
+			val solved = mapping.worldToLocal(world, base, all)
+			offsets += FloatArray(local.size) { solved[it] - base[it] }
 		}
 		return axes to if (axes.isEmpty()) ModifierValue.Constant(offsets.single()) else ModifierValue.Keyed(axes, offsets)
+	}
+
+	/** [keys] sorted, with keys closer than a keyform key's snap merged. */
+	private fun merged(keys: List<Float>): FloatArray = keys.sorted().fold(ArrayList<Float>()) { out, k ->
+		if (out.isEmpty() || k - out.last() > ModifierValue.EPS) out += k; out
+	}.toFloatArray()
+
+	/**
+	 * [axes] and [table] with every axis not in [keep] taken at its parameter's default from [defaults]: the offsets an
+	 * apply writes on the authored mesh, which lacks the axes the other generators add.
+	 */
+	internal fun reduced(axes: List<ModifierValue.Keyed.Axis>, table: ModifierValue, keep: Set<String>, defaults: Map<String, Float>):
+		Pair<List<ModifierValue.Keyed.Axis>, ModifierValue> {
+		val kept = axes.filter { it.parameter in keep }
+		if (kept.size == axes.size) return axes to table
+		val count = kept.fold(1) { n, a -> n * a.keys.size }
+		val values = List(count) { index ->
+			var rest = index
+			val pose = kept.associate { a -> a.parameter to a.keys[rest % a.keys.size].also { rest /= a.keys.size } }
+			table.at { pose[it] ?: defaults[it] ?: 0f }
+		}
+		return kept to if (kept.isEmpty()) ModifierValue.Constant(values.single()) else ModifierValue.Keyed(kept, values)
 	}
 
 	private fun run(model: PuppetModel, modifiers: List<RigModifier>, write: Boolean): Outcome {
@@ -210,15 +247,14 @@ object ModifierSampler {
 	 * default, within its range; the other parameters stay at their defaults while it is refined, and a key is added
 	 * in the middle of the worst span until every span is within [tolerance] or [maxKeys] is reached.
 	 */
-	private fun keys(stack: Stack, parameter: Parameter, modifiers: List<RigModifier>, tolerance: Float, maxKeys: Int): Pair<FloatArray, Float> {
+	private fun keys(parameter: Parameter, modifiers: List<RigModifier>, tolerance: Float, maxKeys: Int,
+					 shape: (Map<String, Float>) -> FloatArray): Pair<FloatArray, Float> {
 		val raw = parameter.id.raw
 		val authored = modifiers.flatMap { m -> m.settings.values.filterIsInstance<ModifierValue.Keyed>() }
 			.flatMap { v -> v.axes.filter { it.parameter == raw }.flatMap { it.keys.toList() } }
-		val keys = (authored + parameter.default).map { it.coerceIn(parameter.min, parameter.max) }.sorted().fold(ArrayList<Float>()) { out, k ->
-			if (out.isEmpty() || k - out.last() > ModifierValue.EPS) out += k; out
-		}
+		val keys = merged((authored + parameter.default).map { it.coerceIn(parameter.min, parameter.max) }).toMutableList()
 		if (keys.size < 2) return keys.toFloatArray() to 0f
-		fun at(v: Float) = stack.canvasAt(mapOf(raw to v))
+		fun at(v: Float) = shape(mapOf(raw to v))
 		val shapes = keys.map(::at).toMutableList()
 		fun error(i: Int): Float {
 			val mid = (keys[i] + keys[i + 1]) / 2

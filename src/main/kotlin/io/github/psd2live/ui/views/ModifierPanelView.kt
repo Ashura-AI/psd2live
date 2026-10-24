@@ -21,6 +21,8 @@ import io.github.psd2live.ui.theme.LocalToolTypography
 import io.github.psd2live.ui.views.physics.FieldLabel
 import io.github.psd2live.ui.views.physics.PhysicsSection
 import io.github.psd2live.ui.views.texture.FloatingMenuRow
+import io.github.psd2live.ui.views.texture.FloatingMenuSection
+import androidx.compose.ui.input.pointer.isAltPressed
 import io.github.psd2live.ui.views.tooloptions.GlidingColumn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -51,11 +53,15 @@ internal fun ModifierPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	var closed by remember(target) { mutableStateOf(emptySet<String>()) }
 	Column(Modifier.fillMaxSize()) {
 		val labels = listOf(tr("modifiers.add"))
+		var adding by remember { mutableStateOf(false) }
 		PanelToolbar(labels = labels, iconCount = 2) { shown ->
-			PanelToolButton(labels[0], showLabel = shown > 0, onClick = {
-				vm.modifiers.put(buildJsonObject { put("kind", ModifierKinds.Transform.id); putJsonArray("targets") { add(mesh!!.id.raw) } })
-			}, enabled = mesh != null, tooltip = tr("modifiers.addTip")) {
-				IconAdd(modifier = Modifier.size(10.dp), tint = colors.textPrimary)
+			Box {
+				PanelToolButton(labels[0], showLabel = shown > 0, onClick = { adding = true }, enabled = mesh != null, tooltip = tr("modifiers.addTip")) {
+					IconAdd(modifier = Modifier.size(10.dp), tint = colors.textPrimary)
+				}
+				if (mesh != null && puppet != null) PressMenu(expanded = adding, press = Offset(0f, 0f), onDismissRequest = { adding = false }) {
+					ModifierAddMenu(vm, state, puppet, selectedMeshes(state, puppet, mesh.id.raw), stack) { adding = false }
+				}
 			}
 			Spacer(Modifier.weight(1f))
 			PanelExpandCollapseButtons(onExpandAll = { closed = emptySet() }, onCollapseAll = { closed = stack.map { it.id }.toSet() }, enabled = stack.isNotEmpty())
@@ -79,7 +85,7 @@ internal fun ModifierPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 			if (stack.isEmpty()) Text(tr("modifiers.empty"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted,
 				modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp))
 			stack.forEachIndexed { index, modifier ->
-				ModifierCard(vm, state, puppet, stack, index, modifier, issues.filter { it.modifier == modifier.id && it.target == mesh.id.raw },
+				ModifierCard(vm, state, puppet, mesh.id.raw, stack, index, modifier, issues.filter { it.modifier == modifier.id && it.target == mesh.id.raw },
 					modifier.id !in closed) { closed = if (modifier.id in closed) closed - modifier.id else closed + modifier.id }
 			}
 		}
@@ -91,6 +97,7 @@ private fun ModifierCard(
 	vm: PSD2LiveViewModel,
 	state: PSD2LiveState,
 	puppet: PuppetModel,
+	mesh: String,
 	stack: List<RigModifier>,
 	index: Int,
 	modifier: RigModifier,
@@ -110,7 +117,7 @@ private fun ModifierCard(
 				GridIcon(Modifier.size(11.dp), colors.textMuted) { dot(4.6f, 9f, 1.3f); dot(9f, 9f, 1.3f); dot(13.4f, 9f, 1.3f) }
 			}
 			PressMenu(expanded = menu, press = Offset(0f, 0f), onDismissRequest = { menu = false }) {
-				ModifierMenu(vm, state, puppet, stack, index, modifier) { menu = false }
+				ModifierMenu(vm, state, puppet, mesh, stack, index, modifier) { menu = false }
 			}
 		}
 	}
@@ -121,14 +128,16 @@ private fun ModifierCard(
 		for (issue in issues) Text(tr("modifiers.issue.${issue.kind.code}", issue.detail.ifEmpty { issue.error?.let { "%.1f".format(it) } ?: "" }),
 			style = typography.caption.copy(fontSize = 10.sp), color = colors.warning)
 		val pose: (String) -> Float = { p -> state.parameterValues[ParameterId(p)] ?: puppet.parameters.firstOrNull { it.id.raw == p }?.default ?: 0f }
-		for (setting in modifier.definition.settings.filter { it.field }) ModifierField(vm, state, puppet, modifier, setting, pose)
+		for (setting in modifier.definition.settings.filter { it.field }) ModifierField(vm, state, puppet, mesh, modifier, setting, pose)
 	}
 }
 
 /** One setting: its components at the current pose, and the key button that keys it on the parameters there. */
 @Composable
-private fun ModifierField(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: PuppetModel, modifier: RigModifier, setting: ModifierSetting, pose: (String) -> Float) {
+private fun ModifierField(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: PuppetModel, mesh: String, modifier: RigModifier, setting: ModifierSetting,
+                          pose: (String) -> Float) {
 	val colors = LocalToolColors.current
+	val window = androidx.compose.ui.platform.LocalWindowInfo.current
 	val stored = modifier.value(setting.key)
 	val shown = stored.at(pose)
 	// What a drag or typed value holds until the commit it sends comes back as the stored value.
@@ -157,7 +166,23 @@ private fun ModifierField(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: P
 			Modifier.weight(1f),
 			min = setting.min.toDouble().coerceAtLeast(-100_000.0), max = setting.max.toDouble().coerceAtMost(100_000.0),
 			step = step, decimals = decimals, height = 22.dp,
-			onEditEnd = { draft?.let { vm.modifiers.put(request(it)) } },
+			onEditEnd = {
+				draft?.let { next ->
+					// With Alt held, the same value goes to the first modifier of this kind on every other selected mesh.
+					@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+					val alt = window.keyboardModifiers.isAltPressed
+					val others = if (!alt) emptyList() else {
+						val stacks = ModifierSampler.stacks(state.rigEdits.modifiers, puppet)
+						selectedMeshes(state, puppet, mesh).filter { it != mesh }.mapNotNull { m ->
+							stacks[m].orEmpty().firstOrNull { it.kind == modifier.kind && it.id != modifier.id }
+						}.distinctBy { it.id }
+					}
+					if (others.isEmpty()) vm.modifiers.put(request(next))
+					else vm.modifiers.batch((listOf(modifier) + others).map { m ->
+						ModifierAuthoring.PUT to JsonObject(request(next) + ("id" to JsonPrimitive(m.id)))
+					})
+				}
+			},
 		)
 		val tip = tr(when { onKey -> "modifiers.key.remove"; keyed != null -> "modifiers.key.add"; else -> "modifiers.key.start" })
 		CompactIconButton(onClick = {
@@ -188,24 +213,98 @@ private fun ModifierField(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: P
 }
 
 @Composable
-private fun ModifierMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: PuppetModel, stack: List<RigModifier>, index: Int, modifier: RigModifier, close: () -> Unit) {
+private fun ModifierMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: PuppetModel, mesh: String, stack: List<RigModifier>, index: Int, modifier: RigModifier,
+                         close: () -> Unit) {
 	val rows = mutableListOf<Triple<Boolean, Boolean, @Composable () -> Unit>>()
 	fun add(enabled: Boolean, danger: Boolean = false, label: String, hint: String? = null, action: () -> Unit) {
 		rows += Triple(enabled, danger, @Composable { FloatingMenuRow(label, { close(); action() }, enabled = enabled, hint = hint, danger = danger) })
 	}
 	val stacks = ModifierSampler.stacks(state.rigEdits.modifiers, puppet)
-	val alone = modifier.target.resolve(puppet).all { stacks[it].orEmpty().singleOrNull()?.id == modifier.id }
+	val meshes = modifier.target.resolve(puppet)
+	val alone = meshes.all { stacks[it].orEmpty().firstOrNull()?.id == modifier.id }
+	val pose = modifier.drivers.associateWith { p -> state.parameterValues[ParameterId(p)] ?: puppet.parameters.firstOrNull { it.id.raw == p }?.default ?: 0f }
 	add(alone && modifier.drivers.isNotEmpty(), label = tr("modifiers.applyKeyforms"), hint = tr(if (alone) "modifiers.applyKeyformsTip" else "modifiers.applyAlone")) {
 		vm.modifiers.apply(modifier.id, "keyforms")
 	}
-	add(true, label = tr("modifiers.applyRest"), hint = tr("modifiers.applyRestTip")) {
-		val pose = modifier.drivers.associateWith { p -> state.parameterValues[ParameterId(p)] ?: puppet.parameters.firstOrNull { it.id.raw == p }?.default ?: 0f }
-		vm.modifiers.apply(modifier.id, "rest", pose)
+	add(true, label = tr("modifiers.applyRest"), hint = tr("modifiers.applyRestTip")) { vm.modifiers.apply(modifier.id, "rest", pose) }
+	if (meshes.size > 1) {
+		val here = stacks[mesh].orEmpty().firstOrNull()?.id == modifier.id
+		add(true, label = tr("modifiers.applyMesh"), hint = tr("modifiers.applyMeshTip")) {
+			vm.modifiers.applyTo(modifier.id, mesh, if (here && modifier.drivers.isNotEmpty()) "keyforms" else "rest", pose)
+		}
+		add(true, label = tr("modifiers.split"), hint = tr("modifiers.splitTip")) { vm.modifiers.split(modifier.id, mesh) }
 	}
+	val others = selectedMeshes(state, puppet, mesh).filter { it !in meshes }
+	add(others.isNotEmpty(), label = tr("modifiers.copyToSelected"), hint = tr("modifiers.copyToSelectedTip", others.size)) { vm.modifiers.copy(modifier.id, others) }
 	add(index > 0, label = tr("modifiers.moveUp")) { vm.modifiers.moveBefore(modifier.id, stack[index - 1].id) }
 	add(index < stack.lastIndex, label = tr("modifiers.moveDown")) {
 		if (index + 2 <= stack.lastIndex) vm.modifiers.moveBefore(modifier.id, stack[index + 2].id) else vm.modifiers.move(modifier.id, "last")
 	}
 	add(true, danger = true, label = tr("modifiers.delete")) { vm.modifiers.delete(modifier.id) }
 	GlidingColumn(Modifier.width(236.dp), rows.size, { rows[it].first }, dangers = { rows[it].second }) { rows[it].third() }
+}
+
+/** The meshes of the selected layers, [current] first: what a copy or a batch edit goes to. */
+internal fun selectedMeshes(state: PSD2LiveState, puppet: PuppetModel, current: String): List<String> {
+	val byLayer = state.previewModel?.rig?.layerIdByDrawableId.orEmpty()
+	val selected = (state.selectedLayerIds + listOfNotNull(state.selectedLayerId)).toSet()
+	val meshes = puppet.drawables.filter { it.mesh != null && (byLayer[it.id.raw] ?: it.id.raw) in selected }.map { it.id.raw }
+	return listOf(current) + (meshes - current)
+}
+
+/**
+ * What can go on [meshes]: the kinds, those suiting the layer's role first, then the saved presets, and saving
+ * [stack] as one.
+ */
+@Composable
+private fun ModifierAddMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: PuppetModel, meshes: List<String>, stack: List<RigModifier>, close: () -> Unit) {
+	val colors = LocalToolColors.current
+	val rows = mutableListOf<Pair<Boolean, @Composable () -> Unit>>()
+	val role = state.previewModel?.analysis?.layers?.firstOrNull { it.source.id.raw == state.selectedLayerId }?.semantic?.tag
+	val kinds = ModifierKinds.forRole(role)
+	val suited = kinds.filter { role != null && role in it.suits }
+	if (suited.isNotEmpty()) rows += false to @Composable { FloatingMenuSection(tr("modifiers.suggested")) }
+	for ((i, kind) in kinds.withIndex()) {
+		if (i == suited.size && suited.isNotEmpty()) rows += false to @Composable { FloatingMenuSection(tr("modifiers.allKinds")) }
+		rows += true to @Composable { FloatingMenuRow(tr("modifiers.kind.${kind.id}"), { close(); vm.modifiers.add(kind.id, meshes) }, hint = tr("modifiers.kindTip.${kind.id}")) }
+	}
+	rows += false to @Composable { FloatingMenuSection(tr("modifiers.presets")) }
+	val parameters = puppet.parameters.mapTo(HashSet()) { it.id.raw } + state.rigEdits.modifiers.flatMap { m -> m.created.map { it.id.raw } }
+	for (preset in vm.modifiers.presets) rows += true to @Composable {
+		FloatingMenuRow(preset.name, { close(); vm.modifiers.applyPreset(preset, meshes, parameters) }, hint = tr("modifiers.presetCount", preset.modifiers.size),
+			control = {
+				CompactIconButton(onClick = { vm.modifiers.deletePreset(preset.name) }, tooltip = tr("modifiers.presetDelete"), size = 18.dp) {
+					IconTrash(modifier = Modifier.size(10.dp), tint = colors.textMuted)
+				}
+			})
+	}
+	rows += stack.isNotEmpty() to @Composable {
+		FloatingMenuRow(tr("modifiers.presetSave"), { close(); vm.modifiers.presetDialog = meshes.first() }, enabled = stack.isNotEmpty(), hint = tr("modifiers.presetSaveTip"))
+	}
+	GlidingColumn(Modifier.width(236.dp), rows.size, { rows[it].first }) { rows[it].second() }
+}
+
+/** Names the selected mesh's stack and saves it as a preset. */
+@Composable
+internal fun ModifierPresetDialog(vm: PSD2LiveViewModel, state: PSD2LiveState) {
+	val mesh = vm.modifiers.presetDialog ?: return
+	val puppet = state.previewModel?.rig?.puppet
+	val stack = state.rigEdits.modifiers.filter { mesh in it.target.resolve(puppet) }
+	val default = puppet?.drawables?.firstOrNull { it.id.raw == mesh }?.name ?: mesh
+	var name by remember(mesh) { mutableStateOf(default) }
+	val taken = vm.modifiers.presets.any { it.name == name.trim() }
+	val save = { if (name.isNotBlank() && stack.isNotEmpty()) { vm.modifiers.savePreset(name.trim(), stack); vm.modifiers.presetDialog = null } }
+	ModalDialogFrame(
+		title = tr("modifiers.presetSave"),
+		onDismiss = { vm.modifiers.presetDialog = null },
+		width = 360.dp,
+		onConfirm = save,
+		footer = {
+			CompactButton(tr("action.cancel"), { vm.modifiers.presetDialog = null })
+			CompactButton(tr(if (taken) "modifiers.presetReplace" else "modifiers.presetSaveAction"), save, enabled = name.isNotBlank() && stack.isNotEmpty(), isPrimary = true)
+		},
+	) {
+		CompactTextField(name, { name = it }, Modifier.fillMaxWidth())
+		Text(tr("modifiers.presetSaveHint", stack.size), style = LocalToolTypography.current.caption, color = LocalToolColors.current.textMuted)
+	}
 }
