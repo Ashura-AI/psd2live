@@ -156,8 +156,9 @@ fun WorkspaceStrip(
 		}
 	}
 
-	// The dragged chip follows the pointer; each neighbour its centre passes swaps with it and slides into
-	// the slot it left.
+	// The dragged chip follows the pointer; each neighbour whose centre its leading edge passes swaps with it
+	// and slides into the slot it left. The leading edge, not the chip's centre: held within the span, a chip
+	// narrower than the end one could never get its centre past that one's, and stayed off the ends.
 	fun dragChip(id: String, amount: Float) {
 		// Read the live order: several drag events can land before the strip recomposes.
 		val workspaces = viewModel.state.value.workspaces
@@ -168,13 +169,12 @@ fun WorkspaceStrip(
 		var index = workspaces.indexOfFirst { it.id == id }
 		val order = workspaces.toMutableList()
 		while (true) {
-			val center = dragLeft + width / 2
 			val (left, _) = chipBounds[id] ?: return
 			val forward = order.getOrNull(index + 1)?.takeIf { next ->
-				chipBounds[next.id]?.let { (l, w) -> center > l + w / 2 } == true
+				chipBounds[next.id]?.let { (l, w) -> dragLeft + width > l + w / 2 } == true
 			}
 			val neighbour = forward ?: order.getOrNull(index - 1)?.takeIf { previous ->
-				chipBounds[previous.id]?.let { (l, w) -> center < l + w / 2 } == true
+				chipBounds[previous.id]?.let { (l, w) -> dragLeft < l + w / 2 } == true
 			} ?: return
 			val (otherLeft, otherWidth) = chipBounds.getValue(neighbour.id)
 			val to = if (forward != null) index + 1 else index - 1
