@@ -1328,6 +1328,8 @@ internal class WorkspaceHost<V>(
     override fun listPhysics(): List<io.github.psd2live.core.PhysicsGroup> = captureQueries().listPhysics()
 
     override fun listInteriorEffects() = captureQueries().listInteriorEffects()
+    override fun listModifiers() = captureQueries().listModifiers()
+    override fun modifierIssues() = captureQueries().modifierIssues()
     override fun listSwings() = captureQueries().listSwings()
     override fun hitAreas() = captureQueries().hitAreas()
     override fun hitAreaModel() = captureQueries().hitAreaModel()

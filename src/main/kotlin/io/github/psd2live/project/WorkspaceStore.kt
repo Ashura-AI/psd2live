@@ -613,6 +613,7 @@ internal class WorkspaceStore(
             document.rigEdits.pose?.let { put("pose", io.github.psd2live.core.ModelPoses.toJson(it)) }
             if (document.rigEdits.simEdits.isNotEmpty()) putJsonArray("simulations") { document.rigEdits.simEdits.forEach { add(encodeSimulation(it)) } }
             if (document.rigEdits.hitAreas.isNotEmpty()) putJsonArray("hitAreas") { document.rigEdits.hitAreas.forEach { add(io.github.psd2live.core.RigHitAreas.toJson(it)) } }
+            if (document.rigEdits.modifiers.isNotEmpty()) putJsonArray("modifiers") { document.rigEdits.modifiers.forEach { add(it.toJson()) } }
 			putJsonArray("parameters") {
 				document.rigEdits.parameterEdits.forEach { edit ->
 					add(buildJsonObject {
@@ -758,6 +759,7 @@ internal class WorkspaceStore(
             pose = rigEditObject["pose"]?.jsonObject?.let(io.github.psd2live.core.ModelPoses::fromJson),
             simEdits = rigEditObject.optionalArray("simulations").map { decodeSimulation(it.jsonObject, bakes) },
             hitAreas = rigEditObject.optionalArray("hitAreas").map { io.github.psd2live.core.RigHitAreas.fromJson(it.jsonObject) },
+            modifiers = rigEditObject.optionalArray("modifiers").map { io.github.psd2live.core.modifier.RigModifier.fromJson(it.jsonObject) },
 			parameterEdits = rigEditObject.optionalArray("parameters").map { element ->
 				val edit = element.jsonObject
 				RigParameterEdit(
