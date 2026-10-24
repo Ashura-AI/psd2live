@@ -45,6 +45,7 @@ object ModifierSampler {
 		UNMAPPABLE("unmappable"),
 		TOO_MANY_KEYFORMS("too_many_keyforms"),
 		TOLERANCE_EXCEEDED("tolerance_exceeded"),
+		STAGE_UNAVAILABLE("stage_unavailable"),
 	}
 
 	/** What kept [modifier] from [target] as recorded, or how far the sampling stayed from it ([error] in canvas pixels). */
@@ -67,7 +68,10 @@ object ModifierSampler {
 		modifiers.flatMap { m -> m.created.map { "parameter:${it.id.raw}" } } +
 			stacks(modifiers, model).flatMap { (key, stack) ->
 				val (kind, id) = if (key.startsWith(ModifierTarget.WARP)) "warp" to key.removePrefix(ModifierTarget.WARP) else "mesh" to key
-				stack.flatMap { it.drivers }.distinct().map { DocumentGenerators.keyform(kind, id, it) }
+				stack.flatMap { it.drivers }.distinct().flatMap { p ->
+					// A mesh's stack written as a stage keys the warp it gets instead ([ModifierStage]).
+					listOfNotNull(DocumentGenerators.keyform(kind, id, p), if (kind == "mesh") DocumentGenerators.keyform("warp", ModifierStage.id(id), p) else null)
+				}
 			}
 
 	fun apply(model: PuppetModel, modifiers: List<RigModifier>): PuppetModel = run(model, modifiers, write = true).model
@@ -86,37 +90,56 @@ object ModifierSampler {
 		return current
 	}
 
-	/** One mesh's stack evaluated exactly at a pose: what the canvas shows and the drag preview draws. */
+	/**
+	 * One target's stack evaluated exactly at a pose: what the canvas shows and the drag preview draws. [startAt] is the
+	 * target as its own keyforms pose it, on the canvas through its parents at the default pose; each modifier takes what
+	 * the ones before it make, and may read that at other poses ([ModifierContext.before]).
+	 */
 	class Stack internal constructor(
 		val mesh: String,
 		val modifiers: List<RigModifier>,
-		private val rest: FloatArray,
+		private val model: PuppetModel,
+		/** The target's canvas shape at a complete pose before any modifier. */
+		val startAt: (Map<String, Float>) -> FloatArray,
 		/** Per modifier its vertex weights, null for all ones. */
 		internal val weights: Map<String, FloatArray?>,
 		private val defaults: Map<String, Float>,
 	) {
 		/** The rest shape on the canvas (interleaved x, y, y down). */
-		val restCanvas: FloatArray get() = rest.copyOf()
+		val restCanvas: FloatArray get() = startAt(defaults).copyOf()
 
-		/** The stack's canvas positions at [pose] (parameter values; the rest at their defaults), from the rest shape. */
-		fun canvasAt(pose: Map<String, Float>): FloatArray = canvasFrom(rest, pose)
+		/** [pose] over the parameters' defaults. */
+		fun complete(pose: Map<String, Float>): Map<String, Float> = if (pose.keys.containsAll(defaults.keys)) pose else defaults + pose
 
-		/** The stack's canvas positions at [pose] from [start], the canvas shape the first modifier takes. */
-		fun canvasFrom(start: FloatArray, pose: Map<String, Float>): FloatArray {
-			var positions = start
-			for (modifier in modifiers) {
-				val values = modifier.definition.settings.associate { s -> s.key to modifier.value(s.key).at { pose[it] ?: defaults[it] ?: 0f } }
-				val out = modifier.definition.deform(positions, values)
-				weights[modifier.id]?.let { w -> for (i in out.indices) out[i] = positions[i] + (out[i] - positions[i]) * w[i / 2] }
-				positions = out
-			}
-			return positions
+		/** The stack's canvas positions at [pose] (parameter values; the rest at their defaults). */
+		fun canvasAt(pose: Map<String, Float>): FloatArray = evaluate(modifiers.size, complete(pose), HashMap())
+
+		/** What the stack moves the target by at [pose], on the canvas: [canvasAt] less [startAt]. */
+		fun offsetAt(pose: Map<String, Float>): FloatArray {
+			val full = complete(pose)
+			val start = startAt(full); val end = evaluate(modifiers.size, full, HashMap())
+			return FloatArray(end.size) { end[it] - start[it] }
 		}
+
+		private fun evaluate(n: Int, pose: Map<String, Float>, memo: HashMap<Pair<Int, Map<String, Float>>, FloatArray>): FloatArray =
+			memo[n to pose] ?: run {
+				val result = if (n == 0) startAt(pose) else {
+					val modifier = modifiers[n - 1]
+					val before = evaluate(n - 1, pose, memo)
+					val values = modifier.definition.settings.associate { s -> s.key to modifier.value(s.key).at { pose[it] ?: defaults[it] ?: 0f } }
+					val context = ModifierContext(model, mesh, pose, { p -> evaluate(n - 1, complete(p), memo) }, { key, p -> shapeOf(model, key, p) })
+					val out = modifier.definition.deform(context, values, modifier.options)
+					weights[modifier.id]?.let { w -> for (i in out.indices) out[i] = before[i] + (out[i] - before[i]) * w[i / 2] }
+					out
+				}
+				memo[n to pose] = result
+				result
+			}
 	}
 
 	/**
 	 * [mesh]'s stack on [model], or an issue for each modifier that cannot act on it: the mesh gone, a vertex group or
-	 * a parameter its settings are keyed on missing. Modifiers with an issue drop out of the stack.
+	 * a parameter it is sampled on missing. Modifiers with an issue drop out of the stack.
 	 */
 	fun stack(model: PuppetModel, mesh: String, modifiers: List<RigModifier>, issues: MutableList<Issue> = ArrayList()): Pair<Stack, DrawableSpaceMapping>? {
 		val drawable = model.drawables.firstOrNull { it.id.raw == mesh }
@@ -142,11 +165,60 @@ object ModifierSampler {
 			kept.forEach { issues += Issue(IssueKind.UNMAPPABLE, it.id, mesh) }
 			return null
 		}
-		val defaults = model.parameters.associate { it.id.raw to it.default }
-		val local = local(model, drawable)
-		val world = mapping.localToWorld(local)
-		val canvas = FloatArray(world.size) { if (it % 2 == 0) world[it] else -world[it] }
-		return Stack(mesh, kept, canvas, weights, defaults) to mapping
+		val start: (Map<String, Float>) -> FloatArray = { pose -> canvasOf(mapping, meshLocalAt(model, drawable, pose)) }
+		return Stack(mesh, kept, model, start, weights, model.parameters.associate { it.id.raw to it.default }) to mapping
+	}
+
+	/** Local (parent-space) points taken onto the canvas through [mapping], y down. */
+	private fun canvasOf(mapping: DrawableSpaceMapping, local: FloatArray): FloatArray =
+		mapping.localToWorld(local).let { w -> FloatArray(w.size) { if (it % 2 == 0) w[it] else -w[it] } }
+
+	/** [drawable] as its keyforms pose it at [pose], in its parent space. */
+	private fun meshLocalAt(model: PuppetModel, drawable: Drawable, pose: Map<String, Float>): FloatArray =
+		if (drawable.geometryGrid?.axes.isNullOrEmpty()) local(model, drawable)
+		else drawableLocalPosed(model, pose.mapKeys { ParameterId(it.key) }, drawable.id) ?: local(model, drawable)
+
+	/**
+	 * [key]'s canvas shape at [pose] as [model] poses it (a mesh's ID or `warp:<id>`): its own keyforms at the pose,
+	 * through its parents at the default pose, as a stack starts from it. Null for anything else.
+	 */
+	fun shapeOf(model: PuppetModel, key: String, pose: Map<String, Float>): FloatArray? {
+		if (key.startsWith(ModifierTarget.WARP)) {
+			val id = key.removePrefix(ModifierTarget.WARP)
+			val warp = model.deformers.firstOrNull { it.id.raw == id } as? Deformer.Warp ?: return null
+			val mapping = warpMapping(model, warp) ?: return null
+			return canvasOf(mapping, io.github.psd2live.core.RigGeometryTools.geometry(model, "warp", id, pose).points)
+		}
+		val drawable = model.drawables.firstOrNull { it.id.raw == key && it.mesh != null } ?: return null
+		val mapping = drawableSpaceMapping(model, emptyMap(), drawable.id) ?: return null
+		return canvasOf(mapping, meshLocalAt(model, drawable, pose))
+	}
+
+	/** [key]'s rest canvas shape, as a new modifier's defaults read it. */
+	fun restCanvas(model: PuppetModel, key: String): FloatArray? = shapeOf(model, key, model.parameters.associate { it.id.raw to it.default })
+
+	/** The triangles of [key] (a mesh's ID or `warp:<id>`) as index triples: a mesh's own, a warp's lattice cells split in two. */
+	fun triangles(model: PuppetModel, key: String): IntArray? {
+		if (key.startsWith(ModifierTarget.WARP)) {
+			val warp = model.deformers.firstOrNull { it.id.raw == key.removePrefix(ModifierTarget.WARP) } as? Deformer.Warp ?: return null
+			val stride = warp.columns + 1
+			return IntArray(warp.rows * warp.columns * 6).also { out ->
+				var k = 0
+				for (r in 0 until warp.rows) for (c in 0 until warp.columns) {
+					val a = r * stride + c; val b = a + 1; val d = a + stride; val e = d + 1
+					out[k++] = a; out[k++] = b; out[k++] = d; out[k++] = b; out[k++] = e; out[k++] = d
+				}
+			}
+		}
+		return model.drawables.firstOrNull { it.id.raw == key }?.mesh?.indices
+	}
+
+	/** The mapping of [warp]'s control points onto the canvas through its parents at the default pose; null when it cannot be inverted. */
+	private fun warpMapping(model: PuppetModel, warp: Deformer.Warp): DrawableSpaceMapping? {
+		val defaults = model.parameters.associate { it.id to it.default }
+		val worlds = buildDeformerWorlds(model.deformers, { defaults[it] ?: 0f }, { defaults[it] ?: 0f })
+		val parent = warp.parent?.let { worlds[it] ?: return null }
+		return DrawableSpaceMapping(parent)
 	}
 
 	/** The drawable's local shape at the default pose: the rest mesh plus its keyforms there. */
@@ -167,12 +239,9 @@ object ModifierSampler {
 		if (mesh.startsWith(ModifierTarget.WARP)) return warpOffsets(model, mesh.removePrefix(ModifierTarget.WARP), modifiers, issues)
 		val (stack, mapping) = stack(model, mesh, modifiers, issues) ?: return null
 		val drawable = model.drawables.first { it.id.raw == mesh }
-		val local = local(model, drawable)
-		val own = drawable.geometryGrid?.axes.orEmpty()
-		// The mesh as its keyforms pose it, in its parent space.
-		fun localAt(pose: Map<String, Float>): FloatArray =
-			if (own.isEmpty()) local else drawableLocalPosed(model, pose.mapKeys { ParameterId(it.key) }, drawable.id) ?: local
-		return sampled(model, mesh, stack, mapping, own, local, ::localAt, issues)
+		return sampled(model, mesh, stack, mapping, drawable.geometryGrid?.axes.orEmpty(), local(model, drawable)) { meshLocalAt(model, drawable, it) }.let { r ->
+			issues += r.second; r.first
+		}
 	}
 
 	/**
@@ -195,15 +264,10 @@ object ModifierSampler {
 			}
 		}
 		if (kept.isEmpty()) return null
-		val defaults = model.parameters.associate { it.id to it.default }
-		val worlds = buildDeformerWorlds(model.deformers, { defaults[it] ?: 0f }, { defaults[it] ?: 0f })
-		val parent = warp.parent?.let { worlds[it] ?: run { kept.forEach { issues += Issue(IssueKind.UNMAPPABLE, it.id, key) }; return null } }
-		val mapping = DrawableSpaceMapping(parent)
+		val mapping = warpMapping(model, warp) ?: run { kept.forEach { issues += Issue(IssueKind.UNMAPPABLE, it.id, key) }; return null }
 		fun localAt(pose: Map<String, Float>) = io.github.psd2live.core.RigGeometryTools.geometry(model, "warp", id, pose).points
-		val local = localAt(emptyMap())
-		val world = mapping.localToWorld(local)
-		val stack = Stack(key, kept, FloatArray(world.size) { if (it % 2 == 0) world[it] else -world[it] }, emptyMap(), model.parameters.associate { it.id.raw to it.default })
-		return sampled(model, key, stack, mapping, warp.geometryGrid!!.axes, local, ::localAt, issues)
+		val stack = Stack(key, kept, model, { pose -> canvasOf(mapping, localAt(pose)) }, emptyMap(), model.parameters.associate { it.id.raw to it.default })
+		return sampled(model, key, stack, mapping, warp.geometryGrid!!.axes, localAt(emptyMap()), ::localAt).let { r -> issues += r.second; r.first }
 	}
 
 	/**
@@ -212,14 +276,14 @@ object ModifierSampler {
 	 * through [mapping], deformed and taken back, and the difference is the offset.
 	 */
 	private fun sampled(model: PuppetModel, key: String, stack: Stack, mapping: DrawableSpaceMapping, own: List<KeyformAxis>, local: FloatArray,
-						localAt: (Map<String, Float>) -> FloatArray, issues: MutableList<Issue>): Pair<List<ModifierValue.Keyed.Axis>, ModifierValue>? {
-		fun canvasOf(l: FloatArray) = mapping.localToWorld(l).let { w -> FloatArray(w.size) { if (it % 2 == 0) w[it] else -w[it] } }
-		val shape: (Map<String, Float>) -> FloatArray = { pose -> stack.canvasFrom(canvasOf(localAt(pose)), pose) }
+						localAt: (Map<String, Float>) -> FloatArray): Pair<Pair<List<ModifierValue.Keyed.Axis>, ModifierValue>?, List<Issue>> {
+		val issues = ArrayList<Issue>()
+		val shape: (Map<String, Float>) -> FloatArray = stack::canvasAt
 		val drivers = stack.modifiers.flatMap { it.drivers }.distinct()
 		val parameters = drivers.map { id -> model.parameters.first { it.id.raw == id } }
 		val tolerance = stack.modifiers.minOf { it.sampling.tolerance }
 		val maxKeys = stack.modifiers.minOf { it.sampling.maxKeys }
-		val keys = parameters.map { p -> keys(p, stack.modifiers, tolerance, maxKeys, shape) }
+		val keys = parameters.map { p -> keys(p, stack.modifiers, own.firstOrNull { it.parameterId == p.id }?.keys ?: FloatArray(0), tolerance, maxKeys, shape) }
 		val worst = keys.maxOfOrNull { it.second } ?: 0f
 		if (worst > tolerance) stack.modifiers.forEach { issues += Issue(IssueKind.TOLERANCE_EXCEEDED, it.id, key, error = worst) }
 		// The driving parameters with their sampled keys, then the target's own axes; a parameter that is both takes both's keys.
@@ -230,7 +294,7 @@ object ModifierSampler {
 		val combinations = axes.fold(1L) { n, a -> n * a.keys.size }
 		if (combinations > MAX_CELLS) {
 			stack.modifiers.forEach { issues += Issue(IssueKind.TOO_MANY_KEYFORMS, it.id, key, "$combinations") }
-			return null
+			return null to issues
 		}
 		val offsets = ArrayList<FloatArray>(combinations.toInt())
 		val all = (0 until local.size / 2).toSet()
@@ -238,12 +302,12 @@ object ModifierSampler {
 			var rest = index
 			val pose = axes.associate { a -> a.parameter to a.keys[rest % a.keys.size].also { rest /= a.keys.size } }
 			val base = localAt(pose)
-			val canvas = stack.canvasFrom(canvasOf(base), pose)
+			val canvas = stack.canvasAt(pose)
 			val world = FloatArray(canvas.size) { if (it % 2 == 0) canvas[it] else -canvas[it] }
 			val solved = mapping.worldToLocal(world, base, all)
 			offsets += FloatArray(local.size) { solved[it] - base[it] }
 		}
-		return axes to if (axes.isEmpty()) ModifierValue.Constant(offsets.single()) else ModifierValue.Keyed(axes, offsets)
+		return (axes to if (axes.isEmpty()) ModifierValue.Constant(offsets.single()) else ModifierValue.Keyed(axes, offsets)) to issues
 	}
 
 	/** [keys] sorted, with keys closer than a keyform key's snap merged. */
@@ -288,6 +352,23 @@ object ModifierSampler {
 				}
 				continue
 			}
+			val drivers = stack.flatMap { it.drivers }.toSet()
+			val output = stack.map { it.output }.let { o -> when { ModifierOutput.STAGE in o -> ModifierOutput.STAGE; ModifierOutput.MERGE in o -> ModifierOutput.MERGE; else -> ModifierOutput.AUTO } }
+			if (output == ModifierOutput.STAGE || (output == ModifierOutput.AUTO && ModifierStage.preferred(current, mesh, axes, drivers))) {
+				when (val staged = ModifierStage.insert(current, mesh, axes, table, drivers, stack.minOf { it.sampling.tolerance })) {
+					is ModifierStage.Result.Written -> {
+						current = staged.model
+						if (staged.error > stack.minOf { it.sampling.tolerance }) stack.forEach { issues += Issue(IssueKind.TOLERANCE_EXCEEDED, it.id, mesh, error = staged.error) }
+						for (axis in axes.filter { it.parameter in drivers }) {
+							val id = ParameterId(axis.parameter)
+							val authored = current.parameters.first { it.id == id }.keys ?: continue
+							current = current.withParameterKeys(id, (authored + axis.keys.toList()).distinct().sorted())
+						}
+						continue
+					}
+					is ModifierStage.Result.Refused -> if (output == ModifierOutput.STAGE) stack.forEach { issues += Issue(IssueKind.STAGE_UNAVAILABLE, it.id, mesh, staged.reason) }
+				}
+			}
 			val drawable = current.drawables.first { it.id.raw == mesh }
 			val grid = withOffsets(drawable.geometryGrid, drawable.mesh!!.positions.size, axes, table)
 			if (grid == null) { stack.forEach { issues += Issue(IssueKind.TOO_MANY_KEYFORMS, it.id, mesh, "sparse") }; continue }
@@ -307,11 +388,12 @@ object ModifierSampler {
 	 * default, within its range; the other parameters stay at their defaults while it is refined, and a key is added
 	 * in the middle of the worst span until every span is within [tolerance] or [maxKeys] is reached.
 	 */
-	private fun keys(parameter: Parameter, modifiers: List<RigModifier>, tolerance: Float, maxKeys: Int,
+	private fun keys(parameter: Parameter, modifiers: List<RigModifier>, own: FloatArray, tolerance: Float, maxKeys: Int,
 					 shape: (Map<String, Float>) -> FloatArray): Pair<FloatArray, Float> {
 		val raw = parameter.id.raw
 		val authored = modifiers.flatMap { m -> m.settings.values.filterIsInstance<ModifierValue.Keyed>() }
-			.flatMap { v -> v.axes.filter { it.parameter == raw }.flatMap { it.keys.toList() } }
+			.flatMap { v -> v.axes.filter { it.parameter == raw }.flatMap { it.keys.toList() } } +
+			modifiers.flatMap { m -> m.definition.keys(m.options, parameter, own) }
 		// The axis spans the whole range: past its end keys a keyform axis hides what it carries, as Cubism's does.
 		val keys = merged((authored + parameter.default + parameter.min + parameter.max).map { it.coerceIn(parameter.min, parameter.max) }).toMutableList()
 		if (keys.size < 2) return keys.toFloatArray() to 0f

@@ -20,6 +20,8 @@ enum class ModifierRule(val severity: String, val category: String) {
 	MODIFIER_TOO_MANY_KEYFORMS("warning", "quality"),
 	/** The keys allowed per parameter leave the keyforms farther from the modifier than its tolerance. */
 	MODIFIER_TOLERANCE_EXCEEDED("info", "quality"),
+	/** A stack asked to be a stage of its own depends on the mesh's own keys; it is merged into them instead. */
+	MODIFIER_STAGE_UNAVAILABLE("info", "quality"),
 	;
 
 	companion object {
@@ -30,6 +32,7 @@ enum class ModifierRule(val severity: String, val category: String) {
 			ModifierSampler.IssueKind.UNMAPPABLE -> MODIFIER_UNMAPPABLE
 			ModifierSampler.IssueKind.TOO_MANY_KEYFORMS -> MODIFIER_TOO_MANY_KEYFORMS
 			ModifierSampler.IssueKind.TOLERANCE_EXCEEDED -> MODIFIER_TOLERANCE_EXCEEDED
+			ModifierSampler.IssueKind.STAGE_UNAVAILABLE -> MODIFIER_STAGE_UNAVAILABLE
 		}
 	}
 }

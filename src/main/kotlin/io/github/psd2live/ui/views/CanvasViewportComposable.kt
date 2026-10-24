@@ -335,12 +335,10 @@ fun CanvasViewportComposable(
         if (mode == CanvasMode.EDIT) {
             // A pose drag is the one gesture whose whole output is parameter values, so its own writes
             // must not read as the document changing under it.
-            // A swing handle drag patches the preview on every move for the same reason; an interior or modifier
-            // handle drag edits a draft that its earlier release's commit, landing now, must not take back.
-            if (!editor.busy && editor.inGesture && editor.poseDrag == null && !editor.swingDragging && !editor.interiorTool.dragging &&
-                !editor.modifierTool.dragging)
+            // A swing handle drag patches the preview on every move for the same reason; an interior handle drag
+            // edits a draft that its earlier release's commit, landing now, must not take back.
+            if (!editor.busy && editor.inGesture && editor.poseDrag == null && !editor.swingDragging && !editor.interiorTool.dragging)
                 editor.cancel()
-            editor.modifierTool.documentChanged()
             editor.reconcileWithDocument()
             if (!editor.busy && canvasState.previewModel != null) editor.target()?.let { t -> editor.vertices=editor.vertices.filter { it in 0 until t.count }.toSet() }
         }
@@ -981,7 +979,6 @@ fun CanvasViewportComposable(
 			ShortcutAction.TOOL_WEIGHT_PAINT -> { editor.activateTool(CanvasTool.WEIGHT_PAINT); true }
 			ShortcutAction.TOOL_WEIGHT_GRADIENT -> { editor.activateTool(CanvasTool.WEIGHT_GRADIENT); true }
 			ShortcutAction.TOOL_INTERIOR -> { editor.activateTool(CanvasTool.INTERIOR); true }
-			ShortcutAction.TOOL_MODIFIER -> { editor.activateTool(CanvasTool.MODIFIER); true }
 			ShortcutAction.SELECTION_STYLE_BOX -> { editor.selectionStyle = SelectionStyle.BOX; true }
 			ShortcutAction.SELECTION_STYLE_LASSO -> { editor.selectionStyle = SelectionStyle.LASSO; true }
 			ShortcutAction.SELECT_LINKED -> { editor.selectLinked(); true }
@@ -1019,7 +1016,6 @@ fun CanvasViewportComposable(
 					else if (viewModel.swingSession != null) viewModel.endSwing()
 					// The interior tool steps back its own gesture first, leaving the audition running.
 					else if (editor.tool == CanvasTool.INTERIOR && editor.cancelInterior()) Unit
-					else if (editor.tool == CanvasTool.MODIFIER && editor.cancelModifier()) Unit
 					else if (editor.placement != null) editor.cancelPlacement() else editor.cancel()
 					true
 				}

@@ -9,6 +9,8 @@ import org.umamo.format.art.*
 import org.umamo.runtime.model.*
 
 class ModifierStackOrderTest {
+	init { TestKinds.register() }
+
 	private val preview: RigPreviewModel by lazy {
 		val raster = LayerRaster(64, 128, ByteArray(64 * 128 * 4) { if (it % 4 == 3) 255.toByte() else 120.toByte() })
 		val layer = WorkspaceSourceLayer(LayerId("skirt"), "skirt", "", SourceLayerKind.Raster, true, 0, LayerBounds(20, 20, 64, 128),
@@ -46,7 +48,7 @@ class ModifierStackOrderTest {
 		assertNotEquals(WorkspaceRevisions.reference(WorkspaceDocument(preview.analysis.source as WorkspaceSourceArt, emptyMap(), emptySet(), emptyMap(), emptyMap(), overlay)),
 			WorkspaceRevisions.reference(WorkspaceDocument(preview.analysis.source as WorkspaceSourceArt, emptyMap(), emptySet(), emptyMap(), emptyMap(), moved)))
 		// A new modifier joins after the ordered entries, a new generator before them.
-		val more = ModifierAuthoring.put(preview, moved, buildJsonObject { put("id", "Late"); put("kind", "twist"); putJsonArray("targets") { add(mesh.id.raw) } })
+		val more = ModifierAuthoring.put(preview, moved, buildJsonObject { put("id", "Late"); put("kind", "transform"); putJsonArray("targets") { add(mesh.id.raw) } })
 		assertEquals(listOf("Shift", "simulation:Skirt", "Late"), ModifierStack.entries(more).map { it.id })
 	}
 

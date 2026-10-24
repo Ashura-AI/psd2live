@@ -180,22 +180,17 @@ fn sensitivity(rig: &Rig, base: &[f32]) -> f32 {
 /// Off-key it may differ from the bake by the bake's own chord error; at a key, where the bake is exact, it
 /// must not. Returns (features, largest difference anywhere, largest at keys).
 fn advanced(dir: &Path) -> Result<(u32, f32, f32), String> {
-    use p2l_runtime::advanced::{Advanced, MODIFIERS};
+    use p2l_runtime::advanced::Advanced;
     let rig = Rig::read(&fs::read(dir.join("rig.p2lrt")).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    let mut all = Advanced::new();
-    let features = all.set(&rig, u32::MAX);
-    // A stack's keys are where the modifiers alone match the bake, a skin's where the rest do: each moves at the other's.
-    let mut modifiers = Advanced::new();
-    modifiers.set(&rig, MODIFIERS);
-    let mut others = Advanced::new();
-    others.set(&rig, u32::MAX & !MODIFIERS);
+    let mut adv = Advanced::new();
+    let features = adv.set(&rig, u32::MAX);
     let poses = fs::read(dir.join("poses.bin")).map_err(|e| e.to_string())?;
     let params = u32::from_le_bytes(poses[4..8].try_into().unwrap()) as usize;
     let values: Vec<f32> = f32s(&poses[8..]).collect();
     let (mut core, mut live) = (Evaluator::new(), Evaluator::new());
-    let mut compare = |pose: &[f32], adv: &mut Advanced| -> Result<f32, String> {
+    let mut compare = |pose: &[f32]| -> Result<f32, String> {
         let a = core.evaluate(&rig, pose).vertices.clone();
-        let b = &live.evaluate_ext(&rig, pose, Some(adv)).vertices;
+        let b = &live.evaluate_ext(&rig, pose, Some(&mut adv)).vertices;
         let mut worst = 0f32;
         for (x, y) in a.iter().flatten().zip(b.iter().flatten()) {
             if !y.is_finite() {
@@ -207,67 +202,27 @@ fn advanced(dir: &Path) -> Result<(u32, f32, f32), String> {
     };
     let mut anywhere = 0f32;
     for pose in values.chunks(params.max(1)) {
-        anywhere = anywhere.max(compare(pose, &mut all)?);
+        anywhere = anywhere.max(compare(pose)?);
     }
-    // Each skin's and modifier stack's axes all at keys - every combination up to 256, else each axis in turn
-    // with the others at their first keys - and the other parameters at their defaults.
+    // Each skin's axes all at keys - every combination up to 256, else each axis in turn with the others at
+    // their first keys - and the other parameters at their defaults.
     let mut at_keys = 0f32;
-    let sampled = rig.extensions.skins.iter().map(|s| (&s.axes, false)).chain(rig.extensions.modifier_stacks.iter().map(|s| (&s.axes, true)));
-    for (axes, stack) in sampled.collect::<Vec<_>>() {
-        let combinations: usize = axes.iter().map(|(_, k)| k.len()).product();
+    for skin in &rig.extensions.skins {
+        let combinations: usize = skin.axes.iter().map(|(_, k)| k.len()).product();
         let poses: Vec<Vec<usize>> = if combinations <= 256 {
-            (0..combinations).map(|mut i| axes.iter().map(|(_, k)| { let c = i % k.len(); i /= k.len(); c }).collect()).collect()
+            (0..combinations).map(|mut i| skin.axes.iter().map(|(_, k)| { let c = i % k.len(); i /= k.len(); c }).collect()).collect()
         } else {
-            axes.iter().enumerate().flat_map(|(a, (_, k))| (0..k.len()).map(move |c| (0..axes.len()).map(|b| if b == a { c } else { 0 }).collect::<Vec<_>>()).collect::<Vec<_>>()).collect()
+            skin.axes.iter().enumerate().flat_map(|(a, (_, k))| (0..k.len()).map(move |c| (0..skin.axes.len()).map(|b| if b == a { c } else { 0 }).collect::<Vec<_>>()).collect::<Vec<_>>()).collect()
         };
         for choice in poses {
             let mut pose = rig.defaults();
-            for ((parameter, keys), c) in axes.iter().zip(&choice) {
+            for ((parameter, keys), c) in skin.axes.iter().zip(&choice) {
                 pose[*parameter] = keys[*c];
             }
-            at_keys = at_keys.max(compare(&pose, if stack { &mut modifiers } else { &mut others })?);
+            at_keys = at_keys.max(compare(&pose)?);
         }
     }
     Ok((features, anywhere, at_keys))
-}
-
-/// The modifier stacks in advanced mode against the editor's reference (expected.advanced.bin, laid out as
-/// expected.bin): the worst vertex error over the case's poses, or `None` without a reference.
-fn against_reference(dir: &Path) -> Result<Option<(f32, String)>, String> {
-    use p2l_runtime::advanced::{Advanced, MODIFIERS};
-    let Ok(expected) = fs::read(dir.join("expected.advanced.bin")) else { return Ok(None) };
-    let rig = Rig::read(&fs::read(dir.join("rig.p2lrt")).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
-    let mut adv = Advanced::new();
-    if adv.set(&rig, MODIFIERS) != MODIFIERS {
-        return Err("the reference has modifiers the file does not".into());
-    }
-    let poses = fs::read(dir.join("poses.bin")).map_err(|e| e.to_string())?;
-    let count = u32::from_le_bytes(poses[0..4].try_into().unwrap()) as usize;
-    let params = u32::from_le_bytes(poses[4..8].try_into().unwrap()) as usize;
-    let values: Vec<f32> = f32s(&poses[8..]).collect();
-    let mut evaluator = Evaluator::new();
-    let (mut worst, mut at_worst, mut at) = (0f32, String::new(), 0usize);
-    for pose_index in 0..count {
-        let pose = evaluator.evaluate_ext(&rig, &values[pose_index * params..(pose_index + 1) * params], Some(&mut adv));
-        for (m, mesh) in rig.meshes.iter().enumerate() {
-            at += 8;
-            let n = i32::from_le_bytes(expected[at..at + 4].try_into().unwrap());
-            at += 4;
-            if n < 0 {
-                continue;
-            }
-            let want: Vec<f32> = f32s(&expected[at..at + n as usize * 4]).collect();
-            at += n as usize * 4;
-            for (i, (g, w)) in pose.vertices[m].iter().zip(&want).enumerate() {
-                let e = (g - w).abs();
-                if e > worst || e.is_nan() {
-                    worst = if e.is_nan() { f32::INFINITY } else { e };
-                    at_worst = format!("pose {} mesh {} value {} got {} want {}", pose_index, mesh.id, i, g, w);
-                }
-            }
-        }
-    }
-    Ok(Some((worst, at_worst)))
 }
 
 /// Against the same rig baked finely (rig.fine.p2lrt), over the case's poses: the worst vertex error of the
@@ -519,20 +474,13 @@ fn main() {
                     // chord's departure from the arc; how far a skeleton sample's finer bake lies from both is
                     // reported (with P2L_SKINS, per skin) but not judged: the bake's own solve shifts with its keys.
                     let fine = against_fine(&dir);
-                    // Modifier stacks have the editor's exact evaluation to answer to everywhere, not only at keys.
-                    let exact = against_reference(&dir);
-                    let ok = at_keys < 0.01 && matches!(exact, Ok(None)) || matches!(exact, Ok(Some((e, _))) if e < 0.02 && at_keys < 0.01);
+                    let ok = at_keys < 0.01;
                     if !ok { failed += 1; }
-                    let mut reference = match fine {
+                    let reference = match fine {
                         Ok(Some((baked, advanced))) => format!("  vs fine bake: baked {:.4} advanced {:.4}", baked, advanced),
                         Ok(None) => String::new(),
                         Err(e) => format!("  fine bake: {}", e),
                     };
-                    match exact {
-                        Ok(Some((e, at))) => reference += &format!("  vs editor's modifiers {:.5}{}", e, if e < 0.02 { String::new() } else { format!(" ({})", at) }),
-                        Ok(None) => {}
-                        Err(e) => reference += &format!("  modifiers: {}", e),
-                    }
                     println!("{} {:<22} features {:>2} difference {:>9.4} at keys {:>9.5}{}", if ok { "ok  " } else { "FAIL" }, name, features, anywhere, at_keys, reference);
                 }
                 Err(e) => { failed += 1; println!("ERR  {:<22} {}", name, e); }

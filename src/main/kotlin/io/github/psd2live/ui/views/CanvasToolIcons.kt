@@ -145,7 +145,6 @@ internal fun DrawScope.drawToolIcon(
         // The row carries the face in hand, the way the deform brush's row carries its footprint.
         CanvasTool.PAINT_SHAPE -> pen.paintShape(paintShape ?: PaintShape.LINE)
         CanvasTool.INTERIOR -> pen.interiorHandles()
-        CanvasTool.MODIFIER -> pen.modifierHandles()
         CanvasTool.PAINT_SELECT -> pen.paintSelect(paintSelectShape ?: PaintSelectShape.RECTANGLE)
         CanvasTool.PAINT_GRADIENT -> pen.paintGradient()
         CanvasTool.PAINT_BLUR -> pen.blurDrop()
@@ -483,15 +482,6 @@ private fun IconPen.interiorHandles() {
     line(9f, 14.2f, 9f, 8.4f, width = ICON_FINE)
     dot(9f, 7.8f, 2.2f, soft)
     ring(9f, 7.8f, 2.2f)
-}
-
-/** Modifier handles: an axis bent into an arc from its root, steered by the handle at its end. */
-private fun IconPen.modifierHandles() {
-    outline(path { m(4.2f, 15.4f); l(4.2f, 3f) }, width = ICON_FINE, dash = floatArrayOf(1.4f, 1.1f))
-    outline(path { m(4.2f, 15.4f); c(4.2f, 9.4f, 7.6f, 5.4f, 13.4f, 4.6f) })
-    line(13.4f, 4.6f, 15.4f, 4.4f, width = ICON_FINE)
-    dot(4.2f, 15.4f, 1.6f)
-    box(14f, 2.9f, 3f, 3f, 0.4f)
 }
 
 // --- painting --------------------------------------------------------------------------------------------

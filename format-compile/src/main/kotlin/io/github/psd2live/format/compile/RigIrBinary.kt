@@ -20,13 +20,11 @@ import java.io.IOException
  * and so on - which DEFLATE compresses far better than interleaved floats; values and order are unchanged.
  */
 public object RigIrBinary {
-	public const val VERSION: Int = 7
+	public const val VERSION: Int = 6
 	/** The first version writing float arrays as byte planes. */
 	internal const val PLANAR_FLOATS: Int = 5
 	/** The first version with the rig's own hit areas ([RigIR.hitAreas]). */
 	internal const val HIT_AREAS: Int = 6
-	/** The first version with the meshes' modifier stacks ([AdvancedIR.modifiers]). */
-	internal const val MODIFIERS: Int = 7
 	private const val MAGIC = 0x50524952 // "PRIR"
 
 	public fun encode(ir: RigIR): ByteArray {
@@ -138,14 +136,6 @@ public object RigIrBinary {
 			}
 			list(a.hitAreas) { string(it.id); string(it.name); list(it.meshes, ::string) }
 			nullable(a.pose) { p -> float(p.fadeIn); list(p.groups) { g -> list(g) { string(it.part); list(it.links, ::string) } } }
-			fun axes(axes: List<KeyAxis>) = list(axes) { string(it.parameter); floats(it.keys) }
-			list(a.modifiers) { st ->
-				string(st.mesh); axes(st.axes); axes(st.start.axes); floats(st.start.values); floats(st.toParent)
-				list(st.modifiers) { m ->
-					string(m.kind); floats(m.weights); float(m.phaseSpeed)
-					list(m.settings.entries.toList()) { string(it.key); axes(it.value.axes); floats(it.value.values) }
-				}
-			}
 		}
 
 		fun parameterNode(node: ParameterNode) {
@@ -385,14 +375,7 @@ public object RigIrBinary {
 			val expressions = list { ExpressionIR(string(), string(), float(), float(), list { ExpressionParameter(string(), enum(), float()) }) }
 			val hitAreas = list { HitAreaIR(string(), string(), list(::string)) }
 			val pose = nullable { PoseIR(float(), list { list { PoseEntry(string(), list(::string)) } }) }
-			fun axes() = list { KeyAxis(string(), floats()) }
-			val modifiers = if (version < MODIFIERS) emptyList() else list {
-				ModifierStackIR(string(), axes(), ModifierValueIR(axes(), floats()), floats(), list {
-					val kind = string(); val weights = floats(); val phaseSpeed = float()
-					ModifierIR(kind, map { ModifierValueIR(axes(), floats()) }, weights, phaseSpeed)
-				})
-			}
-			return AdvancedIR(bones, simulations, colliders, expressions, hitAreas, pose, modifiers)
+			return AdvancedIR(bones, simulations, colliders, expressions, hitAreas, pose)
 		}
 
 		fun parameterNode(): ParameterNode = when (tag(1)) {

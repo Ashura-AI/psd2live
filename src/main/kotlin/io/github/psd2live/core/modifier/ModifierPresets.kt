@@ -42,6 +42,9 @@ class ModifierPreset(val name: String, val modifiers: List<JsonObject>) {
 				if (m.created.isNotEmpty()) putJsonArray("created") { m.created.forEach { add(JsonObject(RigModifier.parameterJson(it) - "kind")) } }
 				m.weights?.let { w -> putJsonObject("weights") { put("group", w.group); put("invert", w.invert) } }
 				if (m.sampling != ModifierSampling()) putJsonObject("sampling") { put("tolerance", m.sampling.tolerance); put("max_keys", m.sampling.maxKeys) }
+				// A target option names a mesh of this project: a preset keeps only the others.
+				val kept = m.options.filterKeys { k -> m.definition.options.firstOrNull { it.key == k }?.type != ModifierOption.Type.TARGET }
+				if (kept.isNotEmpty()) putJsonObject("options") { kept.toSortedMap().forEach { (k, v) -> put(k, v) } }
 			}
 		})
 

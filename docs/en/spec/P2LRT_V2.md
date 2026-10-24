@@ -2,7 +2,7 @@
 
 [Documentation](../../README.md) · [中文](../../zh/spec/P2LRT_V2.md) · [Runtime](RUNTIME.md) · [Project, runtime and export boundaries](../../zh/spec/RUNTIME_EXPORT_ARCHITECTURE_AND_GAPS.md) (Chinese)
 
-Status: the container, core chunks, `PGUI`, `META`, extension chunks `BONE`, `SKIN`, `COLL`, `SIMS`, `MODS` and companion chunks `EXPR`, `HITA`, `UDAT`, `POSE` are implemented, and export writes version 2 by default. The reader supports every compression method, array codec and texture page kind; the writer can write deflate and zstd compression, f32 arrays and embedded PNG texture pages.
+Status: the container, core chunks, `PGUI`, `META`, extension chunks `BONE`, `SKIN`, `COLL`, `SIMS` and companion chunks `EXPR`, `HITA`, `UDAT`, `POSE` are implemented, and export writes version 2 by default. The reader supports every compression method, array codec and texture page kind; the writer can write deflate and zstd compression, f32 arrays and embedded PNG texture pages.
 
 ## Goals
 
@@ -284,7 +284,7 @@ The chunk's own content follows. When a dependency chunk is missing or not enabl
 | 2 | Arcs in `BONE` | Exact links (pivots interpolated along arcs) |
 | 4 | `SIMS` | Real-time vertex-level simulation |
 | 8 | `COLL` (needs `SIMS`; enabled with simulation) | Collision |
-| 16 | `MODS` | Exact evaluation of modifiers |
+| 16 | reserved, not assigned (the chunk tag `MODS` likewise) | once used during development for exact modifier evaluation, now removed; modifiers export as baked keyforms only |
 
 - `p2l_advanced_available()` returns the bits the file carries and the runtime supports; `p2l_set_advanced(bits)` returns the bits actually enabled, with 0 being Cubism mode (the default). Switching resets the simulation state.
 - `p2l_bone_count / p2l_bone_id / p2l_bone_transform` output the H3 bone frames.
@@ -373,26 +373,6 @@ With simulation enabled:
 
 On export (only for the runtime and web targets), the editor rebuilds and calibrates each baked simulation on the final rig. In the default pose, the mode parameters are zero and the static corrections are at their rest key, so the scene is the same as when baked.
 
-## Extension chunk `MODS` (version 1)
-
-Non-destructive modifiers (`rigEdits.modifiers`) are sampled into mesh keyforms in the core chunks; this chunk carries each mesh's modifier stack so advanced mode can evaluate the exact formulas between the sampled keys. The Chinese specification is normative; in short:
-
-```
-common header             feature 16, hooks H4, replaces no contribution
-u32 n × {
-  ref mesh
-  u32 n × { ref parameter, array<f32> keys }   sampling axes: the driving parameters, then the mesh's own keyform axes
-  start                     encoded as a setting: the mesh as its own keyforms pose it, on the canvas through its parents
-                            at the default pose (x, y interleaved, y down), keyed on its own axes with the same keys
-  array<f32> toParent       per vertex a, b, c, d: a canvas displacement (dx, dy) in parent space is (a dx + b dy, c dx + d dy)
-  u32 n × modifier          in stack order
-}
-modifier = { u8 kind, f32 phaseSpeed, array<f32> weights, setting × the kind's setting count }
-setting  = { u32 n × { ref parameter, array<f32> keys }, array<f32> values }
-```
-
-Kinds 0–5 are transform, bend, twist, wave, lattice and path, with the settings and formulas of the editor's `core/modifier/ModifierKinds.kt`. At H4 the runtime adds `toParent · (F(q) − Σ_c w_c · F₀(c))`: the stack now less its multilinear interpolation over the sampled key combinations around now (values within 0.001 of a key snap to it), which is exactly zero at every key combination, so advanced mode matches Cubism mode at the keys and follows the modifiers' curves between them. `phaseSpeed` (degrees per second, waves only) advances a wave's phase with the time `p2l_update` steps while the feature is on. `toParent` is the inverse Jacobian of the default pose's parent mapping at the rest shape: exact for rotation parents and regular warps, otherwise off by a second-order term.
-
 ## Companion chunks (non-required, version 1, no common header)
 
 ### `EXPR`
@@ -478,7 +458,6 @@ Constraints common to extension chunks:
 - **Cross-language**: Kotlin writes, Rust reads; the WASM build passes the same reader tests.
 - **Cubism mode unchanged with extensions present**: a file with extension chunks and feature bits 0 evaluates bit-identically to the same file with the extension chunks removed; also after enabling and then disabling (no leftover state).
 - **Reference implementations of extensions**: every extension chunk has a Kotlin reference implementation, included in the random corpus of `RuntimeConformanceTool` and compared against the runtime.
-- **`MODS`**: random modifier stacks on random rigs and a sample with modifiers; the Kotlin reference (`core/modifier/ModifierExact`) writes advanced mode's expected positions, `p2lrt-conformance --advanced` holds the runtime to them within 0.02 px and to zero difference from Cubism mode at every sampled key combination.
 
 ## Relation to the advanced mode roadmap
 

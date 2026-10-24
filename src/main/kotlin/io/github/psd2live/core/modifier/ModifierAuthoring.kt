@@ -108,7 +108,8 @@ internal object ModifierAuthoring {
 				settings + (key to checked(setting, next))
 			}
 		}
-		val parameters = (shown.parameters.map { it.id.raw } + overlay.modifiers.flatMap { m -> m.created.map { it.id.raw } } + created.map { it.id.raw }).toSet()
+		val parameters = (shown.parameters.map { it.id.raw } + authored.parameters.map { it.id.raw } + overlay.modifiers.flatMap { m -> m.created.map { it.id.raw } } +
+			created.map { it.id.raw }).toSet()
 		for ((key, value) in settings) for (p in value.parameters) require(p in parameters) { "$key is keyed on unknown parameter $p" }
 		val weights = when (val w = request["weights"]) {
 			null -> old?.weights
@@ -119,8 +120,38 @@ internal object ModifierAuthoring {
 			val base = old?.sampling ?: ModifierSampling()
 			ModifierSampling(s["tolerance"]?.jsonPrimitive?.float ?: base.tolerance, s["max_keys"]?.jsonPrimitive?.int ?: base.maxKeys)
 		} ?: old?.sampling ?: ModifierSampling()
+		// Options: a string sets one, null clears it; a required one must end up set.
+		var options = old?.options ?: run {
+			// What the targets are keyed on: their own axes, and what the modifiers already on them drive.
+			val keys = target.keys(authored).toSet()
+			val keyed = keys.flatMap { key ->
+				if (key.startsWith(ModifierTarget.WARP)) (authored.deformers.firstOrNull { it.id.raw == key.removePrefix(ModifierTarget.WARP) } as? org.umamo.runtime.model.Deformer.Warp)?.geometryGrid?.axes.orEmpty()
+				else authored.drawables.firstOrNull { it.id.raw == key }?.geometryGrid?.axes.orEmpty()
+			}.map { it.parameterId.raw } + overlay.modifiers.filter { m -> m.target.keys(authored).any { it in keys } }.flatMap { it.drivers }
+			definition.defaultOptions((authored.parameters + overlay.modifiers.flatMap { it.created } + created).distinctBy { it.id }, keyed.toSet())
+		}
+		request["options"]?.jsonObject?.forEach { (key, value) ->
+			requireNotNull(definition.options.firstOrNull { it.key == key }) { "$kind has no option $key" }
+			options = if (value is JsonNull) options - key else options + (key to value.jsonPrimitive.content)
+		}
+		for (option in definition.options.filter { it.required }) require(option.key in options) { "$kind needs option ${option.key}" }
+		for (option in definition.options) {
+			val value = options[option.key] ?: continue
+			when (option.type) {
+				ModifierOption.Type.PARAMETER -> require(value in parameters) { "${option.key}: unknown parameter $value" }
+				ModifierOption.Type.TARGET -> require(ModifierSampler.restCanvas(authored, value.let { if (it.startsWith(ModifierTarget.WARP)) it else mesh(it) }) != null) {
+					"${option.key}: not a mesh or warp: $value"
+				}
+				ModifierOption.Type.CHOICE -> Unit
+			}
+		}
+		options = options.mapValues { (key, value) ->
+			if (definition.options.first { it.key == key }.type == ModifierOption.Type.TARGET && !value.startsWith(ModifierTarget.WARP)) mesh(value) else value
+		}
 		val modifier = RigModifier(newId, kind, request["name"]?.jsonPrimitive?.contentOrNull ?: old?.name ?: definition.id.replaceFirstChar { it.uppercase() },
-			target, request["enabled"]?.jsonPrimitive?.boolean ?: old?.enabled ?: true, settings, created, weights, sampling)
+			target, request["enabled"]?.jsonPrimitive?.boolean ?: old?.enabled ?: true, settings, created, weights, sampling, options,
+			request["output"]?.jsonPrimitive?.content?.let { id -> requireNotNull(ModifierOutput.entries.firstOrNull { it.id == id }) { "output is auto, merge or stage" } }
+				?: old?.output ?: ModifierOutput.AUTO)
 		val modifiers = if (old == null) overlay.modifiers + modifier else overlay.modifiers.map { if (it.id == modifier.id) modifier else it }
 		val next = overlay.copy(modifiers = modifiers)
 		requireOwnership(next, authored)
@@ -139,7 +170,7 @@ internal object ModifierAuthoring {
 	private fun bounds(model: PuppetModel, targets: List<String>): FloatArray {
 		val out = floatArrayOf(Float.MAX_VALUE, Float.MAX_VALUE, -Float.MAX_VALUE, -Float.MAX_VALUE)
 		for (target in targets) {
-			val canvas = ModifierSampler.stack(model, target, listOf(probe(target)))?.first?.restCanvas ?: continue
+			val canvas = ModifierSampler.restCanvas(model, target) ?: continue
 			for (i in 0 until canvas.size / 2) {
 				out[0] = minOf(out[0], canvas[i * 2]); out[1] = minOf(out[1], canvas[i * 2 + 1])
 				out[2] = maxOf(out[2], canvas[i * 2]); out[3] = maxOf(out[3], canvas[i * 2 + 1])
@@ -147,8 +178,6 @@ internal object ModifierAuthoring {
 		}
 		return if (out[0] > out[2]) FloatArray(4) else out
 	}
-
-	private fun probe(target: String) = RigModifier("probe", ModifierKinds.Transform.id, "probe", ModifierTarget(listOf(target)))
 
 	/** Refuses modifiers that would write keyforms another generator owns (a simulation's, an interior effect's…). */
 	private fun requireOwnership(overlay: RigEditOverlay, model: PuppetModel) {
@@ -296,7 +325,8 @@ internal object ModifierAuthoring {
 				if (mesh.startsWith(ModifierTarget.WARP)) { warpRest(authored, before, mesh, modifier, pose)?.let { commands += it }; continue }
 				val (stack, mapping) = ModifierSampler.stack(before, mesh, listOf(modifier)) ?: continue
 				val local = ModifierSampler.local(before, before.drawables.first { it.id.raw == mesh })
-				val canvas = stack.canvasAt(pose)
+				// The rest shape moved by what the modifier does at the pose.
+				val canvas = stack.restCanvas.let { rest -> stack.offsetAt(pose).let { d -> FloatArray(rest.size) { rest[it] + d[it] } } }
 				val solved = mapping.worldToLocal(FloatArray(canvas.size) { if (it % 2 == 0) canvas[it] else -canvas[it] }, local, (0 until local.size / 2).toSet())
 				val shown = ModifierSampler.local(authored, authored.drawables.first { it.id.raw == mesh })
 				commands += buildJsonObject {
@@ -318,7 +348,7 @@ internal object ModifierAuthoring {
 	/** [modifier] with the settings of [source] under a fresh ID on [target]; it makes no parameters of its own. */
 	private fun copyOf(overlay: RigEditOverlay, source: RigModifier, target: ModifierTarget, id: String?) =
 		RigModifier(id ?: freshId(overlay, source.kind), source.kind, source.name, target, source.enabled, source.settings, emptyList(),
-			source.weights, source.sampling).also { copy -> require(overlay.modifiers.none { it.id == copy.id }) { "Modifier ${copy.id} already exists" } }
+			source.weights, source.sampling, source.options, source.output).also { copy -> require(overlay.modifiers.none { it.id == copy.id }) { "Modifier ${copy.id} already exists" } }
 
 	/** [overlay] with [copy] right after [after]. */
 	private fun inserted(overlay: RigEditOverlay, after: String, copy: RigModifier): RigEditOverlay {

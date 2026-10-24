@@ -38,13 +38,6 @@ class RuntimeConformanceTool {
 			cases["$sample-plain"] = RigIrCompiler.compile(plain)
 			cases["$sample-skeleton"] = RigIrCompiler.compile(skeletal)
 		}
-		// Random modifier stacks on random rigs, and the tml sample with a bend and a wave: the editor's exact evaluation
-		// (ModifierExact) is the reference for advanced mode everywhere (expected.advanced.bin, p2lrt-conformance --advanced).
-		repeat(8) { seed ->
-			val random = Random(9000 + seed)
-			cases["modifiers-$seed"] = RandomModifiers(random).on(RandomRig(Kind.entries[seed], random).build())
-		}
-		cases["tml-modifiers"] = tmlModifiers()
 		System.getenv("PSD2LIVE_RUNTIME_PROJECT")?.let(::File)?.takeIf { it.isFile }?.let {
 			cases["project"] = RigIrCompiler.compile(kotlinx.coroutines.runBlocking { io.github.psd2live.application.WorkspaceModelLoader.load(it.toPath()) })
 		}
@@ -277,91 +270,6 @@ class RuntimeConformanceTool {
 		File(dir, "trace.bin").writeBytes(buffer.array())
 	}
 
-	/** The tml sample with a bend keyed on the head's turn on its largest mesh and a travelling wave on the next. */
-	private fun tmlModifiers(): RigIR {
-		val plain = PSD2LivePipeline().buildPreview(File("examples/tml/psd-input/tml.psd").toPath())
-		val meshes = plain.rig.puppet.drawables.filter { it.mesh != null }.sortedByDescending { it.mesh!!.vertexCount }.map { it.id.raw }
-		fun json(text: String) = kotlinx.serialization.json.Json.parseToJsonElement(text) as kotlinx.serialization.json.JsonObject
-		var overlay = io.github.psd2live.core.RigEditOverlay()
-		overlay = io.github.psd2live.core.modifier.ModifierAuthoring.put(plain, overlay, json("""{"id": "Bend", "kind": "bend", "targets": ["${meshes[0]}"],
-			"keys": [{"setting": "angle", "at": {"ParamAngleX": -30}, "value": -40}, {"setting": "angle", "at": {"ParamAngleX": 30}, "value": 40}]}"""))
-		overlay = io.github.psd2live.core.modifier.ModifierAuthoring.put(plain, overlay, json("""{"id": "Wave", "kind": "wave", "targets": ["${meshes[1]}"],
-			"settings": {"amplitude": [6]}, "keys": [{"setting": "phase", "at": {"ParamAngleY": -30}, "value": -180},
-			{"setting": "phase", "at": {"ParamAngleY": 30}, "value": 180}]}"""))
-		val preview = PSD2LivePipeline().buildPreview(plain.analysis, plain.config.copy(rigEdits = plain.config.rigEdits.copy(modifiers = overlay.modifiers)))
-		return RigIrCompiler.compile(preview, simulations = true).also { require(it.advanced.modifiers.size == 2) { "The modifiers did not export" } }
-	}
-
-	/**
-	 * Random modifier stacks on two meshes of a random rig: one or two modifiers of random kinds, settings constant or
-	 * keyed on one or two of the rig's ordinary parameters, sometimes weighted, the stack starting from where the rig
-	 * shows the mesh by default (sometimes keyed, as a keyed mesh's start is). The rig keeps its keyforms: between
-	 * keys advanced mode departs from them, and the reference says by how much.
-	 */
-	private class RandomModifiers(private val random: Random) {
-		private fun f(min: Float, max: Float) = min + random.nextFloat() * (max - min)
-
-		fun on(ir: RigIR): RigIR {
-			val defaults = ir.parameters.associate { it.id to it.default }
-			val shown = IrGeometryEvaluator.open(ir).let { s -> s.evaluate(defaults).positions.also { s.close() } }
-			val drivers = ir.parameters.filter { !it.blend }
-			val stacks = ir.meshes.filter { it.geometry != null && shown[it.id] != null }.shuffled(random).take(2).map { mesh ->
-				val canvas = shown.getValue(mesh.id)
-				val xs = canvas.filterIndexed { i, _ -> i % 2 == 0 }; val ys = canvas.filterIndexed { i, _ -> i % 2 == 1 }
-				val bounds = floatArrayOf(xs.min(), ys.min(), maxOf(xs.max(), xs.min() + 1f), maxOf(ys.max(), ys.min() + 1f))
-				val used = drivers.shuffled(random).take(1 + random.nextInt(2))
-				val modifiers = List(1 + random.nextInt(2)) { modifier(bounds, used, canvas.size / 2) }
-				// Each driver's sample keys: its ends, its default, the settings' keys on it and the midpoints between.
-				val axes = used.map { p ->
-					val keyed = modifiers.flatMap { m -> m.settings.values.flatMap { v -> v.axes.filter { it.parameter == p.id }.flatMap { it.keys.toArray().toList() } } }
-					val keys = (keyed + p.min + p.max + p.default).distinct().sorted()
-					KeyAxis(p.id, Floats.of((keys + keys.zipWithNext { a, b -> (a + b) / 2 }).sorted().toFloatArray()))
-				}
-				val start = if (random.nextBoolean()) ModifierValueIR(emptyList(), Floats.of(canvas)) else {
-					val axis = axes[0]
-					ModifierValueIR(listOf(axis), Floats.wrap(FloatArray(axis.keys.size * canvas.size) { canvas[it % canvas.size] + f(-3f, 3f) }))
-				}
-				val positions = mesh.geometry!!.positions.toArray()
-				ModifierStackIR(mesh.id, axes, start, Floats.wrap(io.github.psd2live.core.modifier.ModifierExact.toParent(positions) { moved ->
-					val at = ir.copy(meshes = ir.meshes.map { if (it.id == mesh.id) it.copy(geometry = it.geometry!!.copy(positions = Floats.wrap(moved))) else it })
-					IrGeometryEvaluator.open(at).let { s -> s.evaluate(defaults).positions.getValue(mesh.id).also { s.close() } }
-				}), modifiers)
-			}
-			return ir.copy(advanced = ir.advanced.copy(modifiers = stacks))
-		}
-
-		/** A setting of [size] values from [value]: constant, or keyed on one of [drivers] at two or three of its keys. */
-		private fun setting(drivers: List<Parameter>, size: Int, value: () -> FloatArray): ModifierValueIR {
-			if (random.nextInt(5) < 2) return ModifierValueIR(emptyList(), Floats.of(value()))
-			val p = drivers.random(random)
-			val keys = if (random.nextBoolean()) listOf(p.min, p.max) else listOf(p.min, p.default, p.max).distinct()
-			return ModifierValueIR(listOf(KeyAxis(p.id, Floats.of(keys.toFloatArray()))),
-				Floats.wrap(keys.flatMap { value().also { v -> require(v.size == size) }.toList() }.toFloatArray()))
-		}
-
-		private fun modifier(b: FloatArray, drivers: List<Parameter>, vertices: Int): ModifierIR {
-			val cx = (b[0] + b[2]) / 2; val cy = (b[1] + b[3]) / 2
-			val w = b[2] - b[0]; val h = b[3] - b[1]
-			fun one(min: Float, max: Float) = floatArrayOf(f(min, max))
-			fun s(size: Int, value: () -> FloatArray) = setting(drivers, size, value)
-			fun c(v: FloatArray) = ModifierValueIR(emptyList(), Floats.of(v))
-			val (kind, settings) = when (random.nextInt(6)) {
-				0 -> "transform" to mapOf("offset" to s(2) { floatArrayOf(f(-20f, 20f), f(-20f, 20f)) }, "rotation" to s(1) { one(-60f, 60f) },
-					"scale" to s(2) { floatArrayOf(f(0.7f, 1.3f), f(0.7f, 1.3f)) }, "pivot" to c(floatArrayOf(cx, cy)))
-				1 -> "bend" to mapOf("angle" to s(1) { one(-90f, 90f) }, "origin" to c(floatArrayOf(cx, b[3])), "direction" to c(one(-110f, -70f)),
-					"length" to c(floatArrayOf(h)))
-				2 -> "twist" to mapOf("angle" to s(1) { one(-180f, 180f) }, "center" to c(floatArrayOf(cx, cy)), "radius" to c(floatArrayOf(kotlin.math.hypot(w, h) / 2)))
-				3 -> "wave" to mapOf("amplitude" to s(1) { one(0f, 10f) }, "wavelength" to c(floatArrayOf(h)), "phase" to s(1) { one(-180f, 180f) },
-					"origin" to c(floatArrayOf(cx, b[1])), "direction" to c(floatArrayOf(90f)), "ramp" to c(floatArrayOf(h / 2)))
-				4 -> "lattice" to mapOf("bounds" to c(b.copyOf()), "offsets" to s(32) { FloatArray(32) { f(-10f, 10f) } })
-				else -> "path" to mapOf("path" to c(FloatArray(8) { if (it % 2 == 0) cx else b[1] + h * (it / 2) / 3 }), "offsets" to s(8) { FloatArray(8) { f(-15f, 15f) } },
-					"radius" to c(floatArrayOf(if (random.nextBoolean()) 0f else w)))
-			}
-			val weights = if (random.nextInt(3) == 0) Floats.wrap(FloatArray(vertices) { random.nextFloat() }) else Floats.Empty
-			return ModifierIR(kind, settings, weights)
-		}
-	}
-
 	/** The rig as version 2 (rig.p2lrt), version 1 and version 2 deflated and zstd-packed; the runtime must read them alike. */
 	private fun variants(dir: File, ir: RigIR) {
 		File(dir, "rig.p2lrt").writeBytes(P2lrt.write(ir))
@@ -398,36 +306,6 @@ class RuntimeConformanceTool {
 		}
 		expected.close(); session.close()
 		File(dir, "poses.bin").writeBytes(header.array())
-		if (ir.advanced.modifiers.isNotEmpty()) advancedReference(dir, ir, poses)
-	}
-
-	/**
-	 * expected.advanced.bin, as expected.bin: the rig in advanced mode with only its modifier stacks on, by the editor's
-	 * reference - each stack's correction added to its mesh before the mesh's parents.
-	 */
-	private fun advancedReference(dir: File, ir: RigIR, poses: List<FloatArray>) {
-		val stacks = ir.advanced.modifiers.associateBy { it.mesh }
-		val expected = DataOutputStream(File(dir, "expected.advanced.bin").outputStream().buffered())
-		for (pose in poses) {
-			val values = ir.parameters.indices.associate { ir.parameters[it].id to pose[it] }
-			val corrected = ir.copy(meshes = ir.meshes.map { mesh ->
-				val stack = stacks[mesh.id] ?: return@map mesh
-				val add = io.github.psd2live.core.modifier.ModifierExact.correction(stack) { values.getValue(it) }
-				val positions = mesh.geometry!!.positions
-				mesh.copy(geometry = mesh.geometry!!.copy(positions = Floats.wrap(FloatArray(positions.size) { positions[it] + add[it] })))
-			})
-			val session = IrGeometryEvaluator.open(corrected)
-			val geometry = session.evaluate(values)
-			for (mesh in ir.meshes) {
-				val points = geometry.positions[mesh.id]
-				val buffer = ByteBuffer.allocate(12 + (points?.size ?: 0) * 4).order(ByteOrder.LITTLE_ENDIAN)
-				buffer.putFloat(geometry.opacity[mesh.id] ?: Float.NaN); buffer.putFloat(geometry.drawOrder[mesh.id] ?: Float.NaN)
-				buffer.putInt(points?.size ?: -1); points?.forEach(buffer::putFloat)
-				expected.write(buffer.array())
-			}
-			session.close()
-		}
-		expected.close()
 	}
 
 	private enum class Kind { WARP, ROTATION, ROTATION_IN_WARP, WARP_IN_ROTATION, MIXED, SPARSE, BLEND, GLUE, CHANNELS, PARTS }

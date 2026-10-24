@@ -651,8 +651,6 @@ internal fun BoxScope.CanvasEditorOverlay(
 
         // The interior tool's surface, propagation and guide handles on the selected mesh.
         if (editor.tool == CanvasTool.INTERIOR) drawInteriorHandles(editor.interiorTool, viewport, colors)
-        // The modifier tool's handles and what the modifier makes of its axis, rim or cage.
-        if (editor.tool == CanvasTool.MODIFIER) drawModifierHandles(editor.modifierTool, viewport, colors)
 
         // 3c-3e. Paint mode: the shape being drawn, the tip, the colour pick and the tip being retuned.
         drawPaintOverlays(editor, viewport, colors, textMeasurer)

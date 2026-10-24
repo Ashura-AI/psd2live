@@ -20,43 +20,10 @@ public data class AdvancedIR(
 	val hitAreas: List<HitAreaIR> = emptyList(),
 	/** Part poses: groups of parts of which one shows at a time. */
 	val pose: PoseIR? = null,
-	/** Meshes' modifier stacks, which the rig has sampled into keyforms, for the runtime to evaluate exactly between the keys. */
-	val modifiers: List<ModifierStackIR> = emptyList(),
 ) {
 	val isEmpty: Boolean get() = virtualBones.isEmpty() && simulations.isEmpty() && colliders.isEmpty() && expressions.isEmpty() &&
-		hitAreas.isEmpty() && pose == null && modifiers.isEmpty()
+		hitAreas.isEmpty() && pose == null
 }
-
-/**
- * One mesh's modifier stack as the rig sampled it: the modifiers chained in [modifiers] order from [start], over
- * [axes] at exactly the keys its keyforms were sampled at (the driving parameters', then the mesh's own keyform
- * axes). The runtime adds the stack's departure from its own interpolation over those keys, zero at every key.
- */
-public data class ModifierStackIR(
-	val mesh: String,
-	val axes: List<KeyAxis>,
-	/**
-	 * What the first modifier takes: the mesh as its own keyforms pose it, on the canvas through its parents at the
-	 * default pose (x, y interleaved, y down, pixels), keyed on those of [axes] that are its own with the same keys.
-	 */
-	val start: ModifierValueIR,
-	/** Per vertex a, b, c, d: a canvas displacement (dx, dy) in the mesh's parent space at the default pose is (a dx + b dy, c dx + d dy). */
-	val toParent: Floats,
-	val modifiers: List<ModifierIR>,
-)
-
-/**
- * A modifier of a kind the format names ([kind]: transform, bend, twist, wave, lattice) with every setting of
- * that kind; [weights] per vertex, empty for all ones. [phaseSpeed] (degrees per second) advances a wave's phase
- * with time in the runtime's advanced mode only.
- */
-public data class ModifierIR(val kind: String, val settings: Map<String, ModifierValueIR>, val weights: Floats = Floats.Empty, val phaseSpeed: Float = 0f)
-
-/**
- * A setting's value: a constant without [axes], else keyed on them as a dense product (axis 0 fastest), each
- * combination holding the setting's components in turn; multilinear between keys and held past the ends.
- */
-public data class ModifierValueIR(val axes: List<KeyAxis>, val values: Floats)
 
 /** Cubism's pose3: per group the parts (by id) of which one shows, each with parts that follow it; [fadeIn] seconds to switch. */
 public data class PoseIR(val fadeIn: Float, val groups: List<List<PoseEntry>>)

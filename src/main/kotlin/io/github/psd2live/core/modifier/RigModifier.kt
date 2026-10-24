@@ -248,6 +248,12 @@ data class ModifierSampling(val tolerance: Float = DEFAULT_TOLERANCE, val maxKey
 }
 
 /**
+ * How a target's stack is written: merged into its own keyforms, as a warp of its own between it and its parent
+ * ([ModifierStage]), or whichever keeps the keyforms fewer ([AUTO]).
+ */
+enum class ModifierOutput(val id: String) { AUTO("auto"), MERGE("merge"), STAGE("stage") }
+
+/**
  * A non-destructive modifier ([ModifierKinds]): a pure function of its targets' rest shape and its settings, run
  * after the journal and sampled into ordinary mesh keyforms on the parameters its settings are keyed on
  * ([ModifierSampler]). The document keeps the recipe only; the keyforms are made anew on every build, so a mesh edit
@@ -265,6 +271,9 @@ class RigModifier(
 	val created: List<Parameter> = emptyList(),
 	val weights: ModifierWeights? = null,
 	val sampling: ModifierSampling = ModifierSampling(),
+	/** The kind's text choices ([ModifierKind.options]): a parameter, another target, a side. */
+	val options: Map<String, String> = emptyMap(),
+	val output: ModifierOutput = ModifierOutput.AUTO,
 ) {
 	init {
 		require(id.isNotBlank() && id.none(Char::isISOControl) && id.none(Char::isWhitespace)) { "Invalid modifier ID" }
@@ -275,12 +284,17 @@ class RigModifier(
 			require(value.size == setting.size) { "$kind $key takes ${setting.size} value(s)" }
 		}
 		require(created.map { it.id }.distinct().size == created.size) { "Created parameters are distinct" }
+		for ((key, value) in options) {
+			val option = requireNotNull(definition.options.firstOrNull { it.key == key }) { "$kind has no option $key" }
+			require(value.isNotBlank() && value.none(Char::isISOControl)) { "$kind $key is a name" }
+			require(option.choices.isEmpty() || value in option.choices) { "$kind $key is one of ${option.choices.joinToString()}" }
+		}
 	}
 
 	val definition: ModifierKind get() = ModifierKinds.of(kind)!!
 
-	/** The parameters its settings are keyed on, in first-use order: the axes it samples. */
-	val drivers: List<String> get() = settings.values.flatMap { it.parameters }.distinct()
+	/** The parameters it is sampled on: those its settings are keyed on, in first-use order, then those its kind reads. */
+	val drivers: List<String> get() = (settings.values.flatMap { it.parameters } + definition.drivers(options)).distinct()
 
 	/** Setting [key] as stored, or the kind's default. */
 	fun value(key: String): ModifierValue = settings[key] ?: ModifierValue.Constant(definition.settings.first { it.key == key }.default.copyOf())
@@ -288,8 +302,9 @@ class RigModifier(
 	fun copy(
 		name: String = this.name, target: ModifierTarget = this.target, enabled: Boolean = this.enabled,
 		settings: Map<String, ModifierValue> = this.settings, created: List<Parameter> = this.created,
-		weights: ModifierWeights? = this.weights, sampling: ModifierSampling = this.sampling,
-	) = RigModifier(id, kind, name, target, enabled, settings, created, weights, sampling)
+		weights: ModifierWeights? = this.weights, sampling: ModifierSampling = this.sampling, options: Map<String, String> = this.options,
+		output: ModifierOutput = this.output,
+	) = RigModifier(id, kind, name, target, enabled, settings, created, weights, sampling, options, output)
 
 	private val json: JsonObject by lazy {
 		buildJsonObject {
@@ -306,6 +321,8 @@ class RigModifier(
 			if (created.isNotEmpty()) putJsonArray("created") { created.forEach { add(parameterJson(it)) } }
 			weights?.let { w -> putJsonObject("weights") { put("group", w.group); if (w.invert) put("invert", true) } }
 			if (sampling != ModifierSampling()) putJsonObject("sampling") { put("tolerance", sampling.tolerance); put("maxKeys", sampling.maxKeys) }
+			if (options.isNotEmpty()) putJsonObject("options") { options.toSortedMap().forEach { (k, v) -> put(k, v) } }
+			if (output != ModifierOutput.AUTO) put("output", output.id)
 		}
 	}
 
@@ -343,6 +360,8 @@ class RigModifier(
 				o["created"]?.jsonArray?.map { parameter(it.jsonObject) }.orEmpty(),
 				o["weights"]?.jsonObject?.let { ModifierWeights(it.getValue("group").jsonPrimitive.content, it["invert"]?.jsonPrimitive?.boolean ?: false) },
 				o["sampling"]?.jsonObject?.let { ModifierSampling(it.getValue("tolerance").jsonPrimitive.float, it.getValue("maxKeys").jsonPrimitive.int) } ?: ModifierSampling(),
+				o["options"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content }.orEmpty(),
+				o["output"]?.jsonPrimitive?.content?.let { id -> ModifierOutput.entries.first { it.id == id } } ?: ModifierOutput.AUTO,
 			)
 		}
 	}

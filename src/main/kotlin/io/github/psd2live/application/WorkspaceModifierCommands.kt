@@ -40,6 +40,10 @@ internal object WorkspaceModifierSchemas {
 		"${k.id}: " + k.settings.joinToString("; ") { "${it.key} (${it.size}) ${it.description}" }
 	}
 
+	private val optionsDescription = ModifierKinds.all.joinToString(" ") { k ->
+		"${k.id}: " + k.options.joinToString("; ") { "${it.key}${if (it.required) " (required)" else ""} ${it.description}" }
+	}
+
 	private val key = s.obj(mapOf(
 		"setting" to describe(s.choices(*settingKeys), "The setting to key."),
 		"at" to describe(s.dictionary(number), "Parameter values of the key; the setting gains an axis for each parameter it was not keyed on."),
@@ -63,6 +67,9 @@ internal object WorkspaceModifierSchemas {
 			put("excluded", describe(s.array(s.handle(), 0, 256), "With part: meshes left out."))
 			put("enabled", s.boolean())
 			put("settings", describe(s.dictionary(value), "Whole values by setting key; null resets one to the kind's default. $settingsDescription"))
+			put("output", describe(s.choices("auto", "merge", "stage"),
+				"How the stack is written on a mesh: merge into its keyforms, stage (a warp of its own between the mesh and its parent, keyed on the modifiers' parameters only, so the mesh's keyforms are not multiplied), or auto (stage when merging would multiply them past four times and 256)."))
+			put("options", describe(s.dictionary(s.nullable(s.string())), "The kind's text choices by key (a parameter ID, a mesh ID or warp:<ID>, a side); null clears one. $optionsDescription"))
 			put("keys", describe(s.array(key, 0, 256), "Single keys to set or remove, after settings."))
 			put("parameters", describe(s.array(parameter, 0, 16), "Parameters the modifier makes and owns, to key its settings on."))
 			put("weights", describe(s.nullable(s.obj(mapOf("group" to s.handle(), "invert" to s.boolean()), setOf("group"))),
@@ -106,11 +113,11 @@ internal object WorkspaceModifierSchemas {
 		listOf("state", "id"))
 
 	val inspected = s.obj(mapOf(
-		"id" to s.handle(), "kind" to s.choices(*kinds), "name" to s.string(), "targets" to s.array(s.handle()),
+		"id" to s.handle(), "kind" to s.handle(), "name" to s.string(), "targets" to s.array(s.handle()),
 		"part" to s.nullable(s.handle()), "excluded" to s.array(s.handle()), "enabled" to s.boolean(),
 		"settings" to s.dictionary(value), "created" to s.array(parameter), "weights" to s.nullable(s.obj(mapOf("group" to s.handle(), "invert" to s.boolean()))),
 		"sampling" to s.obj(mapOf("tolerance" to s.number(0), "max_keys" to s.integer(2))),
-		"drivers" to s.array(s.handle()),
+		"drivers" to s.array(s.handle()), "options" to s.dictionary(s.string()), "output" to s.choices("auto", "merge", "stage"),
 		"issues" to s.array(s.obj(mapOf("kind" to s.choices(*ModifierSampler.IssueKind.entries.map { it.code }.toTypedArray()),
 			"target" to s.handle(), "detail" to s.string(), "error" to s.number(0)), setOf("kind", "target"))),
 	))
@@ -127,6 +134,8 @@ internal object WorkspaceModifierSchemas {
 		put("weights", modifier.weights?.let { w -> buildJsonObject { put("group", w.group); put("invert", w.invert) } } ?: JsonNull)
 		putJsonObject("sampling") { put("tolerance", modifier.sampling.tolerance); put("max_keys", modifier.sampling.maxKeys) }
 		putJsonArray("drivers") { modifier.drivers.forEach { add(it) } }
+		putJsonObject("options") { modifier.options.toSortedMap().forEach { (k, v) -> put(k, v) } }
+		put("output", modifier.output.id)
 		putJsonArray("issues") {
 			issues.filter { it.modifier == modifier.id }.forEach { i ->
 				addJsonObject { put("kind", i.kind.code); put("target", i.target); put("detail", i.detail); i.error?.let { put("error", it) } }

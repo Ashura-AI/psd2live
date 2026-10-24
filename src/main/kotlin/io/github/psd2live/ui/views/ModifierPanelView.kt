@@ -36,9 +36,7 @@ import org.umamo.runtime.model.ParameterKind
 import org.umamo.runtime.model.PuppetModel
 
 /** How a setting's fields step and show: step, decimals. */
-private val MODIFIER_FIELDS = mapOf("offset" to (1.0 to 1), "rotation" to (1.0 to 1), "scale" to (0.05 to 2), "pivot" to (1.0 to 1),
-	"angle" to (1.0 to 1), "origin" to (1.0 to 1), "direction" to (1.0 to 1), "length" to (1.0 to 1), "center" to (1.0 to 1), "radius" to (1.0 to 1),
-	"amplitude" to (1.0 to 1), "wavelength" to (1.0 to 1), "phase" to (5.0 to 1), "ramp" to (1.0 to 1), "bounds" to (1.0 to 1))
+private val MODIFIER_FIELDS = mapOf("axis" to (1.0 to 1))
 
 /**
  * The modifiers panel, in two pages. The object page shows the selection as Live2D computes it: its own keyforms, then
@@ -283,7 +281,36 @@ private fun ModifierCard(
 		for (issue in issues) Text(tr("modifiers.issue.${issue.kind.code}", issue.detail.ifEmpty { issue.error?.let { "%.1f".format(it) } ?: "" }),
 			style = typography.caption.copy(fontSize = 10.sp), color = colors.warning)
 		val pose: (String) -> Float = { p -> state.parameterValues[ParameterId(p)] ?: puppet.parameters.firstOrNull { it.id.raw == p }?.default ?: 0f }
+		for (option in modifier.definition.options) ModifierOptionField(vm, puppet, mesh, modifier, option)
+		// How it is written on a mesh: into its keyforms, as a warp of its own, or whichever keeps them fewer.
+		if (!mesh.startsWith(ModifierTarget.WARP)) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+			FieldLabel(tr("modifiers.output"), tooltip = tr("modifiers.outputTip"))
+			CompactDropdown(ModifierOutput.entries, modifier.output, { value ->
+				if (value != modifier.output) vm.modifiers.put(buildJsonObject { put("id", modifier.id); put("output", value.id) })
+			}, Modifier.weight(1f), itemLabel = { tr("modifiers.output.${it.id}") }, height = 22.dp)
+		}
 		for (setting in modifier.definition.settings.filter { it.field }) ModifierField(vm, state, puppet, mesh, modifier, setting, pose)
+	}
+}
+
+/** One text choice of [modifier]: a parameter, another mesh or warp, or one of the option's choices; an optional one can be cleared. */
+@Composable
+private fun ModifierOptionField(vm: PSD2LiveViewModel, puppet: PuppetModel, target: String, modifier: RigModifier, option: ModifierOption) {
+	val current = modifier.options[option.key]
+	val choices: List<Pair<String, String>> = when (option.type) {
+		ModifierOption.Type.PARAMETER -> puppet.parameters.map { it.id.raw to "${it.name} · ${it.id.raw}" }
+		ModifierOption.Type.TARGET -> puppet.drawables.filter { it.mesh != null && it.id.raw != target }.map { it.id.raw to it.name } +
+			puppet.deformers.filterIsInstance<org.umamo.runtime.model.Deformer.Warp>().map { ModifierTarget.WARP + it.id.raw }
+				.filter { it != target }.map { it to "Warp · ${it.removePrefix(ModifierTarget.WARP)}" }
+		ModifierOption.Type.CHOICE -> option.choices.map { it to tr("modifiers.choice.${modifier.kind}.${option.key}.$it") }
+	}
+	val labels = choices.toMap()
+	val entries: List<String?> = (if (option.required) emptyList() else listOf(null)) + choices.map { it.first }
+	Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+		FieldLabel(tr("modifiers.option.${modifier.kind}.${option.key}"), tooltip = option.description)
+		CompactDropdown(entries, current, { value ->
+			if (value != current) vm.modifiers.put(buildJsonObject { put("id", modifier.id); putJsonObject("options") { put(option.key, value?.let(::JsonPrimitive) ?: JsonNull) } })
+		}, Modifier.weight(1f), itemLabel = { it?.let { v -> labels[v] ?: v } ?: tr("modifiers.option.none") }, height = 22.dp)
 	}
 }
 
@@ -300,7 +327,13 @@ private fun ModifierField(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: P
 	val value = draft ?: shown
 	val keyed = stored as? ModifierValue.Keyed
 	val at = keyed?.axes?.associate { it.parameter to pose(it.parameter) }.orEmpty()
-	fun request(next: FloatArray) = ModifierEdits.request(modifier, mapOf(setting.key to next), pose)
+	fun request(next: FloatArray) = buildJsonObject {
+		put("id", modifier.id)
+		if (keyed == null) putJsonObject("settings") { put(setting.key, JsonArray(next.map(::JsonPrimitive))) }
+		else putJsonArray("keys") { addJsonObject {
+			put("setting", setting.key); putJsonObject("at") { at.forEach { (k, v) -> put(k, v) } }; put("value", JsonArray(next.map(::JsonPrimitive)))
+		} }
+	}
 	val onKey = keyed != null && keyed.axes.all { a -> a.keys.any { kotlin.math.abs(it - pose(a.parameter)) <= ModifierValue.EPS } }
 	val (step, decimals) = MODIFIER_FIELDS[setting.key] ?: (0.1 to 2)
 	Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -368,16 +401,6 @@ private fun ModifierMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: Pu
 	fun add(enabled: Boolean, danger: Boolean = false, label: String, hint: String? = null, action: () -> Unit) {
 		rows += Triple(enabled, danger, @Composable { FloatingMenuRow(label, { close(); action() }, enabled = enabled, hint = hint, danger = danger) })
 	}
-	// Its handles on the canvas, in object mode, with the keyboard back on the canvas.
-	rows += Triple(true, false, @Composable {
-		FloatingMenuRow(tr("modifiers.editOnCanvas"), {
-			close()
-			val canvas = state.activeCanvas.id
-			if (state.activeCanvas.mode != CanvasMode.EDIT) vm.setCanvasMode(canvas, CanvasMode.EDIT)
-			vm.canvasEditorFor(canvas).let { it.modifierTool.choose(modifier.id); it.activateTool(io.github.psd2live.ui.CanvasTool.MODIFIER) }
-			vm.requestCanvasFocus(canvas)
-		}, hint = tr("modifiers.editOnCanvasTip"), trailing = state.keymap.labelFor(ShortcutAction.TOOL_MODIFIER))
-	})
 	val stacks = ModifierSampler.stacks(state.rigEdits.modifiers, puppet)
 	val meshes = modifier.target.keys(puppet)
 	val alone = meshes.all { stacks[it].orEmpty().firstOrNull()?.id == modifier.id }
@@ -422,12 +445,15 @@ private fun ModifierAddMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet:
 	val stack = state.rigEdits.modifiers.filter { stage.key in it.target.keys(puppet) }
 	rows += false to @Composable { FloatingMenuSection(tr("modifiers.addTo", tr("modifiers.stage.${stage.kind}", stage.name))) }
 	val role = if (!mesh) null else state.previewModel?.analysis?.layers?.firstOrNull { it.source.id.raw == state.selectedLayerId }?.semantic?.tag
+	// By category, those suiting the layer's role first within each.
 	val kinds = ModifierKinds.forRole(role)
-	val suited = kinds.filter { role != null && role in it.suits }
-	if (suited.isNotEmpty()) rows += false to @Composable { FloatingMenuSection(tr("modifiers.suggested")) }
-	for ((i, kind) in kinds.withIndex()) {
-		if (i == suited.size && suited.isNotEmpty()) rows += false to @Composable { FloatingMenuSection(tr("modifiers.allKinds")) }
-		rows += true to @Composable { FloatingMenuRow(tr("modifiers.kind.${kind.id}"), { close(); vm.modifiers.add(kind.id, meshes) }, hint = tr("modifiers.kindTip.${kind.id}")) }
+	for (category in ModifierCategory.entries) {
+		val shown = kinds.filter { it.category == category }
+		if (shown.isEmpty()) continue
+		rows += false to @Composable { FloatingMenuSection(tr("modifiers.category.${category.id}")) }
+		for (kind in shown) rows += true to @Composable {
+			FloatingMenuRow(tr("modifiers.kind.${kind.id}"), { close(); vm.modifiers.add(kind.id, meshes) }, hint = tr("modifiers.kindTip.${kind.id}"))
+		}
 	}
 	if (mesh) {
 		rows += false to @Composable { FloatingMenuSection(tr("modifiers.category.dynamics")) }

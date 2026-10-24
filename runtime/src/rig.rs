@@ -11,11 +11,11 @@ use std::fmt;
 /// The newest major version this reader understands; version 1 is read too.
 pub const VERSION: u32 = 2;
 /// The chunks this reader understands, with the newest version of each.
-pub const CHUNKS: [(&str, u16); 24] = [
+pub const CHUNKS: [(&str, u16); 23] = [
     ("STRS", 1), ("CANV", 1), ("PARM", 1), ("DEFM", 1), ("PART", 1), ("MESH", 1), ("GLUE", 1),
     ("DRAW", 1), ("TEXR", 1), ("PHYS", 2), ("CLIP", 1), ("ROLE", 1), ("PGUI", 1), ("META", 1),
     ("BONE", 1), ("SKIN", 1), ("COLL", 1), ("SIMS", 1), ("EXPR", 1), ("HITA", 1), ("UDAT", 1), ("POSE", 1),
-    ("CEXT", 1), ("MODS", 1),
+    ("CEXT", 1),
 ];
 
 #[derive(Debug)]
@@ -405,49 +405,7 @@ pub struct Collider {
     pub friction: f32,
 }
 
-/// A modifier kind `MODS` names, by its code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModifierKind {
-    Transform,
-    Bend,
-    Twist,
-    Wave,
-    Lattice,
-    Path,
-}
-
-/// A modifier setting: a constant without [axes], else keyed on them as a dense product (axis 0 fastest), each
-/// combination holding the setting's components in turn.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ModifierValue {
-    pub axes: Vec<(usize, Vec<f32>)>,
-    pub values: Vec<f32>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Modifier {
-    pub kind: ModifierKind,
-    /// Degrees per second a wave's phase advances in advanced mode.
-    pub phase_speed: f32,
-    /// Per vertex, how much of the modifier applies; empty for all of it.
-    pub weights: Vec<f32>,
-    /// Every setting of the kind, in its order (`ModifierKind::sizes`).
-    pub settings: Vec<ModifierValue>,
-}
-
-/// One mesh's modifier stack, which the core chunks carry sampled into keyforms on [axes] at their keys: the
-/// modifiers chained in order from [start] (the mesh on the canvas as its own keyforms pose it, keyed on its own
-/// axes among [axes]), and per vertex the map a, b, c, d of a canvas displacement into the mesh's parent space.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ModifierStack {
-    pub mesh: usize,
-    pub axes: Vec<(usize, Vec<f32>)>,
-    pub start: ModifierValue,
-    pub to_parent: Vec<f32>,
-    pub modifiers: Vec<Modifier>,
-}
-
-/// The runtime's advanced data: skeleton bones, exact links, skins, colliders, simulations and modifiers.
+/// The runtime's advanced data: skeleton bones, exact links, skins, colliders and simulations.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Extensions {
     pub bone_header: Option<ExtensionHeader>,
@@ -465,8 +423,6 @@ pub struct Extensions {
     pub simulations: Vec<Simulation>,
     /// Per simulation, the parameters it holds at their defaults and the physics groups it skips.
     pub simulation_overrides: Vec<(Vec<usize>, Vec<usize>)>,
-    pub modifier_header: Option<ExtensionHeader>,
-    pub modifier_stacks: Vec<ModifierStack>,
 }
 
 /// How a parameter panel groups and shows the parameters; it does not affect evaluation.
@@ -713,16 +669,6 @@ impl Rig {
             }
             if !skin.from.is_empty() && skin.from.len() != mesh.vertex_count() {
                 return err(format!("Skin weights of {} do not match its vertices", mesh.id));
-            }
-        }
-        for (k, st) in self.extensions.modifier_stacks.iter().enumerate() {
-            let n = self.meshes[st.mesh].vertex_count();
-            let cells: usize = st.start.axes.iter().map(|(_, k)| k.len()).product();
-            if st.start.values.len() != cells * n * 2 || st.to_parent.len() != n * 4 || st.modifiers.iter().any(|m| !m.weights.is_empty() && m.weights.len() != n) {
-                return err(format!("Modifier stack of {} does not match its vertices", self.meshes[st.mesh].id));
-            }
-            if self.extensions.modifier_stacks[..k].iter().any(|o| o.mesh == st.mesh) {
-                return err(format!("{} has two modifier stacks", self.meshes[st.mesh].id));
             }
         }
         for c in &self.extensions.colliders {
@@ -1199,59 +1145,6 @@ impl<'a> Reader<'a> {
                 return err("Invalid skin weights");
             }
             ext.skins.push(Skin { mesh, axes, bones, from, to, weight });
-        }
-        Ok(())
-    }
-
-    /// Parameter axes, each with its keys strictly ascending.
-    fn key_axes(&mut self, what: &str) -> Result<Vec<(usize, Vec<f32>)>> {
-        let n = self.count(12)?;
-        let mut axes = Vec::with_capacity(n);
-        for _ in 0..n {
-            let parameter = self.parameter()?;
-            let keys = self.floats()?;
-            if keys.is_empty() || keys.windows(2).any(|w| w[1] <= w[0]) || axes.iter().any(|(p, _)| *p == parameter) {
-                return err(format!("{} axes must name distinct parameters with ascending keys", what));
-            }
-            axes.push((parameter, keys));
-        }
-        Ok(axes)
-    }
-
-    /// MODS: the header, then per mesh its sampling axes, rest shape, map to its parent and modifiers.
-    fn modifiers(&mut self, ext: &mut Extensions) -> Result<()> {
-        ext.modifier_header = Some(self.extension_header()?);
-        let n = self.count(28)?;
-        for _ in 0..n {
-            let mesh = self.index(self.meshes, "mesh")?;
-            let axes = self.key_axes("Modifier sampling")?;
-            if axes.len() > 16 {
-                return err("A modifier stack is sampled on too many parameters");
-            }
-            let start_axes = self.key_axes("Modifier start")?;
-            let start = ModifierValue { axes: start_axes, values: self.floats()? };
-            if start.axes.iter().any(|a| !axes.contains(a)) {
-                return err("A modifier stack starts on axes it is not sampled on");
-            }
-            let to_parent = self.floats()?;
-            let count = self.count(13)?;
-            let mut modifiers = Vec::with_capacity(count);
-            for _ in 0..count {
-                let kind = ModifierKind::from_code(self.u8()?).ok_or_else(|| Error("Unknown modifier kind".into()))?;
-                let (phase_speed, weights) = (self.f32()?, self.floats()?);
-                let mut settings = Vec::with_capacity(kind.sizes().len());
-                for size in kind.sizes() {
-                    let axes_of = self.key_axes("Modifier setting")?;
-                    let values = self.floats()?;
-                    let cells: usize = axes_of.iter().map(|(_, k)| k.len()).product();
-                    if values.len() != cells * size || axes_of.iter().any(|(p, _)| !axes.iter().any(|(q, _)| q == p)) {
-                        return err("A modifier setting does not match its axes");
-                    }
-                    settings.push(ModifierValue { axes: axes_of, values });
-                }
-                modifiers.push(Modifier { kind, phase_speed, weights, settings });
-            }
-            ext.modifier_stacks.push(ModifierStack { mesh, axes, start, to_parent, modifiers });
         }
         Ok(())
     }
@@ -1919,11 +1812,6 @@ fn read_chunks(bytes: &[u8], verify_crc: bool) -> Result<Rig> {
         let mut r = reader(data);
         r.simulations(&mut extensions, physics.len())?;
         r.end("SIMS")?;
-    }
-    if let Some(data) = chunk("MODS") {
-        let mut r = reader(data);
-        r.modifiers(&mut extensions)?;
-        r.end("MODS")?;
     }
     let mut expressions = vec![];
     if let Some(data) = chunk("EXPR") {

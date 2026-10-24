@@ -14,6 +14,8 @@ import org.umamo.render.eval.CpuDeformationEvaluator
 import org.umamo.runtime.model.*
 
 class ModifierStackTest {
+	init { TestKinds.register() }
+
 	@TempDir lateinit var directory: Path
 
 	private val preview: RigPreviewModel by lazy {
@@ -214,8 +216,8 @@ class ModifierStackTest {
 		val authored = pair.authored.rig.puppet
 		val meshes = authored.drawables.filter { it.mesh != null }.map { it.id.raw }
 		var overlay = ModifierAuthoring.put(pair, RigEditOverlay(), buildJsonObject {
-			put("kind", "wave"); putJsonArray("targets") { add(meshes[0]) }; putJsonArray("parameters") { add(driver) }
-			putJsonArray("keys") { addJsonObject { put("setting", "amplitude"); putJsonObject("at") { put("ParamModTurn", 10) }; put("value", 6) } }
+			put("kind", "transform"); putJsonArray("targets") { add(meshes[0]) }; putJsonArray("parameters") { add(driver) }
+			putJsonArray("keys") { addJsonObject { put("setting", "rotation"); putJsonObject("at") { put("ParamModTurn", 10) }; put("value", 6) } }
 		})
 		val preset = ModifierPreset.fromJson(ModifierPreset.of("hair", overlay.modifiers).toJson())
 		val requests = preset.requests(listOf(meshes[1]), authored.parameters.map { it.id.raw }.toSet() + "ParamModTurn")

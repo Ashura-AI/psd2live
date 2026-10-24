@@ -322,9 +322,6 @@ bool p2l_set_part_opacity(P2lRig *rig, uint32_t index, float opacity);
 #define P2L_EXACT_LINKS 2u
 #define P2L_SIM 4u
 #define P2L_COLLISION 8u
-/* P2L_MODIFIERS: modifier stacks follow their exact curves between the keys they were sampled at; a wave with a
- * phase speed travels as p2l_update steps time (p2l_evaluate does not, p2l_set_advanced starts it over). */
-#define P2L_MODIFIERS 16u
 uint32_t p2l_advanced_available(const P2lRig *rig);
 uint32_t p2l_set_advanced(P2lRig *rig, uint32_t features);
 /* P2L_SIM: cloth and hair run live, stepped by p2l_update at their own rate; p2l_evaluate draws the last step.

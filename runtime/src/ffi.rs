@@ -594,7 +594,6 @@ fn update(h: &mut Handle, dt: f32, stages: u32) {
         let skip = h.advanced.skipped_physics(rig);
         h.physics.step_skipping(rig, dt, &mut h.current, &skip);
     }
-    h.advanced.advance_time(dt);
     evaluate(h);
     let rig = &h.model.rig;
     if stages & STAGE_SIM != 0 && h.advanced.enabled() & crate::advanced::SIM != 0 {

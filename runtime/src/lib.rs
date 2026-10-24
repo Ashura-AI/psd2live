@@ -11,7 +11,6 @@ pub mod eval;
 pub mod expression;
 pub mod ffi;
 pub mod host;
-pub mod modifier;
 pub mod physics;
 pub mod png;
 pub mod pose;
@@ -30,5 +29,3 @@ mod tests;
 mod format_tests;
 #[cfg(test)]
 mod advanced_tests;
-#[cfg(test)]
-mod modifier_tests;

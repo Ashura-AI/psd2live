@@ -1086,6 +1086,13 @@ The **Modifiers** panel shows the selected object in the order Live2D actually c
 - Expand a stage to see first which generators and hand edits its keyforms come from (the parameter list), then the cards acting on it: modifiers, simulations, interior effects and swings. The cards are in execution order, and each reads the result of the ones before it; a card can be expanded for its settings, switched, moved up or down, applied as keyforms or deleted.
 - The arrow button on a stage row selects that deformer, and **+** adds to that stage; **Add** on the toolbar adds to the selected object's own stage. A mesh's own stage can also add **Simulation · Cloth / Hair** and **Interior shape**.
 - A simulation card holds the bake, material, inputs, outputs, glue, vertex weight groups and the comparison (the reference sim switch); an interior shape card holds the audition and all the shape settings; a swing card holds the directions, preset, fulcrum, and each direction's shape and pendulum.
+## Mirror
+- Key one side of a parameter and get the other as its mirror image: for example key only the positive side of Angle X, and the negative side follows; change the positive side and the negative side changes with it.
+- Options: **Parameter** picks the parameter to mirror (by default a two-sided parameter the target is keyed on, Angle X first), **Kept side** positive or negative, **From** another mesh or warp (a left eye for the right), whose displacement is then taken over the whole range.
+- **Mirror line x** is where the vertical mirror line stands (canvas x); a new mirror takes its target's centre.
+- The displacement field is mirrored, not the vertices: asymmetric meshes, and eyes with different vertices, work too.
+- **Output**: **Into the mesh's keyforms**, or **A warp of their own** (a warp between the mesh and its parent keyed on the modifiers' parameters only, so the mesh's keyforms are not multiplied); **Automatic** uses the warp when the keyforms would multiply.
+
 ## World page
 - **Simulations**: all physics bodies and their bake state, with **Bake all** and **Bake automatically**; click a row to select its mesh and switch to the Object page.
 - **Problems**: the problems of all cards (missing parameters, too many keyforms, out of tolerance, an interior shape that needs regenerating); click a row to jump to the object.

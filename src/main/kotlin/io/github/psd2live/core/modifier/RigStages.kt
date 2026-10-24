@@ -60,6 +60,7 @@ internal object RigStages {
 	/** Who made deformer [id]: a swing wrapping its targets, a generator of the base rig, else the user. */
 	fun deformerOwner(overlay: RigEditOverlay, id: String): Owner =
 		overlay.swingEdits.firstOrNull { !it.baked && id in it.targets }?.let { Owner(Owner.Kind.SWING, it.id) }
+			?: Owner(Owner.Kind.MODIFIERS, "").takeIf { id.startsWith(ModifierStage.PREFIX) }
 			?: DEFORMERS.firstOrNull { id.startsWith(it.first) }?.let { Owner(Owner.Kind.COMPONENT, it.second.id) }
 			?: Owner(Owner.Kind.MANUAL, "")
 
