@@ -29,6 +29,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -189,32 +190,36 @@ fun WorkspaceStrip(
 			}
 			val pageShown = activePage != null
 			state.workspaces.forEachIndexed { index, item ->
-				val dragging = draggingId == item.id
-				WorkspaceChip(
-					workspace = item,
-					isActive = !pageShown && item.id == state.activeWorkspaceId,
-					canClose = state.workspaces.size > 1,
-					canCloseRight = index < state.workspaces.lastIndex,
-					onSelect = { viewModel.setActiveWorkspace(item.id) },
-					onClose = { viewModel.closeWorkspace(item.id) },
-					onCloseOthers = { viewModel.closeOtherWorkspaces(item.id) },
-					onCloseRight = { viewModel.closeWorkspacesToRight(item.id) },
-					onRename = { viewModel.renameWorkspace(item.id, it) },
-					onDuplicate = { viewModel.duplicateWorkspace(item.id) },
-					onDragStart = {
-						draggingId = item.id
-						dragOffset = 0f
-					},
-					onDrag = { dragChip(item.id, it) },
-					onDragEnd = {
-						draggingId = null
-						dragOffset = 0f
-					},
-					modifier = Modifier
-						.onGloballyPositioned { chipBounds[item.id] = it.positionInParent().x to it.size.width.toFloat() }
-						.zIndex(if (dragging) 1f else 0f)
-						.graphicsLayer { translationX = if (dragging) dragOffset else 0f },
-				)
+				// Keyed by workspace, so a swap moves the dragged chip's gesture along with it instead of
+				// handing its slot to the neighbour, which restarted the gesture and ended the drag.
+				key(item.id) {
+					val dragging = draggingId == item.id
+					WorkspaceChip(
+						workspace = item,
+						isActive = !pageShown && item.id == state.activeWorkspaceId,
+						canClose = state.workspaces.size > 1,
+						canCloseRight = index < state.workspaces.lastIndex,
+						onSelect = { viewModel.setActiveWorkspace(item.id) },
+						onClose = { viewModel.closeWorkspace(item.id) },
+						onCloseOthers = { viewModel.closeOtherWorkspaces(item.id) },
+						onCloseRight = { viewModel.closeWorkspacesToRight(item.id) },
+						onRename = { viewModel.renameWorkspace(item.id, it) },
+						onDuplicate = { viewModel.duplicateWorkspace(item.id) },
+						onDragStart = {
+							draggingId = item.id
+							dragOffset = 0f
+						},
+						onDrag = { dragChip(item.id, it) },
+						onDragEnd = {
+							draggingId = null
+							dragOffset = 0f
+						},
+						modifier = Modifier
+							.onGloballyPositioned { chipBounds[item.id] = it.positionInParent().x to it.size.width.toFloat() }
+							.zIndex(if (dragging) 1f else 0f)
+							.graphicsLayer { translationX = if (dragging) dragOffset else 0f },
+					)
+				}
 			}
 			NewWorkspaceButton(onCreate = { viewModel.addWorkspace(it) })
 		}
