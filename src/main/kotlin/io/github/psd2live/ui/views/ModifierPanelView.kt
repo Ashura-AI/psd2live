@@ -81,8 +81,11 @@ internal fun ModifierPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 				}.getOrDefault(emptyList())
 			}
 		}
+		val systems = remember(state.rigEdits, puppet, mesh.id) { systemModifiers(state.rigEdits, puppet, mesh.id.raw) }
 		Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-			if (stack.isEmpty()) Text(tr("modifiers.empty"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted,
+			// What the other generators do to this mesh runs before the stack, in their own fixed order.
+			for (system in systems) SystemModifierCard(vm, system)
+			if (stack.isEmpty() && systems.isEmpty()) Text(tr("modifiers.empty"), style = typography.caption.copy(fontSize = 10.sp), color = colors.textMuted,
 				modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp))
 			stack.forEachIndexed { index, modifier ->
 				ModifierCard(vm, state, puppet, mesh.id.raw, stack, index, modifier, issues.filter { it.modifier == modifier.id && it.target == mesh.id.raw },
@@ -307,4 +310,53 @@ internal fun ModifierPresetDialog(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 		CompactTextField(name, { name = it }, Modifier.fillMaxWidth())
 		Text(tr("modifiers.presetSaveHint", stack.size), style = LocalToolTypography.current.caption, color = LocalToolColors.current.textMuted)
 	}
+}
+
+/** A generator that acts on a mesh before its stack: shown in the stack, edited in its own panel. */
+internal class SystemModifier(val kind: String, val id: String, val name: String, val module: String?, val apply: Pair<String, JsonObject>?, val note: String? = null)
+
+/**
+ * The generators acting on [mesh] before its modifiers, in the order they run: the skeleton's skin of a mesh the
+ * journal placed, unbaked swings on its parents, its interior effect and the simulations baked onto it.
+ */
+internal fun systemModifiers(overlay: io.github.psd2live.core.RigEditOverlay, puppet: PuppetModel, mesh: String): List<SystemModifier> = buildList {
+	if (mesh in runCatching { io.github.psd2live.core.SkeletonCanvasSkin.placed(overlay) }.getOrDefault(emptySet()))
+		add(SystemModifier("skin", "skeleton", tr("modifiers.system.skin"), "skeleton", null))
+	val deformers = puppet.deformers.associateBy { it.id.raw }
+	val chain = generateSequence(puppet.drawables.firstOrNull { it.id.raw == mesh }?.parentDeformerId?.raw) { deformers[it]?.parent?.raw }.toSet()
+	for (swing in overlay.swingEdits) if (!swing.baked && swing.targets.any { it in chain })
+		add(SystemModifier("swing", swing.id, swing.name, "physics", "swing_delete" to buildJsonObject { put("id", swing.id); put("bake", true) }))
+	for (effect in overlay.interiorEffects) if (effect.target == mesh)
+		add(SystemModifier("interior", effect.id, effect.name, "interior", null, note = tr(if (effect.enabled) "modifiers.system.on" else "modifiers.system.off")))
+	for (sim in overlay.simEdits) if (mesh in sim.targets || sim.bake?.vertexCounts?.containsKey(mesh) == true) {
+		val baked = sim.bake != null && sim.enabled
+		add(SystemModifier("simulation", sim.id, sim.name, "simulation",
+			if (baked) io.github.psd2live.core.sim.SimApply.OP to buildJsonObject { put("id", sim.id) } else null,
+			note = tr(if (baked) "modifiers.system.baked" else "modifiers.system.unbaked")))
+	}
+}
+
+/** A locked card: what the generator is, a way to its panel, and its apply when it has one. */
+@Composable
+private fun SystemModifierCard(vm: PSD2LiveViewModel, system: SystemModifier) {
+	val colors = LocalToolColors.current
+	val typography = LocalToolTypography.current
+	Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+		GridIcon(Modifier.size(11.dp), colors.textMuted) { lockGlyph() }
+		Column(Modifier.weight(1f)) {
+			Text("${tr("modifiers.system.${system.kind}")} · ${system.name}", style = typography.caption.copy(fontSize = 10.5.sp), color = colors.textPrimary,
+				maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+			system.note?.let { Text(it, style = typography.caption.copy(fontSize = 9.5.sp), color = colors.textMuted, maxLines = 1) }
+		}
+		system.apply?.let { (operation, request) ->
+			CompactButton(tr("modifiers.applyKeyforms"), { vm.modifiers.batch(listOf(operation to request)) }, height = 20.dp)
+		}
+		system.module?.let { module ->
+			CompactIconButton(onClick = { vm.requestSelectDockModule(module) }, tooltip = tr("modifiers.system.open"), size = 18.dp) {
+				GridIcon(Modifier.size(11.dp), colors.textMuted) { line(5f, 13f, 13f, 5f); line(8f, 5f, 13f, 5f); line(13f, 5f, 13f, 10f) }
+			}
+		}
+	}
+	io.github.psd2live.ui.views.physics.PhysicsRowDivider()
 }

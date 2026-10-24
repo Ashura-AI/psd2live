@@ -331,6 +331,12 @@ internal fun IconPen.keyDiamond(state: Int) {
     outline(diamond)
 }
 
+/** A padlock: locked, fixed in place. */
+internal fun IconPen.lockGlyph() {
+    outline(path { m(6f, 8.4f); l(6f, 6.4f); c(6f, 2.6f, 12f, 2.6f, 12f, 6.4f); l(12f, 8.4f) })
+    shape(rectPath(4.2f, 8.2f, 9.6f, 7.4f, 1.4f))
+}
+
 /** A check mark. */
 internal fun IconPen.checkMark(width: Float = 1.8f) =
     outline(path { m(3.2f, 9.6f); l(7.2f, 13.6f); l(14.8f, 4.8f) }, width)

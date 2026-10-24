@@ -502,7 +502,7 @@ internal fun registerAuthoringOperations(registry: WorkspaceOperationRegistry, w
         mapOf("put" to "swing_put", "delete" to "swing_delete"), true)
     registerCommandOperations("modifier", "Non-destructive modifiers on meshes, chained in stack order and sampled into ordinary keyforms on the parameters their settings are keyed on; apply writes one into the journal.",
         mapOf("put" to "modifier_put", "delete" to "modifier_delete", "move" to "modifier_move", "apply" to "modifier_apply",
-            "split" to "modifier_split", "copy" to "modifier_copy"), true)
+            "split" to "modifier_split", "copy" to "modifier_copy", "apply_simulation" to "simulation_apply"), true)
     registerCommandOperations("interior", "Generate and edit an interior surface on one mesh; compact keyforms and optional native propagation persist with the project.", mapOf("put" to "interior_put", "delete" to "interior_delete"), true)
     register("swing_preview", "Create or edit an isolated swing audition on a captured workspace state. begin resolves existing swings or neutral defaults; update/kinds/segments/preset/physics/select/handle use the same candidates as GUI handles. play runs a transient clock, cancel retains a queryable terminal session. Draft rigs and playback values never enter save/query baselines. Use swing_preview_get/render to inspect; swing_preview_commit persists the captured draft once.",
         WorkspaceSwingSessionSchemas.control(), WorkspaceOperationKind.SESSION) { WorkspaceOperationOutput(workspace.controlSwingPreview(it).report) }

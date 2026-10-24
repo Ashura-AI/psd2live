@@ -1431,7 +1431,7 @@ When a mesh is selected, a fitting warp deformer is wrapped around it automatica
 4. **Preview Sway** to see the effect; **Generate** / **Apply** or Enter writes it, **Cancel** or Esc abandons it.
 *> Compared with Cubism's feature of the same name, this one can also target a mesh, make up-down swings and segments, and use bottom parallel to make several bundles of hair sway together. If the parameter does not exist it is created automatically as `ParamSwing<id>`, and the pendulum is exported to physics3.json and cmo3.
 ## Regeneration and baking
-The keyforms on the swing axis belong to the swing and are recomputed from the target's current shape on every rebuild; your manual changes on these keyforms are recorded as generated overrides (see [[generated-overrides]]). To take over completely by hand, click **Bake to Keys** to write the current form as ordinary keyforms and keep only the physics pendulum; **Delete** removes it together with the generated axis and the automatically created parameter.
+The keyforms on the swing axis belong to the swing and are recomputed from the target's current shape on every rebuild; your manual changes on these keyforms are recorded as generated overrides (see [[generated-overrides]]). To take over completely by hand, click **Apply as Keyforms** to write the current form as ordinary keyforms and keep only the physics pendulum; **Delete** removes it together with the generated axis and the automatically created parameter.
 
 @@ edit-vertices | Edit Vertices in Canvas Coordinates
 In PSD2Live, dragging, the transform box and brushes always act on the position where a point is shown on the canvas; whichever deformer the object hangs under, the program converts it to the parent's local coordinates automatically. This is default behavior and needs no separate switch. When you need exact values, use **Precise Transform**.
@@ -1538,7 +1538,7 @@ Editing at the default value of a generated parameter is still an ordinary edit 
 When there are problems, the Inspector toolbar shows an **n override issue(s)** badge; the problems of the selected object are listed in **Generated overrides** at the top of the Inspector, and clicking the badge lists all of them.
 - Conflict: some points were changed by both the generator and your edit, and your edit was kept.
 - Not applied: the generated keyform no longer exists, the number of points of the generated shape changed, or the mesh was split and replaced.
-!> Copying to or from a generated keyform, and adding or deleting keys on a generator's axis, cannot be recorded as overrides and are rejected. To edit a swing completely by hand, first click **Bake to Keys** in the swing panel.
+!> Copying to or from a generated keyform, and adding or deleting keys on a generator's axis, cannot be recorded as overrides and are rejected. To edit a swing completely by hand, first click **Apply as Keyforms** in the swing panel.
 Related: [[auto-generation-of-sway-motion]] · [[simulation]] · [[update-generated-rig]]
 
 @@ multi-key | Multiple Keys Editing Function

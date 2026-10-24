@@ -102,6 +102,9 @@ internal object WorkspaceModifierSchemas {
 		put("new_id", describe(s.handle(), "The copy's ID; a fresh one when absent."))
 	}, listOf("state", "id", "targets"))
 
+	val simulationApply = WorkspaceCommandSchema(buildJsonObject { put("state", s.handle()); put("id", describe(s.handle(), "The baked simulation to apply.")) },
+		listOf("state", "id"))
+
 	val inspected = s.obj(mapOf(
 		"id" to s.handle(), "kind" to s.choices(*kinds), "name" to s.string(), "targets" to s.array(s.handle()),
 		"part" to s.nullable(s.handle()), "excluded" to s.array(s.handle()), "enabled" to s.boolean(),
@@ -142,11 +145,13 @@ internal fun registerModifierCommands(catalog: WorkspaceCommands, workspace: Wor
 		ModifierAuthoring.APPLY to "Apply a modifier: write what it does into the journal as ordinary keyforms (mode=keyforms) or into the rest shape at a pose (mode=rest), and remove it; with mesh, for that mesh alone. The rig looks as before.",
 		ModifierAuthoring.SPLIT to "Give one of a modifier's meshes a copy of its own, which then is adjusted apart; it leaves the original.",
 		ModifierAuthoring.COPY to "Put a copy of a modifier on other meshes, right after it in the stack; the copy is independent and keyed on the same parameters.",
+		io.github.psd2live.core.sim.SimApply.OP to "Apply a baked simulation: its keyforms become ordinary journal entries with the edits of its cells folded in, its pendulums ordinary physics groups, and the simulation is removed. The rig looks and moves as before. Refused for modes written as blend shapes.",
 	)
 	val schemas = mapOf(
 		ModifierAuthoring.PUT to WorkspaceModifierSchemas.put, ModifierAuthoring.DELETE to WorkspaceModifierSchemas.delete,
 		ModifierAuthoring.MOVE to WorkspaceModifierSchemas.move, ModifierAuthoring.APPLY to WorkspaceModifierSchemas.apply,
 		ModifierAuthoring.SPLIT to WorkspaceModifierSchemas.split, ModifierAuthoring.COPY to WorkspaceModifierSchemas.copy,
+		io.github.psd2live.core.sim.SimApply.OP to WorkspaceModifierSchemas.simulationApply,
 	)
 	for ((id, schema) in schemas) catalog.register(id, descriptions.getValue(id), schema, hints = MUTATING) { request ->
 		WorkspaceOperationOutput(workspace.applyDocumentEdits(request.arguments.getValue("state").jsonPrimitive.content, "Modifier",
