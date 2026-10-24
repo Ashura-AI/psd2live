@@ -43,7 +43,7 @@ internal fun ModifierPanelView(vm: PSD2LiveViewModel, state: PSD2LiveState) {
 	val target = preview?.rig?.layerIdByDrawableId?.entries?.firstOrNull { it.value == state.selectedLayerId }?.key ?: state.selectedLayerId
 	val puppet = preview?.rig?.puppet
 	val mesh = puppet?.drawables?.singleOrNull { it.id.raw == target }?.takeIf { it.mesh != null }
-	val stack = state.rigEdits.modifiers.filter { target != null && target in it.target.meshes }
+	val stack = state.rigEdits.modifiers.filter { target != null && target in it.target.resolve(puppet) }
 	// The committed model shows what was previewed: the preview steps aside.
 	LaunchedEffect(preview) { vm.modifiers.dropPreview() }
 	DisposableEffect(target, state.activeCanvas.id) { onDispose { vm.modifiers.dropPreview() } }
@@ -193,8 +193,8 @@ private fun ModifierMenu(vm: PSD2LiveViewModel, state: PSD2LiveState, puppet: Pu
 	fun add(enabled: Boolean, danger: Boolean = false, label: String, hint: String? = null, action: () -> Unit) {
 		rows += Triple(enabled, danger, @Composable { FloatingMenuRow(label, { close(); action() }, enabled = enabled, hint = hint, danger = danger) })
 	}
-	val stacks = ModifierSampler.stacks(state.rigEdits.modifiers)
-	val alone = modifier.target.meshes.all { stacks[it].orEmpty().singleOrNull()?.id == modifier.id }
+	val stacks = ModifierSampler.stacks(state.rigEdits.modifiers, puppet)
+	val alone = modifier.target.resolve(puppet).all { stacks[it].orEmpty().singleOrNull()?.id == modifier.id }
 	add(alone && modifier.drivers.isNotEmpty(), label = tr("modifiers.applyKeyforms"), hint = tr(if (alone) "modifiers.applyKeyformsTip" else "modifiers.applyAlone")) {
 		vm.modifiers.apply(modifier.id, "keyforms")
 	}

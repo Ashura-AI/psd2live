@@ -75,7 +75,8 @@ internal object DocumentGenerators {
 	 * (`rig.meshes` when no layers are named, `rig` when its layer is not among them) owns its feature axes and
 	 * the skeleton its bone axes, so an edit of one is recorded as an override.
 	 */
-	fun graph(overlay: RigEditOverlay, layers: List<String> = emptyList(), primitives: PrimitiveSkins = PrimitiveSkins.None): GeneratorGraph {
+	fun graph(overlay: RigEditOverlay, layers: List<String> = emptyList(), primitives: PrimitiveSkins = PrimitiveSkins.None,
+			  model: PuppetModel? = null): GeneratorGraph {
 		val owned = HashSet<String>()
 		fun claim(ids: Collection<String>) = ids.filterTo(LinkedHashSet()) { owned.add(it) }
 		val pinned = if (overlay.authoringJournal.any(ArtPrimitiveV2::isV2)) setOf(PRIMITIVES) else emptySet()
@@ -153,7 +154,8 @@ internal object DocumentGenerators {
 		}
 		// The modifiers come last and as one node: a mesh's stack is sampled as a whole, its modifiers chained.
 		if (overlay.modifiers.isNotEmpty()) {
-			val writes = claim(io.github.psd2live.core.modifier.ModifierSampler.claims(overlay.modifiers))
+			// A part's meshes come from [model]: callers asking who owns a cell pass the rig they look at.
+			val writes = claim(io.github.psd2live.core.modifier.ModifierSampler.claims(overlay.modifiers, model))
 			nodes += GeneratorNode(io.github.psd2live.core.modifier.ModifierSampler.NODE, setOf("rig:authored", "document:modifiers"), writes)
 			keyforms += writes.filter { it.startsWith("keyform:") }
 			parameters += writes.filter { it.startsWith("parameter:") }
@@ -248,7 +250,8 @@ internal object DocumentGenerators {
 	 * the parameters and their tree, and the vertex groups. They write their parameters, the tree and those meshes.
 	 */
 	fun modifierReads(model: PuppetModel, modifiers: List<io.github.psd2live.core.modifier.RigModifier>): GeneratorReuse.Reads {
-		val meshes = modifiers.filter { it.enabled }.flatMap { it.target.meshes }.toSortedSet()
+		val meshes = modifiers.filter { it.enabled }.flatMap { it.target.resolve(model) }.toSortedSet()
+		val parts = if (modifiers.any { it.target.part != null }) listOf(model.parts) else emptyList()
 		val drawables = HashMap<String, org.umamo.runtime.model.Drawable>().apply { model.drawables.forEach { putIfAbsent(it.id.raw, it) } }
 		val byId = HashMap<String, org.umamo.runtime.model.Deformer>().apply { model.deformers.forEach { putIfAbsent(it.id.raw, it) } }
 		val chain = LinkedHashMap<String, Any?>()
@@ -256,7 +259,7 @@ internal object DocumentGenerators {
 			var id: String? = drawables[mesh]?.parentDeformerId?.raw
 			while (id != null && id !in chain) { val deformer = byId[id]; chain[id] = deformer; id = deformer?.parent?.raw }
 		}
-		return GeneratorReuse.Reads(model.parameters, model.parameterTree, listOf(model.vertexGroups), chain.keys, chain.values.toList(), meshes, meshes.map { drawables[it] })
+		return GeneratorReuse.Reads(model.parameters, model.parameterTree, listOf(model.vertexGroups) + parts, chain.keys, chain.values.toList(), meshes, meshes.map { drawables[it] })
 	}
 
 	/** The document parts that differ between [before] and [after], as the graph's `document:` ids. */

@@ -17,20 +17,26 @@ import org.umamo.runtime.model.*
  * - `modifier_delete` removes one; parameters it made that other content uses stay as ordinary parameters.
  * - `modifier_move` moves one in the stack order.
  * - `modifier_apply` writes what one does into the journal as ordinary keyforms (`keyforms`), or its shape at one
- *   pose into the rest shape (`rest`), and removes it.
+ *   pose into the rest shape (`rest`), and removes it - or, with `mesh`, does so for that mesh alone and leaves it out.
+ * - `modifier_split` gives one mesh a copy of its own, `modifier_copy` puts copies on other meshes: independent
+ *   modifiers with the same settings, placed right after the original.
  */
 internal object ModifierAuthoring {
 	const val PUT = "modifier_put"
 	const val DELETE = "modifier_delete"
 	const val MOVE = "modifier_move"
 	const val APPLY = "modifier_apply"
-	val supported = setOf(PUT, DELETE, MOVE, APPLY)
+	const val SPLIT = "modifier_split"
+	const val COPY = "modifier_copy"
+	val supported = setOf(PUT, DELETE, MOVE, APPLY, SPLIT, COPY)
 
 	fun apply(operation: String, preview: RigPreviewModel, overlay: RigEditOverlay, request: JsonObject): RigEditOverlay = when (operation) {
 		PUT -> put(preview, overlay, request)
 		DELETE -> delete(preview, overlay, request.text("id"))
 		MOVE -> move(overlay, request)
 		APPLY -> apply(preview, overlay, request)
+		SPLIT -> split(preview, overlay, request)
+		COPY -> copy(preview, overlay, request)
 		else -> error("Unknown modifier operation: $operation")
 	}
 
@@ -53,9 +59,15 @@ internal object ModifierAuthoring {
 		val kind = old?.kind ?: requireNotNull(request["kind"]?.jsonPrimitive?.contentOrNull) { "kind is required for a new modifier" }
 		val definition = requireNotNull(ModifierKinds.of(kind)) { "Unknown modifier kind: $kind (${ModifierKinds.all.joinToString { it.id }})" }
 		require(old == null || request["kind"]?.jsonPrimitive?.contentOrNull.let { it == null || it == kind }) { "A modifier's kind does not change" }
-		val targets = request["targets"]?.jsonArray?.map { mesh(it.jsonPrimitive.content) } ?: old?.target?.meshes
-			?: error("targets is required for a new modifier")
-		for (target in targets) requireNotNull(authored.drawables.firstOrNull { it.id.raw == target }?.mesh) { "Not a mesh: $target" }
+		val target = when {
+			request["part"] != null -> ModifierTarget(part = request.text("part").removePrefix("part:"),
+				excluded = request["excluded"]?.jsonArray?.map { mesh(it.jsonPrimitive.content) }?.toSet().orEmpty())
+			request["targets"] != null -> ModifierTarget(request.getValue("targets").jsonArray.map { mesh(it.jsonPrimitive.content) })
+			else -> old?.target ?: error("targets or part is required for a new modifier")
+		}
+		target.part?.let { part -> requireNotNull(authored.parts.firstOrNull { it.id.raw == part }) { "Not a part: $part" } }
+		for (mesh in target.meshes) requireNotNull(authored.drawables.firstOrNull { it.id.raw == mesh }?.mesh) { "Not a mesh: $mesh" }
+		val targets = target.resolve(authored)
 		val created = (old?.created.orEmpty() + request["parameters"]?.jsonArray.orEmpty().map { e ->
 			val o = e.jsonObject
 			val p = Parameter(ParameterId(o.text("id")), o["name"]?.jsonPrimitive?.contentOrNull ?: o.text("id"),
@@ -104,11 +116,11 @@ internal object ModifierAuthoring {
 			ModifierSampling(s["tolerance"]?.jsonPrimitive?.float ?: base.tolerance, s["max_keys"]?.jsonPrimitive?.int ?: base.maxKeys)
 		} ?: old?.sampling ?: ModifierSampling()
 		val modifier = RigModifier(newId, kind, request["name"]?.jsonPrimitive?.contentOrNull ?: old?.name ?: definition.id.replaceFirstChar { it.uppercase() },
-			ModifierTarget(targets), request["enabled"]?.jsonPrimitive?.boolean ?: old?.enabled ?: true, settings, created, weights, sampling)
+			target, request["enabled"]?.jsonPrimitive?.boolean ?: old?.enabled ?: true, settings, created, weights, sampling)
 		val modifiers = if (old == null) overlay.modifiers + modifier else overlay.modifiers.map { if (it.id == modifier.id) modifier else it }
 		val next = overlay.copy(modifiers = modifiers)
-		requireOwnership(next)
-		return dropStaleOverrides(next)
+		requireOwnership(next, authored)
+		return dropStaleOverrides(next, authored)
 	}
 
 	/** [value] within [setting]'s range. */
@@ -135,9 +147,9 @@ internal object ModifierAuthoring {
 	private fun probe(target: String) = RigModifier("probe", ModifierKinds.Transform.id, "probe", ModifierTarget(listOf(target)))
 
 	/** Refuses modifiers that would write keyforms another generator owns (a simulation's, an interior effect's…). */
-	private fun requireOwnership(overlay: RigEditOverlay) {
+	private fun requireOwnership(overlay: RigEditOverlay, model: PuppetModel) {
 		val others = DocumentGenerators.graph(overlay.copy(modifiers = emptyList())).order
-		for (claim in ModifierSampler.claims(overlay.modifiers)) {
+		for (claim in ModifierSampler.claims(overlay.modifiers, model)) {
 			val owner = others.firstOrNull { claim in it.writes } ?: continue
 			error("${claim.removePrefix("keyform:").removePrefix("parameter:")} belongs to ${owner.id}; a modifier cannot key it")
 		}
@@ -147,8 +159,8 @@ internal object ModifierAuthoring {
 	 * [overlay] without the overrides of modifier keyforms no modifier owns any more: the edits of a cell along a
 	 * parameter that no stack on that mesh is keyed on now.
 	 */
-	private fun dropStaleOverrides(overlay: RigEditOverlay): RigEditOverlay {
-		val owned = ModifierSampler.claims(overlay.modifiers).toSet()
+	private fun dropStaleOverrides(overlay: RigEditOverlay, model: PuppetModel): RigEditOverlay {
+		val owned = ModifierSampler.claims(overlay.modifiers, model).toSet()
 		val kept = overlay.authoringJournal.filter { entry ->
 			if (!GeneratedOverrides.isOverride(entry) || entry["generator"]?.jsonPrimitive?.contentOrNull != ModifierSampler.NODE) return@filter true
 			val target = entry["target"]?.jsonPrimitive?.contentOrNull?.removePrefix("mesh:") ?: return@filter true
@@ -159,7 +171,8 @@ internal object ModifierAuthoring {
 
 	fun delete(preview: RigPreviewModel, overlay: RigEditOverlay, id: String): RigEditOverlay {
 		val modifier = requireNotNull(overlay.modifiers.firstOrNull { it.id == id }) { "Modifier not found: $id" }
-		return retained(preview, dropStaleOverrides(overlay.copy(modifiers = overlay.modifiers.filterNot { it.id == id })), modifier)
+		val next = overlay.copy(modifiers = overlay.modifiers.filterNot { it.id == id })
+		return retained(preview, dropStaleOverrides(next, preview.authoredPuppet(next)), modifier)
 	}
 
 	/**
@@ -215,21 +228,27 @@ internal object ModifierAuthoring {
 		val modifier = requireNotNull(overlay.modifiers.firstOrNull { it.id == id }) { "Modifier not found: $id" }
 		val mode = request["mode"]?.jsonPrimitive?.contentOrNull ?: "keyforms"
 		require(mode == "keyforms" || mode == "rest") { "mode is keyforms or rest" }
-		val stacks = ModifierSampler.stacks(overlay.modifiers)
-		val without = overlay.copy(modifiers = overlay.modifiers.filterNot { it.id == id })
 		val authored = preview.authoredPuppet(overlay)
-		if (!modifier.enabled) return delete(preview, overlay, id)
+		val all = modifier.target.resolve(authored)
+		val only = request["mesh"]?.jsonPrimitive?.contentOrNull?.let(::mesh)
+		require(only == null || only in all) { "$only is not one of ${modifier.id}'s meshes" }
+		val meshes = only?.let(::listOf) ?: all
+		// Applying to one mesh leaves the modifier on the others; applying to its last mesh removes it.
+		val rest = if (only == null) null else modifier.target.without(only)?.let { modifier.copy(target = it) }
+		val without = overlay.copy(modifiers = overlay.modifiers.mapNotNull { if (it.id != id) it else rest })
+		if (!modifier.enabled) return if (rest == null) delete(preview, overlay, id) else without
+		val stacks = ModifierSampler.stacks(overlay.modifiers, authored)
 		// The rig the modifier acts on: the journal and every generator before the modifiers.
 		val before = ModifierSampler.withCreated(DocumentGenerators.generate(authored, overlay.copy(modifiers = emptyList())), listOf(modifier))
 		val commands = ArrayList<JsonObject>()
 		val keyed = mode == "keyforms" && modifier.drivers.isNotEmpty()
 		if (keyed) {
-			for (mesh in modifier.target.meshes) require(stacks[mesh].orEmpty().singleOrNull()?.id == id) {
+			for (mesh in meshes) require(stacks[mesh].orEmpty().singleOrNull()?.id == id) {
 				"$mesh has other modifiers: apply to the rest shape, or apply the others first"
 			}
 			val known = authored.parameters.mapTo(HashSet()) { it.id }
 			modifier.created.filter { it.id !in known }.takeIf { it.isNotEmpty() }?.let { commands += creation(it) }
-			for (mesh in modifier.target.meshes) {
+			for (mesh in meshes) {
 				val (axes, table) = ModifierSampler.offsets(before, mesh, listOf(modifier)) ?: continue
 				val drawable = authored.drawables.first { it.id.raw == mesh }
 				val grid = ModifierSampler.withOffsets(drawable.geometryGrid, drawable.mesh!!.positions.size, axes, table)
@@ -252,7 +271,7 @@ internal object ModifierAuthoring {
 		} else {
 			// Nothing keyed, or the shape at one pose: the rest shape moves, and every keyform with it.
 			val pose = request["pose"]?.jsonObject.orEmpty().mapValues { it.value.jsonPrimitive.float }
-			for (mesh in modifier.target.meshes) {
+			for (mesh in meshes) {
 				val (stack, mapping) = ModifierSampler.stack(before, mesh, listOf(modifier)) ?: continue
 				val local = ModifierSampler.local(before, before.drawables.first { it.id.raw == mesh })
 				val canvas = stack.canvasAt(pose)
@@ -265,11 +284,48 @@ internal object ModifierAuthoring {
 				}
 			}
 		}
-		val removed = dropStaleOverrides(without.copy(authoringJournal = overlay.authoringJournal.filterNot { entry ->
-			GeneratedOverrides.isOverride(entry) && entry["generator"]?.jsonPrimitive?.contentOrNull == ModifierSampler.NODE &&
-				modifier.target.meshes.any { entry["target"]?.jsonPrimitive?.contentOrNull == "mesh:$it" } && keyed
-		} + commands))
-		return if (keyed) removed else retained(preview, removed, modifier)
+		val journal = overlay.authoringJournal.filterNot { entry ->
+			keyed && GeneratedOverrides.isOverride(entry) && entry["generator"]?.jsonPrimitive?.contentOrNull == ModifierSampler.NODE &&
+				meshes.any { entry["target"]?.jsonPrimitive?.contentOrNull == "mesh:$it" }
+		} + commands
+		val next = without.copy(authoringJournal = journal)
+		val removed = dropStaleOverrides(next, preview.authoredPuppet(next))
+		return if (keyed || rest != null) removed else retained(preview, removed, modifier)
+	}
+
+	/** [modifier] with the settings of [source] under a fresh ID on [target]; it makes no parameters of its own. */
+	private fun copyOf(overlay: RigEditOverlay, source: RigModifier, target: ModifierTarget, id: String?) =
+		RigModifier(id ?: freshId(overlay, source.kind), source.kind, source.name, target, source.enabled, source.settings, emptyList(),
+			source.weights, source.sampling).also { copy -> require(overlay.modifiers.none { it.id == copy.id }) { "Modifier ${copy.id} already exists" } }
+
+	/** [overlay] with [copy] right after [after]. */
+	private fun inserted(overlay: RigEditOverlay, after: String, copy: RigModifier): RigEditOverlay {
+		val index = overlay.modifiers.indexOfFirst { it.id == after }
+		return overlay.copy(modifiers = overlay.modifiers.subList(0, index + 1) + copy + overlay.modifiers.subList(index + 1, overlay.modifiers.size))
+	}
+
+	/** Gives `mesh` its own copy of modifier `id`, which leaves it: from then on the two are adjusted apart. */
+	fun split(preview: RigPreviewModel, overlay: RigEditOverlay, request: JsonObject): RigEditOverlay {
+		val modifier = requireNotNull(overlay.modifiers.firstOrNull { it.id == request.text("id") }) { "Modifier not found: ${request.text("id")}" }
+		val authored = preview.authoredPuppet(overlay)
+		val mesh = mesh(request.text("mesh"))
+		require(mesh in modifier.target.resolve(authored)) { "$mesh is not one of ${modifier.id}'s meshes" }
+		val rest = requireNotNull(modifier.target.without(mesh)) { "${modifier.id} acts on $mesh alone" }
+		val copy = copyOf(overlay, modifier, ModifierTarget(listOf(mesh)), request["new_id"]?.jsonPrimitive?.contentOrNull)
+		val next = inserted(overlay.copy(modifiers = overlay.modifiers.map { if (it.id == modifier.id) modifier.copy(target = rest) else it }), modifier.id, copy)
+		requireOwnership(next, authored)
+		return next
+	}
+
+	/** Puts a copy of modifier `id` on `targets` (meshes), right after it; the copy is keyed on the same parameters. */
+	fun copy(preview: RigPreviewModel, overlay: RigEditOverlay, request: JsonObject): RigEditOverlay {
+		val modifier = requireNotNull(overlay.modifiers.firstOrNull { it.id == request.text("id") }) { "Modifier not found: ${request.text("id")}" }
+		val authored = preview.authoredPuppet(overlay)
+		val targets = request.getValue("targets").jsonArray.map { mesh(it.jsonPrimitive.content) }
+		for (target in targets) requireNotNull(authored.drawables.firstOrNull { it.id.raw == target }?.mesh) { "Not a mesh: $target" }
+		val next = inserted(overlay, modifier.id, copyOf(overlay, modifier, ModifierTarget(targets), request["new_id"]?.jsonPrimitive?.contentOrNull))
+		requireOwnership(next, authored)
+		return next
 	}
 
 	/** The journal entries giving [mesh] [grid]: the keys of the [added] axes, then every cell's shape. */

@@ -59,6 +59,8 @@ internal object WorkspaceModifierSchemas {
 			put("kind", describe(s.choices(*kinds), "Required for a new modifier."))
 			put("name", s.string())
 			put("targets", describe(s.array(s.handle(), 1, 256), "Mesh IDs (or mesh:<ID>); the settings are shared, each mesh is keyed on its own."))
+			put("part", describe(s.handle(), "Instead of targets: every mesh under this part (or part:<ID>), sub-parts included; a mesh moved in or out joins or leaves."))
+			put("excluded", describe(s.array(s.handle(), 0, 256), "With part: meshes left out."))
 			put("enabled", s.boolean())
 			put("settings", describe(s.dictionary(value), "Whole values by setting key; null resets one to the kind's default. $settingsDescription"))
 			put("keys", describe(s.array(key, 0, 256), "Single keys to set or remove, after settings."))
@@ -85,10 +87,24 @@ internal object WorkspaceModifierSchemas {
 		put("mode", describe(s.choices("keyforms", "rest"),
 			"keyforms (default): key the targets as ordinary keyforms; the modifier must be alone on each. rest: move the rest shape by what it does at pose."))
 		put("pose", describe(s.dictionary(number), "mode=rest: parameter values to take the shape at; the rest stay at their defaults."))
+		put("mesh", describe(s.handle(), "Apply to this mesh alone; the modifier stays on its other meshes."))
 	}, listOf("state", "id"))
 
+	val split = WorkspaceCommandSchema(buildJsonObject {
+		put("state", s.handle()); put("id", s.handle())
+		put("mesh", describe(s.handle(), "The mesh that gets a copy of its own and leaves the modifier."))
+		put("new_id", describe(s.handle(), "The copy's ID; a fresh one when absent."))
+	}, listOf("state", "id", "mesh"))
+
+	val copy = WorkspaceCommandSchema(buildJsonObject {
+		put("state", s.handle()); put("id", s.handle())
+		put("targets", describe(s.array(s.handle(), 1, 256), "The meshes the copy acts on."))
+		put("new_id", describe(s.handle(), "The copy's ID; a fresh one when absent."))
+	}, listOf("state", "id", "targets"))
+
 	val inspected = s.obj(mapOf(
-		"id" to s.handle(), "kind" to s.choices(*kinds), "name" to s.string(), "targets" to s.array(s.handle()), "enabled" to s.boolean(),
+		"id" to s.handle(), "kind" to s.choices(*kinds), "name" to s.string(), "targets" to s.array(s.handle()),
+		"part" to s.nullable(s.handle()), "excluded" to s.array(s.handle()), "enabled" to s.boolean(),
 		"settings" to s.dictionary(value), "created" to s.array(parameter), "weights" to s.nullable(s.obj(mapOf("group" to s.handle(), "invert" to s.boolean()))),
 		"sampling" to s.obj(mapOf("tolerance" to s.number(0), "max_keys" to s.integer(2))),
 		"drivers" to s.array(s.handle()),
@@ -100,6 +116,8 @@ internal object WorkspaceModifierSchemas {
 	fun inspect(modifier: RigModifier, issues: List<ModifierSampler.Issue>): JsonObject = buildJsonObject {
 		put("id", modifier.id); put("kind", modifier.kind); put("name", modifier.name)
 		putJsonArray("targets") { modifier.target.meshes.forEach { add(it) } }
+		put("part", modifier.target.part?.let(::JsonPrimitive) ?: JsonNull)
+		putJsonArray("excluded") { modifier.target.excluded.sorted().forEach { add(it) } }
 		put("enabled", modifier.enabled)
 		putJsonObject("settings") { modifier.definition.settings.forEach { put(it.key, ModifierValue.toJson(modifier.value(it.key))) } }
 		putJsonArray("created") { modifier.created.forEach { add(JsonObject(RigModifier.parameterJson(it) - "kind")) } }
@@ -121,11 +139,14 @@ internal fun registerModifierCommands(catalog: WorkspaceCommands, workspace: Wor
 			"generators, and modifiers on one mesh chain in stack order. Read them with workspace_inspect scope=modifiers.",
 		ModifierAuthoring.DELETE to "Delete a modifier; parameters it made that other content uses stay as ordinary parameters.",
 		ModifierAuthoring.MOVE to "Move a modifier in the stack order: modifiers on one mesh act in this order, each on the shape the earlier ones made.",
-		ModifierAuthoring.APPLY to "Apply a modifier: write what it does into the journal as ordinary keyforms (mode=keyforms) or into the rest shape at a pose (mode=rest), and remove it. The rig looks as before.",
+		ModifierAuthoring.APPLY to "Apply a modifier: write what it does into the journal as ordinary keyforms (mode=keyforms) or into the rest shape at a pose (mode=rest), and remove it; with mesh, for that mesh alone. The rig looks as before.",
+		ModifierAuthoring.SPLIT to "Give one of a modifier's meshes a copy of its own, which then is adjusted apart; it leaves the original.",
+		ModifierAuthoring.COPY to "Put a copy of a modifier on other meshes, right after it in the stack; the copy is independent and keyed on the same parameters.",
 	)
 	val schemas = mapOf(
 		ModifierAuthoring.PUT to WorkspaceModifierSchemas.put, ModifierAuthoring.DELETE to WorkspaceModifierSchemas.delete,
 		ModifierAuthoring.MOVE to WorkspaceModifierSchemas.move, ModifierAuthoring.APPLY to WorkspaceModifierSchemas.apply,
+		ModifierAuthoring.SPLIT to WorkspaceModifierSchemas.split, ModifierAuthoring.COPY to WorkspaceModifierSchemas.copy,
 	)
 	for ((id, schema) in schemas) catalog.register(id, descriptions.getValue(id), schema, hints = MUTATING) { request ->
 		WorkspaceOperationOutput(workspace.applyDocumentEdits(request.arguments.getValue("state").jsonPrimitive.content, "Modifier",

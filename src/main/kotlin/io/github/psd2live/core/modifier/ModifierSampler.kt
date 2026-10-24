@@ -49,17 +49,20 @@ object ModifierSampler {
 
 	class Outcome(val model: PuppetModel, val issues: List<Issue>)
 
-	/** Each mesh's stack: the enabled modifiers that name it, in document order. */
-	fun stacks(modifiers: List<RigModifier>): Map<String, List<RigModifier>> {
+	/** Each mesh's stack: the enabled modifiers that name it on [model] (a part's meshes need it), in document order. */
+	fun stacks(modifiers: List<RigModifier>, model: PuppetModel? = null): Map<String, List<RigModifier>> {
 		val stacks = LinkedHashMap<String, MutableList<RigModifier>>()
-		for (modifier in modifiers) if (modifier.enabled) for (mesh in modifier.target.meshes) stacks.getOrPut(mesh) { ArrayList() } += modifier
+		for (modifier in modifiers) if (modifier.enabled) for (mesh in modifier.target.resolve(model)) stacks.getOrPut(mesh) { ArrayList() } += modifier
 		return stacks
 	}
 
-	/** What the modifiers own, as graph ids: the parameters they made and their keyforms on each mesh along each driving parameter. */
-	fun claims(modifiers: List<RigModifier>): List<String> =
+	/**
+	 * What the modifiers own, as graph ids: the parameters they made and their keyforms on each mesh along each driving
+	 * parameter. A part's meshes are known only with [model]; without it they are left out.
+	 */
+	fun claims(modifiers: List<RigModifier>, model: PuppetModel? = null): List<String> =
 		modifiers.flatMap { m -> m.created.map { "parameter:${it.id.raw}" } } +
-			stacks(modifiers).flatMap { (mesh, stack) -> stack.flatMap { it.drivers }.distinct().map { DocumentGenerators.keyform("mesh", mesh, it) } }
+			stacks(modifiers, model).flatMap { (mesh, stack) -> stack.flatMap { it.drivers }.distinct().map { DocumentGenerators.keyform("mesh", mesh, it) } }
 
 	fun apply(model: PuppetModel, modifiers: List<RigModifier>): PuppetModel = run(model, modifiers, write = true).model
 
@@ -185,7 +188,7 @@ object ModifierSampler {
 		if (modifiers.isEmpty()) return Outcome(model, emptyList())
 		var current = withCreated(model, modifiers)
 		val issues = ArrayList<Issue>()
-		for ((mesh, stack) in stacks(modifiers)) {
+		for ((mesh, stack) in stacks(modifiers, current)) {
 			val (axes, table) = offsets(current, mesh, stack, issues) ?: continue
 			if (!write) continue
 			val drawable = current.drawables.first { it.id.raw == mesh }
@@ -267,8 +270,8 @@ object ModifierSampler {
 	 * What an export keeps of [modifiers]: only their keyforms, so each enabled modifier on each mesh is one baked entry;
 	 * the kind and settings stay in the project.
 	 */
-	fun losses(modifiers: List<RigModifier>): List<io.github.psd2live.format.compile.LossEntry> = modifiers.filter { it.enabled }.flatMap { m ->
-		m.target.meshes.map { mesh ->
+	fun losses(modifiers: List<RigModifier>, model: PuppetModel): List<io.github.psd2live.format.compile.LossEntry> = modifiers.filter { it.enabled }.flatMap { m ->
+		m.target.resolve(model).map { mesh ->
 			io.github.psd2live.format.compile.LossEntry(mesh, io.github.psd2live.format.compile.Feature.PARAMETER_GRID,
 				io.github.psd2live.format.compile.Handling.BAKED, note = "Modifier ${m.id} (${m.kind}) is written as keyforms")
 		}

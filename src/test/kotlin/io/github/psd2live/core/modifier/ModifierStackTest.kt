@@ -166,4 +166,46 @@ class ModifierStackTest {
 		val missing = ModifierSampler.issues(RigEditOverlay().applyTo(preview.baseRig.puppet), kept.modifiers)
 		assertEquals(listOf(ModifierSampler.IssueKind.PARAMETER_MISSING), missing.map { it.kind }, "without its parameter the stack reports, not fails")
 	}
+
+	private val pair: RigPreviewModel by lazy {
+		fun layer(id: String, x: Int) = WorkspaceSourceLayer(LayerId(id), id, "", SourceLayerKind.Raster, true, 0, LayerBounds(x, 8, 48, 120),
+			1f, false, LayerBlend.Normal, ChannelMask.ALL, LayerRaster(48, 120, ByteArray(48 * 120 * 4) { if (it % 4 == 3) 255.toByte() else 120.toByte() }), null, null, false)
+		PSD2LivePipeline().buildPreview(WorkspaceSourceArt(160, 168, listOf(layer("left", 12), layer("right", 90)), emptyList()), PipelineConfig(atlasSize = 512, meshSpacing = 16))
+	}
+
+	@Test
+	fun `a part target follows its meshes, and one mesh can be applied, split off or copied to`() {
+		val authored = pair.authored.rig.puppet
+		val meshes = authored.drawables.filter { it.mesh != null }.map { it.id.raw }
+		assertEquals(2, meshes.size)
+		val part = authored.parts.first { p -> ModifierTarget(part = p.id.raw).resolve(authored).toSet() == meshes.toSet() }.id.raw
+		val shift = buildJsonObject {
+			put("id", "Shift"); put("kind", "transform"); put("part", part)
+			putJsonArray("parameters") { add(driver) }
+			putJsonArray("keys") { addJsonObject { put("setting", "offset"); putJsonObject("at") { put("ParamModTurn", 10) }; putJsonArray("value") { add(20); add(0) } } }
+		}
+		val overlay = ModifierAuthoring.put(pair, RigEditOverlay(), shift)
+		assertEquals(meshes.toSet(), ModifierSampler.stacks(overlay.modifiers, authored).keys)
+		assertTrue(DocumentGenerators.graph(overlay, model = authored).order.single { it.id == ModifierSampler.NODE }.writes
+			.containsAll(meshes.map { DocumentGenerators.keyform("mesh", it, "ParamModTurn") }))
+		val model = overlay.applyTo(pair.baseRig.puppet)
+		for (m in meshes) assertTrue(model.drawables.single { it.id.raw == m }.geometryGrid!!.axes.any { it.parameterId.raw == "ParamModTurn" })
+
+		val one = ModifierAuthoring.apply(pair, overlay, buildJsonObject { put("id", "Shift"); put("mesh", meshes[0]) })
+		assertEquals(setOf(meshes[0]), one.modifiers.single().target.excluded)
+		val replayed = one.applyTo(pair.baseRig.puppet)
+		for (m in meshes) assertEquals(model.drawables.single { it.id.raw == m }.geometryGrid!!.axes.map { it.parameterId.raw }.toSet(),
+			replayed.drawables.single { it.id.raw == m }.geometryGrid!!.axes.map { it.parameterId.raw }.toSet(), m)
+
+		val split = ModifierAuthoring.split(pair, overlay, buildJsonObject { put("id", "Shift"); put("mesh", meshes[1]); put("new_id", "Own") })
+		assertEquals(listOf("Shift", "Own"), split.modifiers.map { it.id })
+		assertEquals(listOf(meshes[1]), split.modifiers[1].target.meshes)
+		assertEquals(setOf(meshes[0]), ModifierSampler.stacks(split.modifiers.take(1), authored).keys)
+		val copied = ModifierAuthoring.copy(pair, overlay.copy(modifiers = listOf(overlay.modifiers.single().copy(target = ModifierTarget(listOf(meshes[0]))))),
+			buildJsonObject { put("id", "Shift"); putJsonArray("targets") { add(meshes[1]) } })
+		assertEquals(2, copied.modifiers.size)
+		assertTrue(copied.modifiers[1].created.isEmpty(), "the copy keys the original's parameter, it makes none")
+		assertEquals(copied.modifiers[0], RigModifier.fromJson(copied.modifiers[0].toJson()))
+		assertEquals(overlay.modifiers.single(), RigModifier.fromJson(overlay.modifiers.single().toJson()))
+	}
 }

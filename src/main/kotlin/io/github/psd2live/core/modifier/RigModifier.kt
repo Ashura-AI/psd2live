@@ -1,7 +1,9 @@
 package io.github.psd2live.core.modifier
 
 import kotlinx.serialization.json.*
+import org.umamo.runtime.model.OrgChild
 import org.umamo.runtime.model.Parameter
+import org.umamo.runtime.model.PuppetModel
 import org.umamo.runtime.model.ParameterId
 import org.umamo.runtime.model.ParameterKind
 
@@ -176,13 +178,37 @@ sealed interface ModifierValue {
 	}
 }
 
-/** Where a modifier acts: these meshes, each with its own keyforms; the settings are shared. */
-data class ModifierTarget(val meshes: List<String>) {
+/**
+ * Where a modifier acts: these [meshes], or every mesh under [part] (its sub-parts included) but the [excluded] ones -
+ * a mesh moved into the part joins, one moved out leaves. Each mesh is keyed on its own; the settings are shared.
+ */
+data class ModifierTarget(val meshes: List<String> = emptyList(), val part: String? = null, val excluded: Set<String> = emptySet()) {
 	init {
-		require(meshes.isNotEmpty() && meshes.distinct().size == meshes.size && meshes.all { it.isNotBlank() }) {
-			"A modifier names one or more distinct meshes"
+		require(meshes.distinct().size == meshes.size && meshes.all { it.isNotBlank() }) { "A modifier names distinct meshes" }
+		require(if (part == null) meshes.isNotEmpty() && excluded.isEmpty() else meshes.isEmpty() && part.isNotBlank()) {
+			"A modifier names one or more meshes, or one part"
 		}
 	}
+
+	/** The meshes this names on [model]: a part's at the time; none for a part without [model]. */
+	fun resolve(model: PuppetModel?): List<String> {
+		if (part == null) return meshes
+		val parts = model?.parts?.associateBy { it.id.raw } ?: return emptyList()
+		val out = ArrayList<String>()
+		fun walk(id: String, seen: MutableSet<String>) {
+			if (!seen.add(id)) return
+			for (child in parts[id]?.children.orEmpty()) when (child) {
+				is OrgChild.Drawable -> if (child.id.raw !in excluded) out += child.id.raw
+				is OrgChild.Part -> walk(child.id.raw, seen)
+			}
+		}
+		walk(part, HashSet())
+		return out.filter { id -> model.drawables.any { it.id.raw == id && it.mesh != null } }
+	}
+
+	/** This target without [mesh]; null when nothing would be left. */
+	fun without(mesh: String): ModifierTarget? = if (part != null) copy(excluded = excluded + mesh)
+		else (meshes - mesh).takeIf { it.isNotEmpty() }?.let { ModifierTarget(it) }
 }
 
 /** A vertex group limiting the modifier per vertex: its weight, or one minus it when [invert]. */
@@ -258,6 +284,8 @@ class RigModifier(
 			put("kind", kind)
 			put("name", name)
 			putJsonArray("targets") { target.meshes.forEach { add(it) } }
+			target.part?.let { put("part", it) }
+			if (target.excluded.isNotEmpty()) putJsonArray("excluded") { target.excluded.sorted().forEach { add(it) } }
 			put("enabled", enabled)
 			putJsonObject("settings") { settings.toSortedMap().forEach { (k, v) -> put(k, ModifierValue.toJson(v)) } }
 			if (created.isNotEmpty()) putJsonArray("created") { created.forEach { add(parameterJson(it)) } }
@@ -292,7 +320,8 @@ class RigModifier(
 				o.getValue("id").jsonPrimitive.content,
 				o.getValue("kind").jsonPrimitive.content,
 				o.getValue("name").jsonPrimitive.content,
-				ModifierTarget(o.getValue("targets").jsonArray.map { it.jsonPrimitive.content }),
+				ModifierTarget(o.getValue("targets").jsonArray.map { it.jsonPrimitive.content }, o["part"]?.jsonPrimitive?.content,
+					o["excluded"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet().orEmpty()),
 				o.getValue("enabled").jsonPrimitive.boolean,
 				o.getValue("settings").jsonObject.mapValues { ModifierValue.fromJson(it.value) },
 				o["created"]?.jsonArray?.map { parameter(it.jsonObject) }.orEmpty(),
