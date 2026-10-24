@@ -31,6 +31,7 @@
 - **画布与预览抗锯齿**（设置“图形 → 抗锯齿 → 画布与预览”，`CanvasAntialiasing`）：`GpuTarget` 按 `TargetQuality` 让绘制器画进自己的缓冲再写入纹理。MSAA 为多重采样的颜色与深度模板渲染缓冲，`glBlitFramebuffer` 以同尺寸解析；SSAA 2× 为两倍宽高的缓冲，以 `GL_LINEAR` 缩小一半（恰为 2×2 盒式滤波）。绘制器只在直接寻址帧缓冲像素的地方（视口、裁剪、混合层与区域拷贝）乘以 `DrawTarget.scale`，线宽、点半径仍按画面像素，`u_viewport` 不变。多重采样时蒙版以 alpha to coverage 写模板（着色器 `MASK_COVERAGE`：只丢弃全透明纹素，纹素不透明度决定覆盖的采样），蒙版边缘随之平滑；混合层单采样，仍按半透明阈值。某个采样数或倍数建不出缓冲（报错或不完整）时，它及以上不再尝试（`RefusedQuality`）。Cubism 预览自上而下翻转写入，不经此路径。`CanvasGpu` 把抗锯齿与纹理过滤并入缓存键，改动后重画。
 - **纹理过滤**（`TextureFiltering`）：贴图页由 `PageTextures.upload` 上传（编辑画布与 p2lrt 共用）：ARGB 整数按 `GL_BGRA` + `GL_UNSIGNED_INT_8_8_8_8_REV` 原样上传（即 ARGB 整数在内存中的字节序，也是 Windows 与 NVIDIA 驱动保存纹理的顺序），预乘的图像不再逐像素转换，其余只做预乘。缩小过滤为双线性、三线性或三线性加各向异性（GL 4.6 / ARB / EXT 的 `GL_TEXTURE_MAX_ANISOTROPY`，按驱动上限截断）；`FilteringFollower` 在设置改变后的下一次绘制重设已有纹理。
 - **窗口抗锯齿、垂直同步与缓存**：窗口抗锯齿为 Skia 覆盖率（0）或 MSAA 2×–16×（`MultisampledWindow`）。“自适应”垂直同步只在 Windows 上提供（`AdaptiveVsync`：帧赶不上刷新时暂停 `DwmFlush`）；Skiko 的 Linux 重绘器在创建时固定交换间隔，运行中切换只会在等待之外再加计时器。“窗口缓存”即窗口合成器（`psd2live.compositor=false` 仍强制关闭）。“GPU 缓存”在每帧开始时设置 `DirectContext.resourceCacheLimit`（`CacheBudget`），“自动”恢复上下文创建时的预算。
+- **性能叠加层**（`PerformanceOverlay`，设置“图形 → 高级”）：窗口渲染委托在每帧末尾记录帧开始间隔与界面线程渲染耗时（`FrameStats`，最近 120 帧，超过 250 ms 的停顿不计），开启时用 Skia 直接画在窗口右上角，不经过 Compose，因此不增加重组或重绘；颜色由界面按主题交给它。界面线程耗时只含 Compose 录制与回放，之后的交换缓冲与 GPU 执行不在其中。
 - **画质预设**（`QualityPreset`）：低、中、高、极高各固定窗口抗锯齿、画布抗锯齿、纹理过滤与 GPU 缓存四项；默认值即“高”，其他组合显示为“自定义”。
 
 ### 10.2 编辑画布与纹理集页面

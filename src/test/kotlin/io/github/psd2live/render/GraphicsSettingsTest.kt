@@ -43,7 +43,7 @@ class GraphicsSettingsTest {
 		// Everything written reads back.
 		val everything = GraphicsOptions(RenderPath.SOFTWARE_CANVAS, GpuChoice.Device("0000:01:00.0"), VsyncMode.OFF, FrameRateLimit.FPS_60,
 			BackgroundFrameRate.FPS_10, WindowAntialiasing.MSAA_16, CanvasAntialiasing.SSAA_2X, TextureFiltering.ANISOTROPIC_8X,
-			windowCache = false, GpuCacheSize.GB_2, ThreadedGl.ON)
+			windowCache = false, GpuCacheSize.GB_2, ThreadedGl.ON, performanceOverlay = true)
 		assertEquals(everything, GraphicsOptions.stored(everything.toStored()::get))
 	}
 

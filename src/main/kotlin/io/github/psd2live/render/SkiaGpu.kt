@@ -361,7 +361,8 @@ class WindowGpu internal constructor(
 				if (!valid()) return inner.onRender(canvas, width, height, nanoTime)
 				// Replaced by a wrapper around this one (another delegate wrapped it meanwhile): that one does the work.
 				if (compositor !== composer) return inner.onRender(canvas, width, height, nanoTime)
-				pacing.frame(System.nanoTime())
+				val started = System.nanoTime()
+				pacing.frame(started)
 				resumeFrameWaiters(nanoTime)
 				// Compose records before Skiko makes the context current (on Linux another window's may be): the
 				// canvases drawing in this render need the window's own.
@@ -378,6 +379,8 @@ class WindowGpu internal constructor(
 					_composited.value = composited
 					composer.invalidate()
 				}
+				frameStats.record(started, System.nanoTime())
+				if (GraphicsSettings.current.performanceOverlay) runCatching { PerformanceOverlay.draw(canvas, width, frameStats, contentScale, description) }
 			}
 		}
 		installed = wrapper
@@ -391,6 +394,7 @@ class WindowGpu internal constructor(
 	private val pacing = AdaptiveVsync(layer, redrawer)
 	private val multisampled = MultisampledWindow(this)
 	private val cacheBudget = CacheBudget()
+	private val frameStats = FrameStats()
 }
 
 /**

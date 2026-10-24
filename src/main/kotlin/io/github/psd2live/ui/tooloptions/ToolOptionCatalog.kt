@@ -346,7 +346,7 @@ private fun MutableList<ToolOption>.addGlue(editor: CanvasEditor) {
  * submenu, then the selection.
  */
 private fun MutableList<ToolOption>.addObjectMode(editor: CanvasEditor) {
-    val target = editor.target()
+    val target = editor.selectionTarget()
     if (target?.kind == "mesh") addLayerActions(editor, editor.targetLayerId(target), target.id)
     if (target?.kind == "mesh" || target?.kind == "warp") {
         add(SectionOption("object.create", "editor.toolbar.create", OptionPlace.MENU, submenu = true, icon = OptionIcon.CREATE, alwaysFolds = true))
@@ -453,7 +453,7 @@ private fun MutableList<ToolOption>.addSelectionActions(objectMode: Boolean, mes
 /** Deform and Edit: the pose a deformation keys, the brush or edit tool in hand, then topology and the selection. */
 private fun MutableList<ToolOption>.addPointModes(editor: CanvasEditor) {
     val editing = editor.hierarchyMode == EditHierarchyMode.EDIT
-    val target = editor.target()
+    val target = editor.selectionTarget()
     val mesh = target?.kind == "mesh"
     if (mesh && (editor.tool in SELECTION_TOOLS || editor.tool == CanvasTool.TRANSFORM)) add(ELEMENT_MODE)
     when (editor.tool) {
@@ -569,7 +569,7 @@ private fun MutableList<ToolOption>.addKeyformTools(editor: CanvasEditor) {
         { e -> io.github.psd2live.ui.components.KeyformDialogs.request = io.github.psd2live.ui.components.KeyformDialogs.Request.Paste(e) },
         OptionIcon.KEYFORM_PASTE, place = OptionPlace.MENU, opensDialog = true))
     add(tool("resetDefault", "editor.keyform.resetDefault", OptionIcon.RESET, CanvasEditor.KeyformToolAction.RESET_DEFAULT))
-    if (editor.target()?.kind == "mesh") add(tool("resetRest", "editor.keyform.resetRest", OptionIcon.RESET, CanvasEditor.KeyformToolAction.RESET_REST))
+    if (editor.selectionTarget()?.kind == "mesh") add(tool("resetRest", "editor.keyform.resetRest", OptionIcon.RESET, CanvasEditor.KeyformToolAction.RESET_REST))
     for (parameter in editor.keyformInterpolationAxes()) add(tool("interpolate.$parameter", "editor.keyform.interpolate", OptionIcon.INTERPOLATE,
         CanvasEditor.KeyformToolAction.INTERPOLATE, parameter) { e -> listOf(e.parameterLabel(parameter), scope(e)) })
     add(tool("restore", "editor.keyform.restore", OptionIcon.RESET, CanvasEditor.KeyformToolAction.RESTORE) { emptyList() })

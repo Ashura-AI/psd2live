@@ -34,6 +34,7 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.toArgb
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -138,7 +139,11 @@ import javax.swing.JOptionPane
 import androidx.compose.ui.input.key.Key
 import io.github.psd2live.ui.theme.Motion
 import io.github.psd2live.ui.theme.handCursor
-@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+/**
+ * The editor in this window. The canvases find their window's GPU through [LocalAwtWindow]; this window provides it
+ * unless an enclosing one already did (the app's main window does), so a window made elsewhere (the development
+ * tools' own) draws its canvases on the GPU as the app does instead of quietly in software.
+ */
 @Composable
 fun FrameWindowScope.PSD2LiveApp(
 	viewModel: PSD2LiveViewModel,
@@ -150,6 +155,20 @@ fun FrameWindowScope.PSD2LiveApp(
 		window?.dispose()
 	},
 ) {
+	androidx.compose.runtime.CompositionLocalProvider(LocalAwtWindow provides (LocalAwtWindow.current ?: this.window)) {
+		PSD2LiveAppContent(viewModel, window, windowState, agentMcp, onCloseRequest)
+	}
+}
+
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+@Composable
+private fun FrameWindowScope.PSD2LiveAppContent(
+	viewModel: PSD2LiveViewModel,
+	window: ComposeWindow?,
+	windowState: WindowState?,
+	agentMcp: AgentMcpController?,
+	onCloseRequest: () -> Unit,
+) {
 	val state by viewModel.uiState
 	val baking by viewModel.simulationBaking.collectAsState()
 	val download by viewModel.modelDownloadState.collectAsState()
@@ -157,6 +176,13 @@ fun FrameWindowScope.PSD2LiveApp(
 	val task = io.github.psd2live.ui.state.taskProgress(state, baking, download, projectProgress)
 	var tutorial by remember { mutableStateOf(InteractiveTutorialState()) }
 	val tutorialTargets = rememberTutorialTargetRegistry()
+	// The performance overlay draws outside Compose, in the theme's colours.
+	val overlayColors = LocalToolColors.current
+	LaunchedEffect(overlayColors) {
+		io.github.psd2live.render.PerformanceOverlay.palette = io.github.psd2live.render.PerformanceOverlay.Palette(
+			overlayColors.panelElevated.copy(alpha = 0.92f).toArgb(), overlayColors.border.toArgb(), overlayColors.textPrimary.toArgb(),
+			overlayColors.textMuted.toArgb(), overlayColors.accent.toArgb(), overlayColors.warning.toArgb())
+	}
 
 	fun startInteractiveTutorial(id: TutorialId = TutorialId.BASIC, path: TutorialPath = TutorialPath.defaultFor(id)) {
 		// The steps point into the dock, which the pages cover.

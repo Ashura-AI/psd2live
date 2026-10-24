@@ -1109,8 +1109,9 @@ internal class CanvasEditor(
         error?.let { return CanvasStatusMessage(it, CanvasStatusTone.ERROR) }
         waiting?.let { return CanvasStatusMessage(it, CanvasStatusTone.WARNING) }
         if (busy) return CanvasStatusMessage(tr("editor.saving"), CanvasStatusTone.NORMAL)
-        // Status bar is always composed; model may still be absent before any PSD is loaded.
-        val source = preview ?: state.previewModel?.rig?.puppet
+        // Status bar is always composed; model may still be absent before any PSD is loaded. The document's puppet, not
+        // the drag's preview: the hint depends only on what is selected, and reading the preview recomposes every frame.
+        val source = state.previewModel?.rig?.puppet
         val target = source?.let { target(it, selectedLayerId, selectedDeformerId) }
         val hintKey = when {
             tool == CanvasTool.MESH_POINT -> meshPointMode.hintKey
@@ -1511,10 +1512,16 @@ internal class CanvasEditor(
     var selection by mutableStateOf<Map<String, Set<Int>>>(emptyMap())
 
     /** The primary target's slice of [selection] - all the single-target tools ever need. */
+    /**
+     * The id of the target the selection is kept under: from the document's puppet ([selectionTarget]), so reading
+     * [vertices] (the status bar does) does not read a drag's preview; the preview only for what exists in it alone.
+     */
+    private fun selectionTargetId(): String? = (selectionTarget() ?: target())?.id
+
     var vertices: Set<Int>
-        get() = target()?.id?.let { selection[it] }.orEmpty()
+        get() = selectionTargetId()?.let { selection[it] }.orEmpty()
         set(value) {
-            val id = target()?.id
+            val id = selectionTargetId()
             val rest = if (hierarchyMode == EditHierarchyMode.EDIT) selection else emptyMap()
             selection = when {
                 id == null -> emptyMap()
@@ -1834,10 +1841,27 @@ internal class CanvasEditor(
         val next = (brushShape.ordinal + 1) % entries.size
         brushShape = entries[next]
     }
-    private var cachedSource: PuppetModel? = null
-    private var cachedPose = emptyMap<ParameterId, Float>()
-    private var cachedWorlds = emptyMap<DeformerId, DeformerWorld>()
-    private val cachedTargets = mutableMapOf<String, CanvasTarget>()
+    /** Deformer worlds and targets of one puppet at one pose. */
+    private class TargetCache(val source: PuppetModel, val pose: Map<ParameterId, Float>, val worlds: Map<DeformerId, DeformerWorld>) {
+        val targets = mutableMapOf<String, CanvasTarget>()
+    }
+
+    /**
+     * The last two puppets' [TargetCache]s. A drag asks for targets of both its preview and the document's puppet in
+     * every frame (tool options, keyform targets): with one slot each call threw the other's worlds and geometry away.
+     */
+    private val targetCaches = ArrayDeque<TargetCache>(2)
+
+    private fun targetCache(source: PuppetModel): TargetCache {
+        val pose = state.parameterValues
+        targetCaches.firstOrNull { it.source === source && it.pose == pose }?.let { return it }
+        val defaults = source.parameters.associate { it.id to it.default }
+        val made = TargetCache(source, pose, buildDeformerWorlds(source.deformers, { p -> pose[p] ?: defaults[p] ?: 0f }, { defaults[it] ?: 0f }))
+        targetCaches.removeAll { it.source === source }
+        if (targetCaches.size >= 2) targetCaches.removeFirst()
+        targetCaches.addLast(made)
+        return made
+    }
 
     val inGesture get() = dragging
     val model get() = preview ?: state.previewModel!!.rig.puppet
@@ -1881,6 +1905,12 @@ internal class CanvasEditor(
         }
     val editable get() = !busy && !state.workspaceEditBusy && !state.isGenerating && !state.isAnalyzing && state.historySnapshot != null
 
+    /**
+     * The selection's target on the document's puppet, without the gesture in progress: for what shows what is selected
+     * (status bar, tool options), which then does not read the preview a drag replaces every frame and recompose with it.
+     */
+    fun selectionTarget(): CanvasTarget? = target(state.previewModel?.rig?.puppet)
+
     fun target(source: PuppetModel? = preview ?: state.previewModel?.rig?.puppet, layerId: String? = state.selectedLayerId, deformerId: String? = state.selectedDeformerId): CanvasTarget? {
         // Panels can be composed before a project is loaded or while it is closing.
         val resolvedSource = source ?: return null
@@ -1899,15 +1929,11 @@ internal class CanvasEditor(
             if (layerId !in state.effectiveVisibleLayerIds || !drawable.isSelectable) return null
             kind = "mesh"; id = drawable.id.raw; parent = drawable.parentDeformerId; indices = drawable.mesh!!.indices
         } else return null
-        if (cachedSource !== resolvedSource || cachedPose != state.parameterValues) {
-            cachedSource = resolvedSource; cachedPose = state.parameterValues; cachedTargets.clear()
-            val defaults = resolvedSource.parameters.associate { it.id to it.default }
-            cachedWorlds = buildDeformerWorlds(resolvedSource.deformers, { p -> state.parameterValues[p] ?: defaults[p] ?: 0f }, { defaults[it] ?: 0f })
-        }
-        val worlds = cachedWorlds
+        val cache = targetCache(resolvedSource)
+        val worlds = cache.worlds
         if (parent != null && worlds[parent] == null) return null
         return try {
-            cachedTargets.getOrPut("$kind:$id") {
+            cache.targets.getOrPut("$kind:$id") {
                 CanvasTarget(
                     kind, id,
                     RigGeometryTools.geometry(resolvedSource, kind, id, sanitizedPose(resolvedSource)),
@@ -3249,20 +3275,8 @@ internal class CanvasEditor(
     /** Mapping for [CreatePlacement.spaceParentId]; root uses identity (model with camera Y-flip). */
     private fun placementMapping(spaceParentId: String?): DrawableSpaceMapping {
         placementInput?.takeIf { placement?.spaceParentId == spaceParentId }?.let { return it.frame }
-        val source = model
-        if (cachedSource !== source || cachedPose != state.parameterValues) {
-            cachedSource = source
-            cachedPose = state.parameterValues
-            cachedTargets.clear()
-            val defaults = source.parameters.associate { it.id to it.default }
-            cachedWorlds = buildDeformerWorlds(
-                source.deformers,
-                { p -> state.parameterValues[p] ?: defaults[p] ?: 0f },
-                { defaults[it] ?: 0f },
-            )
-        }
         if (spaceParentId == null) return DrawableSpaceMapping(null)
-        val world = cachedWorlds[DeformerId(spaceParentId)]
+        val world = targetCache(model).worlds[DeformerId(spaceParentId)]
             ?: error("Parent deformer world unavailable: $spaceParentId")
         return DrawableSpaceMapping(world)
     }

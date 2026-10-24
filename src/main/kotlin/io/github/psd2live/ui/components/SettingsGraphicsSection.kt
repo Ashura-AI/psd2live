@@ -134,6 +134,10 @@ internal fun SettingsGraphicsSection() {
 		}
 		GraphicsRow(tr("settings.graphics.cache"), GpuCacheSize.entries, graphics.gpuCache, tr("settings.graphics.cache.desc"),
 			enabled = gpuWindow) { size -> update { it.copy(gpuCache = size) } }
+		SettingsRow(tr("settings.graphics.overlay"), description = tr("settings.graphics.overlay.desc")) {
+			CompactCheckbox(checked = graphics.performanceOverlay, onCheckedChange = { on -> update { it.copy(performanceOverlay = on) } },
+				enabled = gpuWindow, label = tr("settings.graphics.overlay.label"))
+		}
 	}
 
 	if (startup != null && graphics.needsRestartFrom(startup)) {

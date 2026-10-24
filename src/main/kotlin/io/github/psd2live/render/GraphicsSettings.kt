@@ -213,6 +213,8 @@ data class GraphicsOptions(
 	val windowCache: Boolean = true,
 	val gpuCache: GpuCacheSize = GpuCacheSize.AUTO,
 	val threadedGl: ThreadedGl = ThreadedGl.DEFAULT,
+	/** Whether the window shows its frame rate and frame times over everything ([PerformanceOverlay]). */
+	val performanceOverlay: Boolean = false,
 ) {
 	/** Whether going from [startup] to these options waits for the next start. */
 	fun needsRestartFrom(startup: GraphicsOptions): Boolean =
@@ -242,6 +244,7 @@ data class GraphicsOptions(
 				windowCache = read("window_cache") != "false",
 				gpuCache = choice("gpu_cache", GpuCacheSize.entries, defaults.gpuCache),
 				threadedGl = choice("threaded_gl", ThreadedGl.entries, defaults.threadedGl),
+				performanceOverlay = read("performance_overlay") == "true",
 			)
 		}
 	}
@@ -259,6 +262,7 @@ data class GraphicsOptions(
 		"window_cache" to windowCache.toString(),
 		"gpu_cache" to gpuCache.name,
 		"threaded_gl" to threadedGl.name,
+		"performance_overlay" to performanceOverlay.toString(),
 	)
 }
 

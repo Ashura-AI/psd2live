@@ -29,7 +29,7 @@ import kotlin.test.Test
  *
  * PSD2LIVE_TOOLS=1 xvfb-run -a -s "-screen 0 1920x1080x24" ./gradlew test --tests '*CanvasPerfTool'
  * PSD2LIVE_SAMPLE picks the PSD (tml by default), PSD2LIVE_CANVAS_AA the canvas antialiasing (a CanvasAntialiasing
- * name; the user's setting by default). Writes build/tools/canvas-perf/report.txt and a screenshot
+ * name; the user's setting by default), PSD2LIVE_OVERLAY=1 the performance overlay. Writes build/tools/canvas-perf/report.txt and a screenshot
  * after each phase. Under Xvfb the GPU is Mesa's llvmpipe, a CPU rasterizer, so absolute GPU numbers there
  * say little; the UI thread's share is what this measures.
  */
@@ -143,9 +143,15 @@ class CanvasPerfTool {
 			for (software in listOf(false, true)) {
 				AppSettings.graphics = savedGraphics.copy(
 					renderPath = if (software) io.github.psd2live.render.RenderPath.SOFTWARE_CANVAS else io.github.psd2live.render.RenderPath.GPU,
-					canvasAntialiasing = io.github.psd2live.render.CanvasAntialiasing.valueOf(setting("PSD2LIVE_CANVAS_AA", savedGraphics.canvasAntialiasing.name)))
+					canvasAntialiasing = io.github.psd2live.render.CanvasAntialiasing.valueOf(setting("PSD2LIVE_CANVAS_AA", savedGraphics.canvasAntialiasing.name)),
+					performanceOverlay = setting("PSD2LIVE_OVERLAY", "0") == "1")
 				Thread.sleep(1500)
 				val mode = if (software) "software" else "gpu"
+				// What decides whether the edit canvas draws on the GPU (CanvasViewportComposable's gpuReady).
+				SwingUtilities.invokeAndWait {
+					report.appendLine("$mode: window GPU ${SkiaGpu.of(window.get()) != null}, primary ${SkiaGpu.primary != null}, " +
+						"software canvas ${AppSettings.softwareCanvas}, GPU failed ${io.github.psd2live.render.CanvasGpu.failed}")
+				}
 				val ghost = arrayOfNulls<Any>(1)
 				SwingUtilities.invokeAndWait {
 					viewModel.setCanvasView(1f, 0f, 0f, canvasId, CanvasMode.EDIT)
@@ -197,6 +203,9 @@ class CanvasPerfTool {
 						enable("jdk.ExecutionSample").withPeriod(java.time.Duration.ofMillis(2)); start()
 					}
 					frames.clear()
+					// GPU frames of the edit canvas over the phase: none means the canvas painted in software.
+					fun gpuFrames() = io.github.psd2live.render.CanvasGpu.framesDrawn.values.sumOf { it.get() }
+					val gpuFramesBefore = gpuFrames()
 					val start = System.nanoTime()
 					var previous = 0.0
 					var pingAt = start
@@ -216,6 +225,7 @@ class CanvasPerfTool {
 						Thread.sleep(8)
 					}
 					recording.stop()
+					val gpuFramesDrawn = gpuFrames() - gpuFramesBefore
 					val jfr = File(out, "$mode-${phase.name}.jfr")
 					recording.dump(jfr.toPath()); recording.close()
 					if (phase.name == "pan") robot.mouseRelease(InputEvent.BUTTON2_DOWN_MASK)
@@ -243,9 +253,9 @@ class CanvasPerfTool {
 					val gaps = stamps.zipWithNext { a, b -> (b - a) / 1e6 }.sorted()
 					val latency = synchronized(pings) { pings.map { it / 1e6 }.sorted() }
 					fun List<Double>.pct(p: Double) = if (isEmpty()) 0.0 else this[((size - 1) * p).toInt()]
-					report.appendLine("%-8s %-6s %5.1f fps | frame gap p50 %5.1f p95 %6.1f max %6.1f ms | UI latency p50 %5.1f p95 %6.1f max %6.1f ms".format(
+					report.appendLine("%-8s %-6s %5.1f fps | frame gap p50 %5.1f p95 %6.1f max %6.1f ms | UI latency p50 %5.1f p95 %6.1f max %6.1f ms | canvas GPU frames %d%s".format(
 						mode, phase.name, stamps.size / phase.seconds, gaps.pct(0.5), gaps.pct(0.95), gaps.lastOrNull() ?: 0.0,
-						latency.pct(0.5), latency.pct(0.95), latency.lastOrNull() ?: 0.0))
+						latency.pct(0.5), latency.pct(0.95), latency.lastOrNull() ?: 0.0, gpuFramesDrawn, if (io.github.psd2live.render.CanvasGpu.failed) " (GPU canvas failed)" else ""))
 					report.append(hotspots(jfr))
 				}
 			}
