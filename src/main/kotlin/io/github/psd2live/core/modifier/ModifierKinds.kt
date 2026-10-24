@@ -47,7 +47,7 @@ interface ModifierKind {
 
 /** The registry of modifier kinds. */
 object ModifierKinds {
-	private val kinds: Map<String, ModifierKind> = listOf(Transform, Bend, Twist, Wave, Lattice).associateBy { it.id }
+	private val kinds: Map<String, ModifierKind> = listOf(Transform, Bend, Twist, Wave, Lattice, Path).associateBy { it.id }
 
 	fun of(id: String): ModifierKind? = kinds[id]
 
@@ -273,6 +273,86 @@ object ModifierKinds {
 				out[i * 2 + 1] = (positions[i * 2 + 1] + y).toFloat()
 			}
 			return out
+		}
+	}
+
+	/**
+	 * Carries the art along a path, as Cubism's deform path drawn once and keyed: a cubic Bézier `path` (4 control
+	 * points [x, y] at rest) whose control points move by `offsets`. A point is taken to the place on the rest curve
+	 * nearest it (t along it, d across it) and moves by how far that place, offset d along the curve's normal, moves on
+	 * the moved curve; past the ends the curve carries on along its end tangent. Within `radius` of the curve the
+	 * effect fades out with the distance (0 for no fade), so art beside a strand stays.
+	 */
+	object Path : ModifierKind {
+		const val POINTS = 4
+		private const val SAMPLES = 48
+		override val id = "path"
+		override val settings = listOf(
+			ModifierSetting("path", POINTS * 2, FloatArray(POINTS * 2), description = "The curve at rest: 4 Bezier control points [x, y], canvas pixels.", field = false),
+			ModifierSetting("offsets", POINTS * 2, FloatArray(POINTS * 2), -100_000f, 100_000f,
+				"How far each control point moves [x, y], canvas pixels.", field = false),
+			ModifierSetting("radius", 1, floatArrayOf(0f), 0f, 100_000f, "Distance from the curve over which the effect fades out, canvas pixels; 0 for none."),
+		)
+		override val suits = setOf(SemanticTag.BACK_HAIR, SemanticTag.FRONT_HAIR, SemanticTag.TAIL, SemanticTag.EYEBROW, SemanticTag.MOUTH)
+
+		// Down the middle of the meshes, top to bottom.
+		override fun defaults(bounds: FloatArray): Map<String, FloatArray> {
+			val x = (bounds[0] + bounds[2]) / 2
+			return mapOf("path" to FloatArray(POINTS * 2) { i -> if (i % 2 == 0) x else bounds[1] + (bounds[3] - bounds[1]) * (i / 2) / (POINTS - 1) })
+		}
+
+		private fun point(c: FloatArray, t: Double): DoubleArray {
+			val u = 1 - t
+			val w = doubleArrayOf(u * u * u, 3 * t * u * u, 3 * t * t * u, t * t * t)
+			return doubleArrayOf((0 until POINTS).sumOf { w[it] * c[it * 2] }, (0 until POINTS).sumOf { w[it] * c[it * 2 + 1] })
+		}
+
+		/** The unit tangent at [t]; a degenerate curve points down. */
+		private fun tangent(c: FloatArray, t: Double): DoubleArray {
+			val u = 1 - t
+			val w = doubleArrayOf(-3 * u * u, 3 * u * u - 6 * t * u, 6 * t * u - 3 * t * t, 3 * t * t)
+			val x = (0 until POINTS).sumOf { w[it] * c[it * 2] }; val y = (0 until POINTS).sumOf { w[it] * c[it * 2 + 1] }
+			val l = hypot(x, y)
+			return if (l < 1e-9) doubleArrayOf(0.0, 1.0) else doubleArrayOf(x / l, y / l)
+		}
+
+		override fun deform(positions: FloatArray, values: Map<String, FloatArray>): FloatArray {
+			val rest = values.getValue("path")
+			val offsets = values.getValue("offsets")
+			val radius = values.getValue("radius")[0].toDouble()
+			val out = positions.copyOf()
+			if (offsets.all { it == 0f }) return out
+			val moved = FloatArray(rest.size) { rest[it] + offsets[it] }
+			val samples = Array(SAMPLES + 1) { point(rest, it.toDouble() / SAMPLES) }
+			for (i in 0 until positions.size / 2) {
+				val px = positions[i * 2].toDouble(); val py = positions[i * 2 + 1].toDouble()
+				// The nearest sample, then a few Newton steps along the curve.
+				var t = samples.indices.minByOrNull { hypot(samples[it][0] - px, samples[it][1] - py) }!!.toDouble() / SAMPLES
+				repeat(4) {
+					val c = point(rest, t); val d = tangent(rest, t)
+					val step = ((px - c[0]) * d[0] + (py - c[1]) * d[1]) / maxOf(1e-6, curveSpeed(rest, t))
+					t = (t + step).coerceIn(0.0, 1.0)
+				}
+				val c = point(rest, t); val tan = tangent(rest, t)
+				val along = (px - c[0]) * tan[0] + (py - c[1]) * tan[1]
+				val across = (px - c[0]) * -tan[1] + (py - c[1]) * tan[0]
+				val c2 = point(moved, t); val tan2 = tangent(moved, t)
+				// Past an end the point keeps its distance along the end tangent; elsewhere [along] is (near) zero.
+				val endAlong = if (t <= 0.0 || t >= 1.0) along else 0.0
+				val x = c2[0] + endAlong * tan2[0] + across * -tan2[1] - (c[0] + endAlong * tan[0] + across * -tan[1])
+				val y = c2[1] + endAlong * tan2[1] + across * tan2[0] - (c[1] + endAlong * tan[1] + across * tan[0])
+				val weight = if (radius <= 0) 1.0 else (1 - kotlin.math.abs(across) / radius).coerceIn(0.0, 1.0).let { it * it * (3 - 2 * it) }
+				out[i * 2] = (px + x * weight).toFloat()
+				out[i * 2 + 1] = (py + y * weight).toFloat()
+			}
+			return out
+		}
+
+		/** The curve's speed at [t], pixels per unit of t. */
+		private fun curveSpeed(c: FloatArray, t: Double): Double {
+			val a = point(c, (t - 1e-4).coerceAtLeast(0.0)); val b = point(c, (t + 1e-4).coerceAtMost(1.0))
+			val dt = (t + 1e-4).coerceAtMost(1.0) - (t - 1e-4).coerceAtLeast(0.0)
+			return hypot(b[0] - a[0], b[1] - a[1]) / dt
 		}
 	}
 }

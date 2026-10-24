@@ -71,4 +71,18 @@ class ModifierKindsTest {
 		assertEquals("wave", ModifierKinds.forRole(io.github.psd2live.core.SemanticTag.BACK_HAIR).first { it.id != "bend" }.id)
 		assertEquals(ModifierKinds.all.toList(), ModifierKinds.forRole(null))
 	}
+
+	@Test
+	fun `a path carries the art beside it with its control points`() {
+		// Down the middle: moving every control point 10 right moves the art 10 right; moving the bottom one bends it.
+		val shifted = mapOf("offsets" to FloatArray(8) { if (it % 2 == 0) 10f else 0f })
+		assertEquals(70f, point(ModifierKinds.Path, 60f, 100f, shifted)[0], 1e-3f)
+		assertEquals(100f, point(ModifierKinds.Path, 60f, 100f, shifted)[1], 1e-3f)
+		val tip = mapOf("offsets" to FloatArray(8).also { it[6] = 30f })
+		val top = point(ModifierKinds.Path, 50f, 0f, tip)
+		assertEquals(50f, top[0], 1e-3f, "the root stays")
+		assertEquals(80f, point(ModifierKinds.Path, 50f, 200f, tip)[0], 1e-2f, "the end follows its point")
+		val faded = mapOf("offsets" to FloatArray(8) { if (it % 2 == 0) 10f else 0f }, "radius" to floatArrayOf(20f))
+		assertEquals(90f, point(ModifierKinds.Path, 90f, 100f, faded)[0], 1e-4f, "beyond the radius nothing moves")
+	}
 }
