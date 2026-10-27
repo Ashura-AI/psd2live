@@ -15,7 +15,7 @@ import java.nio.file.Path
  */
 internal object ExportCli {
 	private const val USAGE = """Usage:
-  psd2live export <input.psd2live|input.psd> --target <id> [--output <dir>] [--name <base>] [--set key=value]...
+  psd2live export <input.psd2live|input.psd> --target <id> [--output <dir>] [--name <base>] [--head-strength <0..1>] [--body-strength <0..1>] [--set key=value]...
   psd2live targets
 
 Writes the target's files and <base>.<target>.report.json, which lists what the target could not keep."""
@@ -37,6 +37,8 @@ Writes the target's files and <base>.<target>.report.json, which lists what the 
 		var output: Path? = null
 		var name: String? = null
 		val settings = LinkedHashMap<String, String>()
+		var headStrength = 1f
+		var bodyStrength = 1f
 		var index = 0
 		fun value(flag: String): String = rest.getOrNull(++index) ?: throw IllegalArgumentException("$flag needs a value")
 		try {
@@ -45,6 +47,8 @@ Writes the target's files and <base>.<target>.report.json, which lists what the 
 					"--target" -> targetId = value(argument)
 					"--output" -> output = Path.of(value(argument))
 					"--name" -> name = value(argument)
+					"--head-strength" -> headStrength = value(argument).toFloatOrNull() ?: throw IllegalArgumentException("--head-strength expects a number")
+					"--body-strength" -> bodyStrength = value(argument).toFloatOrNull() ?: throw IllegalArgumentException("--body-strength expects a number")
 					"--set" -> value(argument).let { pair ->
 						val key = pair.substringBefore('=', "")
 						require(key.isNotBlank() && '=' in pair) { "--set expects key=value: $pair" }
@@ -64,7 +68,8 @@ Writes the target's files and <base>.<target>.report.json, which lists what the 
 		}
 		return try {
 			val source = input!!.toAbsolutePath()
-			val preview = runBlocking { io.github.psd2live.application.WorkspaceModelLoader.load(source) }
+			val config = PipelineConfig(headTurnStrength = headStrength, bodyStrength = bodyStrength)
+			val preview = runBlocking { io.github.psd2live.application.WorkspaceModelLoader.load(source, config) }
 			val target = ExportService.registry(preview.config)[targetId!!]
 			val baseName = name ?: source.fileName.toString().substringBeforeLast('.').ifBlank { "model" }
 			val directory = output ?: source.parent.resolve("${baseName}-${target.id}")
